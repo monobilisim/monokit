@@ -47,7 +47,7 @@ func DiskUsage() {
         msg := "Partition usage level has exceeded to " + strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 2, 64) + "% " + "for the following partitions;\n\n" + output.String()
         msg = strings.Replace(msg, "\n", `\n`, -1)
         common.AlarmCheckDown("disk", msg)
-        common.RedmineCreate("disk", Config.Identifier + " - Diskteki bir (ya da birden fazla) bölümün doluluk seviyesi %"+strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 2, 64)+" üstüne çıktı", output.String())
+        common.RedmineCreate("disk", common.Config.Identifier + " - Diskteki bir (ya da birden fazla) bölümün doluluk seviyesi %"+strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 2, 64)+" üstüne çıktı", output.String())
     } else { 
         common.AlarmCheckUp("disk", "All partitions are now under the limit of " + strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 2, 64) + "%")
     }
