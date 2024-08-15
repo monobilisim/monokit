@@ -28,7 +28,11 @@ type RedmineIssue struct {
 func RedmineCreate(service string, subject string, message string) {
     serviceReplaced := strings.Replace(service, "/", "-", -1)
     filePath := TmpDir + "/" + serviceReplaced + "-redmine.log"
-    
+   
+    if Config.Redmine.Enabled == false {
+        return
+    }
+
     var priorityId int
     var projectId string
 
@@ -83,6 +87,11 @@ func RedmineCreate(service string, subject string, message string) {
 }
 
 func RedmineUpdate(service string, message string) {
+    
+    if Config.Redmine.Enabled == false {
+        return
+    }
+
     serviceReplaced := strings.Replace(service, "/", "-", -1)
     filePath := TmpDir + "/" + serviceReplaced + "-redmine.log"
     
@@ -140,6 +149,10 @@ func RedmineUpdate(service string, message string) {
 }
 
 func RedmineClose(service string, message string) {
+    if Config.Redmine.Enabled == false {
+        return
+    }
+
     serviceReplaced := strings.Replace(service, "/", "-", -1)
     filePath := TmpDir + "/" + serviceReplaced + "-redmine.log"
 
