@@ -24,7 +24,7 @@ jobs:
         with:
           go-version: stable
 
-      - uses: goreleaser/goreleaser-action@main
+      - uses: goreleaser/goreleaser-action@master
         with:
           distribution: goreleaser
           version: latest
