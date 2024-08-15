@@ -3,19 +3,16 @@ package osHealth
 import (
     "slices"
     "strconv"
+    "strings"
+    "github.com/olekukonko/tablewriter"
     "github.com/shirou/gopsutil/v4/disk"
     "github.com/monobilisim/mono-go/common"
 )
 
-type Part struct {
-    Mountpoint string
-    UsedPercent float64
-}
-
 func DiskUsage() {
     common.SplitSection("Disk Usage")
 
-    exceededParts := []Part{}
+    var exceededParts [][]string
     diskPartitions, err := disk.Partitions(false)
     
     if err != nil {
@@ -33,17 +30,27 @@ func DiskUsage() {
         
         if usage.UsedPercent > OsHealthConfig.Part_use_limit {
             common.PrettyPrint("Disk usage at " + partition.Mountpoint, common.Fail + " more than " + strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', -1, 64) + "%", usage.UsedPercent, true)
-            exceededParts = append(exceededParts, Part{Mountpoint: partition.Mountpoint, UsedPercent: usage.UsedPercent})
+            exceededParts = append(exceededParts, []string{strconv.FormatFloat(usage.UsedPercent, 'f', 2, 64), common.ConvertBytes(usage.Used), common.ConvertBytes(usage.Total), partition.Device, partition.Mountpoint})
         } else {
             common.PrettyPrint("Disk usage at " + partition.Mountpoint, common.Green + " less than " + strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', -1, 64) + "%", usage.UsedPercent, true)
         }
     }
 
-    //if len(exceededParts) > 0 {
-    //    for _, exceededPart := range exceededParts {
-            //fmt.Printf("Mountpoint: %s, Used Percent: %f\n", exceededPart.Mountpoint, exceededPart.UsedPercent)
-    //    }
-    //}
+    if len(exceededParts) > 0 {
+        output := &strings.Builder{}
+        table := tablewriter.NewWriter(output)
+        table.SetHeader([]string{"%", "Used", "Total", "Partition", "Mount Point"})
+        table.SetBorders(tablewriter.Border{Left: true, Top: false, Right: true, Bottom: false})
+        table.SetCenterSeparator("|")
+        table.AppendBulk(exceededParts)
+        table.Render()
+        msg := "Partition usage level has exceeded to " + strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 2, 64) + "% " + "for the following partitions;\n\n" + output.String()
+        msg = strings.Replace(msg, "\n", `\n`, -1)
+        common.AlarmCheckDown("disk", msg)
+        RedmineCreate("disk", "Test")
+    } else { 
+        common.AlarmCheckUp("disk", "All partitions are now under the limit of " + strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 2, 64) + "%")
+    }
 }
     
 
