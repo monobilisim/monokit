@@ -70,13 +70,13 @@ The resulting binaries will be in the `bin` folder.
 
 mono-go is licensed under GPL-3.0-only. See [LICENSE](LICENSE) file for details.
 
-[contributors-shield]: https://img.shields.io/github/contributors/monobilisim/monodb-backup.svg?style=for-the-badge
-[contributors-url]: https://github.com/monobilisim/monodb-backup/graphs/contributors
-[forks-shield]: https://img.shields.io/github/forks/monobilisim/monodb-backup.svg?style=for-the-badge
-[forks-url]: https://github.com/monobilisim/monodb-backup/network/members
-[stars-shield]: https://img.shields.io/github/stars/monobilisim/monodb-backup.svg?style=for-the-badge
-[stars-url]: https://github.com/monobilisim/monodb-backup/stargazers
-[issues-shield]: https://img.shields.io/github/issues/monobilisim/monodb-backup.svg?style=for-the-badge
-[issues-url]: https://github.com/monobilisim/monodb-backup/issues
-[license-shield]: https://img.shields.io/github/license/monobilisim/monodb-backup.svg?style=for-the-badge
-[license-url]: https://github.com/monobilisim/monodb-backup/blob/master/LICENSE
+[contributors-shield]: https://img.shields.io/github/contributors/monobilisim/mono-go.svg?style=for-the-badge
+[contributors-url]: https://github.com/monobilisim/mono-go/graphs/contributors
+[forks-shield]: https://img.shields.io/github/forks/monobilisim/mono-go.svg?style=for-the-badge
+[forks-url]: https://github.com/monobilisim/mono-go/network/members
+[stars-shield]: https://img.shields.io/github/stars/monobilisim/mono-go.svg?style=for-the-badge
+[stars-url]: https://github.com/monobilisim/mono-go/stargazers
+[issues-shield]: https://img.shields.io/github/issues/monobilisim/mono-go.svg?style=for-the-badge
+[issues-url]: https://github.com/monobilisim/mono-go/issues
+[license-shield]: https://img.shields.io/github/license/monobilisim/mono-go.svg?style=for-the-badge
+[license-url]: https://github.com/monobilisim/mono-go/blob/master/LICENSE
