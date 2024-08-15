@@ -1,0 +1,25 @@
+identifier: test
+
+alarm:
+  enabled: true
+  interval: 3
+  webhook_urls:
+    - example.com
+    - example2.com
+
+  bot:
+    enabled: true
+    alarm_url: https://example.com
+    email: test-bot@example.com
+    api_key: testkey
+    user_emails:
+      - user@example.com
+
+redmine:
+  api_key: test
+  project_id: 5
+  url: https://example.com
+  status_id_closed: 5
+  status_id: open
+  tracker_id: 5
+  priority_id: 5

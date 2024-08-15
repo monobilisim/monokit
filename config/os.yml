@@ -1,0 +1,21 @@
+filesystems:
+  - ext4
+  - ext3
+  - ext2
+  - xfs
+  - btrfs
+  - zfs
+  - fat32
+  - vfat
+
+system_load_and_ram: true
+part_use_limit: 90
+dynamic_limit_interval: 0
+load:
+  limit_multiplier: 0.8
+  limit: 20
+
+ram_limit: 91
+
+alarm:
+  enabled: true

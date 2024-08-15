@@ -15,7 +15,7 @@ type Common struct {
     
     Redmine struct {
         Enabled bool
-        Project_id int
+        Project_id string
         Tracker_id int
         Status_id int
         Priority_id int
