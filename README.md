@@ -41,7 +41,7 @@
 
 1. Configure by editing the config files in `/etc/mono.sh/`. You can default values in the `config` folder.
 
-2. Run the backup using the following command as root:
+2. Run the desired tool using the following command as root:
 
 ```
 mono-go NAME
