@@ -10,6 +10,8 @@ import (
 )
 
 type Issue struct {
+        Id          int       `json:"id"`
+        Notes       string    `json:"notes"`
         ProjectId   string    `json:"project_id"`
         TrackerId   int       `json:"tracker_id"`
         Description string    `json:"description"`
@@ -22,10 +24,11 @@ type RedmineIssue struct {
     Issue Issue `json:"issue"`
 }
 
+
 func RedmineCreate(service string, subject string, message string) {
     serviceReplaced := strings.Replace(service, "/", "-", -1)
     filePath := TmpDir + "/" + serviceReplaced + "-redmine.log"
-
+    
     var priorityId int
     var projectId string
 
@@ -49,13 +52,14 @@ func RedmineCreate(service string, subject string, message string) {
         LogError("json.Marshal error: " + err.Error())
     }
 
-    req, err := http.NewRequest("POST", Config.Redmine.Url, bytes.NewBuffer(jsonBody))
+    req, err := http.NewRequest("POST", Config.Redmine.Url + "/issues.json", bytes.NewBuffer(jsonBody))
 
     if err != nil {
         LogError("http.NewRequest error: " + err.Error())
     }
 
     req.Header.Set("Content-Type", "application/json")
+    req.Header.Set("X-Redmine-API-Key", Config.Redmine.Api_key)
 
     client := &http.Client{
         Timeout: time.Second * 10,
@@ -79,7 +83,60 @@ func RedmineCreate(service string, subject string, message string) {
 }
 
 func RedmineUpdate(service string, message string) {
-    // TODO
+    serviceReplaced := strings.Replace(service, "/", "-", -1)
+    filePath := TmpDir + "/" + serviceReplaced + "-redmine.log"
+    
+    // check if filePath exists
+    if _, err := os.Stat(filePath); os.IsNotExist(err) {
+        return
+    }
+
+    // read file
+    file, err := os.ReadFile(filePath)
+
+    if err != nil {
+        LogError("os.ReadFile error: " + err.Error())
+    }
+
+    // parse json
+    var data RedmineIssue
+    err = json.Unmarshal(file, &data)
+    if err != nil {
+        LogError("json.Unmarshal error: " + err.Error())
+    }
+
+    // get issue id
+    issueId := data.Issue.Id
+
+    // update issue
+    body := RedmineIssue{Issue: Issue{Id: issueId, Notes: message}}
+
+    jsonBody, err := json.Marshal(body)
+
+    if err != nil {
+        LogError("json.Marshal error: " + err.Error())
+    }
+
+    req, err := http.NewRequest("PUT", Config.Redmine.Url + "/issues/" + string(issueId) + ".json", bytes.NewBuffer(jsonBody))
+
+    if err != nil {
+        LogError("http.NewRequest error: " + err.Error())
+    }
+
+    req.Header.Set("Content-Type", "application/json")
+    req.Header.Set("X-Redmine-API-Key", Config.Redmine.Api_key)
+
+    client := &http.Client{
+        Timeout: time.Second * 10,
+    }
+
+    resp, err := client.Do(req)
+
+    if err != nil {
+        LogError("client.Do error: " + err.Error())
+    }
+
+    defer resp.Body.Close()
 }
 
 func RedmineDisable(service string) {
