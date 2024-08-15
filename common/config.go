@@ -15,6 +15,11 @@ type Common struct {
     
     Redmine struct {
         Enabled bool
+        Project_id int
+        Tracker_id int
+        Status_id int
+        Priority_id int
+
         Api_key string
         Url string
     }
