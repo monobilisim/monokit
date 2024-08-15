@@ -1,0 +1,33 @@
+name: goreleaser
+
+on:
+  push:
+    # run only against tags
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  # packages: write
+  # issues: write
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@latest
+        with:
+          fetch-depth: 0
+          
+      - run: git fetch --force --tags
+      - uses: actions/setup-go@latest
+        with:
+          go-version: stable
+
+      - uses: goreleaser/goreleaser-action@latest
+        with:
+          distribution: goreleaser
+          version: latest
+          args: release --clean
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
