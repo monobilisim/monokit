@@ -118,6 +118,7 @@ func AlarmCheckDown(service string, message string) {
             if j.Locked == false {
                 // currentDate - oldDate in minutes
                 timeDiff := time.Now().Sub(oldDateParsed) //.Minutes()
+
                 if timeDiff.Minutes() >= Config.Alarm.Interval { 
                     jsonData, err := json.Marshal(finJson)
                     if err != nil {
@@ -164,6 +165,12 @@ func AlarmCheckDown(service string, message string) {
     }        
 }
 
+type ResponseData struct {
+    Result string `json:"result"`
+    Msg string `json:"msg"`
+    Code string `json:"code"`
+}
+
 func Alarm(message string) {
     if Config.Alarm.Enabled == false {
         return
@@ -183,6 +190,25 @@ func Alarm(message string) {
         
         if err != nil {
             LogError("Error sending request for the alarm: \n" + err.Error())
+        }
+
+        responseBody, err := io.ReadAll(res.Body)
+        
+        if err != nil {
+            LogError("Error reading response for the alarm: \n" + err.Error())
+        }
+
+        var data ResponseData
+
+        err = json.Unmarshal(responseBody, &data)
+
+        if err != nil {
+            LogError("Error parsing JSON for the alarm: \n" + err.Error())
+        }
+
+        if data.Result != "success" {
+            LogError("Error sending alarm (" + data.Code + "): \n" + data.Msg)
+            LogError("Request JSON: \n" + string(body))
         }
 
         defer res.Body.Close()
