@@ -139,6 +139,64 @@ func RedmineUpdate(service string, message string) {
     defer resp.Body.Close()
 }
 
-func RedmineDisable(service string) {
-    // TODO
+func RedmineClose(service string, message string) {
+    serviceReplaced := strings.Replace(service, "/", "-", -1)
+    filePath := TmpDir + "/" + serviceReplaced + "-redmine.log"
+
+    // check if filePath exists, if not return
+    if _, err := os.Stat(filePath); os.IsNotExist(err) {
+        return
+    }
+
+    // read file
+    file, err := os.ReadFile(filePath)
+    if err != nil {
+        LogError("os.ReadFile error: " + err.Error())
+    }
+
+    // parse json
+    var data RedmineIssue
+    err = json.Unmarshal(file, &data)
+    if err != nil {
+        LogError("json.Unmarshal error: " + err.Error())
+    }
+
+    // get issue id
+    issueId := data.Issue.Id
+
+    // update issue
+    body := RedmineIssue{Issue: Issue{Id: issueId, Notes: message, StatusId: "closed"}}
+    jsonBody, err := json.Marshal(body)
+
+    if err != nil {
+        LogError("json.Marshal error: " + err.Error())
+    }
+
+    req, err := http.NewRequest("PUT", Config.Redmine.Url + "/issues/" + string(issueId) + ".json", bytes.NewBuffer(jsonBody))
+
+    if err != nil {
+        LogError("http.NewRequest error: " + err.Error())
+    }
+
+    req.Header.Set("Content-Type", "application/json")
+    req.Header.Set("X-Redmine-API-Key", Config.Redmine.Api_key)
+
+    client := &http.Client{
+        Timeout: time.Second * 10,
+    }
+
+    resp, err := client.Do(req)
+
+    if err != nil {
+        LogError("client.Do error: " + err.Error())
+    }
+
+    defer resp.Body.Close()
+
+    // remove file
+    err = os.Remove(filePath)
+
+    if err != nil {
+        LogError("os.Remove error: " + err.Error())
+    }
 }
