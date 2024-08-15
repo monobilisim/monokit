@@ -13,6 +13,16 @@ func SplitSection(section string) {
     fmt.Println("--------------------------------------------------")
 }
 
+func ConvertBytes(bytes uint64) string {
+    var sizes = []string{"B", "KB", "MB", "GB", "TB", "EB"}
+    var i int
+
+    for i = 0; bytes >= 1024 && i < len(sizes); i++ {
+        bytes /= 1024
+    }
+
+    return fmt.Sprintf("%d %s", bytes, sizes[i])
+}
 
 func Init() {
     // Create TmpDir if it doesn't exist
