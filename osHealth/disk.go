@@ -1,6 +1,7 @@
 package osHealth
 
 import (
+    "os"
     "slices"
     "strconv"
     "strings"
@@ -46,7 +47,25 @@ func DiskUsage() {
         table.Render()
         msg := "Partition usage level has exceeded to " + strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 2, 64) + "% " + "for the following partitions;\n\n" + output.String()
         msg = strings.Replace(msg, "\n", `\n`, -1)
+        
+        // Check if file exists 
+        if _, err := os.Stat(common.TmpDir + "/" + common.Config.Identifier + "_disk_usage.txt"); os.IsNotExist(err) {
+            os.WriteFile(common.TmpDir + "/" + common.Config.Identifier + "_disk_usage.txt", []byte(msg), 0644)
+        } else {
+            // Read file
+            fileContent, _ := os.ReadFile(common.TmpDir + "/" + common.Config.Identifier + "_disk_usage.txt")
+
+            // Check if the message is the same
+            if string(fileContent) != msg {
+                common.RedmineUpdate("disk", output.String())
+            }
+            
+            // Write msg to file
+            os.WriteFile(common.TmpDir + "/" + common.Config.Identifier + "_disk_usage.txt", []byte(msg), 0644)
+        }
+
         common.AlarmCheckDown("disk", msg)
+
         common.RedmineCreate("disk", common.Config.Identifier + " - Diskteki bir (ya da birden fazla) bölümün doluluk seviyesi %"+strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 2, 64)+" üstüne çıktı", output.String())
     } else { 
         common.AlarmCheckUp("disk", "All partitions are now under the limit of " + strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 2, 64) + "%")
