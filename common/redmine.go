@@ -1,6 +1,7 @@
 package common
 
 import (
+    "strconv"
     "bytes"
     "net/http"
     "time"
@@ -10,14 +11,14 @@ import (
 )
 
 type Issue struct {
-        Id          int       `json:"id"`
-        Notes       string    `json:"notes"`
-        ProjectId   string    `json:"project_id"`
-        TrackerId   int       `json:"tracker_id"`
-        Description string    `json:"description"`
-        Subject     string    `json:"subject"`
-        PriorityId  int       `json:"priority_id"`
-        StatusId    string    `json:"status_id"`
+        Id          int       `json:"id,omitempty"`
+        Notes       string    `json:"notes,omitempty"`
+        ProjectId   string    `json:"project_id,omitempty"`
+        TrackerId   int       `json:"tracker_id,omitempty"`
+        Description string    `json:"description,omitempty"`
+        Subject     string    `json:"subject,omitempty"`
+        PriorityId  int       `json:"priority_id,omitempty"`
+        StatusId    string    `json:"status_id,omitempty"`
 } 
 
 type RedmineIssue struct {
@@ -77,13 +78,20 @@ func RedmineCreate(service string, subject string, message string) {
 
     defer resp.Body.Close()
 
-    jsonRespBody, err := json.Marshal(resp.Body)
+    // read response
+    var data RedmineIssue
+
+    err = json.NewDecoder(resp.Body).Decode(&data)
 
     if err != nil {
-        LogError("json.Marshal error: " + err.Error())
+        LogError("json.NewDecoder error: " + err.Error())
     }
 
-    os.WriteFile(filePath, jsonRespBody, 0666)
+    // get issue id, convert to string
+    issueId := []byte(strconv.Itoa(data.Issue.Id))
+
+    // write issue id to file
+    os.WriteFile(filePath, issueId, 0644)
 }
 
 func RedmineUpdate(service string, message string) {
@@ -107,15 +115,12 @@ func RedmineUpdate(service string, message string) {
         LogError("os.ReadFile error: " + err.Error())
     }
 
-    // parse json
-    var data RedmineIssue
-    err = json.Unmarshal(file, &data)
-    if err != nil {
-        LogError("json.Unmarshal error: " + err.Error())
-    }
-
     // get issue id
-    issueId := data.Issue.Id
+    issueId, err := strconv.Atoi(string(file))
+
+    if err != nil {
+        LogError("strconv.Atoi error: " + err.Error())
+    }
 
     // update issue
     body := RedmineIssue{Issue: Issue{Id: issueId, Notes: message}}
@@ -126,7 +131,7 @@ func RedmineUpdate(service string, message string) {
         LogError("json.Marshal error: " + err.Error())
     }
 
-    req, err := http.NewRequest("PUT", Config.Redmine.Url + "/issues/" + string(issueId) + ".json", bytes.NewBuffer(jsonBody))
+    req, err := http.NewRequest("PUT", Config.Redmine.Url + "/issues/" + string(file) + ".json", bytes.NewBuffer(jsonBody))
 
     if err != nil {
         LogError("http.NewRequest error: " + err.Error())
@@ -167,15 +172,11 @@ func RedmineClose(service string, message string) {
         LogError("os.ReadFile error: " + err.Error())
     }
 
-    // parse json
-    var data RedmineIssue
-    err = json.Unmarshal(file, &data)
-    if err != nil {
-        LogError("json.Unmarshal error: " + err.Error())
-    }
+    issueId, err := strconv.Atoi(string(file))
 
-    // get issue id
-    issueId := data.Issue.Id
+    if err != nil {
+        LogError("strconv.Atoi error: " + err.Error())
+    }
 
     // update issue
     body := RedmineIssue{Issue: Issue{Id: issueId, Notes: message, StatusId: "closed"}}
@@ -185,7 +186,8 @@ func RedmineClose(service string, message string) {
         LogError("json.Marshal error: " + err.Error())
     }
 
-    req, err := http.NewRequest("PUT", Config.Redmine.Url + "/issues/" + string(issueId) + ".json", bytes.NewBuffer(jsonBody))
+
+    req, err := http.NewRequest("PUT", Config.Redmine.Url + "/issues/" + string(file) + ".json", bytes.NewBuffer(jsonBody))
 
     if err != nil {
         LogError("http.NewRequest error: " + err.Error())
