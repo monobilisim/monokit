@@ -6,3 +6,5 @@ builds:
     - darwin
     - windows
     - freebsd
+    env:
+      - CGO_ENABLED=0
