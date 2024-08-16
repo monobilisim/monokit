@@ -11,14 +11,15 @@ import (
 )
 
 type Issue struct {
-        Id          int       `json:"id,omitempty"`
-        Notes       string    `json:"notes,omitempty"`
-        ProjectId   string    `json:"project_id,omitempty"`
-        TrackerId   int       `json:"tracker_id,omitempty"`
-        Description string    `json:"description,omitempty"`
-        Subject     string    `json:"subject,omitempty"`
-        PriorityId  int       `json:"priority_id,omitempty"`
-        StatusId    string    `json:"status_id,omitempty"`
+        Id             int       `json:"id,omitempty"`
+        Notes          string    `json:"notes,omitempty"`
+        ProjectId      string    `json:"project_id,omitempty"`
+        TrackerId      int       `json:"tracker_id,omitempty"`
+        Description    string    `json:"description,omitempty"`
+        Subject        string    `json:"subject,omitempty"`
+        PriorityId     int       `json:"priority_id,omitempty"`
+        StatusId       int       `json:"status_id,omitempty"`
+        StatusIdString string    `json:"status_id,omitempty"`
 } 
 
 type RedmineIssue struct {
@@ -49,7 +50,7 @@ func RedmineCreate(service string, subject string, message string) {
         projectId = Config.Redmine.Project_id
     }
 
-    body := RedmineIssue{Issue: Issue{ProjectId: projectId, TrackerId: 7, Description: message, Subject: subject, PriorityId: priorityId, StatusId: "open"}}
+    body := RedmineIssue{Issue: Issue{ProjectId: projectId, TrackerId: 7, Description: message, Subject: subject, PriorityId: priorityId, StatusIdString: "open" }}
 
     jsonBody, err := json.Marshal(body)
 
@@ -179,7 +180,7 @@ func RedmineClose(service string, message string) {
     }
 
     // update issue
-    body := RedmineIssue{Issue: Issue{Id: issueId, Notes: message, StatusId: "closed"}}
+    body := RedmineIssue{Issue: Issue{Id: issueId, Notes: message, StatusId: 5}}
     jsonBody, err := json.Marshal(body)
 
     if err != nil {
