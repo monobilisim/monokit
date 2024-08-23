@@ -28,7 +28,7 @@ type Common struct {
 
 func ConfInit(configName string, config interface{}) interface{} {
     viper.SetConfigName(configName)
-    viper.AddConfigPath("/etc/mono.sh")
+    viper.AddConfigPath("/etc/mono")
     viper.SetConfigType("yaml")
 
     err := viper.ReadInConfig()
