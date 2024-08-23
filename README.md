@@ -43,7 +43,7 @@
 
 ## Usage
 
-1. Configure by editing the config files in `/etc/mono.sh/`. You can default values in the `config` folder. Please keep in mind that to use any of the tools, you need to also configure `/etc/mono.sh/global.yaml` file.
+1. Configure by editing the config files in `/etc/mono/`. You can default values in the `config` folder. Please keep in mind that to use any of the tools, you need to also configure `/etc/mono.sh/global.yaml` file.
 
 2. Run the desired tool using the following command as root:
 
