@@ -35,6 +35,10 @@
   - Opens issue in Redmine if disks are above the threshold.
   - Config: `/etc/mono.sh/os.yaml`
 
+- redmine
+  - Allows you to create, update and close issues in Redmine.
+  - Has a service system that keeps track of the issue ID.
+  - Config: `/etc/mono.sh/global.yaml`
 ---
 
 ## Usage

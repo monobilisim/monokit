@@ -1,6 +1,7 @@
 package common
 
 import (
+    "github.com/spf13/cobra"
     "strconv"
     "bytes"
     "net/http"
@@ -8,7 +9,57 @@ import (
     "os"
     "encoding/json"
     "strings"
+    "fmt"
 )
+
+var RedmineCmd = &cobra.Command{
+    Use:   "redmine",
+    Short: "Redmine-related utilities",
+}
+
+var RedmineCreateCmd = &cobra.Command{
+    Use:   "create",
+    Short: "Create a new issue in Redmine",
+    Run: func(cmd *cobra.Command, args []string) {
+        Init()
+        service, _ := cmd.Flags().GetString("service")
+        subject, _ := cmd.Flags().GetString("subject")
+        message, _ := cmd.Flags().GetString("message")
+        RedmineCreate(service, subject, message)
+    },
+}
+
+var RedmineUpdateCmd = &cobra.Command{
+    Use:   "update",
+    Short: "Update an existing issue in Redmine",
+    Run: func(cmd *cobra.Command, args []string) {
+        Init()
+        service, _ := cmd.Flags().GetString("service")
+        message, _ := cmd.Flags().GetString("message")
+        RedmineUpdate(service, message)
+    },
+}
+
+var RedmineCloseCmd = &cobra.Command{
+    Use:   "close",
+    Short: "Close an existing issue in Redmine",
+    Run: func(cmd *cobra.Command, args []string) {
+        Init()
+        service, _ := cmd.Flags().GetString("service")
+        message, _ := cmd.Flags().GetString("message")
+        RedmineClose(service, message)
+    },
+}
+
+var RedmineShowCmd = &cobra.Command{
+    Use:   "show",
+    Short: "Get the issue ID of the issue if it is opened",
+    Run: func(cmd *cobra.Command, args []string) {
+        Init()
+        service, _ := cmd.Flags().GetString("service")
+        RedmineShow(service)
+    },
+}
 
 type Issue struct {
         Id             int       `json:"id,omitempty"`
@@ -215,4 +266,27 @@ func RedmineClose(service string, message string) {
     if err != nil {
         LogError("os.Remove error: " + err.Error())
     }
+}
+
+func RedmineShow(service string) {
+    if Config.Redmine.Enabled == false {
+        return
+    }
+
+    serviceReplaced := strings.Replace(service, "/", "-", -1)
+    filePath := TmpDir + "/" + serviceReplaced + "-redmine.log"
+
+    // check if filePath exists, if not return
+    if _, err := os.Stat(filePath); os.IsNotExist(err) {
+        return
+    }
+
+    // read file
+    file, err := os.ReadFile(filePath)
+    if err != nil {
+        LogError("os.ReadFile error: " + err.Error())
+    }
+
+    // get issue ID
+    fmt.Println(string(file))
 }
