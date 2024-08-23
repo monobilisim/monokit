@@ -26,8 +26,9 @@ func LogError(err string) {
     logrus.Error(err)
 }
 
-func PrettyPrint(name string, lessOrMore string, value float64, hasPercentage bool) {
+func PrettyPrint(name string, lessOrMore string, value float64, hasPercentage bool, wantFloat bool) {
     var par string
+    var floatDepth int
 
     if hasPercentage {
         par = "%)"
@@ -35,5 +36,11 @@ func PrettyPrint(name string, lessOrMore string, value float64, hasPercentage bo
         par = ")"
     }
 
-    fmt.Println(Blue + name + Reset + " is " + lessOrMore + " (" + strconv.FormatFloat(value, 'f', 2, 64) + par + Reset)
+    if wantFloat {
+        floatDepth = 2    
+    } else {
+        floatDepth = 0
+    }
+
+    fmt.Println(Blue + name + Reset + " is " + lessOrMore + " (" + strconv.FormatFloat(value, 'f', floatDepth, 64) + par + Reset)
 }

@@ -30,10 +30,10 @@ func DiskUsage() {
         usage, _ := disk.Usage(partition.Mountpoint)
         
         if usage.UsedPercent > OsHealthConfig.Part_use_limit {
-            common.PrettyPrint("Disk usage at " + partition.Mountpoint, common.Fail + " more than " + strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', -1, 64) + "%", usage.UsedPercent, true)
-            exceededParts = append(exceededParts, []string{strconv.FormatFloat(usage.UsedPercent, 'f', 2, 64), common.ConvertBytes(usage.Used), common.ConvertBytes(usage.Total), partition.Device, partition.Mountpoint})
+            common.PrettyPrint("Disk usage at " + partition.Mountpoint, common.Fail + " more than " + strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64) + "%", usage.UsedPercent, true, false)
+            exceededParts = append(exceededParts, []string{strconv.FormatFloat(usage.UsedPercent, 'f', 0, 64), common.ConvertBytes(usage.Used), common.ConvertBytes(usage.Total), partition.Device, partition.Mountpoint})
         } else {
-            common.PrettyPrint("Disk usage at " + partition.Mountpoint, common.Green + " less than " + strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', -1, 64) + "%", usage.UsedPercent, true)
+            common.PrettyPrint("Disk usage at " + partition.Mountpoint, common.Green + " less than " + strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64) + "%", usage.UsedPercent, true, false)
         }
     }
 
@@ -45,7 +45,7 @@ func DiskUsage() {
         table.SetCenterSeparator("|")
         table.AppendBulk(exceededParts)
         table.Render()
-        msg := "Partition usage level has exceeded to " + strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 2, 64) + "% " + "for the following partitions;\n\n" + output.String()
+        msg := "Partition usage level has exceeded to " + strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64) + "% " + "for the following partitions;\n\n" + output.String()
         msg = strings.Replace(msg, "\n", `\n`, -1)
         
         // Check if file exists 
@@ -66,10 +66,10 @@ func DiskUsage() {
 
         common.AlarmCheckDown("disk", msg)
 
-        common.RedmineCreate("disk", common.Config.Identifier + " - Diskteki bir (ya da birden fazla) bölümün doluluk seviyesi %"+strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 2, 64)+" üstüne çıktı", output.String())
+        common.RedmineCreate("disk", common.Config.Identifier + " - Diskteki bir (ya da birden fazla) bölümün doluluk seviyesi %"+strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64)+" üstüne çıktı", output.String())
     } else { 
-        common.AlarmCheckUp("disk", "All partitions are now under the limit of " + strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 2, 64) + "%")
-        common.RedmineClose("disk", common.Config.Identifier + " - Bütün disk bölümleri "+strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 2, 64)+"% altına indi, kapatılıyor.")
+        common.AlarmCheckUp("disk", "All partitions are now under the limit of " + strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64) + "%")
+        common.RedmineClose("disk", common.Config.Identifier + " - Bütün disk bölümleri "+strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64)+"% altına indi, kapatılıyor.")
     }
 }
     
