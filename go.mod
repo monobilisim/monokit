@@ -1,4 +1,4 @@
-module github.com/monobilisim/mono-go
+module github.com/monobilisim/monokit
 
 go 1.22.5
 

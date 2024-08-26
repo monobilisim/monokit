@@ -4,7 +4,7 @@ import (
     "fmt"
     "time"
     "github.com/spf13/cobra"
-    "github.com/monobilisim/mono-go/common"
+    "github.com/monobilisim/monokit/common"
 )
 
 

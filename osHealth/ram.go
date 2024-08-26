@@ -3,7 +3,7 @@ package osHealth
 import (
     "strconv"
     "github.com/shirou/gopsutil/v4/mem"
-    "github.com/monobilisim/mono-go/common"
+    "github.com/monobilisim/monokit/common"
 )
 
 

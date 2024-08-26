@@ -4,7 +4,7 @@ import (
     "strconv"
     "github.com/shirou/gopsutil/v4/cpu"
     "github.com/shirou/gopsutil/v4/load"
-    "github.com/monobilisim/mono-go/common"
+    "github.com/monobilisim/monokit/common"
 )
 
 func SysLoad() {

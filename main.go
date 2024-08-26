@@ -1,8 +1,8 @@
 package main
 
 import (
-    "github.com/monobilisim/mono-go/common"
-    "github.com/monobilisim/mono-go/osHealth"
+    "github.com/monobilisim/monokit/common"
+    "github.com/monobilisim/monokit/osHealth"
     "github.com/spf13/cobra"
     "fmt"
     "os"
@@ -10,7 +10,7 @@ import (
 
 func main() {
 
-    var RootCmd = &cobra.Command{Use: "mono-go"}
+    var RootCmd = &cobra.Command{Use: "monokit"}
 
     var osHealthCmd = &cobra.Command{
         Use:   "osHealth",

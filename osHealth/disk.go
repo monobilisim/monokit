@@ -7,7 +7,7 @@ import (
     "strings"
     "github.com/olekukonko/tablewriter"
     "github.com/shirou/gopsutil/v4/disk"
-    "github.com/monobilisim/mono-go/common"
+    "github.com/monobilisim/monokit/common"
 )
 
 func DiskUsage() {
