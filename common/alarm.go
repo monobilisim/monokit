@@ -17,7 +17,7 @@ func AlarmCheckUp(service string, message string) {
     // Remove slashes from service and replace them with -
     serviceReplaced := strings.Replace(service, "/", "-", -1)
     file_path := TmpDir + "/" + serviceReplaced + ".log"
-    messageFinal := "[" + ScriptName + " - " + Config.Identifier + "] [:red_circle:] " + message
+    messageFinal := "[" + ScriptName + " - " + Config.Identifier + "] [:check:] " + message
     
     // Check if the file exists, send alarm and remove file if it does
     if _, err := os.Stat(file_path); err == nil {
