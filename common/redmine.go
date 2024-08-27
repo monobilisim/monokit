@@ -85,6 +85,11 @@ func RedmineCreate(service string, subject string, message string) {
     if Config.Redmine.Enabled == false {
         return
     }
+        
+    // If file exists, return
+    if _, err := os.Stat(filePath); err == nil {
+        return
+    }
 
     var priorityId int
     var projectId string
