@@ -27,7 +27,7 @@ type OsHealth struct {
 var OsHealthConfig OsHealth
 
 func Main(cmd *cobra.Command, args []string) {
-    version := "1.0.0"
+    version := "2.1.0"
     common.ScriptName = "osHealth"
     common.TmpDir = common.TmpDir + "osHealth"
     common.Init()

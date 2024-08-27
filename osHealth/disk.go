@@ -14,6 +14,7 @@ func DiskUsage() {
     common.SplitSection("Disk Usage")
 
     var exceededParts [][]string
+    var allParts [][]string
     diskPartitions, err := disk.Partitions(false)
     
     if err != nil {
@@ -35,6 +36,7 @@ func DiskUsage() {
         } else {
             common.PrettyPrint("Disk usage at " + partition.Mountpoint, common.Green + " less than " + strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64) + "%", usage.UsedPercent, true, false)
         }
+        allParts = append(allParts, []string{strconv.FormatFloat(usage.UsedPercent, 'f', 0, 64), common.ConvertBytes(usage.Used), common.ConvertBytes(usage.Total), partition.Device, partition.Mountpoint})
     }
 
     if len(exceededParts) > 0 {
@@ -67,9 +69,16 @@ func DiskUsage() {
         common.AlarmCheckDown("disk", msg)
 
         common.RedmineCreate("disk", common.Config.Identifier + " - Diskteki bir (ya da birden fazla) bölümün doluluk seviyesi %"+strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64)+" üstüne çıktı", output.String())
-    } else { 
-        common.AlarmCheckUp("disk", "All partitions are now under the limit of " + strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64) + "%")
-        common.RedmineClose("disk", common.Config.Identifier + " - Bütün disk bölümleri "+strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64)+"% altına indi, kapatılıyor.")
+    } else {
+        output := &strings.Builder{}
+        table := tablewriter.NewWriter(output)
+        table.SetHeader([]string{"%", "Used", "Total", "Partition", "Mount Point"})
+        table.SetBorders(tablewriter.Border{Left: true, Top: false, Right: true, Bottom: false})
+        table.SetCenterSeparator("|")
+        table.AppendBulk(allParts)
+        table.Render()
+        common.AlarmCheckUp("disk", "All partitions are now under the limit of " + strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64) + "%" + "\n\n" + output.String())
+        common.RedmineClose("disk", common.Config.Identifier + " - Bütün disk bölümleri "+strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64)+"% altına indi, kapatılıyor." + "\n\n" + output.String())
     }
 }
     
