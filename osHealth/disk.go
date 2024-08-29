@@ -56,12 +56,6 @@ func DiskUsage() {
         } else {
             // Read file
             fileContent, _ := os.ReadFile(common.TmpDir + "/" + common.Config.Identifier + "_disk_usage.txt")
-
-            // Check if the message is the same
-            if string(fileContent) != msg {
-                common.RedmineUpdate("disk", output.String())
-            }
-            
             // Write msg to file
             os.WriteFile(common.TmpDir + "/" + common.Config.Identifier + "_disk_usage.txt", []byte(msg), 0644)
         }
