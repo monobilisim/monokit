@@ -87,7 +87,10 @@ func DiskUsage() {
         table.SetCenterSeparator("|")
         table.AppendBulk(allParts)
         table.Render()
-        common.AlarmCheckUp("disk", "All partitions are now under the limit of " + strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64) + "%" + "\n\n" + output.String())
+        msg := "All partitions are now under the limit of " + strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64) + "%" + "\n\n" + output.String()
+        msg = strings.Replace(msg, "\n", `\n`, -1)
+        
+        common.AlarmCheckUp("disk", msg)
         common.RedmineClose("disk", common.Config.Identifier + " - Bütün disk bölümleri "+strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64)+"% altına indi, kapatılıyor." + "\n\n" + output.String())
     }
 }
