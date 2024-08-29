@@ -31,6 +31,8 @@ func ConfInit(configName string, config interface{}) interface{} {
     viper.AddConfigPath("/etc/mono")
     viper.SetConfigType("yaml")
 
+    viper.SetDefault("alarm.interval", 3)
+
     err := viper.ReadInConfig()
     
     if err != nil {
