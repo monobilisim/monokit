@@ -152,7 +152,7 @@ func RedmineCreate(service string, subject string, message string) {
     err = os.WriteFile(filePath, issueId, 0644)
 
     if err != nil {
-        LogError("os.WriteFile error: " + err.Error())
+        LogError("os.WriteFile error while trying to read '" + filePath + "'" + err.Error())
     }
 }
 
@@ -232,7 +232,7 @@ func RedmineClose(service string, message string) {
     // read file
     file, err := os.ReadFile(filePath)
     if err != nil {
-        LogError("os.ReadFile error while trying to create '" + filePath + "'" + err.Error())
+        LogError("os.ReadFile error while trying to read '" + filePath + "'" + err.Error())
     }
 
     issueId, err := strconv.Atoi(string(file))
