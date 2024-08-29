@@ -57,7 +57,7 @@ var RedmineShowCmd = &cobra.Command{
     Run: func(cmd *cobra.Command, args []string) {
         Init()
         service, _ := cmd.Flags().GetString("service")
-        RedmineShow(service)
+        fmt.Println(RedmineShow(service))
     },
 }
 
@@ -273,9 +273,9 @@ func RedmineClose(service string, message string) {
     }
 }
 
-func RedmineShow(service string) {
+func RedmineShow(service string) string {
     if Config.Redmine.Enabled == false {
-        return
+        return ""
     }
 
     serviceReplaced := strings.Replace(service, "/", "-", -1)
@@ -283,7 +283,7 @@ func RedmineShow(service string) {
 
     // check if filePath exists, if not return
     if _, err := os.Stat(filePath); os.IsNotExist(err) {
-        return
+        return ""
     }
 
     // read file
@@ -293,5 +293,5 @@ func RedmineShow(service string) {
     }
 
     // get issue ID
-    fmt.Println(string(file))
+    return string(file)
 }

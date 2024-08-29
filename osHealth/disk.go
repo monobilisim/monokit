@@ -66,9 +66,19 @@ func DiskUsage() {
             os.WriteFile(common.TmpDir + "/" + common.Config.Identifier + "_disk_usage.txt", []byte(msg), 0644)
         }
 
-        common.AlarmCheckDown("disk", msg)
 
         common.RedmineCreate("disk", common.Config.Identifier + " - Diskteki bir (ya da birden fazla) bölümün doluluk seviyesi %"+strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64)+" üstüne çıktı", output.String())
+        
+        id := common.RedmineShow("disk")
+
+        if id == "" {
+            common.AlarmCheckDown("disk_redmineissue", "Redmine issue could not be created for disk usage")
+            common.AlarmCheckDown("disk", msg)
+        } else {
+            common.AlarmCheckUp("disk_redmineissue", "Redmine issue has been created for disk usage")
+            common.AlarmCheckDown("disk", msg + "\n\n" + "Redmine Issue: " + common.Config.Redmine.Url + "/issues/" + id)
+        }
+
     } else {
         output := &strings.Builder{}
         table := tablewriter.NewWriter(output)
