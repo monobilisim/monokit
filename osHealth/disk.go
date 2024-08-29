@@ -55,7 +55,8 @@ func DiskUsage() {
             os.WriteFile(common.TmpDir + "/" + common.Config.Identifier + "_disk_usage.txt", []byte(msg), 0644)
         } else {
             // Read file
-            fileContent, _ := os.ReadFile(common.TmpDir + "/" + common.Config.Identifier + "_disk_usage.txt")
+            //fileContent, _ := os.ReadFile(common.TmpDir + "/" + common.Config.Identifier + "_disk_usage.txt")
+            
             // Write msg to file
             os.WriteFile(common.TmpDir + "/" + common.Config.Identifier + "_disk_usage.txt", []byte(msg), 0644)
         }
