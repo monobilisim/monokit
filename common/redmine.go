@@ -130,7 +130,8 @@ func RedmineCreate(service string, subject string, message string) {
     resp, err := client.Do(req)
 
     if err != nil {
-        LogError("client.Do error: " + err.Error())
+        LogError("client.Do error: " + err.Error() + "\n" + "Redmine URL: " + Config.Redmine.Url + "/issues.json" + "\n" + "Redmine JSON: " + string(jsonBody))
+        return
     }
 
     defer resp.Body.Close()
@@ -204,7 +205,8 @@ func RedmineUpdate(service string, message string) {
     resp, err := client.Do(req)
 
     if err != nil {
-        LogError("client.Do error: " + err.Error())
+        LogError("client.Do error: " + err.Error() + "\n" + "Redmine URL: " + Config.Redmine.Url + "/issues/" + string(file) + ".json" + "\n" + "Redmine JSON: " + string(jsonBody))
+        return
     }
 
     defer resp.Body.Close()
@@ -260,7 +262,8 @@ func RedmineClose(service string, message string) {
     resp, err := client.Do(req)
 
     if err != nil {
-        LogError("client.Do error: " + err.Error())
+        LogError("client.Do error: " + err.Error() + "\n" + "Redmine URL: " + Config.Redmine.Url + "/issues/" + string(file) + ".json" + "\n" + "Redmine JSON: " + string(jsonBody))
+        return
     }
 
     defer resp.Body.Close()
