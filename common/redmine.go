@@ -17,6 +17,11 @@ var RedmineCmd = &cobra.Command{
     Short: "Redmine-related utilities",
 }
 
+var RedmineIssueCmd = &cobra.Command{
+    Use:   "issue",
+    Short: "Issue-related utilities",
+}
+
 var RedmineCreateCmd = &cobra.Command{
     Use:   "create",
     Short: "Create a new issue in Redmine",

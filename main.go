@@ -22,9 +22,11 @@ func main() {
     RootCmd.AddCommand(common.RedmineCmd)
     
     /// Redmine
-    common.RedmineCmd.AddCommand(common.RedmineCreateCmd)
+    common.RedmineCmd.AddCommand(common.RedmineIssueCmd)
     
     // RedmineCreate
+    common.RedmineIssueCmd.AddCommand(common.RedmineCreateCmd)
+    
     common.RedmineCreateCmd.Flags().StringP("subject", "j", "", "Subject")
     common.RedmineCreateCmd.Flags().StringP("service", "s", "", "Service Name")
     common.RedmineCreateCmd.Flags().StringP("message", "m", "", "Message")
@@ -33,21 +35,24 @@ func main() {
     common.RedmineCreateCmd.MarkFlagRequired("message")
 
     // RedmineUpdate
-    common.RedmineCmd.AddCommand(common.RedmineUpdateCmd)
+    common.RedmineIssueCmd.AddCommand(common.RedmineUpdateCmd)
+    
     common.RedmineUpdateCmd.Flags().StringP("service", "s", "", "Service Name")
     common.RedmineUpdateCmd.Flags().StringP("message", "m", "", "Message")
     common.RedmineUpdateCmd.MarkFlagRequired("service")
     common.RedmineUpdateCmd.MarkFlagRequired("message")
     
     // RedmineClose
-    common.RedmineCmd.AddCommand(common.RedmineCloseCmd)
+    common.RedmineIssueCmd.AddCommand(common.RedmineCloseCmd)
+    
     common.RedmineCloseCmd.Flags().StringP("service", "s", "", "Service Name")
     common.RedmineCloseCmd.Flags().StringP("message", "m", "", "Message")
     common.RedmineCloseCmd.MarkFlagRequired("service")
     common.RedmineCloseCmd.MarkFlagRequired("message")
 
     // RedmineShow
-    common.RedmineCmd.AddCommand(common.RedmineShowCmd)
+    common.RedmineIssueCmd.AddCommand(common.RedmineShowCmd)
+    
     common.RedmineShowCmd.Flags().StringP("service", "s", "", "Service Name")
     common.RedmineShowCmd.MarkFlagRequired("service")
 
