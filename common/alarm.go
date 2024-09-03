@@ -8,10 +8,48 @@ import (
     "io"
     "os"
     "strings"
+    "github.com/spf13/cobra"
 )
 
 var TmpDir = "/tmp/mono/"
 var ScriptName string
+
+var AlarmCmd = &cobra.Command{
+    Use: "alarm",
+    Short: "Alarm utilities",
+}
+
+var AlarmCheckUpCmd = &cobra.Command{
+    Use:   "up",
+    Short: "Send alarm of service being up if it was down",
+    Run: func(cmd *cobra.Command, args []string) {
+        Init()
+        service, _ := cmd.Flags().GetString("service")
+        message, _ := cmd.Flags().GetString("message")
+        AlarmCheckUp(service, message)
+    },
+}
+
+var AlarmCheckDownCmd = &cobra.Command{
+    Use:   "down",
+    Short: "Send alarm of service being down if it was up",
+    Run: func(cmd *cobra.Command, args []string) {
+        Init()
+        service, _ := cmd.Flags().GetString("service")
+        message, _ := cmd.Flags().GetString("message")
+        AlarmCheckDown(service, message)
+    },
+}
+
+var AlarmSendCmd = &cobra.Command{
+    Use:   "send",
+    Short: "Send a plain alarm",
+    Run: func(cmd *cobra.Command, args []string) {
+        Init()
+        message, _ := cmd.Flags().GetString("message")
+        Alarm(message)
+    },
+}
 
 func AlarmCheckUp(service string, message string) {
     // Remove slashes from service and replace them with -

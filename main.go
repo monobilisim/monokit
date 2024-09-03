@@ -20,7 +20,29 @@ func main() {
     
     //// Common
     RootCmd.AddCommand(common.RedmineCmd)
+    RootCmd.AddCommand(common.AlarmCmd)
+   
+    /// Alarm
     
+    // AlarmSend
+    common.AlarmCmd.AddCommand(common.AlarmSendCmd)
+
+    common.AlarmSendCmd.Flags().StringP("service", "s", "", "Service Name")
+    common.AlarmSendCmd.Flags().StringP("message", "m", "", "Message")
+
+    // AlarmCheckUp
+    common.AlarmCmd.AddCommand(common.AlarmCheckUpCmd)
+
+    common.AlarmCheckUpCmd.Flags().StringP("service", "s", "", "Service Name")
+    common.AlarmCheckUpCmd.Flags().StringP("message", "m", "", "Message")
+
+    // AlarmCheckDown
+    common.AlarmCmd.AddCommand(common.AlarmCheckDownCmd)
+
+    common.AlarmCheckDownCmd.Flags().StringP("service", "s", "", "Service Name")
+    common.AlarmCheckDownCmd.Flags().StringP("message", "m", "", "Message")
+
+
     /// Redmine
     common.RedmineCmd.AddCommand(common.RedmineIssueCmd)
     
