@@ -70,7 +70,6 @@ type Issue struct {
         Subject        string    `json:"subject,omitempty"`
         PriorityId     int       `json:"priority_id,omitempty"`
         StatusId       int       `json:"status_id,omitempty"`
-        StatusIdString string    `json:"status_id,omitempty"`
 } 
 
 type RedmineIssue struct {
@@ -106,7 +105,7 @@ func RedmineCreate(service string, subject string, message string) {
         projectId = Config.Redmine.Project_id
     }
 
-    body := RedmineIssue{Issue: Issue{ProjectId: projectId, TrackerId: 7, Description: message, Subject: subject, PriorityId: priorityId, StatusIdString: "open" }}
+    body := RedmineIssue{Issue: Issue{ProjectId: projectId, TrackerId: 7, Description: message, Subject: subject, PriorityId: priorityId }}
 
     jsonBody, err := json.Marshal(body)
 
