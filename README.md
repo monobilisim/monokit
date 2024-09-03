@@ -39,6 +39,10 @@
   - Allows you to create, update and close issues in Redmine.
   - Has a service system that keeps track of the issue ID.
   - Config: `/etc/mono.sh/global.yaml`
+
+- alarm
+  - Sends alarm notifications to a Slack webhook.
+  - Config: `/etc/mono.sh/global.yaml`
 ---
 
 ## Usage
