@@ -26,6 +26,7 @@ var AlarmCheckUpCmd = &cobra.Command{
         Init()
         service, _ := cmd.Flags().GetString("service")
         message, _ := cmd.Flags().GetString("message")
+        ScriptName, _ = cmd.Flags().GetString("scriptName")
         AlarmCheckUp(service, message)
     },
 }
@@ -37,6 +38,7 @@ var AlarmCheckDownCmd = &cobra.Command{
         Init()
         service, _ := cmd.Flags().GetString("service")
         message, _ := cmd.Flags().GetString("message")
+        ScriptName, _ = cmd.Flags().GetString("scriptName")
         AlarmCheckDown(service, message)
     },
 }
