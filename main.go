@@ -27,20 +27,24 @@ func main() {
     // AlarmSend
     common.AlarmCmd.AddCommand(common.AlarmSendCmd)
 
-    common.AlarmSendCmd.Flags().StringP("service", "s", "", "Service Name")
     common.AlarmSendCmd.Flags().StringP("message", "m", "", "Message")
+    common.AlarmSendCmd.MarkFlagRequired("message")
 
     // AlarmCheckUp
     common.AlarmCmd.AddCommand(common.AlarmCheckUpCmd)
 
     common.AlarmCheckUpCmd.Flags().StringP("service", "s", "", "Service Name")
     common.AlarmCheckUpCmd.Flags().StringP("message", "m", "", "Message")
+    common.AlarmSendCmd.MarkFlagRequired("message")
+    common.AlarmSendCmd.MarkFlagRequired("service")
 
     // AlarmCheckDown
     common.AlarmCmd.AddCommand(common.AlarmCheckDownCmd)
 
     common.AlarmCheckDownCmd.Flags().StringP("service", "s", "", "Service Name")
     common.AlarmCheckDownCmd.Flags().StringP("message", "m", "", "Message")
+    common.AlarmSendCmd.MarkFlagRequired("message")
+    common.AlarmSendCmd.MarkFlagRequired("service")
 
 
     /// Redmine
