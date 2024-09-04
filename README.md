@@ -33,21 +33,21 @@
   - Checks OS health, including Disk, CPU and Memory usage.
   - Sends alarm notifications to a Slack webhook.
   - Opens issue in Redmine if disks are above the threshold.
-  - Config: `/etc/mono.sh/os.yaml`
+  - Config: `/etc/mono/os.yaml`
 
 - redmine
   - Allows you to create, update and close issues in Redmine.
   - Has a service system that keeps track of the issue ID.
-  - Config: `/etc/mono.sh/global.yaml`
+  - Config: `/etc/mono/global.yaml`
 
 - alarm
   - Sends alarm notifications to a Slack webhook.
-  - Config: `/etc/mono.sh/global.yaml`
+  - Config: `/etc/mono/global.yaml`
 ---
 
 ## Usage
 
-1. Configure by editing the config files in `/etc/mono/`. You can default values in the `config` folder. Please keep in mind that to use any of the tools, you need to also configure `/etc/mono.sh/global.yaml` file.
+1. Configure by editing the config files in `/etc/mono/`. You can default values in the `config` folder. Please keep in mind that to use any of the tools, you need to also configure `/etc/mono/global.yaml` file.
 
 2. Run the desired tool using the following command as root:
 
