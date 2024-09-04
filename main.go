@@ -8,9 +8,14 @@ import (
     "os"
 )
 
+var MonokitVersion = "devel"
+
 func main() {
 
-    var RootCmd = &cobra.Command{Use: "monokit"}
+    var RootCmd = &cobra.Command{
+        Use: "monokit",
+        Version: MonokitVersion,
+    }
 
     var osHealthCmd = &cobra.Command{
         Use:   "osHealth",
@@ -21,7 +26,7 @@ func main() {
     //// Common
     RootCmd.AddCommand(common.RedmineCmd)
     RootCmd.AddCommand(common.AlarmCmd)
-   
+
     /// Alarm
     
     // AlarmSend
