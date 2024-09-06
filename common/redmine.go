@@ -75,6 +75,7 @@ type Issue struct {
         Subject        string    `json:"subject,omitempty"`
         PriorityId     int       `json:"priority_id,omitempty"`
         StatusId       int       `json:"status_id,omitempty"`
+        AssignedToId   string       `json:"assigned_to_id,omitempty"`
 } 
 
 type RedmineIssue struct {
@@ -246,7 +247,7 @@ func RedmineClose(service string, message string) {
     }
 
     // update issue
-    body := RedmineIssue{Issue: Issue{Id: issueId, Notes: message, StatusId: 5}}
+    body := RedmineIssue{Issue: Issue{Id: issueId, Notes: message, StatusId: 5, AssignedToId: "me"}}
     jsonBody, err := json.Marshal(body)
 
     if err != nil {
