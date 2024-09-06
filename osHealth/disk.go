@@ -62,7 +62,7 @@ func DiskUsage() {
         }
 
 
-        common.RedmineCreate("disk", common.Config.Identifier + " - Diskteki bir (ya da birden fazla) bölümün doluluk seviyesi %"+strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64)+" üstüne çıktı", output.String())
+        common.RedmineCreate("disk", common.Config.Identifier + "için disk doluluk seviyesi %"+strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64)+" üstüne çıktı", output.String())
         
         id := common.RedmineShow("disk")
 
@@ -86,7 +86,7 @@ func DiskUsage() {
         msg = strings.Replace(msg, "\n", `\n`, -1)
         
         common.AlarmCheckUp("disk", msg)
-        common.RedmineClose("disk", common.Config.Identifier + " - Bütün disk bölümleri "+strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64)+"% altına indi, kapatılıyor." + "\n\n" + output.String())
+        common.RedmineClose("disk", common.Config.Identifier + " için bütün disk bölümleri "+strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64)+"% altına indi, kapatılıyor." + "\n\n" + output.String())
     }
 }
     
