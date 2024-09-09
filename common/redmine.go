@@ -384,8 +384,11 @@ func RedmineExists(subject string, date string) string {
     if data["total_count"] == nil || data["total_count"].(float64) == 0 {
         return ""
     } else {
-        return strconv.Itoa(int(data["issues"].([]interface{})[0].(map[string]interface{})["id"].(float64)))
+        if data["issues"].([]interface{})[0].(map[string]interface{})["status"].(map[string]interface{})["id"].(float64) == 5 {
+            return ""
+        } else {
+            return strconv.Itoa(int(data["issues"].([]interface{})[0].(map[string]interface{})["id"].(float64)))
     }
-
+}
 }
 
