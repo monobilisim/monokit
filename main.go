@@ -91,6 +91,14 @@ func main() {
     common.RedmineShowCmd.Flags().StringP("service", "s", "", "Service Name")
     common.RedmineShowCmd.MarkFlagRequired("service")
 
+    // RedmineExists
+    common.RedmineIssueCmd.AddCommand(common.RedmineExistsCmd)
+
+    common.RedmineExistsCmd.Flags().StringP("subject", "j", "", "Subject")
+    common.RedmineExistsCmd.Flags().StringP("date", "d", "", "Date")
+
+    common.RedmineExistsCmd.MarkFlagRequired("subject")
+
     /// OS Health
     RootCmd.AddCommand(osHealthCmd)
     

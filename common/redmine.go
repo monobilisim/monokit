@@ -66,6 +66,26 @@ var RedmineShowCmd = &cobra.Command{
     },
 }
 
+
+var RedmineExistsCmd = &cobra.Command{
+    Use: "exists",
+    Short: "Check if an issue has already been created",
+    Run: func(cmd *cobra.Command, args []string) {
+        Init()
+        subject, _ := cmd.Flags().GetString("subject")
+        date, _ := cmd.Flags().GetString("date")
+        
+        exists := RedmineExists(subject, date)
+        
+        if exists != "" {
+            fmt.Println(exists)
+            os.Exit(0)
+        } else {
+            os.Exit(1)
+        }
+    },
+}
+
 type Issue struct {
         Id             int       `json:"id,omitempty"`
         Notes          string    `json:"notes,omitempty"`
@@ -307,3 +327,65 @@ func RedmineShow(service string) string {
     // get issue ID
     return string(file)
 }
+
+func RedmineExists(subject string, date string) string {
+    if Config.Redmine.Enabled == false {
+        return ""
+    }
+
+    subject = strings.Replace(subject, " ", "%20", -1)
+   
+    redmineUrlFinal := Config.Redmine.Url + "/issues.json?project_id=" + Config.Redmine.Project_id + "&subject=" + subject
+
+    if date != "" {
+        redmineUrlFinal += "&created_on=" + date
+    }
+
+    // Send a GET request to the Redmine API to get all issues
+    req, err := http.NewRequest("GET", redmineUrlFinal, nil)
+
+
+    if err != nil {
+        LogError("http.NewRequest error: " + err.Error())
+    }
+
+    req.Header.Set("Content-Type", "application/json")
+    req.Header.Set("X-Redmine-API-Key", Config.Redmine.Api_key)
+
+    client := &http.Client{
+        Timeout: time.Second * 10,
+    }
+
+    resp, err := client.Do(req)
+
+    if err != nil {
+        LogError("client.Do error: " + err.Error() + "\n" + "Redmine URL: " + redmineUrlFinal)
+        return ""
+    }
+
+    defer resp.Body.Close()
+
+    // read response and get issue ID
+    var data map[string]interface{}
+
+    err = json.NewDecoder(resp.Body).Decode(&data)
+
+    if err != nil {
+        LogError("json.NewDecoder error: " + err.Error())
+    }
+
+    // If not 200, log error
+    if resp.StatusCode != 200 {
+        // Unmarshal the response body
+        LogError("Redmine API returned status code " + strconv.Itoa(resp.StatusCode) + " instead of 200\n" + "Redmine URL: " + redmineUrlFinal)
+        return ""
+    }
+
+    if data["total_count"] == nil || data["total_count"].(float64) == 0 {
+        return ""
+    } else {
+        return strconv.Itoa(int(data["issues"].([]interface{})[0].(map[string]interface{})["id"].(float64)))
+    }
+
+}
+
