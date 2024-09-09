@@ -71,7 +71,9 @@ func DiskUsage() {
             common.AlarmCheckDown("disk", msg)
         } else {
             common.AlarmCheckUp("disk_redmineissue", "Redmine issue has been created for disk usage")
-            common.AlarmCheckDown("disk", msg + "\n\n" + "Redmine Issue: " + common.Config.Redmine.Url + "/issues/" + id)
+            msg = msg + "\n\n" + "Redmine Issue: " + common.Config.Redmine.Url + "/issues/" + id
+            msg = strings.Replace(msg, "\n", `\n`, -1)
+            common.AlarmCheckDown("disk", msg)
         }
 
     } else {
