@@ -62,7 +62,7 @@ func DiskUsage() {
         }
 
 
-        common.RedmineCreate("disk", common.Config.Identifier + "için disk doluluk seviyesi %"+strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64)+" üstüne çıktı", output.String())
+        common.RedmineCreate("disk", common.Config.Identifier + " için disk doluluk seviyesi %"+strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64)+" üstüne çıktı", output.String())
         
         id := common.RedmineShow("disk")
 
