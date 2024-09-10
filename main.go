@@ -96,6 +96,7 @@ func main() {
 
     common.RedmineExistsCmd.Flags().StringP("subject", "j", "", "Subject")
     common.RedmineExistsCmd.Flags().StringP("date", "d", "", "Date")
+    common.RedmineExistsCmd.Flags().BoolP("search", "s", false, "Search")
 
     common.RedmineExistsCmd.MarkFlagRequired("subject")
 

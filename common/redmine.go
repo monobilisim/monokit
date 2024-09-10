@@ -74,8 +74,9 @@ var RedmineExistsCmd = &cobra.Command{
         Init()
         subject, _ := cmd.Flags().GetString("subject")
         date, _ := cmd.Flags().GetString("date")
+        search, _ := cmd.Flags().GetBool("search")
         
-        exists := RedmineExists(subject, date)
+        exists := RedmineExists(subject, date, search)
         
         if exists != "" {
             fmt.Println(exists)
@@ -328,14 +329,20 @@ func RedmineShow(service string) string {
     return string(file)
 }
 
-func RedmineExists(subject string, date string) string {
+func RedmineExists(subject string, date string, search bool) string {
     if Config.Redmine.Enabled == false {
         return ""
     }
 
     subject = strings.Replace(subject, " ", "%20", -1)
    
-    redmineUrlFinal := Config.Redmine.Url + "/issues.json?project_id=" + Config.Redmine.Project_id + "&subject=" + subject
+    redmineUrlFinal := Config.Redmine.Url + "/issues.json?project_id=" + Config.Redmine.Project_id
+
+    if search {
+        redmineUrlFinal += "&subject=~" + subject
+    } else {
+        redmineUrlFinal += "&subject=" + subject
+    }
 
     if date != "" {
         redmineUrlFinal += "&created_on=" + date
