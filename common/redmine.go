@@ -330,13 +330,21 @@ func RedmineShow(service string) string {
 }
 
 func RedmineExists(subject string, date string, search bool) string {
+    var projectId string
+
+    if Config.Redmine.Project_id == "" {
+        projectId = strings.Split(Config.Identifier, "-")[0]
+    } else {
+        projectId = Config.Redmine.Project_id
+    }
+
     if Config.Redmine.Enabled == false {
         return ""
     }
 
     subject = strings.Replace(subject, " ", "%20", -1)
    
-    redmineUrlFinal := Config.Redmine.Url + "/issues.json?project_id=" + Config.Redmine.Project_id
+    redmineUrlFinal := Config.Redmine.Url + "/issues.json?project_id=" + projectId
 
     if search {
         redmineUrlFinal += "&subject=~" + subject
