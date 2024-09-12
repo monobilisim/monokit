@@ -196,6 +196,16 @@ func RedmineUpdate(service string, message string) {
         return
     }
 
+
+    // Check if file is empty, if so delete the file and return
+    if isEmptyOrWhitespace(filePath) {
+        err := os.Remove(filePath)
+        if err != nil {
+            LogError("os.Remove error: " + err.Error())
+        }
+        return
+    }
+
     // read file
     file, err := os.ReadFile(filePath)
 
@@ -252,6 +262,15 @@ func RedmineClose(service string, message string) {
 
     // check if filePath exists, if not return
     if _, err := os.Stat(filePath); os.IsNotExist(err) {
+        return
+    }
+    
+    // Check if file is empty, if so delete the file and return
+    if isEmptyOrWhitespace(filePath) {
+        err := os.Remove(filePath)
+        if err != nil {
+            LogError("os.Remove error: " + err.Error())
+        }
         return
     }
 
@@ -316,6 +335,15 @@ func RedmineShow(service string) string {
 
     // check if filePath exists, if not return
     if _, err := os.Stat(filePath); os.IsNotExist(err) {
+        return ""
+    }
+
+    // Check if file is empty, if so delete the file and return
+    if isEmptyOrWhitespace(filePath) {
+        err := os.Remove(filePath)
+        if err != nil {
+            LogError("os.Remove error: " + err.Error())
+        }
         return ""
     }
 
