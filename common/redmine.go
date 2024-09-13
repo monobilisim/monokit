@@ -41,7 +41,8 @@ var RedmineUpdateCmd = &cobra.Command{
         Init()
         service, _ := cmd.Flags().GetString("service")
         message, _ := cmd.Flags().GetString("message")
-        RedmineUpdate(service, message)
+        checkNote, _ := cmd.Flags().GetBool("checkNote")
+        RedmineUpdate(service, message, checkNote)
     },
 }
 
@@ -125,9 +126,18 @@ func RedmineCreate(service string, subject string, message string) {
     } else {
         priorityId = Config.Redmine.Priority_id
     }
+
+    hostname, err := os.Hostname()
+
+    if err != nil {
+        LogError("os.Hostname error: " + err.Error())
+        if Config.Redmine.Project_id == "" {
+            return
+        }
+    }
     
     if Config.Redmine.Project_id == "" {
-        projectId = strings.Split(Config.Identifier, "-")[0]
+        projectId = strings.Split(hostname, "-")[0]
     } else {
         projectId = Config.Redmine.Project_id
     }
@@ -182,10 +192,100 @@ func RedmineCreate(service string, subject string, message string) {
     }
 }
 
-func RedmineUpdate(service string, message string) {
+func RedmineExistsNote(service string, message string) bool {
+    // Check if a note in an issue already exists
+    serviceReplaced := strings.Replace(service, "/", "-", -1)
+    filePath := TmpDir + "/" + serviceReplaced + "-redmine.log"
+
+    // check if filePath exists, if not return
+    if _, err := os.Stat(filePath); os.IsNotExist(err) {
+        return false
+    }
+
+    // Check if file is empty, if so delete the file and return
+    if isEmptyOrWhitespace(filePath) {
+        err := os.Remove(filePath)
+        if err != nil {
+            LogError("os.Remove error: " + err.Error())
+        }
+        return false
+    }
+
+    // read file
+    file, err := os.ReadFile(filePath)
+
+    if err != nil {
+        LogError("os.ReadFile error: " + err.Error())
+        return false
+    }
+
+    redmineUrlFinal := Config.Redmine.Url + "/issues/" + string(file) + ".json?include=journals"
+
+    // Send a GET request to the Redmine API to get all issues
+    req, err := http.NewRequest("GET", redmineUrlFinal, nil)
+
+    if err != nil {
+        LogError("http.NewRequest error: " + err.Error())
+        return false
+    }
+
+    req.Header.Set("Content-Type", "application/json")
+    req.Header.Set("X-Redmine-API-Key", Config.Redmine.Api_key)
+
+    client := &http.Client{
+        Timeout: time.Second * 10,
+    }
+
+    resp, err := client.Do(req)
+
+    if err != nil {
+        LogError("client.Do error: " + err.Error() + "\n" + "Redmine URL: " + redmineUrlFinal)
+        return false
+    }
+
+    defer resp.Body.Close()
+
+    // read response and get notes
+    var data map[string]interface{}
+
+    err = json.NewDecoder(resp.Body).Decode(&data)
+
+    if err != nil {
+        LogError("json.NewDecoder error: " + err.Error())
+        return false
+    }
+
+    // If not 200, log error
+    if resp.StatusCode != 200 {
+        // Unmarshal the response body
+        LogError("Redmine API returned status code " + strconv.Itoa(resp.StatusCode) + " instead of 200\n" + "Redmine URL: " + redmineUrlFinal)
+        return false
+    }
+
+    // Check if the note already exists
+    for _, journal := range data["issue"].(map[string]interface{})["journals"].([]interface{}) {
+        if journal.(map[string]interface{})["notes"].(string) == message {
+            return true
+        }
+    }
+
+    return false
+}
+
+
+
+
+
+func RedmineUpdate(service string, message string, checkNote bool) {
     
     if Config.Redmine.Enabled == false {
         return
+    }
+
+    if checkNote {
+        if RedmineExistsNote(service, message) {
+            return
+        }
     }
 
     serviceReplaced := strings.Replace(service, "/", "-", -1)

@@ -74,6 +74,7 @@ func main() {
     
     common.RedmineUpdateCmd.Flags().StringP("service", "s", "", "Service Name")
     common.RedmineUpdateCmd.Flags().StringP("message", "m", "", "Message")
+    common.RedmineUpdateCmd.Flags().BoolP("checkNote", "c", false, "Check Notes")
     common.RedmineUpdateCmd.MarkFlagRequired("service")
     common.RedmineUpdateCmd.MarkFlagRequired("message")
     
