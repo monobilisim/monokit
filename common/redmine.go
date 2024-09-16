@@ -113,8 +113,16 @@ func RedmineCreate(service string, subject string, message string) {
         return
     }
         
+
     // If file exists, return
     if _, err := os.Stat(filePath); err == nil {
+        // Check if file is empty, if so delete the file and return
+        if isEmptyOrWhitespace(filePath) {
+            err := os.Remove(filePath)
+            if err != nil {
+                LogError("os.Remove error: " + err.Error())
+            }
+        }
         return
     }
 
