@@ -122,7 +122,23 @@ func RedmineCreate(service string, subject string, message string) {
             if err != nil {
                 LogError("os.Remove error: " + err.Error())
             }
+            return
         }
+
+        // Check if file is 0, if so delete the file and return
+        read, err := os.ReadFile(filePath)
+
+        if err != nil {
+            LogError("os.ReadFile error: " + err.Error())
+        }
+
+        if string(read) == "0" {
+            err := os.Remove(filePath)
+            if err != nil {
+                LogError("os.Remove error: " + err.Error())
+            }
+        }
+
         return
     }
 
@@ -216,6 +232,13 @@ func RedmineExistsNote(service string, message string) bool {
     if err != nil {
         LogError("os.ReadFile error: " + err.Error())
         return false
+    }
+
+    if string(file) == "0" {
+        err := os.Remove(filePath)
+        if err != nil {
+            LogError("os.Remove error: " + err.Error())
+        }
     }
 
     redmineUrlFinal := Config.Redmine.Url + "/issues/" + string(file) + ".json?include=journals"
@@ -319,6 +342,15 @@ func RedmineUpdate(service string, message string, checkNote bool) {
         LogError("strconv.Atoi error: " + err.Error())
     }
 
+    if issueId == 0 {
+        // Remove file
+        err := os.Remove(filePath)
+        if err != nil {
+            LogError("os.Remove error: " + err.Error())
+        }
+        return
+    }
+
     // update issue
     body := RedmineIssue{Issue: Issue{Id: issueId, Notes: message}}
 
@@ -383,6 +415,15 @@ func RedmineClose(service string, message string) {
 
     if err != nil {
         LogError("strconv.Atoi error: " + err.Error())
+    }
+
+    if issueId == 0 {
+        // Remove file
+        err := os.Remove(filePath)
+        if err != nil {
+            LogError("os.Remove error: " + err.Error())
+        }
+        return
     }
 
     // update issue
@@ -450,6 +491,14 @@ func RedmineShow(service string) string {
     file, err := os.ReadFile(filePath)
     if err != nil {
         LogError("os.ReadFile error: " + err.Error())
+    }
+
+    if string(file) == "0" {
+        err := os.Remove(filePath)
+        if err != nil {
+            LogError("os.Remove error: " + err.Error())
+        }
+        return ""
     }
 
     // get issue ID
