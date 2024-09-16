@@ -135,17 +135,8 @@ func RedmineCreate(service string, subject string, message string) {
         priorityId = Config.Redmine.Priority_id
     }
 
-    hostname, err := os.Hostname()
-
-    if err != nil {
-        LogError("os.Hostname error: " + err.Error())
-        if Config.Redmine.Project_id == "" {
-            return
-        }
-    }
-    
     if Config.Redmine.Project_id == "" {
-        projectId = strings.Split(hostname, "-")[0]
+        projectId = strings.Split(Config.Identifier, "-")[0]
     } else {
         projectId = Config.Redmine.Project_id
     }
