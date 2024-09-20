@@ -26,6 +26,20 @@ func LogError(err string) {
     logrus.Error(err)
 }
 
+func PrettyPrintStr(name string, lessOrMore bool, value string) {
+    var color string
+    var not string 
+
+    if lessOrMore {
+        color = Green
+    } else {
+        color = Fail
+        not = " not "
+    }
+
+    fmt.Println(Blue + name + Reset + " is " + not + color + value + Reset)
+}
+
 func PrettyPrint(name string, lessOrMore string, value float64, hasPercentage bool, wantFloat bool) {
     var par string
     var floatDepth int

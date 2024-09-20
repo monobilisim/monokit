@@ -29,6 +29,11 @@
 
 ## Tools
 
+
+- redisHealth
+  - Checks Redis health, including read and write operations.
+  - Sends alarm notifications to a Slack webhook.
+
 - osHealth
   - Checks OS health, including Disk, CPU and Memory usage.
   - Sends alarm notifications to a Slack webhook.
