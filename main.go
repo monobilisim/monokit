@@ -99,6 +99,25 @@ func main() {
 
     common.RedmineExistsCmd.MarkFlagRequired("subject")
 
+    // RedmineCheckUp
+    common.RedmineIssueCmd.AddCommand(common.RedmineCheckUpCmd)
+
+    common.RedmineCheckUpCmd.Flags().StringP("service", "s", "", "Service Name")
+    common.RedmineCheckUpCmd.Flags().StringP("message", "m", "", "Message")
+
+    common.RedmineCheckUpCmd.MarkFlagRequired("service")
+    common.RedmineCheckUpCmd.MarkFlagRequired("message")
+
+    // RedmineCheckDown
+    common.RedmineIssueCmd.AddCommand(common.RedmineCheckDownCmd)
+
+    common.RedmineCheckDownCmd.Flags().StringP("service", "s", "", "Service Name")
+    common.RedmineCheckDownCmd.Flags().StringP("message", "m", "", "Message")
+    common.RedmineCheckDownCmd.Flags().StringP("subject", "j", "", "Subject")
+    common.RedmineCheckDownCmd.MarkFlagRequired("subject")
+    common.RedmineCheckDownCmd.MarkFlagRequired("service")
+    common.RedmineCheckDownCmd.MarkFlagRequired("message")
+
     /// OS Health
     RootCmd.AddCommand(osHealthCmd)
 

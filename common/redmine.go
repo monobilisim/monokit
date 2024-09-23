@@ -89,6 +89,29 @@ var RedmineExistsCmd = &cobra.Command{
     },
 }
 
+var RedmineCheckUpCmd = &cobra.Command{
+    Use: "up",
+    Short: "Check if an issue exists and close it if it does",
+    Run: func(cmd *cobra.Command, args []string) {
+        Init()
+        service, _ := cmd.Flags().GetString("service")
+        message, _ := cmd.Flags().GetString("message")
+        RedmineCheckUp(service, message)
+    },
+}
+
+var RedmineCheckDownCmd = &cobra.Command{
+    Use: "down",
+    Short: "Check if an issue exists and create/update it if it does not",
+    Run: func(cmd *cobra.Command, args []string) {
+        Init()
+        service, _ := cmd.Flags().GetString("service")
+        subject, _ := cmd.Flags().GetString("subject")
+        message, _ := cmd.Flags().GetString("message")
+        RedmineCheckDown(service, subject, message)
+    },
+}
+
 type Issue struct {
         Id             int       `json:"id,omitempty"`
         Notes          string    `json:"notes,omitempty"`
