@@ -66,7 +66,7 @@ func AlarmCheckUp(service string, message string) {
     }
 }
 
-type serviceFile struct {
+type ServiceFile struct {
     Date string `json:"date"`
     Locked bool `json:"locked"`
 }
@@ -91,7 +91,7 @@ func AlarmCheckDown(service string, message string) {
             LogError("Error opening file for writing: \n" + err.Error())
         }
 
-        var j serviceFile
+        var j ServiceFile
 
         fileRead, err := io.ReadAll(file)
 
@@ -119,14 +119,14 @@ func AlarmCheckDown(service string, message string) {
             LogError("Error parsing date: \n" + err.Error())
         }
 
-        finJson := &serviceFile{
+        finJson := &ServiceFile{
                     Date: currentDate, 
                     Locked: true,
                  }
         
         if Config.Alarm.Interval == 0 {
             if oldDateParsed.Format("2006-01-02") != time.Now().Format("2006-01-02") {
-                jsonData, err := json.Marshal(&serviceFile{Date: currentDate, Locked: false})
+                jsonData, err := json.Marshal(&ServiceFile{Date: currentDate, Locked: false})
 
                 if err != nil {
                     LogError("Error marshalling JSON: \n" + err.Error())
@@ -185,7 +185,7 @@ func AlarmCheckDown(service string, message string) {
             return
         }
         
-        jsonData, err := json.Marshal(&serviceFile{Date: currentDate, Locked: false})
+        jsonData, err := json.Marshal(&ServiceFile{Date: currentDate, Locked: false})
         
         if err != nil {
             LogError("Error marshalling JSON: \n" + err.Error())

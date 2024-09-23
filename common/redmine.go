@@ -4,6 +4,7 @@ import (
     "github.com/spf13/cobra"
     "strconv"
     "bytes"
+    "io"
     "net/http"
     "time"
     "os"
@@ -104,6 +105,158 @@ type RedmineIssue struct {
     Issue Issue `json:"issue"`
 }
 
+func redmineWrapper(service string, subject string, message string) {
+    // Create issue if it does not exist, otherwise update it
+    if RedmineShow(service) == "" {
+        RedmineCreate(service, subject, message)
+    } else {
+        RedmineUpdate(service, message, true)
+    }
+}
+
+
+func RedmineCheckUp(service string, message string) {
+    // Remove slashes from service and replace them with -
+    serviceReplaced := strings.Replace(service, "/", "-", -1)
+    file_path := TmpDir + "/" + serviceReplaced + "-redmine-stat.log"
+
+    // Check if the file exists, close issue and remove file if it does
+    if _, err := os.Stat(file_path); err == nil {
+        os.Remove(file_path)
+        RedmineClose(service, message)
+    }
+}
+
+func RedmineCheckDown(service string, subject string, message string) {
+    // Remove slashes from service and replace them with -
+    serviceReplaced := strings.Replace(service, "/", "-", -1)
+    filePath := TmpDir + "/" + serviceReplaced + "-redmine-stat.log"
+    currentDate := time.Now().Format("2006-01-02 15:04:05 -0700")
+
+    // Check if the file exists
+    if _, err := os.Stat(filePath); err == nil {
+        // Open file and load the JSON
+
+        file, err := os.OpenFile(filePath, os.O_RDONLY, 0644)
+        defer file.Close()
+
+        if err != nil {
+            LogError("Error opening file for writing: \n" + err.Error())
+        }
+
+        var j ServiceFile
+
+        fileRead, err := io.ReadAll(file)
+
+        if err != nil {
+            LogError("Error reading file: \n" + err.Error())
+            return
+        }
+
+        err = json.Unmarshal(fileRead, &j)
+
+        if err != nil {
+            LogError("Error parsing JSON: \n" + err.Error())
+            return
+        }
+
+        // Return if locked == true
+        if j.Locked == true {
+            return
+        }
+
+        oldDate := j.Date
+        oldDateParsed, err := time.Parse("2006-01-02 15:04:05 -0700", oldDate)
+
+        if err != nil {
+            LogError("Error parsing date: \n" + err.Error())
+        }
+
+        finJson := &ServiceFile{
+                    Date: currentDate,
+                    Locked: true,
+                 }
+
+        if Config.Redmine.Interval == 0 {
+            if oldDateParsed.Format("2006-01-02") != time.Now().Format("2006-01-02") {
+                jsonData, err := json.Marshal(&ServiceFile{Date: currentDate, Locked: false})
+
+                if err != nil {
+                    LogError("Error marshalling JSON: \n" + err.Error())
+                }
+
+                err = os.WriteFile(filePath, jsonData, 0644)
+                
+                redmineWrapper(service, subject, message)
+            }
+            return
+        }
+
+
+        if (time.Now().Sub(oldDateParsed).Hours() > 24) {
+            jsonData, err := json.Marshal(finJson)
+
+            if err != nil {
+                LogError("Error marshalling JSON: \n" + err.Error())
+            }
+
+            err = os.WriteFile(filePath, jsonData, 0644)
+
+            if err != nil {
+                LogError("Error writing to file: \n" + err.Error())
+            }
+
+            redmineWrapper(service, subject, message)
+        } else {
+            if j.Locked == false {
+                // currentDate - oldDate in minutes
+                timeDiff := time.Now().Sub(oldDateParsed) //.Minutes()
+
+                if timeDiff.Minutes() >= Config.Redmine.Interval {
+                    jsonData, err := json.Marshal(finJson)
+                    if err != nil {
+                        LogError("Error marshalling JSON: \n" + err.Error())
+                    }
+
+                    err = os.WriteFile(filePath, jsonData, 0644)
+
+                    if err != nil {
+                        LogError("Error writing to file: \n" + err.Error())
+                    }
+                   
+                    redmineWrapper(service, subject, message)
+                }
+            }
+        }
+    } else {
+
+        file, err := os.OpenFile(filePath, os.O_CREATE|os.O_RDWR, 0644)
+        defer file.Close()
+
+        if err != nil {
+            LogError("Error opening file for writing: \n" + err.Error())
+            return
+        }
+
+        jsonData, err := json.Marshal(&ServiceFile{Date: currentDate, Locked: false})
+
+        if err != nil {
+            LogError("Error marshalling JSON: \n" + err.Error())
+        }
+
+
+        err = os.WriteFile(filePath, jsonData, 0644)
+
+        if err != nil {
+            LogError("Error writing to file: \n" + err.Error())
+        }
+
+
+        if Config.Redmine.Interval == 0 {
+            redmineWrapper(service, subject, message)
+        }
+    }
+}
 
 func RedmineCreate(service string, subject string, message string) {
     serviceReplaced := strings.Replace(service, "/", "-", -1)

@@ -61,7 +61,7 @@ func DiskUsage() {
         }
 
 
-        common.RedmineCreate("disk", common.Config.Identifier + " için disk doluluk seviyesi %"+strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64)+" üstüne çıktı", output.String())
+        common.RedmineCheckUp("disk", common.Config.Identifier + " için disk doluluk seviyesi %"+strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64)+" üstüne çıktı", output.String())
         
         id := common.RedmineShow("disk")
 
@@ -85,7 +85,7 @@ func DiskUsage() {
         msg := "All partitions are now under the limit of " + strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64) + "%" + "\n\n" + output.String()
         
         common.AlarmCheckUp("disk", msg)
-        common.RedmineClose("disk", common.Config.Identifier + " için bütün disk bölümleri "+strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64)+"% altına indi, kapatılıyor." + "\n\n" + output.String())
+        common.RedmineCheckDown("disk", common.Config.Identifier + " için bütün disk bölümleri "+strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64)+"% altına indi, kapatılıyor." + "\n\n" + output.String())
     }
 }
     

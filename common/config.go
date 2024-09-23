@@ -19,6 +19,7 @@ type Common struct {
         Tracker_id int
         Status_id int
         Priority_id int
+        Interval float64
 
         Api_key string
         Url string
