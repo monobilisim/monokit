@@ -3,33 +3,24 @@ package main
 import (
     "github.com/monobilisim/monokit/common"
     "github.com/monobilisim/monokit/osHealth"
-    "github.com/monobilisim/monokit/redisHealth"
     "github.com/spf13/cobra"
     "fmt"
     "os"
 )
 
 var MonokitVersion = "devel"
+var RootCmd = &cobra.Command{
+    Use: "monokit",
+    Version: MonokitVersion,
+}
 
 func main() {
-
-    var RootCmd = &cobra.Command{
-        Use: "monokit",
-        Version: MonokitVersion,
-    }
-
     var osHealthCmd = &cobra.Command{
         Use:   "osHealth",
         Short: "OS Health",
         Run: osHealth.Main,
     }
    
-    var redisHealthCmd = &cobra.Command{
-        Use:   "redisHealth",
-        Short: "Redis Health",
-        Run: redisHealth.Main,
-    }
-
     //// Common
     RootCmd.AddCommand(common.RedmineCmd)
     RootCmd.AddCommand(common.AlarmCmd)
@@ -111,8 +102,7 @@ func main() {
     /// OS Health
     RootCmd.AddCommand(osHealthCmd)
 
-    /// Redis Health
-    RootCmd.AddCommand(redisHealthCmd)
+    RedisCommandAdd()
     
     if err := RootCmd.Execute(); err != nil {
         fmt.Println(err)
