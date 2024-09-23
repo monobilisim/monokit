@@ -6,11 +6,14 @@ import (
     "context"
     "fmt"
     "os"
-    "regexp"
+    "strings"
+    "bufio"
+    "strconv"
 )
 
 var rdb *redis.Client
 var ctx context.Context
+var RedisMaster bool
 
 func RedisInit() {
     rdb = redis.NewClient(&redis.Options{
@@ -21,6 +24,38 @@ func RedisInit() {
     })
     
     ctx = context.Background()
+}
+
+func RedisSlaveCountChange() {
+    if RedisMaster == false || RedisIsSentinel() == false {
+        return
+    }
+
+    info, err := rdb.Info(ctx, "Replication").Result()
+
+    if err != nil {
+        common.LogError("Error while trying to gather replication info: " + err.Error())
+    }
+
+    // Go over line by line
+
+    scanner := bufio.NewScanner(strings.NewReader(info))
+
+    for scanner.Scan() {
+        if strings.Contains(scanner.Text(), "connected_slaves:") {
+            break
+        }
+    }
+
+
+    if scanner.Text() == "connected_slaves:" + strconv.Itoa(RedisHealthConfig.Slave_count) {
+        common.PrettyPrintStr("Slave Count", true, strconv.Itoa(RedisHealthConfig.Slave_count))
+        common.AlarmCheckUp("redis_slave_count", "Slave count is now correct")
+    } else {
+        common.PrettyPrintStr("Slave Count", false, strconv.Itoa(RedisHealthConfig.Slave_count))
+        common.AlarmCheckDown("redis_slave_count", "Slave count is incorrect, intended: " + strconv.Itoa(RedisHealthConfig.Slave_count) + ", actual: " + strings.Split(scanner.Text(), "connected_slaves:")[1])
+    }
+
 }
 
 func redisAlarmRoleChange(isMaster bool) {
@@ -76,16 +111,29 @@ func RedisIsMaster() bool {
         common.LogError("Redis is not working: " + err.Error())
         return false
     }
+    
+    // Go over line by line
 
-    if info != "role:master" {
+    scanner := bufio.NewScanner(strings.NewReader(info))
+
+    for scanner.Scan() {
+        if scanner.Text() == "role:master" || scanner.Text() == "role:slave" {
+            break
+        }
+    }
+
+    if scanner.Text() == "role:master" {
         common.PrettyPrintStr("Role", true, "master")
-        redisAlarmRoleChange(false)
-        return false
-    } else {
-        common.PrettyPrintStr("Role", true, "slave")
         redisAlarmRoleChange(true)
         return true
+    } else if scanner.Text() == "role:slave" {
+        common.PrettyPrintStr("Role", true, "slave")
+        redisAlarmRoleChange(false)
+        return false
     }
+
+    return false
+
 }
 
 func RedisPing() {
@@ -95,7 +143,7 @@ func RedisPing() {
     if err != nil {
         common.LogError("Error while trying to ping Redis: " + err.Error())
         common.PrettyPrintStr("Redis", false, "pingable")
-        common.AlarmCheckDown("redis_ping", "Trying to ping Redis failed, error;\n```\n" + err.Error() + "\n```")
+        common.AlarmCheckDown("redis_ping", "Trying to ping Redis failed, Error;\n```\n" + err.Error() + "\n```")
     }
 
     if ping != "PONG" {
@@ -114,7 +162,7 @@ func RedisReadWriteTest(isSentinel bool) {
     if err != nil {
         if isSentinel {
             // Check if its master
-            if RedisIsMaster() {
+            if RedisMaster == true {
                 common.LogError("Can't Write to Redis (sentinel): " + err.Error())
                 common.PrettyPrintStr("Redis", false, "writeable")
                 common.AlarmCheckDown("redis_write", "Trying to write a string to Redis failed")
@@ -171,11 +219,14 @@ func RedisIsSentinel() bool {
         return false
     }
 
-    regex := regexp.MustCompile("^redis_mode:sentinel.*$")
-        
-    if regex.MatchString(item) {
-        return false
-    } else {
-        return true
+
+    scanner := bufio.NewScanner(strings.NewReader(item))
+
+    for scanner.Scan() {
+        if scanner.Text() == "redis_mode:sentinel" {
+            return true
+        }
     }
+
+    return false
 }

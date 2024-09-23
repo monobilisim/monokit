@@ -48,7 +48,6 @@ func DiskUsage() {
         table.AppendBulk(exceededParts)
         table.Render()
         msg := "Partition usage level has exceeded to " + strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64) + "% " + "for the following partitions;\n\n" + output.String()
-        msg = strings.Replace(msg, "\n", `\n`, -1)
         
         // Check if file exists 
         if _, err := os.Stat(common.TmpDir + "/" + common.Config.Identifier + "_disk_usage.txt"); os.IsNotExist(err) {
@@ -72,7 +71,6 @@ func DiskUsage() {
         } else {
             common.AlarmCheckUp("disk_redmineissue", "Redmine issue has been created for disk usage")
             msg = msg + "\n\n" + "Redmine Issue: " + common.Config.Redmine.Url + "/issues/" + id
-            msg = strings.Replace(msg, "\n", `\n`, -1)
             common.AlarmCheckDown("disk", msg)
         }
 
@@ -85,7 +83,6 @@ func DiskUsage() {
         table.AppendBulk(allParts)
         table.Render()
         msg := "All partitions are now under the limit of " + strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64) + "%" + "\n\n" + output.String()
-        msg = strings.Replace(msg, "\n", `\n`, -1)
         
         common.AlarmCheckUp("disk", msg)
         common.RedmineClose("disk", common.Config.Identifier + " için bütün disk bölümleri "+strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64)+"% altına indi, kapatılıyor." + "\n\n" + output.String())

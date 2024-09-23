@@ -211,10 +211,12 @@ type ResponseData struct {
     Code string `json:"code"`
 }
 
-func Alarm(message string) {
+func Alarm(m string) {
     if Config.Alarm.Enabled == false {
         return
     }
+
+    message := strings.Replace(m, "\n", `\n`, -1)
 
     body:= []byte(`{"text":"` + message + `"}`)
 
