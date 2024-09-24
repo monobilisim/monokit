@@ -128,7 +128,41 @@ type RedmineIssue struct {
     Issue Issue `json:"issue"`
 }
 
+func redmineCheckIssueLog(service string) {
+    serviceReplaced := strings.Replace(service, "/", "-", -1)
+    filePath := TmpDir + "/" + serviceReplaced + "-redmine.log"
+    
+    // If file exists, return
+    if _, err := os.Stat(filePath); err == nil {
+        // Check if file is empty, if so delete the file and return
+        if isEmptyOrWhitespace(filePath) {
+            err := os.Remove(filePath)
+            if err != nil {
+                LogError("os.Remove error: " + err.Error())
+            }
+            return
+        }
+
+        // Check if file is 0, if so delete the file and return
+        read, err := os.ReadFile(filePath)
+
+        if err != nil {
+            LogError("os.ReadFile error: " + err.Error())
+        }
+
+        if string(read) == "0" {
+            err := os.Remove(filePath)
+            if err != nil {
+                LogError("os.Remove error: " + err.Error())
+            }
+        }
+    }
+}
+
 func redmineWrapper(service string, subject string, message string) {
+    
+    redmineCheckIssueLog(service)
+
     // Create issue if it does not exist, otherwise update it
     if RedmineShow(service) == "" {
         RedmineCreate(service, subject, message)
@@ -288,35 +322,8 @@ func RedmineCreate(service string, subject string, message string) {
     if Config.Redmine.Enabled == false {
         return
     }
-        
-
-    // If file exists, return
-    if _, err := os.Stat(filePath); err == nil {
-        // Check if file is empty, if so delete the file and return
-        if isEmptyOrWhitespace(filePath) {
-            err := os.Remove(filePath)
-            if err != nil {
-                LogError("os.Remove error: " + err.Error())
-            }
-            return
-        }
-
-        // Check if file is 0, if so delete the file and return
-        read, err := os.ReadFile(filePath)
-
-        if err != nil {
-            LogError("os.ReadFile error: " + err.Error())
-        }
-
-        if string(read) == "0" {
-            err := os.Remove(filePath)
-            if err != nil {
-                LogError("os.Remove error: " + err.Error())
-            }
-        }
-
-        return
-    }
+    
+    redmineCheckIssueLog(service)
 
     var priorityId int
     var projectId string
@@ -489,20 +496,8 @@ func RedmineUpdate(service string, message string, checkNote bool) {
     serviceReplaced := strings.Replace(service, "/", "-", -1)
     filePath := TmpDir + "/" + serviceReplaced + "-redmine.log"
     
-    // check if filePath exists
-    if _, err := os.Stat(filePath); os.IsNotExist(err) {
-        return
-    }
-
-
-    // Check if file is empty, if so delete the file and return
-    if isEmptyOrWhitespace(filePath) {
-        err := os.Remove(filePath)
-        if err != nil {
-            LogError("os.Remove error: " + err.Error())
-        }
-        return
-    }
+    
+    redmineCheckIssueLog(service)
 
     // read file
     file, err := os.ReadFile(filePath)
@@ -572,14 +567,7 @@ func RedmineClose(service string, message string) {
         return
     }
     
-    // Check if file is empty, if so delete the file and return
-    if isEmptyOrWhitespace(filePath) {
-        err := os.Remove(filePath)
-        if err != nil {
-            LogError("os.Remove error: " + err.Error())
-        }
-        return
-    }
+    redmineCheckIssueLog(service)
 
     // read file
     file, err := os.ReadFile(filePath)
@@ -649,32 +637,12 @@ func RedmineShow(service string) string {
     serviceReplaced := strings.Replace(service, "/", "-", -1)
     filePath := TmpDir + "/" + serviceReplaced + "-redmine.log"
 
-    // check if filePath exists, if not return
-    if _, err := os.Stat(filePath); os.IsNotExist(err) {
-        return ""
-    }
-
-    // Check if file is empty, if so delete the file and return
-    if isEmptyOrWhitespace(filePath) {
-        err := os.Remove(filePath)
-        if err != nil {
-            LogError("os.Remove error: " + err.Error())
-        }
-        return ""
-    }
+    redmineCheckIssueLog(service)
 
     // read file
     file, err := os.ReadFile(filePath)
     if err != nil {
         LogError("os.ReadFile error: " + err.Error())
-    }
-
-    if string(file) == "0" {
-        err := os.Remove(filePath)
-        if err != nil {
-            LogError("os.Remove error: " + err.Error())
-        }
-        return ""
     }
 
     // get issue ID
