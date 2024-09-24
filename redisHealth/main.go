@@ -15,7 +15,7 @@ var RedisHealthConfig struct {
 }
 
 func Main(cmd *cobra.Command, args []string) {
-    version := "0.1.0"
+    version := "0.2.0"
     common.ScriptName = "redisHealth"
     common.TmpDir = common.TmpDir + "redisHealth"
     common.Init()
@@ -31,7 +31,7 @@ func Main(cmd *cobra.Command, args []string) {
 
     RedisPing()
 
-    if SystemdUnitActive("redis.service") == false && SystemdUnitActive("redis-server.service") == false {
+    if common.SystemdUnitActive("redis.service") == false && common.SystemdUnitActive("redis-server.service") == false {
         common.PrettyPrintStr("Service redis-server", false, "active")
     } else {
         common.PrettyPrintStr("Service redis-server", true, "active")
@@ -42,7 +42,7 @@ func Main(cmd *cobra.Command, args []string) {
     if IsSentinel {
         common.SplitSection("Sentinel")
         
-        if SystemdUnitActive("redis-sentinel.service") == false {
+        if common.SystemdUnitActive("redis-sentinel.service") == false {
             common.PrettyPrintStr("Service redis-sentinel", false, "active")
             common.AlarmCheckDown("redis_sentinel", "Service redis-sentinel is not active")
         } else {
