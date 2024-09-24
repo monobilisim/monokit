@@ -10,6 +10,7 @@ import (
 
 
 var RedisHealthConfig struct {
+    Password string
     Slave_count int
 }
 

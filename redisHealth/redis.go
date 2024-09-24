@@ -19,7 +19,7 @@ var RedisMaster bool
 func RedisInit() {
     rdb = redis.NewClient(&redis.Options{
         Addr: "localhost:6379", // TODO: Make this dynamic
-        Password: "",
+        Password: RedisHealthConfig.Password,
         DB: 0,
         MaxRetries: 5,
     })
