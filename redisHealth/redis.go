@@ -18,7 +18,7 @@ var RedisMaster bool
 
 func RedisInit() {
     rdb = redis.NewClient(&redis.Options{
-        Addr: "localhost:6379", // TODO: Make this dynamic
+        Addr: "localhost:" + fmt.Sprint(common.ConnsByProc("redis-server")),
         Password: RedisHealthConfig.Password,
         DB: 0,
         MaxRetries: 5,
@@ -207,7 +207,7 @@ func RedisReadWriteTest(isSentinel bool) {
 func RedisIsSentinel() bool {
     // Check if port 26379 is open
     rdb_sentinel := redis.NewClient(&redis.Options{
-        Addr: "localhost:26379", // TODO: Make this dynamic
+        Addr: "localhost:" + fmt.Sprint(common.ConnsByProc("redis-sentinel")),
         Password: "",
         DB: 0,
         MaxRetries: 5,
