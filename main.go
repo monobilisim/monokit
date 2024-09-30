@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"github.com/monobilisim/monokit/common"
 	"github.com/monobilisim/monokit/osHealth"
-	"github.com/monobilisim/monokit/rabbitmq"
 	"github.com/spf13/cobra"
 	"os"
 )
@@ -123,11 +122,7 @@ func main() {
 
 	RedisCommandAdd()
 
-	RootCmd.AddCommand(&cobra.Command{
-		Use:   "rabbitmqHealth",
-		Short: "RabbitMQ Health",
-		Run:   rabbitmq.Main,
-	})
+    RmqCommandAdd()
 
 	if err := RootCmd.Execute(); err != nil {
 		fmt.Println(err)

@@ -4,6 +4,7 @@ package main
 import (
     "github.com/spf13/cobra"
     "github.com/monobilisim/monokit/redisHealth"
+    "github.com/monobilisim/monokit/rmqHealth"
 )
 
 func RedisCommandAdd() {
@@ -14,4 +15,14 @@ func RedisCommandAdd() {
     }
 
     RootCmd.AddCommand(redisHealthCmd)
+}
+
+func RmqCommandAdd() {
+    var rmqHealthCmd = &cobra.Command{
+        Use:   "rmqHealth",
+        Short: "RabbitMQ Health",
+        Run: rmqHealth.Main,
+    }
+
+    RootCmd.AddCommand(rmqHealthCmd)
 }
