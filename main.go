@@ -130,6 +130,7 @@ func main() {
 
     news.CreateCmd.Flags().StringP("title", "t", "", "Title")
     news.CreateCmd.Flags().StringP("description", "d", "", "Description")
+    news.CreateCmd.Flags().BoolP("noDuplicate", "n", false, "Check for duplicates, return ID if exists")
 
     news.CreateCmd.MarkFlagRequired("title")
     news.CreateCmd.MarkFlagRequired("description")

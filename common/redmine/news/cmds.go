@@ -19,7 +19,8 @@ var CreateCmd = &cobra.Command{
         common.Init()
         title, _ := cmd.Flags().GetString("title")
         description, _ := cmd.Flags().GetString("description")
-        issueId := Create(title, description)
+        noDuplicate, _ := cmd.Flags().GetBool("noDuplicate")
+        issueId := Create(title, description, noDuplicate)
 
         if issueId != "" {
             fmt.Println(issueId)

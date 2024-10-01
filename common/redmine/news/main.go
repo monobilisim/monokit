@@ -20,9 +20,16 @@ type RedmineNews struct {
     News News `json:"news"`
 }
 
-func Create(title string, description string) string {
+func Create(title string, description string, noDuplicate bool) string {
     if common.Config.Redmine.Enabled == false {
         return ""
+    }
+
+    if noDuplicate {
+        duplicateId := Exists(title, description)
+        if duplicateId != "" {
+            return duplicateId
+        }
     }
    
     var projectId string
