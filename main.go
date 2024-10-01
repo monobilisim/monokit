@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/monobilisim/monokit/common"
 	"github.com/monobilisim/monokit/osHealth"
+	news "github.com/monobilisim/monokit/common/redmine/news"
 	issues "github.com/monobilisim/monokit/common/redmine/issues"
 )
 
@@ -61,8 +62,9 @@ func main() {
 
 	/// Redmine
 	redmineCmd.AddCommand(issues.IssueCmd)
+    redmineCmd.AddCommand(news.NewsCmd)
 
-	// RedmineCreate
+	// issues.CreateCmd
 	issues.IssueCmd.AddCommand(issues.CreateCmd)
 
 	issues.CreateCmd.Flags().StringP("subject", "j", "", "Subject")
@@ -72,7 +74,7 @@ func main() {
 	issues.CreateCmd.MarkFlagRequired("service")
 	issues.CreateCmd.MarkFlagRequired("message")
 
-	// RedmineUpdate
+	// issues.UpdateCmd
 	issues.IssueCmd.AddCommand(issues.UpdateCmd)
 
 	issues.UpdateCmd.Flags().StringP("service", "s", "", "Service Name")
@@ -81,7 +83,7 @@ func main() {
 	issues.UpdateCmd.MarkFlagRequired("service")
 	issues.UpdateCmd.MarkFlagRequired("message")
 
-	// RedmineClose
+	// issues.CloseCmd
 	issues.IssueCmd.AddCommand(issues.CloseCmd)
 
 	issues.CloseCmd.Flags().StringP("service", "s", "", "Service Name")
@@ -89,13 +91,13 @@ func main() {
 	issues.CloseCmd.MarkFlagRequired("service")
 	issues.CloseCmd.MarkFlagRequired("message")
 
-	// RedmineShow
+	// issues.ShowCmd
 	issues.IssueCmd.AddCommand(issues.ShowCmd)
 
 	issues.ShowCmd.Flags().StringP("service", "s", "", "Service Name")
 	issues.ShowCmd.MarkFlagRequired("service")
 
-	// RedmineExists
+	// issues.ExistsCmd
 	issues.IssueCmd.AddCommand(issues.ExistsCmd)
 
 	issues.ExistsCmd.Flags().StringP("subject", "j", "", "Subject")
@@ -104,7 +106,7 @@ func main() {
 
 	issues.ExistsCmd.MarkFlagRequired("subject")
 
-	// RedmineCheckUp
+	// issues.CheckUpCmd
 	issues.IssueCmd.AddCommand(issues.CheckUpCmd)
 
 	issues.CheckUpCmd.Flags().StringP("service", "s", "", "Service Name")
@@ -113,7 +115,7 @@ func main() {
 	issues.CheckUpCmd.MarkFlagRequired("service")
 	issues.CheckUpCmd.MarkFlagRequired("message")
 
-	// RedmineCheckDown
+	// issues.CheckDownCmd
 	issues.IssueCmd.AddCommand(issues.CheckDownCmd)
 
 	issues.CheckDownCmd.Flags().StringP("service", "s", "", "Service Name")
@@ -122,6 +124,31 @@ func main() {
 	issues.CheckDownCmd.MarkFlagRequired("subject")
 	issues.CheckDownCmd.MarkFlagRequired("service")
 	issues.CheckDownCmd.MarkFlagRequired("message")
+
+    // news.CreateCmd
+    news.NewsCmd.AddCommand(news.CreateCmd)
+
+    news.CreateCmd.Flags().StringP("title", "t", "", "Title")
+    news.CreateCmd.Flags().StringP("description", "d", "", "Description")
+
+    news.CreateCmd.MarkFlagRequired("title")
+    news.CreateCmd.MarkFlagRequired("description")
+
+    // news.DeleteCmd
+    news.NewsCmd.AddCommand(news.DeleteCmd)
+
+    news.DeleteCmd.Flags().StringP("id", "i", "", "News ID")
+
+    news.DeleteCmd.MarkFlagRequired("id")
+
+    // news.ExistsCmd
+    news.NewsCmd.AddCommand(news.ExistsCmd)
+
+    news.ExistsCmd.Flags().StringP("title", "t", "", "Title")
+    news.ExistsCmd.Flags().StringP("description", "d", "", "Description")
+
+    news.ExistsCmd.MarkFlagRequired("title")
+    news.ExistsCmd.MarkFlagRequired("description")
 
 	/// OS Health
 	RootCmd.AddCommand(osHealthCmd)
