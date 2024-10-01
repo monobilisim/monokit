@@ -6,7 +6,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/monobilisim/monokit/common"
 	"github.com/monobilisim/monokit/osHealth"
-	redmine "github.com/monobilisim/monokit/common/redmine"
+	issues "github.com/monobilisim/monokit/common/redmine/issues"
 )
 
 var MonokitVersion = "devel"
@@ -22,8 +22,13 @@ func main() {
 		Run:   osHealth.Main,
 	}
 
+    var redmineCmd = &cobra.Command{
+        Use:   "redmine",
+        Short: "Redmine-related utilities",
+    }
+
 	//// Common
-	RootCmd.AddCommand(redmine.RedmineCmd)
+	RootCmd.AddCommand(redmineCmd)
 	RootCmd.AddCommand(common.AlarmCmd)
 
 	/// Alarm
@@ -55,68 +60,68 @@ func main() {
 	common.AlarmCheckDownCmd.MarkFlagRequired("scriptName")
 
 	/// Redmine
-	redmine.RedmineCmd.AddCommand(redmine.RedmineIssueCmd)
+	redmineCmd.AddCommand(issues.IssueCmd)
 
 	// RedmineCreate
-	redmine.RedmineIssueCmd.AddCommand(redmine.RedmineCreateCmd)
+	issues.IssueCmd.AddCommand(issues.CreateCmd)
 
-	redmine.RedmineCreateCmd.Flags().StringP("subject", "j", "", "Subject")
-	redmine.RedmineCreateCmd.Flags().StringP("service", "s", "", "Service Name")
-	redmine.RedmineCreateCmd.Flags().StringP("message", "m", "", "Message")
-	redmine.RedmineCreateCmd.MarkFlagRequired("subject")
-	redmine.RedmineCreateCmd.MarkFlagRequired("service")
-	redmine.RedmineCreateCmd.MarkFlagRequired("message")
+	issues.CreateCmd.Flags().StringP("subject", "j", "", "Subject")
+	issues.CreateCmd.Flags().StringP("service", "s", "", "Service Name")
+	issues.CreateCmd.Flags().StringP("message", "m", "", "Message")
+	issues.CreateCmd.MarkFlagRequired("subject")
+	issues.CreateCmd.MarkFlagRequired("service")
+	issues.CreateCmd.MarkFlagRequired("message")
 
 	// RedmineUpdate
-	redmine.RedmineIssueCmd.AddCommand(redmine.RedmineUpdateCmd)
+	issues.IssueCmd.AddCommand(issues.UpdateCmd)
 
-	redmine.RedmineUpdateCmd.Flags().StringP("service", "s", "", "Service Name")
-	redmine.RedmineUpdateCmd.Flags().StringP("message", "m", "", "Message")
-	redmine.RedmineUpdateCmd.Flags().BoolP("checkNote", "c", false, "Check Notes")
-	redmine.RedmineUpdateCmd.MarkFlagRequired("service")
-	redmine.RedmineUpdateCmd.MarkFlagRequired("message")
+	issues.UpdateCmd.Flags().StringP("service", "s", "", "Service Name")
+	issues.UpdateCmd.Flags().StringP("message", "m", "", "Message")
+	issues.UpdateCmd.Flags().BoolP("checkNote", "c", false, "Check Notes")
+	issues.UpdateCmd.MarkFlagRequired("service")
+	issues.UpdateCmd.MarkFlagRequired("message")
 
 	// RedmineClose
-	redmine.RedmineIssueCmd.AddCommand(redmine.RedmineCloseCmd)
+	issues.IssueCmd.AddCommand(issues.CloseCmd)
 
-	redmine.RedmineCloseCmd.Flags().StringP("service", "s", "", "Service Name")
-	redmine.RedmineCloseCmd.Flags().StringP("message", "m", "", "Message")
-	redmine.RedmineCloseCmd.MarkFlagRequired("service")
-	redmine.RedmineCloseCmd.MarkFlagRequired("message")
+	issues.CloseCmd.Flags().StringP("service", "s", "", "Service Name")
+	issues.CloseCmd.Flags().StringP("message", "m", "", "Message")
+	issues.CloseCmd.MarkFlagRequired("service")
+	issues.CloseCmd.MarkFlagRequired("message")
 
 	// RedmineShow
-	redmine.RedmineIssueCmd.AddCommand(redmine.RedmineShowCmd)
+	issues.IssueCmd.AddCommand(issues.ShowCmd)
 
-	redmine.RedmineShowCmd.Flags().StringP("service", "s", "", "Service Name")
-	redmine.RedmineShowCmd.MarkFlagRequired("service")
+	issues.ShowCmd.Flags().StringP("service", "s", "", "Service Name")
+	issues.ShowCmd.MarkFlagRequired("service")
 
 	// RedmineExists
-	redmine.RedmineIssueCmd.AddCommand(redmine.RedmineExistsCmd)
+	issues.IssueCmd.AddCommand(issues.ExistsCmd)
 
-	redmine.RedmineExistsCmd.Flags().StringP("subject", "j", "", "Subject")
-	redmine.RedmineExistsCmd.Flags().StringP("date", "d", "", "Date")
-	redmine.RedmineExistsCmd.Flags().BoolP("search", "s", false, "Search")
+	issues.ExistsCmd.Flags().StringP("subject", "j", "", "Subject")
+	issues.ExistsCmd.Flags().StringP("date", "d", "", "Date")
+	issues.ExistsCmd.Flags().BoolP("search", "s", false, "Search")
 
-	redmine.RedmineExistsCmd.MarkFlagRequired("subject")
+	issues.ExistsCmd.MarkFlagRequired("subject")
 
 	// RedmineCheckUp
-	redmine.RedmineIssueCmd.AddCommand(redmine.RedmineCheckUpCmd)
+	issues.IssueCmd.AddCommand(issues.CheckUpCmd)
 
-	redmine.RedmineCheckUpCmd.Flags().StringP("service", "s", "", "Service Name")
-	redmine.RedmineCheckUpCmd.Flags().StringP("message", "m", "", "Message")
+	issues.CheckUpCmd.Flags().StringP("service", "s", "", "Service Name")
+	issues.CheckUpCmd.Flags().StringP("message", "m", "", "Message")
 
-	redmine.RedmineCheckUpCmd.MarkFlagRequired("service")
-	redmine.RedmineCheckUpCmd.MarkFlagRequired("message")
+	issues.CheckUpCmd.MarkFlagRequired("service")
+	issues.CheckUpCmd.MarkFlagRequired("message")
 
 	// RedmineCheckDown
-	redmine.RedmineIssueCmd.AddCommand(redmine.RedmineCheckDownCmd)
+	issues.IssueCmd.AddCommand(issues.CheckDownCmd)
 
-	redmine.RedmineCheckDownCmd.Flags().StringP("service", "s", "", "Service Name")
-	redmine.RedmineCheckDownCmd.Flags().StringP("message", "m", "", "Message")
-	redmine.RedmineCheckDownCmd.Flags().StringP("subject", "j", "", "Subject")
-	redmine.RedmineCheckDownCmd.MarkFlagRequired("subject")
-	redmine.RedmineCheckDownCmd.MarkFlagRequired("service")
-	redmine.RedmineCheckDownCmd.MarkFlagRequired("message")
+	issues.CheckDownCmd.Flags().StringP("service", "s", "", "Service Name")
+	issues.CheckDownCmd.Flags().StringP("message", "m", "", "Message")
+	issues.CheckDownCmd.Flags().StringP("subject", "j", "", "Subject")
+	issues.CheckDownCmd.MarkFlagRequired("subject")
+	issues.CheckDownCmd.MarkFlagRequired("service")
+	issues.CheckDownCmd.MarkFlagRequired("message")
 
 	/// OS Health
 	RootCmd.AddCommand(osHealthCmd)

@@ -8,7 +8,7 @@ import (
     "github.com/olekukonko/tablewriter"
     "github.com/shirou/gopsutil/v4/disk"
     "github.com/monobilisim/monokit/common"
-    redmine "github.com/monobilisim/monokit/common/redmine"
+    issues "github.com/monobilisim/monokit/common/redmine/issues"
 )
 
 func DiskUsage() {
@@ -62,9 +62,9 @@ func DiskUsage() {
         }
 
 
-        redmine.RedmineCheckDown("disk", common.Config.Identifier + " için disk doluluk seviyesi %"+strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64)+" üstüne çıktı", output.String())
+        issues.CheckDown("disk", common.Config.Identifier + " için disk doluluk seviyesi %"+strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64)+" üstüne çıktı", output.String())
         
-        id := redmine.RedmineShow("disk")
+        id := issues.Show("disk")
 
         if id == "" {
             common.AlarmCheckDown("disk_redmineissue", "Redmine issue could not be created for disk usage")
@@ -86,7 +86,7 @@ func DiskUsage() {
         msg := "All partitions are now under the limit of " + strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64) + "%" + "\n\n" + output.String()
         
         common.AlarmCheckUp("disk", msg)
-        redmine.RedmineCheckUp("disk", common.Config.Identifier + " için bütün disk bölümleri "+strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64)+"% altına indi, kapatılıyor." + "\n\n" + output.String())
+        issues.CheckUp("disk", common.Config.Identifier + " için bütün disk bölümleri "+strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64)+"% altına indi, kapatılıyor." + "\n\n" + output.String())
     }
 }
     

@@ -64,15 +64,15 @@ func redmineWrapper(service string, subject string, message string) {
     redmineCheckIssueLog(service)
 
     // Create issue if it does not exist, otherwise update it
-    if RedmineShow(service) == "" {
-        RedmineCreate(service, subject, message)
+    if Show(service) == "" {
+        Create(service, subject, message)
     } else {
-        RedmineUpdate(service, message, true)
+        Update(service, message, true)
     }
 }
 
 
-func RedmineCheckUp(service string, message string) {
+func CheckUp(service string, message string) {
     // Remove slashes from service and replace them with -
     serviceReplaced := strings.Replace(service, "/", "-", -1)
     file_path := common.TmpDir + "/" + serviceReplaced + "-redmine-stat.log"
@@ -80,11 +80,11 @@ func RedmineCheckUp(service string, message string) {
     // Check if the file exists, close issue and remove file if it does
     if _, err := os.Stat(file_path); err == nil {
         os.Remove(file_path)
-        RedmineClose(service, message)
+        Close(service, message)
     }
 }
 
-func RedmineCheckDown(service string, subject string, message string) {
+func CheckDown(service string, subject string, message string) {
     // Remove slashes from service and replace them with -
     serviceReplaced := strings.Replace(service, "/", "-", -1)
     filePath := common.TmpDir + "/" + serviceReplaced + "-redmine-stat.log"
@@ -215,7 +215,7 @@ func RedmineCheckDown(service string, subject string, message string) {
     }
 }
 
-func RedmineCreate(service string, subject string, message string) {
+func Create(service string, subject string, message string) {
     serviceReplaced := strings.Replace(service, "/", "-", -1)
     filePath := common.TmpDir + "/" + serviceReplaced + "-redmine.log"
    
@@ -290,7 +290,7 @@ func RedmineCreate(service string, subject string, message string) {
     }
 }
 
-func RedmineExistsNote(service string, message string) bool {
+func ExistsNote(service string, message string) bool {
     // Check if a note in an issue already exists
     serviceReplaced := strings.Replace(service, "/", "-", -1)
     filePath := common.TmpDir + "/" + serviceReplaced + "-redmine.log"
@@ -381,14 +381,14 @@ func RedmineExistsNote(service string, message string) bool {
 
 
 
-func RedmineUpdate(service string, message string, checkNote bool) {
+func Update(service string, message string, checkNote bool) {
     
     if common.Config.Redmine.Enabled == false {
         return
     }
 
     if checkNote {
-        if RedmineExistsNote(service, message) {
+        if ExistsNote(service, message) {
             return
         }
     }
@@ -454,7 +454,7 @@ func RedmineUpdate(service string, message string, checkNote bool) {
     defer resp.Body.Close()
 }
 
-func RedmineClose(service string, message string) {
+func Close(service string, message string) {
     if common.Config.Redmine.Enabled == false {
         return
     }
@@ -529,7 +529,7 @@ func RedmineClose(service string, message string) {
     }
 }
 
-func RedmineShow(service string) string {
+func Show(service string) string {
     if common.Config.Redmine.Enabled == false {
         return ""
     }
@@ -549,7 +549,7 @@ func RedmineShow(service string) string {
     return string(file)
 }
 
-func RedmineExists(subject string, date string, search bool) string {
+func Exists(subject string, date string, search bool) string {
     var projectId string
 
     if common.Config.Redmine.Project_id == "" {
