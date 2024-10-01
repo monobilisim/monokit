@@ -15,7 +15,7 @@ func SplitSection(section string) {
     fmt.Println("--------------------------------------------------")
 }
 
-func isEmptyOrWhitespace(filePath string) bool {
+func IsEmptyOrWhitespace(filePath string) bool {
         file, err := os.Open(filePath)
         if err != nil {
                 fmt.Println("Error opening file:", err)

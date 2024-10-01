@@ -1,7 +1,6 @@
 package common
 
 import (
-    "github.com/spf13/cobra"
     "strconv"
     "bytes"
     "io"
@@ -10,107 +9,8 @@ import (
     "os"
     "encoding/json"
     "strings"
-    "fmt"
+    "github.com/monobilisim/monokit/common"
 )
-
-var RedmineCmd = &cobra.Command{
-    Use:   "redmine",
-    Short: "Redmine-related utilities",
-}
-
-var RedmineIssueCmd = &cobra.Command{
-    Use:   "issue",
-    Short: "Issue-related utilities",
-}
-
-var RedmineCreateCmd = &cobra.Command{
-    Use:   "create",
-    Short: "Create a new issue in Redmine",
-    Run: func(cmd *cobra.Command, args []string) {
-        Init()
-        service, _ := cmd.Flags().GetString("service")
-        subject, _ := cmd.Flags().GetString("subject")
-        message, _ := cmd.Flags().GetString("message")
-        RedmineCreate(service, subject, message)
-    },
-}
-
-var RedmineUpdateCmd = &cobra.Command{
-    Use:   "update",
-    Short: "Update an existing issue in Redmine",
-    Run: func(cmd *cobra.Command, args []string) {
-        Init()
-        service, _ := cmd.Flags().GetString("service")
-        message, _ := cmd.Flags().GetString("message")
-        checkNote, _ := cmd.Flags().GetBool("checkNote")
-        RedmineUpdate(service, message, checkNote)
-    },
-}
-
-var RedmineCloseCmd = &cobra.Command{
-    Use:   "close",
-    Short: "Close an existing issue in Redmine",
-    Run: func(cmd *cobra.Command, args []string) {
-        Init()
-        service, _ := cmd.Flags().GetString("service")
-        message, _ := cmd.Flags().GetString("message")
-        RedmineClose(service, message)
-    },
-}
-
-var RedmineShowCmd = &cobra.Command{
-    Use:   "show",
-    Short: "Get the issue ID of the issue if it is opened",
-    Run: func(cmd *cobra.Command, args []string) {
-        Init()
-        service, _ := cmd.Flags().GetString("service")
-        fmt.Println(RedmineShow(service))
-    },
-}
-
-
-var RedmineExistsCmd = &cobra.Command{
-    Use: "exists",
-    Short: "Check if an issue has already been created",
-    Run: func(cmd *cobra.Command, args []string) {
-        Init()
-        subject, _ := cmd.Flags().GetString("subject")
-        date, _ := cmd.Flags().GetString("date")
-        search, _ := cmd.Flags().GetBool("search")
-        
-        exists := RedmineExists(subject, date, search)
-        
-        if exists != "" {
-            fmt.Println(exists)
-            os.Exit(0)
-        } else {
-            os.Exit(1)
-        }
-    },
-}
-
-var RedmineCheckUpCmd = &cobra.Command{
-    Use: "up",
-    Short: "Check if an issue exists and close it if it does",
-    Run: func(cmd *cobra.Command, args []string) {
-        Init()
-        service, _ := cmd.Flags().GetString("service")
-        message, _ := cmd.Flags().GetString("message")
-        RedmineCheckUp(service, message)
-    },
-}
-
-var RedmineCheckDownCmd = &cobra.Command{
-    Use: "down",
-    Short: "Check if an issue exists and create/update it if it does not",
-    Run: func(cmd *cobra.Command, args []string) {
-        Init()
-        service, _ := cmd.Flags().GetString("service")
-        subject, _ := cmd.Flags().GetString("subject")
-        message, _ := cmd.Flags().GetString("message")
-        RedmineCheckDown(service, subject, message)
-    },
-}
 
 type Issue struct {
         Id             int       `json:"id,omitempty"`
@@ -130,15 +30,15 @@ type RedmineIssue struct {
 
 func redmineCheckIssueLog(service string) {
     serviceReplaced := strings.Replace(service, "/", "-", -1)
-    filePath := TmpDir + "/" + serviceReplaced + "-redmine.log"
+    filePath := common.TmpDir + "/" + serviceReplaced + "-redmine.log"
     
     // If file exists, return
     if _, err := os.Stat(filePath); err == nil {
         // Check if file is empty, if so delete the file and return
-        if isEmptyOrWhitespace(filePath) {
+        if common.IsEmptyOrWhitespace(filePath) {
             err := os.Remove(filePath)
             if err != nil {
-                LogError("os.Remove error: " + err.Error())
+                common.LogError("os.Remove error: " + err.Error())
             }
             return
         }
@@ -147,13 +47,13 @@ func redmineCheckIssueLog(service string) {
         read, err := os.ReadFile(filePath)
 
         if err != nil {
-            LogError("os.ReadFile error: " + err.Error())
+            common.LogError("os.ReadFile error: " + err.Error())
         }
 
         if string(read) == "0" {
             err := os.Remove(filePath)
             if err != nil {
-                LogError("os.Remove error: " + err.Error())
+                common.LogError("os.Remove error: " + err.Error())
             }
         }
     }
@@ -175,7 +75,7 @@ func redmineWrapper(service string, subject string, message string) {
 func RedmineCheckUp(service string, message string) {
     // Remove slashes from service and replace them with -
     serviceReplaced := strings.Replace(service, "/", "-", -1)
-    file_path := TmpDir + "/" + serviceReplaced + "-redmine-stat.log"
+    file_path := common.TmpDir + "/" + serviceReplaced + "-redmine-stat.log"
 
     // Check if the file exists, close issue and remove file if it does
     if _, err := os.Stat(file_path); err == nil {
@@ -187,7 +87,7 @@ func RedmineCheckUp(service string, message string) {
 func RedmineCheckDown(service string, subject string, message string) {
     // Remove slashes from service and replace them with -
     serviceReplaced := strings.Replace(service, "/", "-", -1)
-    filePath := TmpDir + "/" + serviceReplaced + "-redmine-stat.log"
+    filePath := common.TmpDir + "/" + serviceReplaced + "-redmine-stat.log"
     currentDate := time.Now().Format("2006-01-02 15:04:05 -0700")
 
     // Check if the file exists
@@ -198,22 +98,22 @@ func RedmineCheckDown(service string, subject string, message string) {
         defer file.Close()
 
         if err != nil {
-            LogError("Error opening file for writing: \n" + err.Error())
+            common.LogError("Error opening file for writing: \n" + err.Error())
         }
 
-        var j ServiceFile
+        var j common.ServiceFile
 
         fileRead, err := io.ReadAll(file)
 
         if err != nil {
-            LogError("Error reading file: \n" + err.Error())
+            common.LogError("Error reading file: \n" + err.Error())
             return
         }
 
         err = json.Unmarshal(fileRead, &j)
 
         if err != nil {
-            LogError("Error parsing JSON: \n" + err.Error())
+            common.LogError("Error parsing JSON: \n" + err.Error())
             return
         }
 
@@ -226,20 +126,20 @@ func RedmineCheckDown(service string, subject string, message string) {
         oldDateParsed, err := time.Parse("2006-01-02 15:04:05 -0700", oldDate)
 
         if err != nil {
-            LogError("Error parsing date: \n" + err.Error())
+            common.LogError("Error parsing date: \n" + err.Error())
         }
 
-        finJson := &ServiceFile{
+        finJson := &common.ServiceFile{
                     Date: currentDate,
                     Locked: true,
                  }
 
-        if Config.Redmine.Interval == 0 {
+        if common.Config.Redmine.Interval == 0 {
             if oldDateParsed.Format("2006-01-02") != time.Now().Format("2006-01-02") {
-                jsonData, err := json.Marshal(&ServiceFile{Date: currentDate, Locked: false})
+                jsonData, err := json.Marshal(&common.ServiceFile{Date: currentDate, Locked: false})
 
                 if err != nil {
-                    LogError("Error marshalling JSON: \n" + err.Error())
+                    common.LogError("Error marshalling JSON: \n" + err.Error())
                 }
 
                 err = os.WriteFile(filePath, jsonData, 0644)
@@ -254,13 +154,13 @@ func RedmineCheckDown(service string, subject string, message string) {
             jsonData, err := json.Marshal(finJson)
 
             if err != nil {
-                LogError("Error marshalling JSON: \n" + err.Error())
+                common.LogError("Error marshalling JSON: \n" + err.Error())
             }
 
             err = os.WriteFile(filePath, jsonData, 0644)
 
             if err != nil {
-                LogError("Error writing to file: \n" + err.Error())
+                common.LogError("Error writing to file: \n" + err.Error())
             }
 
             redmineWrapper(service, subject, message)
@@ -269,16 +169,16 @@ func RedmineCheckDown(service string, subject string, message string) {
                 // currentDate - oldDate in minutes
                 timeDiff := time.Now().Sub(oldDateParsed) //.Minutes()
 
-                if timeDiff.Minutes() >= Config.Redmine.Interval {
+                if timeDiff.Minutes() >= common.Config.Redmine.Interval {
                     jsonData, err := json.Marshal(finJson)
                     if err != nil {
-                        LogError("Error marshalling JSON: \n" + err.Error())
+                        common.LogError("Error marshalling JSON: \n" + err.Error())
                     }
 
                     err = os.WriteFile(filePath, jsonData, 0644)
 
                     if err != nil {
-                        LogError("Error writing to file: \n" + err.Error())
+                        common.LogError("Error writing to file: \n" + err.Error())
                     }
                    
                     redmineWrapper(service, subject, message)
@@ -291,25 +191,25 @@ func RedmineCheckDown(service string, subject string, message string) {
         defer file.Close()
 
         if err != nil {
-            LogError("Error opening file for writing: \n" + err.Error())
+            common.LogError("Error opening file for writing: \n" + err.Error())
             return
         }
 
-        jsonData, err := json.Marshal(&ServiceFile{Date: currentDate, Locked: false})
+        jsonData, err := json.Marshal(&common.ServiceFile{Date: currentDate, Locked: false})
 
         if err != nil {
-            LogError("Error marshalling JSON: \n" + err.Error())
+            common.LogError("Error marshalling JSON: \n" + err.Error())
         }
 
 
         err = os.WriteFile(filePath, jsonData, 0644)
 
         if err != nil {
-            LogError("Error writing to file: \n" + err.Error())
+            common.LogError("Error writing to file: \n" + err.Error())
         }
 
 
-        if Config.Redmine.Interval == 0 {
+        if common.Config.Redmine.Interval == 0 {
             redmineWrapper(service, subject, message)
         }
     }
@@ -317,9 +217,9 @@ func RedmineCheckDown(service string, subject string, message string) {
 
 func RedmineCreate(service string, subject string, message string) {
     serviceReplaced := strings.Replace(service, "/", "-", -1)
-    filePath := TmpDir + "/" + serviceReplaced + "-redmine.log"
+    filePath := common.TmpDir + "/" + serviceReplaced + "-redmine.log"
    
-    if Config.Redmine.Enabled == false {
+    if common.Config.Redmine.Enabled == false {
         return
     }
     
@@ -328,16 +228,16 @@ func RedmineCreate(service string, subject string, message string) {
     var priorityId int
     var projectId string
 
-    if Config.Redmine.Priority_id == 0 {
+    if common.Config.Redmine.Priority_id == 0 {
         priorityId = 5
     } else {
-        priorityId = Config.Redmine.Priority_id
+        priorityId = common.Config.Redmine.Priority_id
     }
 
-    if Config.Redmine.Project_id == "" {
-        projectId = strings.Split(Config.Identifier, "-")[0]
+    if common.Config.Redmine.Project_id == "" {
+        projectId = strings.Split(common.Config.Identifier, "-")[0]
     } else {
-        projectId = Config.Redmine.Project_id
+        projectId = common.Config.Redmine.Project_id
     }
 
     body := RedmineIssue{Issue: Issue{ProjectId: projectId, TrackerId: 7, Description: message, Subject: subject, PriorityId: priorityId }}
@@ -345,17 +245,17 @@ func RedmineCreate(service string, subject string, message string) {
     jsonBody, err := json.Marshal(body)
 
     if err != nil {
-        LogError("json.Marshal error: " + err.Error())
+        common.LogError("json.Marshal error: " + err.Error())
     }
 
-    req, err := http.NewRequest("POST", Config.Redmine.Url + "/issues.json", bytes.NewBuffer(jsonBody))
+    req, err := http.NewRequest("POST", common.Config.Redmine.Url + "/issues.json", bytes.NewBuffer(jsonBody))
 
     if err != nil {
-        LogError("http.NewRequest error: " + err.Error())
+        common.LogError("http.NewRequest error: " + err.Error())
     }
 
     req.Header.Set("Content-Type", "application/json")
-    req.Header.Set("X-Redmine-API-Key", Config.Redmine.Api_key)
+    req.Header.Set("X-Redmine-API-Key", common.Config.Redmine.Api_key)
 
     client := &http.Client{
         Timeout: time.Second * 10,
@@ -364,7 +264,7 @@ func RedmineCreate(service string, subject string, message string) {
     resp, err := client.Do(req)
 
     if err != nil {
-        LogError("client.Do error: " + err.Error() + "\n" + "Redmine URL: " + Config.Redmine.Url + "/issues.json" + "\n" + "Redmine JSON: " + string(jsonBody))
+        common.LogError("client.Do error: " + err.Error() + "\n" + "Redmine URL: " + common.Config.Redmine.Url + "/issues.json" + "\n" + "Redmine JSON: " + string(jsonBody))
         return
     }
 
@@ -376,7 +276,7 @@ func RedmineCreate(service string, subject string, message string) {
     err = json.NewDecoder(resp.Body).Decode(&data)
 
     if err != nil {
-        LogError("json.NewDecoder error: " + err.Error())
+        common.LogError("json.NewDecoder error: " + err.Error())
     }
 
     // get issue id, convert to string
@@ -386,14 +286,14 @@ func RedmineCreate(service string, subject string, message string) {
     err = os.WriteFile(filePath, issueId, 0644)
 
     if err != nil {
-        LogError("os.WriteFile error while trying to read '" + filePath + "'" + err.Error())
+        common.LogError("os.WriteFile error while trying to read '" + filePath + "'" + err.Error())
     }
 }
 
 func RedmineExistsNote(service string, message string) bool {
     // Check if a note in an issue already exists
     serviceReplaced := strings.Replace(service, "/", "-", -1)
-    filePath := TmpDir + "/" + serviceReplaced + "-redmine.log"
+    filePath := common.TmpDir + "/" + serviceReplaced + "-redmine.log"
 
     // check if filePath exists, if not return
     if _, err := os.Stat(filePath); os.IsNotExist(err) {
@@ -401,10 +301,10 @@ func RedmineExistsNote(service string, message string) bool {
     }
 
     // Check if file is empty, if so delete the file and return
-    if isEmptyOrWhitespace(filePath) {
+    if common.IsEmptyOrWhitespace(filePath) {
         err := os.Remove(filePath)
         if err != nil {
-            LogError("os.Remove error: " + err.Error())
+            common.LogError("os.Remove error: " + err.Error())
         }
         return false
     }
@@ -413,29 +313,29 @@ func RedmineExistsNote(service string, message string) bool {
     file, err := os.ReadFile(filePath)
 
     if err != nil {
-        LogError("os.ReadFile error: " + err.Error())
+        common.LogError("os.ReadFile error: " + err.Error())
         return false
     }
 
     if string(file) == "0" {
         err := os.Remove(filePath)
         if err != nil {
-            LogError("os.Remove error: " + err.Error())
+            common.LogError("os.Remove error: " + err.Error())
         }
     }
 
-    redmineUrlFinal := Config.Redmine.Url + "/issues/" + string(file) + ".json?include=journals"
+    redmineUrlFinal := common.Config.Redmine.Url + "/issues/" + string(file) + ".json?include=journals"
 
     // Send a GET request to the Redmine API to get all issues
     req, err := http.NewRequest("GET", redmineUrlFinal, nil)
 
     if err != nil {
-        LogError("http.NewRequest error: " + err.Error())
+        common.LogError("http.NewRequest error: " + err.Error())
         return false
     }
 
     req.Header.Set("Content-Type", "application/json")
-    req.Header.Set("X-Redmine-API-Key", Config.Redmine.Api_key)
+    req.Header.Set("X-Redmine-API-Key", common.Config.Redmine.Api_key)
 
     client := &http.Client{
         Timeout: time.Second * 10,
@@ -444,7 +344,7 @@ func RedmineExistsNote(service string, message string) bool {
     resp, err := client.Do(req)
 
     if err != nil {
-        LogError("client.Do error: " + err.Error() + "\n" + "Redmine URL: " + redmineUrlFinal)
+        common.LogError("client.Do error: " + err.Error() + "\n" + "Redmine URL: " + redmineUrlFinal)
         return false
     }
 
@@ -456,14 +356,14 @@ func RedmineExistsNote(service string, message string) bool {
     err = json.NewDecoder(resp.Body).Decode(&data)
 
     if err != nil {
-        LogError("json.NewDecoder error: " + err.Error())
+        common.LogError("json.NewDecoder error: " + err.Error())
         return false
     }
 
     // If not 200, log error
     if resp.StatusCode != 200 {
         // Unmarshal the response body
-        LogError("Redmine API returned status code " + strconv.Itoa(resp.StatusCode) + " instead of 200\n" + "Redmine URL: " + redmineUrlFinal)
+        common.LogError("Redmine API returned status code " + strconv.Itoa(resp.StatusCode) + " instead of 200\n" + "Redmine URL: " + redmineUrlFinal)
         return false
     }
 
@@ -483,7 +383,7 @@ func RedmineExistsNote(service string, message string) bool {
 
 func RedmineUpdate(service string, message string, checkNote bool) {
     
-    if Config.Redmine.Enabled == false {
+    if common.Config.Redmine.Enabled == false {
         return
     }
 
@@ -494,7 +394,7 @@ func RedmineUpdate(service string, message string, checkNote bool) {
     }
 
     serviceReplaced := strings.Replace(service, "/", "-", -1)
-    filePath := TmpDir + "/" + serviceReplaced + "-redmine.log"
+    filePath := common.TmpDir + "/" + serviceReplaced + "-redmine.log"
     
     
     redmineCheckIssueLog(service)
@@ -503,21 +403,21 @@ func RedmineUpdate(service string, message string, checkNote bool) {
     file, err := os.ReadFile(filePath)
 
     if err != nil {
-        LogError("os.ReadFile error: " + err.Error())
+        common.LogError("os.ReadFile error: " + err.Error())
     }
 
     // get issue id
     issueId, err := strconv.Atoi(string(file))
 
     if err != nil {
-        LogError("strconv.Atoi error: " + err.Error())
+        common.LogError("strconv.Atoi error: " + err.Error())
     }
 
     if issueId == 0 {
         // Remove file
         err := os.Remove(filePath)
         if err != nil {
-            LogError("os.Remove error: " + err.Error())
+            common.LogError("os.Remove error: " + err.Error())
         }
         return
     }
@@ -528,17 +428,17 @@ func RedmineUpdate(service string, message string, checkNote bool) {
     jsonBody, err := json.Marshal(body)
 
     if err != nil {
-        LogError("json.Marshal error: " + err.Error())
+        common.LogError("json.Marshal error: " + err.Error())
     }
 
-    req, err := http.NewRequest("PUT", Config.Redmine.Url + "/issues/" + string(file) + ".json", bytes.NewBuffer(jsonBody))
+    req, err := http.NewRequest("PUT", common.Config.Redmine.Url + "/issues/" + string(file) + ".json", bytes.NewBuffer(jsonBody))
 
     if err != nil {
-        LogError("http.NewRequest error: " + err.Error())
+        common.LogError("http.NewRequest error: " + err.Error())
     }
 
     req.Header.Set("Content-Type", "application/json")
-    req.Header.Set("X-Redmine-API-Key", Config.Redmine.Api_key)
+    req.Header.Set("X-Redmine-API-Key", common.Config.Redmine.Api_key)
 
     client := &http.Client{
         Timeout: time.Second * 10,
@@ -547,7 +447,7 @@ func RedmineUpdate(service string, message string, checkNote bool) {
     resp, err := client.Do(req)
 
     if err != nil {
-        LogError("client.Do error: " + err.Error() + "\n" + "Redmine URL: " + Config.Redmine.Url + "/issues/" + string(file) + ".json" + "\n" + "Redmine JSON: " + string(jsonBody))
+        common.LogError("client.Do error: " + err.Error() + "\n" + "Redmine URL: " + common.Config.Redmine.Url + "/issues/" + string(file) + ".json" + "\n" + "Redmine JSON: " + string(jsonBody))
         return
     }
 
@@ -555,12 +455,12 @@ func RedmineUpdate(service string, message string, checkNote bool) {
 }
 
 func RedmineClose(service string, message string) {
-    if Config.Redmine.Enabled == false {
+    if common.Config.Redmine.Enabled == false {
         return
     }
 
     serviceReplaced := strings.Replace(service, "/", "-", -1)
-    filePath := TmpDir + "/" + serviceReplaced + "-redmine.log"
+    filePath := common.TmpDir + "/" + serviceReplaced + "-redmine.log"
 
     // check if filePath exists, if not return
     if _, err := os.Stat(filePath); os.IsNotExist(err) {
@@ -572,20 +472,20 @@ func RedmineClose(service string, message string) {
     // read file
     file, err := os.ReadFile(filePath)
     if err != nil {
-        LogError("os.ReadFile error while trying to read '" + filePath + "'" + err.Error())
+        common.LogError("os.ReadFile error while trying to read '" + filePath + "'" + err.Error())
     }
 
     issueId, err := strconv.Atoi(string(file))
 
     if err != nil {
-        LogError("strconv.Atoi error: " + err.Error())
+        common.LogError("strconv.Atoi error: " + err.Error())
     }
 
     if issueId == 0 {
         // Remove file
         err := os.Remove(filePath)
         if err != nil {
-            LogError("os.Remove error: " + err.Error())
+            common.LogError("os.Remove error: " + err.Error())
         }
         return
     }
@@ -595,18 +495,18 @@ func RedmineClose(service string, message string) {
     jsonBody, err := json.Marshal(body)
 
     if err != nil {
-        LogError("json.Marshal error: " + err.Error())
+        common.LogError("json.Marshal error: " + err.Error())
     }
 
 
-    req, err := http.NewRequest("PUT", Config.Redmine.Url + "/issues/" + string(file) + ".json", bytes.NewBuffer(jsonBody))
+    req, err := http.NewRequest("PUT", common.Config.Redmine.Url + "/issues/" + string(file) + ".json", bytes.NewBuffer(jsonBody))
 
     if err != nil {
-        LogError("http.NewRequest error: " + err.Error())
+        common.LogError("http.NewRequest error: " + err.Error())
     }
 
     req.Header.Set("Content-Type", "application/json")
-    req.Header.Set("X-Redmine-API-Key", Config.Redmine.Api_key)
+    req.Header.Set("X-Redmine-API-Key", common.Config.Redmine.Api_key)
 
     client := &http.Client{
         Timeout: time.Second * 10,
@@ -615,7 +515,7 @@ func RedmineClose(service string, message string) {
     resp, err := client.Do(req)
 
     if err != nil {
-        LogError("client.Do error: " + err.Error() + "\n" + "Redmine URL: " + Config.Redmine.Url + "/issues/" + string(file) + ".json" + "\n" + "Redmine JSON: " + string(jsonBody))
+        common.LogError("client.Do error: " + err.Error() + "\n" + "Redmine URL: " + common.Config.Redmine.Url + "/issues/" + string(file) + ".json" + "\n" + "Redmine JSON: " + string(jsonBody))
         return
     }
 
@@ -625,24 +525,24 @@ func RedmineClose(service string, message string) {
     err = os.Remove(filePath)
 
     if err != nil {
-        LogError("os.Remove error: " + err.Error())
+        common.LogError("os.Remove error: " + err.Error())
     }
 }
 
 func RedmineShow(service string) string {
-    if Config.Redmine.Enabled == false {
+    if common.Config.Redmine.Enabled == false {
         return ""
     }
 
     serviceReplaced := strings.Replace(service, "/", "-", -1)
-    filePath := TmpDir + "/" + serviceReplaced + "-redmine.log"
+    filePath := common.TmpDir + "/" + serviceReplaced + "-redmine.log"
 
     redmineCheckIssueLog(service)
 
     // read file
     file, err := os.ReadFile(filePath)
     if err != nil {
-        LogError("os.ReadFile error: " + err.Error())
+        common.LogError("os.ReadFile error: " + err.Error())
     }
 
     // get issue ID
@@ -652,19 +552,19 @@ func RedmineShow(service string) string {
 func RedmineExists(subject string, date string, search bool) string {
     var projectId string
 
-    if Config.Redmine.Project_id == "" {
-        projectId = strings.Split(Config.Identifier, "-")[0]
+    if common.Config.Redmine.Project_id == "" {
+        projectId = strings.Split(common.Config.Identifier, "-")[0]
     } else {
-        projectId = Config.Redmine.Project_id
+        projectId = common.Config.Redmine.Project_id
     }
 
-    if Config.Redmine.Enabled == false {
+    if common.Config.Redmine.Enabled == false {
         return ""
     }
 
     subject = strings.Replace(subject, " ", "%20", -1)
    
-    redmineUrlFinal := Config.Redmine.Url + "/issues.json?project_id=" + projectId
+    redmineUrlFinal := common.Config.Redmine.Url + "/issues.json?project_id=" + projectId
 
     if search {
         redmineUrlFinal += "&subject=~" + subject
@@ -681,11 +581,11 @@ func RedmineExists(subject string, date string, search bool) string {
 
 
     if err != nil {
-        LogError("http.NewRequest error: " + err.Error())
+        common.LogError("http.NewRequest error: " + err.Error())
     }
 
     req.Header.Set("Content-Type", "application/json")
-    req.Header.Set("X-Redmine-API-Key", Config.Redmine.Api_key)
+    req.Header.Set("X-Redmine-API-Key", common.Config.Redmine.Api_key)
 
     client := &http.Client{
         Timeout: time.Second * 10,
@@ -694,7 +594,7 @@ func RedmineExists(subject string, date string, search bool) string {
     resp, err := client.Do(req)
 
     if err != nil {
-        LogError("client.Do error: " + err.Error() + "\n" + "Redmine URL: " + redmineUrlFinal)
+        common.LogError("client.Do error: " + err.Error() + "\n" + "Redmine URL: " + redmineUrlFinal)
         return ""
     }
 
@@ -706,13 +606,13 @@ func RedmineExists(subject string, date string, search bool) string {
     err = json.NewDecoder(resp.Body).Decode(&data)
 
     if err != nil {
-        LogError("json.NewDecoder error: " + err.Error())
+        common.LogError("json.NewDecoder error: " + err.Error())
     }
 
     // If not 200, log error
     if resp.StatusCode != 200 {
         // Unmarshal the response body
-        LogError("Redmine API returned status code " + strconv.Itoa(resp.StatusCode) + " instead of 200\n" + "Redmine URL: " + redmineUrlFinal)
+        common.LogError("Redmine API returned status code " + strconv.Itoa(resp.StatusCode) + " instead of 200\n" + "Redmine URL: " + redmineUrlFinal)
         return ""
     }
 
