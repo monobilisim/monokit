@@ -34,7 +34,7 @@ func PrettyPrintStr(name string, lessOrMore bool, value string) {
         color = Green
     } else {
         color = Fail
-        not = " not "
+        not = "not "
     }
 
     fmt.Println(Blue + name + Reset + " is " + not + color + value + Reset)

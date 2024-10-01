@@ -34,6 +34,11 @@
   - Checks Redis health, including read and write operations.
   - Sends alarm notifications to a Slack webhook.
 
+- rmqHealth
+  - Checks RabbitMQ health, including Management API and node status.
+  - Sends alarm notifications to a Slack webhook.
+  - Config: `/etc/mono/rabbitmq.yaml` (optional)
+
 - osHealth
   - Checks OS health, including Disk, CPU and Memory usage.
   - Sends alarm notifications to a Slack webhook.
