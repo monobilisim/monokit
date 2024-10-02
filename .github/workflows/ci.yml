@@ -25,10 +25,17 @@ jobs:
         run: tests/init.sh
 
       - name: create.sh
-        run: sudo bash -xe tests/redmine/issue/create.sh
+        run: |
+          if ! sudo bash -xe tests/redmine/issue/create.sh; then
+            cat /var/log/monokit.log
+            exit 1
+          fi
 
       #- name: update.sh
       #  run: tests/redmine/issue/update.sh
       
       - name: close.sh
-        run: sudo bash -xe tests/redmine/issue/close.sh
+        run: if ! sudo bash -xe tests/redmine/issue/close.sh; then
+          cat /var/log/monokit.log
+          exit 1
+        fi
