@@ -35,7 +35,8 @@ jobs:
       #  run: tests/redmine/issue/update.sh
       
       - name: close.sh
-        run: if ! sudo bash -xe tests/redmine/issue/close.sh; then
-          cat /var/log/monokit.log
-          exit 1
-        fi
+        run: |
+          if ! sudo bash -xe tests/redmine/issue/close.sh; then
+            cat /var/log/monokit.log
+            exit 1
+          fi
