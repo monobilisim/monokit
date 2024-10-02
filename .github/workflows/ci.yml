@@ -1,0 +1,31 @@
+name: CI
+
+on:
+  push:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@main
+        with:
+          fetch-depth: 0
+          
+      - run: git fetch --force --tags
+      - uses: actions/setup-go@main
+        with:
+          go-version: stable
+      
+      - run: ./build.sh
+
+      - name: Create required instances
+        run: tests/init.sh
+
+      - name: create.sh
+        run: tests/redmine/issue/create.sh
+
+      #- name: update.sh
+      #  run: tests/redmine/issue/update.sh
+      
+      - name: close.sh
+        run: tests/redmine/issue/close.sh
