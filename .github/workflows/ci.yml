@@ -22,7 +22,7 @@ jobs:
         env:
           REDMINE_TEST_API_KEY: ${{ secrets.REDMINE_TEST_API_KEY }}
           REDMINE_TEST_SQL_DUMP: ${{ secrets.REDMINE_TEST_SQL_DUMP }}
-        run: sudo tests/init.sh
+        run: tests/init.sh
 
       - name: create.sh
         run: sudo tests/redmine/issue/create.sh

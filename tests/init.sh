@@ -15,7 +15,7 @@ docker compose up -d
 
 mkdir -p /etc/mono
 
-cat << EOF > /etc/mono/global.yaml
+cat << EOF | sudo tee /etc/mono/global.yaml
 identifier: ci
 
 alarm:
@@ -27,6 +27,6 @@ redmine:
   url: "http://localhost:8080"
 EOF
 
-echo "  api_key: $REDMINE_TEST_API_KEY" >> /etc/mono/global.yaml
+echo "  api_key: $REDMINE_TEST_API_KEY" | sudo tee -a /etc/mono/global.yaml
 
-cp ../config/os.yml /etc/mono/os.yml
+sudo cp ../config/os.yml /etc/mono/os.yml
