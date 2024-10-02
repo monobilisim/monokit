@@ -8,8 +8,16 @@ import (
 )
 
 func LogInit() {
-    logrus.SetFormatter(&logrus.JSONFormatter{})
-    
+
+    logrus.SetReportCaller(true)
+    logrus.SetFormatter(&log.JSONFormatter{                                             
+            CallerPrettyfier: func(frame *runtime.Frame) (function string, file string) {                                                     
+            fileName := path.Base(frame.File) + ":" + strconv.Itoa(frame.Line)       
+            //return frame.Function, fileName                                        
+            return "", fileName                                                      
+        },                                                                           
+    })
+
     logFile, err := os.OpenFile("/var/log/monokit.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
     if err != nil {
         panic(err)
