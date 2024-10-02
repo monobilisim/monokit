@@ -57,9 +57,11 @@ func redmineCheckIssueLog(service string) bool {
             }
             return false
         }
-
+        
         return true
     }
+
+    return false
 }
 
 func redmineWrapper(service string, subject string, message string) {

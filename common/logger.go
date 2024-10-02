@@ -3,6 +3,8 @@ package common
 import (
     "os"
     "fmt"
+    "path"
+    "runtime"
     "strconv"
     "github.com/sirupsen/logrus"
 )
@@ -10,7 +12,7 @@ import (
 func LogInit() {
 
     logrus.SetReportCaller(true)
-    logrus.SetFormatter(&log.JSONFormatter{                                             
+    logrus.SetFormatter(&logrus.JSONFormatter{                                             
             CallerPrettyfier: func(frame *runtime.Frame) (function string, file string) {                                                     
             fileName := path.Base(frame.File) + ":" + strconv.Itoa(frame.Line)       
             //return frame.Function, fileName                                        
