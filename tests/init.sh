@@ -9,7 +9,9 @@ echo "$REDMINE_TEST_SQL_DUMP" | base64 -d | gzip -d > /tmp/redmine_test.sql
 
 sleep 10 # wait for db to start
 
-docker compose exec -it db mysql -uroot -pexample redmine -e "$(cat /tmp/redmine_test.sql)"
+docker compose exec -it db mysql -u root -pexample redmine < /tmp/redmine_test.sql
+
+docker compose exec -it db mysql -u root -pexample redmine -e "SELECT * FROM projects;"
 
 docker compose down
 
