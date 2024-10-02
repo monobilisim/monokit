@@ -20,6 +20,10 @@ jobs:
 
       - name: Create required instances
         run: tests/init.sh
+        with:
+          env:
+            REDMINE_TEST_API_KEY: ${{ secrets.REDMINE_TEST_API_KEY }}
+            REDMINE_TEST_SQL_DUMP: ${{ secrets.REDMINE_TEST_SQL_DUMP }}
 
       - name: create.sh
         run: tests/redmine/issue/create.sh
