@@ -23,7 +23,29 @@ func RedisInit() {
         DB: 0,
         MaxRetries: 5,
     })
+
+    ping, pingerr := rdb.Ping(ctx).Result()
+
+    if pingerr != nil {
+        rdb = redis.NewClient(&redis.Options{
+            Addr: "localhost:" + RedisHealthConfig.Port,
+            Password: RedisHealthConfig.Password,
+            DB: 0,
+            MaxRetries: 5,
+        })
+
+        ping, pingerr = rdb.Ping(ctx).Result()
+    }
     
+    if ping != "PONG" || pingerr != nil {
+        common.LogError("Error while trying to ping Redis: " + pingerr.Error() + "\n" + "Tried ports: " + fmt.Sprint(common.ConnsByProc("redis-server")) + " and " + RedisHealthConfig.Port)
+        common.PrettyPrintStr("Redis", false, "pingable")
+        common.AlarmCheckDown("redis_ping", "Trying to ping Redis failed")
+    } else {
+        common.PrettyPrintStr("Redis", true, "pingable")
+        common.AlarmCheckUp("redis_ping", "Redis is pingable again")
+    }
+
     ctx = context.Background()
 }
 
@@ -136,26 +158,6 @@ func RedisIsMaster() bool {
     return false
 
 }
-
-func RedisPing() {
-    // Check PING
-    ping, err := rdb.Ping(ctx).Result()
-
-    if err != nil {
-        common.LogError("Error while trying to ping Redis: " + err.Error())
-        common.PrettyPrintStr("Redis", false, "pingable")
-        common.AlarmCheckDown("redis_ping", "Trying to ping Redis failed, Error;\n```\n" + err.Error() + "\n```")
-    }
-
-    if ping != "PONG" {
-        common.PrettyPrintStr("Redis", false, "pingable")
-        common.AlarmCheckDown("redis_ping", "Trying to ping Redis failed")
-    } else {
-        common.PrettyPrintStr("Redis", true, "pingable")
-        common.AlarmCheckUp("redis_ping", "Redis is pingable again")
-    }
-}
-
 
 func RedisReadWriteTest(isSentinel bool) {
     err := rdb.Set(ctx, "redisHealth_foo", "bar", 0).Err()

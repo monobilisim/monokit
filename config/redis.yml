@@ -1,2 +1,3 @@
 slave_count: 3
 password: "Test"
+port: 6379

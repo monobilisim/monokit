@@ -10,6 +10,7 @@ import (
 
 
 var RedisHealthConfig struct {
+    Port     string
     Password string
     Slave_count int
 }
@@ -21,15 +22,17 @@ func Main(cmd *cobra.Command, args []string) {
     common.Init()
     common.ConfInit("redis", &RedisHealthConfig)
 
-    RedisInit()
+    if RedisHealthConfig.Port == "" {
+        RedisHealthConfig.Port = "6379"
+    }
 
     fmt.Println("Redis Health - v" + version + " - " + time.Now().Format("2006-01-02 15:04:05"))
 
     common.SplitSection("Main")
+    
+    RedisInit()
 
     RedisMaster = RedisIsMaster()
-
-    RedisPing()
 
     if common.SystemdUnitActive("redis.service") == false && common.SystemdUnitActive("redis-server.service") == false {
         common.PrettyPrintStr("Service redis-server", false, "active")
