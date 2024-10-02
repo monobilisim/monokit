@@ -10,11 +10,7 @@ jobs:
       - uses: actions/checkout@main
         with:
           fetch-depth: 0
-      
-      - name: Setup tmate session
-        if: ${{ failure() }}
-        uses: mxschmitt/action-tmate@v3
-    
+   
       - run: git fetch --force --tags
       - uses: actions/setup-go@main
         with:
@@ -44,4 +40,8 @@ jobs:
             cat /var/log/monokit.log
             exit 1
           fi
+
+      - name: Setup tmate session
+        if: ${{ failure() }}
+        uses: mxschmitt/action-tmate@v3
 
