@@ -31,4 +31,6 @@ EOF
 
 echo "  api_key: $REDMINE_TEST_API_KEY" | sudo tee -a /etc/mono/global.yaml
 
+cat /etc/mono/global.yaml
+
 sudo cp ../config/os.yml /etc/mono/os.yml
