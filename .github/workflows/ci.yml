@@ -25,10 +25,10 @@ jobs:
         run: tests/init.sh
 
       - name: create.sh
-        run: sudo tests/redmine/issue/create.sh
+        run: sudo bash -xe tests/redmine/issue/create.sh
 
       #- name: update.sh
       #  run: tests/redmine/issue/update.sh
       
       - name: close.sh
-        run: sudo tests/redmine/issue/close.sh
+        run: sudo bash -xe tests/redmine/issue/close.sh
