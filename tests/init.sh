@@ -7,7 +7,7 @@ docker compose up db -d
 
 echo "$REDMINE_TEST_SQL_DUMP" | base64 -d | gzip -d > /tmp/redmine_test.sql
 
-docker compose exec db mysql -u root -pexample -e "$(cat /tmp/redmine_test.sql)"
+docker compose exec -it db mysql -uroot -pexample -e "$(cat /tmp/redmine_test.sql)"
 
 docker compose up -d
 
