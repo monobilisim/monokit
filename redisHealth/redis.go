@@ -23,6 +23,8 @@ func RedisInit() {
         DB: 0,
         MaxRetries: 5,
     })
+    
+    ctx = context.Background()
 
     ping, pingerr := rdb.Ping(ctx).Result()
 
@@ -45,8 +47,6 @@ func RedisInit() {
         common.PrettyPrintStr("Redis", true, "pingable")
         common.AlarmCheckUp("redis_ping", "Redis is pingable again")
     }
-
-    ctx = context.Background()
 }
 
 func RedisSlaveCountChange() {
