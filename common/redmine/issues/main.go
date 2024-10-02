@@ -28,7 +28,7 @@ type RedmineIssue struct {
     Issue Issue `json:"issue"`
 }
 
-func redmineCheckIssueLog(service string) {
+func redmineCheckIssueLog(service string) bool {
     serviceReplaced := strings.Replace(service, "/", "-", -1)
     filePath := common.TmpDir + "/" + serviceReplaced + "-redmine.log"
     
@@ -40,7 +40,7 @@ func redmineCheckIssueLog(service string) {
             if err != nil {
                 common.LogError("os.Remove error: " + err.Error())
             }
-            return
+            return false
         }
 
         // Check if file is 0, if so delete the file and return
@@ -55,16 +55,16 @@ func redmineCheckIssueLog(service string) {
             if err != nil {
                 common.LogError("os.Remove error: " + err.Error())
             }
+            return false
         }
+
+        return true
     }
 }
 
 func redmineWrapper(service string, subject string, message string) {
     
-    redmineCheckIssueLog(service)
-
-    // Create issue if it does not exist, otherwise update it
-    if Show(service) == "" {
+    if redmineCheckIssueLog(service) == false {
         Create(service, subject, message)
     } else {
         Update(service, message, true)
@@ -223,7 +223,9 @@ func Create(service string, subject string, message string) {
         return
     }
     
-    redmineCheckIssueLog(service)
+    if redmineCheckIssueLog(service) == true {
+        return
+    }
 
     var priorityId int
     var projectId string
@@ -396,8 +398,9 @@ func Update(service string, message string, checkNote bool) {
     serviceReplaced := strings.Replace(service, "/", "-", -1)
     filePath := common.TmpDir + "/" + serviceReplaced + "-redmine.log"
     
-    
-    redmineCheckIssueLog(service)
+    if redmineCheckIssueLog(service) == false {
+        return
+    }
 
     // read file
     file, err := os.ReadFile(filePath)
@@ -467,7 +470,9 @@ func Close(service string, message string) {
         return
     }
     
-    redmineCheckIssueLog(service)
+    if redmineCheckIssueLog(service) == false {
+        return
+    }
 
     // read file
     file, err := os.ReadFile(filePath)
@@ -537,7 +542,9 @@ func Show(service string) string {
     serviceReplaced := strings.Replace(service, "/", "-", -1)
     filePath := common.TmpDir + "/" + serviceReplaced + "-redmine.log"
 
-    redmineCheckIssueLog(service)
+    if redmineCheckIssueLog(service) == false {
+        return ""
+    }
 
     // read file
     file, err := os.ReadFile(filePath)
