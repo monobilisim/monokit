@@ -24,23 +24,37 @@ jobs:
           REDMINE_TEST_SQL_DUMP: ${{ secrets.REDMINE_TEST_SQL_DUMP }}
         run: tests/init.sh
 
-      - name: create.sh
+      - name: issue/create.sh
         run: |
           if ! sudo bash -xe tests/redmine/issue/create.sh; then
             cat /var/log/monokit.log
             exit 1
           fi
 
-      - name: update.sh
+      - name: issue/update.sh
         run: |
           if ! sudo bash -xe tests/redmine/issue/update.sh; then
             cat /var/log/monokit.log
             exit 1
           fi
 
-      - name: close.sh
+      - name: issue/close.sh
         run: |
           if ! sudo bash -xe tests/redmine/issue/close.sh; then
+            cat /var/log/monokit.log
+            exit 1
+          fi
+
+      - name: news/create.sh
+        run: |
+          if ! sudo bash -xe tests/redmine/news/create.sh; then
+            cat /var/log/monokit.log
+            exit 1
+          fi
+
+      - name: news/delete.sh
+        run: |
+          if ! sudo bash -xe tests/redmine/news/delete.sh; then
             cat /var/log/monokit.log
             exit 1
           fi
