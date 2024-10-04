@@ -17,7 +17,7 @@ sleep 60
 ./bin/monokit osHealth
 
 # Check if Redmine issue is created
-ISSUE_ID="$(./bin/monokit redmine issue show -s disk)"
+ISSUE_ID="$(cat /tmp/mono/osHealth/disk-redmine.log || true)"
 
 if [ -z "$ISSUE_ID" ]; then
   echo "Redmine issue is not created"
@@ -31,7 +31,7 @@ sed -i 's/part_use_limit: 1/part_use_limit: 90/g' /etc/mono/os.yml
 ./bin/monokit osHealth
 
 # Check if Redmine issue is closed
-ISSUE_ID="$(./bin/monokit redmine issue show -s disk)"
+ISSUE_ID="$(cat /tmp/mono/osHealth/disk-redmine.log || true)"
 
 if [ -n "$ISSUE_ID" ]; then
   echo "Redmine issue is not closed"
