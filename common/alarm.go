@@ -59,8 +59,38 @@ func AlarmCheckUp(service string, message string) {
     file_path := TmpDir + "/" + serviceReplaced + ".log"
     messageFinal := "[" + ScriptName + " - " + Config.Identifier + "] [:check:] " + message
     
-    // Check if the file exists, send alarm and remove file if it does
-    if _, err := os.Stat(file_path); err == nil {
+    if _, err := os.Stat(file_path); os.IsNotExist(err) {
+        return
+    }
+
+    // Open file and load the JSON
+    file, err := os.OpenFile(file_path, os.O_RDONLY, 0644)
+    defer file.Close()
+
+    if err != nil {
+        LogError("Error opening file for writing: \n" + err.Error())
+    }
+
+    var j ServiceFile
+
+    fileRead, err := io.ReadAll(file)
+
+    if err != nil {
+        LogError("Error reading file: \n" + err.Error())
+        return
+    }
+
+    err = json.Unmarshal(fileRead, &j)
+
+    if err != nil {
+        LogError("Error parsing JSON: \n" + err.Error())
+        return
+    }
+
+    if j.Locked == false {
+        os.Remove(file_path)
+        return
+    } else {
         os.Remove(file_path)
         Alarm(messageFinal)
     }
