@@ -26,6 +26,7 @@ alarm:
     enabled: false
 
 redmine:
+  enabled: true
   interval: 1
   project_id: test-project
   url: "http://localhost:8080"
