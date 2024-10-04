@@ -16,3 +16,5 @@ services:
     environment:
       MYSQL_ROOT_PASSWORD: example
       MYSQL_DATABASE: redmine
+    volumes:
+      - db-data:/var/lib/mysql
