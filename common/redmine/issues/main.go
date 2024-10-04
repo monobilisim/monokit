@@ -504,13 +504,15 @@ func getAssignedToId(id string) string {
         return ""
     }
 
-    info, err := strconv.Itoa(int(data["issue"].(map[string]interface{})["assigned_to"].(map[string]interface{})["id"].(float64)))
 
-    if err != nil {
-        return "" // just means that the issue is assigned to nobody
+    // Check if id exists
+
+    if data["issue"].(map[string]interface{})["assigned_to"] == nil {
+        return ""
     }
 
-    return info
+
+    return strconv.Itoa(int(data["issue"].(map[string]interface{})["assigned_to"].(map[string]interface{})["id"].(float64)))
 }
 
 
