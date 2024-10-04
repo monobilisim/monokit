@@ -9,6 +9,9 @@ echo "$REDMINE_TEST_SQL_DUMP" | base64 -d | gzip -d > /tmp/redmine_test.sql
 
 sleep 10 # wait for db to start
 
+# delete existing database
+docker compose exec -it db mysql -u root -pexample -e "DROP DATABASE IF EXISTS redmine;"
+
 docker compose exec -it db mysql -u root -pexample -e "CREATE DATABASE redmine;"
 
 docker compose exec -it db mysql -u root -pexample redmine < /tmp/redmine_test.sql
