@@ -459,6 +459,55 @@ func Update(service string, message string, checkNote bool) {
     defer resp.Body.Close()
 }
 
+
+func getAssignedToId(id string) string {
+
+    // Make request to Redmine API to get the assigned_to_id
+    redmineUrlFinal := common.Config.Redmine.Url + "/issues/" + id + ".json"
+
+    req, err := http.NewRequest("GET", redmineUrlFinal, nil)
+   
+    if err != nil {
+        common.LogError("http.NewRequest error: " + err.Error())
+    }
+
+    req.Header.Set("Content-Type", "application/json")
+    req.Header.Set("X-Redmine-API-Key", common.Config.Redmine.Api_key)
+
+    client := &http.Client{
+        Timeout: time.Second * 10,
+    }
+
+    resp, err := client.Do(req)
+
+    if err != nil {
+        common.LogError("client.Do error: " + err.Error() + "\n" + "Redmine URL: " + redmineUrlFinal)
+        return ""
+    }
+
+    defer resp.Body.Close()
+
+    // read response and get assigned_to_id
+    var data map[string]interface{}
+
+    err = json.NewDecoder(resp.Body).Decode(&data)
+
+    if err != nil {
+        common.LogError("json.NewDecoder error: " + err.Error())
+    }
+
+    // If not 200, log error
+
+    if resp.StatusCode != 200 {
+        // Unmarshal the response body
+        common.LogError("Redmine API returned status code " + strconv.Itoa(resp.StatusCode) + " instead of 200\n" + "Redmine URL: " + redmineUrlFinal)
+        return ""
+    }
+
+    return strconv.Itoa(int(data["issue"].(map[string]interface{})["assigned_to"].(map[string]interface{})["id"].(float64)))
+}
+
+
 func Close(service string, message string) {
     if common.Config.Redmine.Enabled == false {
         return
@@ -497,8 +546,14 @@ func Close(service string, message string) {
         return
     }
 
+    assignedToId := getAssignedToId(string(file))
+
+    if assignedToId == "" {
+        assignedToId = "me"
+    }
+
     // update issue
-    body := RedmineIssue{Issue: Issue{Id: issueId, Notes: message, StatusId: 5, AssignedToId: "me"}}
+    body := RedmineIssue{Issue: Issue{Id: issueId, Notes: message, StatusId: 5, AssignedToId: assignedToId}}
     jsonBody, err := json.Marshal(body)
 
     if err != nil {
