@@ -45,6 +45,20 @@ jobs:
             exit 1
           fi
 
+      - name: issue/down.sh
+        run: |
+          if ! sudo bash -xe tests/redmine/issue/down.sh; then
+            cat /var/log/monokit.log
+            exit 1
+          fi
+
+      - name: issue/up.sh
+        run: |
+          if ! sudo bash -xe tests/redmine/issue/up.sh; then
+            cat /var/log/monokit.log
+            exit 1
+          fi
+
       - name: news/create.sh
         run: |
           if ! sudo bash -xe tests/redmine/news/create.sh; then
