@@ -8,9 +8,9 @@ if [ "$ISSUE_ID" = "0" ] || [ -z "$ISSUE_ID" ]; then
   exit 1
 fi
 
-./bin/monokit issue close --service test --message test
+./bin/monokit redmine issue close --service test --message test
 
-if ./bin/monokit issue exists -j test; then
+if ./bin/monokit redmine issue exists -j test; then
   echo "Issue not closed"
   exit 1
 fi
