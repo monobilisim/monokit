@@ -125,6 +125,15 @@ func main() {
 	issues.CheckDownCmd.MarkFlagRequired("service")
 	issues.CheckDownCmd.MarkFlagRequired("message")
 
+    // issues.ExistsNoteCmd
+    issues.IssueCmd.AddCommand(issues.ExistsNoteCmd)
+
+    issues.ExistsNoteCmd.Flags().StringP("service", "s", "", "Service Name")
+    issues.ExistsNoteCmd.Flags().StringP("note", "n", "", "Note")
+
+    issues.ExistsNoteCmd.MarkFlagRequired("service")
+    issues.ExistsNoteCmd.MarkFlagRequired("note")
+
     // news.CreateCmd
     news.NewsCmd.AddCommand(news.CreateCmd)
 

@@ -24,6 +24,23 @@ var CreateCmd = &cobra.Command{
     },
 }
 
+var ExistsNoteCmd = &cobra.Command{
+    Use: "existsNote",
+    Short: "Check if an issue comment has already been created",
+    Run: func(cmd *cobra.Command, args []string) {
+        common.Init()
+        service, _ := cmd.Flags().GetString("service")
+        note, _ := cmd.Flags().GetString("note")
+        exists := ExistsNote(service, note)
+        
+        if exists == true {
+            os.Exit(0)
+        } else {
+            os.Exit(1)
+        }
+    },
+}
+
 var UpdateCmd = &cobra.Command{
     Use:   "update",
     Short: "Update an existing issue in Redmine",
