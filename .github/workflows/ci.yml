@@ -72,3 +72,10 @@ jobs:
             cat /var/log/monokit.log
             exit 1
           fi
+
+      - name: health/osHealth/redmine.sh
+        run: |
+          if ! sudo bash -xe tests/health/osHealth/redmine.sh; then
+            cat /var/log/monokit.log
+            exit 1
+          fi
