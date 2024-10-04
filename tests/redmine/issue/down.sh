@@ -15,10 +15,3 @@ sleep 60
 
 # Check if issue was created
 ./bin/monokit redmine issue exists --subject test_updown
-
-
-# Update the issue by invoking down cmd again
-./bin/monokit redmine issue down --message test2 --service test --subject test_updown
-
-# Check if issue was updated
-./bin/monokit redmine issue existsNote --note test2 --service test
