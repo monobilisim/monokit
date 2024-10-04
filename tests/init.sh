@@ -3,11 +3,13 @@ set -e
 
 cd tests 
 
-docker compose up -d
+docker compose up db -d
 
 echo "$REDMINE_TEST_SQL_DUMP" | base64 -d | gzip -d > /tmp/redmine_test.sql
 
 sleep 10 # wait for db to start
+
+docker compose exec -it db mysql -u root -pexample -e "CREATE DATABASE redmine;"
 
 docker compose exec -it db mysql -u root -pexample redmine < /tmp/redmine_test.sql
 
