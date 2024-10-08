@@ -29,6 +29,10 @@
 
 ## Tools
 
+- mysqlHealth
+  - Checks MySQL health, including read and write operations.
+  - Sends alarm notifications to a Slack webhook.
+  - Config: `/etc/mono/db.yaml`
 
 - redisHealth
   - Checks Redis health, including read and write operations.

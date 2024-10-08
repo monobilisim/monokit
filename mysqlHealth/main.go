@@ -18,5 +18,23 @@ func Main(cmd *cobra.Command, args []string) {
     common.ConfInit("db", &DbHealthConfig)
 
     fmt.Println("MySQL Health Check REWRITE - v" + version + " - " + time.Now().Format("2006-01-02 15:04:05"))
-    
+   
+    Connect()
+
+    common.SplitSection("MySQL Access:")
+
+    SelectNow()
+
+
+    common.SplitSection("Number of Processes:")
+
+    CheckProcessCount()
+
+    if DbHealthConfig.Mysql.Cluster.Enabled == true {
+        common.SplitSection("Cluster Status:")
+        //InaccessibleClusters()
+        //CheckClusterStatus()
+        //CheckNodeStatus()
+        //CheckClusterSynced()
+    }
 }

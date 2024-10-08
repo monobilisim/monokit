@@ -18,10 +18,10 @@ func RamUsage() {
     ramLimit := OsHealthConfig.Ram_Limit
 
     if virtualMemory.UsedPercent > ramLimit {
-        common.PrettyPrint("RAM Usage", common.Fail + " more than " + strconv.FormatFloat(ramLimit, 'f', 0, 64) + "%", virtualMemory.UsedPercent, true, false)
+        common.PrettyPrint("RAM Usage", common.Fail + " more than " + strconv.FormatFloat(ramLimit, 'f', 0, 64) + "%", virtualMemory.UsedPercent, true, false, false, 0)
         common.AlarmCheckDown("ram", "RAM usage limit has exceeded " + strconv.FormatFloat(ramLimit, 'f', 0, 64) + "% (Current: " + strconv.FormatFloat(virtualMemory.UsedPercent, 'f', 0, 64) + "%)")
     } else {
-        common.PrettyPrint("RAM Usage", common.Green + " less than " + strconv.FormatFloat(ramLimit, 'f', 0, 64) + "%", virtualMemory.UsedPercent, true, false)
+        common.PrettyPrint("RAM Usage", common.Green + " less than " + strconv.FormatFloat(ramLimit, 'f', 0, 64) + "%", virtualMemory.UsedPercent, true, false, false, 0)
         common.AlarmCheckUp("ram", "RAM usage went below " + strconv.FormatFloat(ramLimit, 'f', 0, 64) + "% (Current: " + strconv.FormatFloat(virtualMemory.UsedPercent, 'f', 0, 64) + "%)")
     }
 }

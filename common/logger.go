@@ -50,9 +50,10 @@ func PrettyPrintStr(name string, lessOrMore bool, value string) {
     fmt.Println(Blue + name + Reset + " is " + not + color + value + Reset)
 }
 
-func PrettyPrint(name string, lessOrMore string, value float64, hasPercentage bool, wantFloat bool) {
+func PrettyPrint(name string, lessOrMore string, value float64, hasPercentage bool, wantFloat bool, enableLimit bool, limit float64) {
     var par string
     var floatDepth int
+    var final string
 
     if hasPercentage {
         par = "%)"
@@ -65,6 +66,21 @@ func PrettyPrint(name string, lessOrMore string, value float64, hasPercentage bo
     } else {
         floatDepth = 0
     }
+    
+    final = Blue + name + Reset 
+    
+    if enableLimit == false {
+        final = final + " is " + lessOrMore + " (" + strconv.FormatFloat(value, 'f', floatDepth, 64) + par + Reset
+    } else {
+        final = final + " " + lessOrMore
+        if limit > value {
+            final = final + Green
+        } else {
+            final = final + Fail
+        }
 
-    fmt.Println(Blue + name + Reset + " is " + lessOrMore + " (" + strconv.FormatFloat(value, 'f', floatDepth, 64) + par + Reset)
-}
+        final = final + strconv.FormatFloat(value, 'f', floatDepth, 64) + "/" + strconv.FormatFloat(limit, 'f', 0, 64) + Reset 
+    }
+
+    fmt.Println(final)
+}   

@@ -25,8 +25,8 @@ func SysLoad() {
     }
 
     if loadAvg.Load1 > loadLimit {
-        common.PrettyPrint("System Load", common.Fail + " more than " + strconv.FormatFloat(loadLimit, 'f', 2, 64) + "%", loadAvg.Load1, false, true)
+        common.PrettyPrint("System Load", common.Fail + " more than " + strconv.FormatFloat(loadLimit, 'f', 2, 64) + "%", loadAvg.Load1, false, true, false, 0)
     } else {
-        common.PrettyPrint("System Load", common.Green + " less than " + strconv.FormatFloat(loadLimit, 'f', 2, 64) + "%", loadAvg.Load1, false, true)
+        common.PrettyPrint("System Load", common.Green + " less than " + strconv.FormatFloat(loadLimit, 'f', 2, 64) + "%", loadAvg.Load1, false, true, false, 0)
     }
 }
