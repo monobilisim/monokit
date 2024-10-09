@@ -32,9 +32,9 @@ func Main(cmd *cobra.Command, args []string) {
 
     if DbHealthConfig.Mysql.Cluster.Enabled == true {
         common.SplitSection("Cluster Status:")
-        //InaccessibleClusters()
-        //CheckClusterStatus()
-        //CheckNodeStatus()
-        //CheckClusterSynced()
+        InaccessibleClusters()
+        CheckClusterStatus()
+        CheckNodeStatus()
+        CheckClusterSynced()
     }
 }

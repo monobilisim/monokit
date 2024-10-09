@@ -74,3 +74,23 @@ func Init() {
     LogInit()
     ConfInit("global", &Config)
 }
+
+func WriteToFile(filename string, data string) error {
+        file, err := os.Create(filename)
+        if err != nil {
+                return err
+        }
+        defer file.Close()
+
+        _, err = file.WriteString(data)
+        return err
+}
+
+func IsInArray(a string, list []string) bool {
+    for _, b := range list {
+        if b == a {
+            return true
+        }
+    }
+    return false
+}

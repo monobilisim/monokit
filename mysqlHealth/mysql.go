@@ -3,12 +3,14 @@ package mysqlHealth
 import (
     "os"
     "fmt"
+    "regexp"
     "os/exec"
     "strings"
     "database/sql"
     "github.com/go-ini/ini"
-    "github.com/monobilisim/monokit/common"
     _ "github.com/go-sql-driver/mysql"
+    "github.com/monobilisim/monokit/common"
+    issues "github.com/monobilisim/monokit/common/redmine/issues"
 )
 
 var Connection *sql.DB
@@ -145,5 +147,160 @@ func CheckProcessCount() {
     } else {
         common.AlarmCheckUp("processcount", "Number of MySQL processes is under the limit")
         common.PrettyPrint("Number of Processes", "", float64(count), false, false, true, float64(DbHealthConfig.Mysql.Process_limit))
+    }
+}
+
+func InaccessibleClusters() {
+    rows := Connection.QueryRow("SHOW STATUS WHERE Variable_name = 'wsrep_incoming_addresses'")
+
+    var ignored string
+    var listening_clusters string
+    var listening_clusters_array []string
+
+    if err := rows.Scan(&ignored, &listening_clusters); err != nil {
+        common.LogError("Error querying database: " + err.Error())
+        return
+    }
+
+    listening_clusters_array = strings.Split(listening_clusters, ",")
+
+    if len(listening_clusters_array) == 0 {
+        return
+    }
+
+    // Check if common.TmpDir + /cluster_nodes exists
+    if _, err := os.Stat(common.TmpDir + "/cluster_nodes"); err == nil { 
+        // If it exists, read the file and compare the contents
+        file, err := os.Open(common.TmpDir + "/cluster_nodes")
+        if err != nil {
+            common.LogError("Error opening file: " + err.Error())
+            return
+        }
+        // Split it and make it into an array
+        file_contents := make([]byte, 1024)
+        count, err := file.Read(file_contents)
+        if err != nil {
+            common.LogError("Error reading file: " + err.Error())
+            return
+        }
+
+        file.Close()
+
+        file_contents_array := strings.Split(string(file_contents[:count]), ",")
+
+        // Compare the two arrays
+        for _, cluster := range file_contents_array {
+            if common.IsInArray(cluster, listening_clusters_array) {
+                common.AlarmCheckUp(cluster, "Node " + cluster + " is back in cluster.")
+            } else {
+                common.AlarmCheckDown(cluster, "Node " + cluster + " is no longer in the cluster.")
+            }
+        }
+    }
+
+    // Create a file with the cluster nodes
+    common.WriteToFile(common.TmpDir + "/cluster_nodes", listening_clusters)
+    
+}
+
+func CheckClusterStatus() {
+    rows := Connection.QueryRow("SHOW STATUS WHERE Variable_name = 'wsrep_cluster_size'")
+
+    var ignored string
+    var cluster_size int
+    var identifierRedmine string
+
+    // Split the identifier into two parts using a hyphen
+	identifierParts := strings.Split(common.Config.Identifier, "-")
+	if len(identifierParts) >= 2 {
+		identifierRedmine = strings.Join(identifierParts[:2], "-")
+
+		// Check if the identifier is the same as the first two parts
+		if common.Config.Identifier == identifierRedmine {
+			// Remove all numbers from the end of the string
+			re := regexp.MustCompile("[0-9]*$")
+			identifierRedmine = re.ReplaceAllString(identifierRedmine, "")
+		}
+
+	}
+
+    if err := rows.Scan(&ignored, &cluster_size); err != nil {
+        common.LogError("Error querying database: " + err.Error())
+        return
+    }
+    
+    var varname string
+    var value string
+    rows = Connection.QueryRow("SHOW STATUS WHERE Variable_name = 'wsrep_cluster_size'")
+
+    if err := rows.Scan(&varname, &value); err != nil {
+        common.LogError("Error querying database: " + err.Error())
+        return
+    }
+
+    if cluster_size == DbHealthConfig.Mysql.Cluster.Size {
+        common.AlarmCheckUp("cluster_size", "Cluster size is accurate: " + fmt.Sprintf("%d", cluster_size) + "/" + fmt.Sprintf("%d", DbHealthConfig.Mysql.Cluster.Size))
+        issues.CheckUp("cluster-size", "MySQL Cluster boyutu: " + string(cluster_size) + " - " + common.Config.Identifier + "\n`" + varname + ": " + value + "`")
+        common.PrettyPrint("Cluster Size", "", float64(cluster_size), false, false, true, float64(DbHealthConfig.Mysql.Cluster.Size))
+    } else if cluster_size == 0 {
+        common.AlarmCheckDown("cluster_size", "Couldn't get cluster size")
+        common.PrettyPrintStr("Cluster Size", true, "Unknown")
+        issues.Update("cluster-size", "`SHOW STATUS WHERE Variable_name = 'wsrep_cluster_size'` sorgusunda cluster boyutu alınamadı.", true)
+    } else {
+        common.AlarmCheckDown("cluster_size", "Cluster size is not accurate: " + fmt.Sprintf("%d", cluster_size) + "/" + fmt.Sprintf("%d", DbHealthConfig.Mysql.Cluster.Size))
+        issues.Update("cluster-size", "MySQL Cluster boyutu: " + string(cluster_size) + " - " + common.Config.Identifier + "\n`" + varname + ": " + value + "`", true)
+        common.PrettyPrint("Cluster Size", "", float64(cluster_size), false, false, true, float64(DbHealthConfig.Mysql.Cluster.Size))
+    }
+
+
+    if cluster_size == 1 || cluster_size > DbHealthConfig.Mysql.Cluster.Size {
+        //issues.CheckExists("cluster-size", "MySQL Cluster boyutu: " + cluster_size + " - " + identifierRedmine)
+        issues.CheckDown("cluster-size", "MySQL Cluster boyutu: " + string(cluster_size) + " - " + identifierRedmine, "MySQL Cluster boyutu: " + string(cluster_size) + " - " + common.Config.Identifier + "\n`" + varname + ": " + value + "`")
+    }
+}
+
+func CheckNodeStatus() {
+    rows := Connection.QueryRow("SHOW STATUS WHERE Variable_name = 'wsrep_ready'")
+
+    var name string
+    var status string
+
+    if err := rows.Scan(&name, &status); err != nil {
+        common.LogError("Error querying database: " + err.Error())
+        return
+    }
+
+    if name == "" && status == "" {
+        common.AlarmCheckDown("node_status", "Couldn't get node status")
+        common.PrettyPrintStr("Node Status", true, "Unknown")
+    } else if status == "ON" {
+        common.AlarmCheckUp("node_status", "Node status is 'ON'")
+        common.PrettyPrintStr("Node Status", true, "ON")
+    } else {
+        common.AlarmCheckDown("node_status", "Node status is '" + status + "'")
+        common.PrettyPrintStr("Node Status", false, "ON")
+    }
+}
+
+func CheckClusterSynced() {
+    rows := Connection.QueryRow("SHOW STATUS WHERE Variable_name = 'wsrep_local_state_comment'")
+    
+    var name string
+    var status string
+
+    if err := rows.Scan(&name, &status); err != nil {
+        common.LogError("Error querying database: " + err.Error())
+        return
+    }
+
+    if name == "" && status == "" {
+        common.AlarmCheckDown("cluster_synced", "Couldn't get cluster synced status")
+        common.PrettyPrintStr("Cluster sync state", true, "Unknown")
+    } else if status == "Synced" {
+        common.AlarmCheckUp("cluster_synced", "Cluster is synced")
+        common.PrettyPrintStr("Cluster sync state", true, "Synced")
+    } else {
+        common.AlarmCheckDown("cluster_synced", "Cluster is not synced, state: " + status)
+        common.PrettyPrintStr("Cluster sync state", false, "Synced")
     }
 }
