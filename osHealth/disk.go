@@ -32,10 +32,10 @@ func DiskUsage() {
         usage, _ := disk.Usage(partition.Mountpoint)
         
         if usage.UsedPercent > OsHealthConfig.Part_use_limit {
-            common.PrettyPrint("Disk usage at " + partition.Mountpoint, common.Fail + " more than " + strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64) + "%", usage.UsedPercent, true, false)
+            common.PrettyPrint("Disk usage at " + partition.Mountpoint, common.Fail + " more than " + strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64) + "%", usage.UsedPercent, true, false, false, 0)
             exceededParts = append(exceededParts, []string{strconv.FormatFloat(usage.UsedPercent, 'f', 0, 64), common.ConvertBytes(usage.Used), common.ConvertBytes(usage.Total), partition.Device, partition.Mountpoint})
         } else {
-            common.PrettyPrint("Disk usage at " + partition.Mountpoint, common.Green + " less than " + strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64) + "%", usage.UsedPercent, true, false)
+            common.PrettyPrint("Disk usage at " + partition.Mountpoint, common.Green + " less than " + strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64) + "%", usage.UsedPercent, true, false, false, 0)
         }
         allParts = append(allParts, []string{strconv.FormatFloat(usage.UsedPercent, 'f', 0, 64), common.ConvertBytes(usage.Used), common.ConvertBytes(usage.Total), partition.Device, partition.Mountpoint})
     }

@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/monobilisim/monokit/common"
 	"github.com/monobilisim/monokit/osHealth"
+	"github.com/monobilisim/monokit/mysqlHealth"
 	news "github.com/monobilisim/monokit/common/redmine/news"
 	issues "github.com/monobilisim/monokit/common/redmine/issues"
 )
@@ -22,6 +23,12 @@ func main() {
 		Short: "OS Health",
 		Run:   osHealth.Main,
 	}
+
+    var mysqlHealthCmd = &cobra.Command{
+        Use:   "mysqlHealth",
+        Short: "MySQL Health",
+        Run: mysqlHealth.Main,
+    }
 
     var redmineCmd = &cobra.Command{
         Use:   "redmine",
@@ -162,6 +169,9 @@ func main() {
 
 	/// OS Health
 	RootCmd.AddCommand(osHealthCmd)
+
+    /// MySQL Health
+	RootCmd.AddCommand(mysqlHealthCmd)
 
 	RedisCommandAdd()
 
