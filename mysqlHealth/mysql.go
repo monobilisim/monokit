@@ -304,3 +304,33 @@ func CheckClusterSynced() {
         common.PrettyPrintStr("Cluster sync state", false, "Synced")
     }
 }
+
+func CheckDB() {
+    cmd := exec.Command(mariadbOrMysql(), "--auto-repair", "--all-databases")
+    output, err := cmd.CombinedOutput()
+    if err != nil {
+        common.LogError("Error running " + mariadbOrMysql() + " command:" + err.Error())
+        return
+    }
+
+    lines := strings.Split(string(output), "\n")
+    tables := make([]string, 0)
+    repairingTables := false
+    for _, line := range lines {
+        if strings.Contains(line, "Repairing tables") {
+            repairingTables = true
+            continue
+        }
+        if repairingTables && !strings.HasPrefix(line, " ") {
+            tables = append(tables, line)
+        }
+    }
+
+    if len(tables) > 0 {
+        message := fmt.Sprintf("[MySQL - %s] [:info:] MySQL - `%s` result\n", common.Config.Identifier, mariadbOrMysql)
+        for _, table := range tables {
+            message += table + "\n"
+        }
+        common.Alarm(message)
+    }
+}
