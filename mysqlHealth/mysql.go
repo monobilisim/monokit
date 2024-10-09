@@ -87,6 +87,10 @@ func MyCnf(profile string) (string, error) {
         return fmt.Sprintf("%s:%s@unix(%s)/%s", user, password, socket, dbname), nil
     }
 
+    if port == "" {
+        port = "3306"
+    }
+
     return fmt.Sprintf("%s:%s@tcp(%s:%s)/%s", user, password, host, port, dbname), nil
 }
 
