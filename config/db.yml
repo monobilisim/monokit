@@ -1,0 +1,18 @@
+postgres:
+  limits:
+    process: 50
+    query: 25
+    conn_percent: 70
+  alarm:
+    enabled: true
+  leader_switch_hook: "echo 'leader switch'"
+
+mysql:
+  process_limit: 50
+  cluster: 
+    enabled: false
+    size: 3
+    check_table_day: "Sun"
+    check_table_hour: "05:00"
+  alarm:
+    enabled: true
