@@ -27,7 +27,8 @@ var AlarmCheckUpCmd = &cobra.Command{
         service, _ := cmd.Flags().GetString("service")
         message, _ := cmd.Flags().GetString("message")
         ScriptName, _ = cmd.Flags().GetString("scriptName")
-        AlarmCheckUp(service, message)
+        noInterval, _ := cmd.Flags().GetBool("noInterval")
+        AlarmCheckUp(service, message, noInterval)
     },
 }
 
@@ -39,7 +40,8 @@ var AlarmCheckDownCmd = &cobra.Command{
         service, _ := cmd.Flags().GetString("service")
         message, _ := cmd.Flags().GetString("message")
         ScriptName, _ = cmd.Flags().GetString("scriptName")
-        AlarmCheckDown(service, message)
+        noInterval, _ := cmd.Flags().GetBool("noInterval")
+        AlarmCheckDown(service, message, noInterval)
     },
 }
 
@@ -53,7 +55,7 @@ var AlarmSendCmd = &cobra.Command{
     },
 }
 
-func AlarmCheckUp(service string, message string) {
+func AlarmCheckUp(service string, message string, noInterval bool) {
     // Remove slashes from service and replace them with -
     serviceReplaced := strings.Replace(service, "/", "-", -1)
     file_path := TmpDir + "/" + serviceReplaced + ".log"
@@ -87,7 +89,7 @@ func AlarmCheckUp(service string, message string) {
         return
     }
 
-    if j.Locked == false {
+    if j.Locked == false && noInterval == false {
         os.Remove(file_path)
         return
     } else {
@@ -102,7 +104,7 @@ type ServiceFile struct {
 }
 
 
-func AlarmCheckDown(service string, message string) {
+func AlarmCheckDown(service string, message string, noInterval bool) {
     // Remove slashes from service and replace them with -
     serviceReplaced := strings.Replace(service, "/", "-", -1)
     filePath := TmpDir + "/" + serviceReplaced + ".log"
@@ -111,7 +113,7 @@ func AlarmCheckDown(service string, message string) {
     messageFinal := "[" + ScriptName + " - " + Config.Identifier + "] [:red_circle:] " + message
     
     // Check if the file exists
-    if _, err := os.Stat(filePath); err == nil {
+    if _, err := os.Stat(filePath); err == nil && noInterval == false {
         // Open file and load the JSON
         
         file, err := os.OpenFile(filePath, os.O_RDONLY, 0644)

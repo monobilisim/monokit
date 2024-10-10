@@ -25,10 +25,10 @@ func newRabbitMQClient() {
     rabbitmqClient, err = rabbithole.NewClient("http://localhost:15672", Config.User, Config.Password)
     if err != nil {
         common.PrettyPrintStr("Management API", false, "reachable")
-        common.AlarmCheckDown("rabbitmq_management_api", "Failed to create RabbitMQ client; \n```" + err.Error() + "\n```")
+        common.AlarmCheckDown("rabbitmq_management_api", "Failed to create RabbitMQ client; \n```" + err.Error() + "\n```", false)
     } else {
         common.PrettyPrintStr("Management API", true, "reachable")
-        common.AlarmCheckUp("rabbitmq_management_api", "RabbitMQ management API is now reachable")
+        common.AlarmCheckUp("rabbitmq_management_api", "RabbitMQ management API is now reachable", false)
     }
 }
 
@@ -36,10 +36,10 @@ func overviewCheck() {
     _, err := rabbitmqClient.Overview()
     if err != nil {
         common.PrettyPrintStr("Overview", false, "reachable")
-        common.AlarmCheckDown("rabbitmq_overview", "Failed to get RabbitMQ overview; \n```" + err.Error() + "\n```")
+        common.AlarmCheckDown("rabbitmq_overview", "Failed to get RabbitMQ overview; \n```" + err.Error() + "\n```", false)
     } else {
         common.PrettyPrintStr("Overview", true, "reachable")
-        common.AlarmCheckUp("rabbitmq_overview", "RabbitMQ overview is now reachable")
+        common.AlarmCheckUp("rabbitmq_overview", "RabbitMQ overview is now reachable", false)
     }
 }
 
@@ -48,10 +48,10 @@ func serviceCheck() {
 
     if common.SystemdUnitActive("rabbitmq-server.service") == false {
         common.PrettyPrintStr("rabbitmq-server", false, "active")
-        common.AlarmCheckDown("rabbitmq_server", "Service rabbitmq-server is not active")
+        common.AlarmCheckDown("rabbitmq_server", "Service rabbitmq-server is not active", false)
     } else {
         common.PrettyPrintStr("rabbitmq-server", true, "active")
-        common.AlarmCheckUp("rabbitmq_server", "Service rabbitmq-server is now active")
+        common.AlarmCheckUp("rabbitmq_server", "Service rabbitmq-server is now active", false)
     }
 }
 
@@ -62,19 +62,19 @@ func clusterCheck() {
 
     if err != nil {
         common.PrettyPrintStr("Node list", false, "reachable")
-        common.AlarmCheckDown("rabbitmq_nodelist", "Failed to get RabbitMQ cluster node list; \n```" + err.Error() + "\n```")
+        common.AlarmCheckDown("rabbitmq_nodelist", "Failed to get RabbitMQ cluster node list; \n```" + err.Error() + "\n```", false)
     } else {
         common.PrettyPrintStr("Node list", true, "reachable")
-        common.AlarmCheckUp("rabbitmq_nodelist", "RabbitMQ cluster node list is now reachable")
+        common.AlarmCheckUp("rabbitmq_nodelist", "RabbitMQ cluster node list is now reachable", false)
     }
 
     for _, node := range nodeList {
         if node.IsRunning {
             common.PrettyPrintStr("Node "+node.Name, true, "active")
-            common.AlarmCheckUp("rabbitmq_node_"+node.Name, "Node "+node.Name+" is now active")
+            common.AlarmCheckUp("rabbitmq_node_"+node.Name, "Node "+node.Name+" is now active", false)
         } else {
             common.PrettyPrintStr("Node "+node.Name, false, "active")
-            common.AlarmCheckDown("rabbitmq_node_"+node.Name, "Node "+node.Name+" is not active")
+            common.AlarmCheckDown("rabbitmq_node_"+node.Name, "Node "+node.Name+" is not active", false)
         }
     }
 }
@@ -117,12 +117,12 @@ func checkPort(port string) {
 	conn, err := net.DialTimeout("tcp", net.JoinHostPort("localhost", port), 5*time.Second)
 	if err != nil {
 		common.PrettyPrintStr("Port "+port, false, "active")
-		common.AlarmCheckDown("rabbitmq_port_"+port, "Port "+port+" is not active")
+		common.AlarmCheckDown("rabbitmq_port_"+port, "Port "+port+" is not active", false)
 		return
 	}
 	_ = conn.Close()
 	common.PrettyPrintStr("Port "+port, true, "active")
-	common.AlarmCheckUp("rabbitmq_port_"+port, "Port "+port+" is now active")
+	common.AlarmCheckUp("rabbitmq_port_"+port, "Port "+port+" is now active", false)
 }
 
 func checkEnabledPlugins() {
@@ -144,11 +144,11 @@ func checkEnabledPlugins() {
 	if found {
 		message := fmt.Sprintf("Found '%s' in file %s\n", searchString, filePath)
 		common.PrettyPrintStr("Management", true, "active")
-		common.AlarmCheckUp("rabbitmq_management", message)
+		common.AlarmCheckUp("rabbitmq_management", message, false)
 		checkPort("15672")
 	} else {
 		message := fmt.Sprintf("Did not find '%s' in file %s\n", searchString, filePath)
 		common.PrettyPrintStr("Management", false, "active")
-		common.AlarmCheckDown("rabbitmq_management", message)
+		common.AlarmCheckDown("rabbitmq_management", message, false)
 	}
 }

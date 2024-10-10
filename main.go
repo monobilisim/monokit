@@ -53,6 +53,7 @@ func main() {
 	common.AlarmCheckUpCmd.Flags().StringP("service", "s", "", "Service Name")
 	common.AlarmCheckUpCmd.Flags().StringP("message", "m", "", "Message")
 	common.AlarmCheckUpCmd.Flags().StringP("scriptName", "n", "", "Script name")
+	common.AlarmCheckUpCmd.Flags().BoolP("noInterval", "i", false, "Disable interval check")
 	common.AlarmCheckUpCmd.MarkFlagRequired("message")
 	common.AlarmCheckUpCmd.MarkFlagRequired("service")
 	common.AlarmCheckUpCmd.MarkFlagRequired("scriptName")
@@ -63,7 +64,8 @@ func main() {
 	common.AlarmCheckDownCmd.Flags().StringP("service", "s", "", "Service Name")
 	common.AlarmCheckDownCmd.Flags().StringP("message", "m", "", "Message")
 	common.AlarmCheckDownCmd.Flags().StringP("scriptName", "n", "", "Script name")
-	common.AlarmCheckDownCmd.MarkFlagRequired("message")
+	common.AlarmCheckDownCmd.Flags().BoolP("noInterval", "i", false, "Disable interval check")
+    common.AlarmCheckDownCmd.MarkFlagRequired("message")
 	common.AlarmCheckDownCmd.MarkFlagRequired("service")
 	common.AlarmCheckDownCmd.MarkFlagRequired("scriptName")
 

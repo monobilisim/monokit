@@ -116,11 +116,11 @@ func SelectNow() {
     defer rows.Close()
     if err != nil {
         common.LogError("Error querying database: " + err.Error())
-        common.AlarmCheckDown("now", "Couldn't run a 'SELECT' statement on MySQL")
+        common.AlarmCheckDown("now", "Couldn't run a 'SELECT' statement on MySQL", false)
         common.PrettyPrintStr("MySQL", false, "accessible")
         return
     } else {
-        common.AlarmCheckUp("now", "Can run 'SELECT' statements again")
+        common.AlarmCheckUp("now", "Can run 'SELECT' statements again", false)
         common.PrettyPrintStr("MySQL", true, "accessible")
     }
 }
@@ -130,11 +130,11 @@ func CheckProcessCount() {
     defer rows.Close()
     if err != nil {
         common.LogError("Error querying database: " + err.Error())
-        common.AlarmCheckDown("processlist", "Couldn't run a 'SHOW PROCESSLIST' statement on MySQL")
+        common.AlarmCheckDown("processlist", "Couldn't run a 'SHOW PROCESSLIST' statement on MySQL", false)
         common.PrettyPrintStr("Number of Processes", false, "accessible")
         return
     } else {
-        common.AlarmCheckUp("processlist", "Can run 'SHOW PROCESSLIST' statements again")
+        common.AlarmCheckUp("processlist", "Can run 'SHOW PROCESSLIST' statements again", false)
     }
 
     // Count the number of processes
@@ -146,10 +146,10 @@ func CheckProcessCount() {
     }
 
     if count > DbHealthConfig.Mysql.Process_limit {
-        common.AlarmCheckDown("processcount", fmt.Sprintf("Number of MySQL processes is over the limit: %d", count))
+        common.AlarmCheckDown("processcount", fmt.Sprintf("Number of MySQL processes is over the limit: %d", count), false)
         common.PrettyPrint("Number of Processes", "", float64(count), false, false, true, float64(DbHealthConfig.Mysql.Process_limit))
     } else {
-        common.AlarmCheckUp("processcount", "Number of MySQL processes is under the limit")
+        common.AlarmCheckUp("processcount", "Number of MySQL processes is under the limit", false)
         common.PrettyPrint("Number of Processes", "", float64(count), false, false, true, float64(DbHealthConfig.Mysql.Process_limit))
     }
 }
@@ -195,9 +195,9 @@ func InaccessibleClusters() {
         // Compare the two arrays
         for _, cluster := range file_contents_array {
             if common.IsInArray(cluster, listening_clusters_array) {
-                common.AlarmCheckUp(cluster, "Node " + cluster + " is back in cluster.")
+                common.AlarmCheckUp(cluster, "Node " + cluster + " is back in cluster.", true)
             } else {
-                common.AlarmCheckDown(cluster, "Node " + cluster + " is no longer in the cluster.")
+                common.AlarmCheckDown(cluster, "Node " + cluster + " is no longer in the cluster.", true)
             }
         }
     }
@@ -242,23 +242,30 @@ func CheckClusterStatus() {
         return
     }
 
+
     if cluster_size == DbHealthConfig.Mysql.Cluster.Size {
-        common.AlarmCheckUp("cluster_size", "Cluster size is accurate: " + fmt.Sprintf("%d", cluster_size) + "/" + fmt.Sprintf("%d", DbHealthConfig.Mysql.Cluster.Size))
+        common.AlarmCheckUp("cluster_size", "Cluster size is accurate: " + fmt.Sprintf("%d", cluster_size) + "/" + fmt.Sprintf("%d", DbHealthConfig.Mysql.Cluster.Size), false)
         issues.CheckUp("cluster-size", "MySQL Cluster boyutu: " + string(cluster_size) + " - " + common.Config.Identifier + "\n`" + varname + ": " + value + "`")
         common.PrettyPrint("Cluster Size", "", float64(cluster_size), false, false, true, float64(DbHealthConfig.Mysql.Cluster.Size))
     } else if cluster_size == 0 {
-        common.AlarmCheckDown("cluster_size", "Couldn't get cluster size")
+        common.AlarmCheckDown("cluster_size", "Couldn't get cluster size", false)
         common.PrettyPrintStr("Cluster Size", true, "Unknown")
         issues.Update("cluster-size", "`SHOW STATUS WHERE Variable_name = 'wsrep_cluster_size'` sorgusunda cluster boyutu alınamadı.", true)
     } else {
-        common.AlarmCheckDown("cluster_size", "Cluster size is not accurate: " + fmt.Sprintf("%d", cluster_size) + "/" + fmt.Sprintf("%d", DbHealthConfig.Mysql.Cluster.Size))
+        common.AlarmCheckDown("cluster_size", "Cluster size is not accurate: " + fmt.Sprintf("%d", cluster_size) + "/" + fmt.Sprintf("%d", DbHealthConfig.Mysql.Cluster.Size), false)
         issues.Update("cluster-size", "MySQL Cluster boyutu: " + string(cluster_size) + " - " + common.Config.Identifier + "\n`" + varname + ": " + value + "`", true)
         common.PrettyPrint("Cluster Size", "", float64(cluster_size), false, false, true, float64(DbHealthConfig.Mysql.Cluster.Size))
     }
 
 
     if cluster_size == 1 || cluster_size > DbHealthConfig.Mysql.Cluster.Size {
-        //issues.CheckExists("cluster-size", "MySQL Cluster boyutu: " + cluster_size + " - " + identifierRedmine)
+        
+        issueIdIfExists := issues.Exists("MySQL Cluster boyutu: " + string(cluster_size) + " - " + identifierRedmine, "", false)
+
+        if _, err := os.Stat(common.TmpDir + "/mysql-cluster-size-redmine.log"); err == nil && issueIdIfExists == "" {
+            common.WriteToFile(common.TmpDir + "/mysql-cluster-size-redmine.log", issueIdIfExists)
+        }
+
         issues.CheckDown("cluster-size", "MySQL Cluster boyutu: " + string(cluster_size) + " - " + identifierRedmine, "MySQL Cluster boyutu: " + string(cluster_size) + " - " + common.Config.Identifier + "\n`" + varname + ": " + value + "`")
     }
 }
@@ -275,13 +282,13 @@ func CheckNodeStatus() {
     }
 
     if name == "" && status == "" {
-        common.AlarmCheckDown("node_status", "Couldn't get node status")
+        common.AlarmCheckDown("node_status", "Couldn't get node status", false)
         common.PrettyPrintStr("Node Status", true, "Unknown")
     } else if status == "ON" {
-        common.AlarmCheckUp("node_status", "Node status is 'ON'")
+        common.AlarmCheckUp("node_status", "Node status is 'ON'", false)
         common.PrettyPrintStr("Node Status", true, "ON")
     } else {
-        common.AlarmCheckDown("node_status", "Node status is '" + status + "'")
+        common.AlarmCheckDown("node_status", "Node status is '" + status + "'", false)
         common.PrettyPrintStr("Node Status", false, "ON")
     }
 }
@@ -298,13 +305,13 @@ func CheckClusterSynced() {
     }
 
     if name == "" && status == "" {
-        common.AlarmCheckDown("cluster_synced", "Couldn't get cluster synced status")
+        common.AlarmCheckDown("cluster_synced", "Couldn't get cluster synced status", false)
         common.PrettyPrintStr("Cluster sync state", true, "Unknown")
     } else if status == "Synced" {
-        common.AlarmCheckUp("cluster_synced", "Cluster is synced")
+        common.AlarmCheckUp("cluster_synced", "Cluster is synced", false)
         common.PrettyPrintStr("Cluster sync state", true, "Synced")
     } else {
-        common.AlarmCheckDown("cluster_synced", "Cluster is not synced, state: " + status)
+        common.AlarmCheckDown("cluster_synced", "Cluster is not synced, state: " + status, false)
         common.PrettyPrintStr("Cluster sync state", false, "Synced")
     }
 }

@@ -47,10 +47,10 @@ func Main(cmd *cobra.Command, args []string) {
         
         if common.SystemdUnitActive("redis-sentinel.service") == false {
             common.PrettyPrintStr("Service redis-sentinel", false, "active")
-            common.AlarmCheckDown("redis_sentinel", "Service redis-sentinel is not active")
+            common.AlarmCheckDown("redis_sentinel", "Service redis-sentinel is not active", false)
         } else {
             common.PrettyPrintStr("Service redis-sentinel", true, "active")
-            common.AlarmCheckUp("redis_sentinel", "Service redis-sentinel is now active")
+            common.AlarmCheckUp("redis_sentinel", "Service redis-sentinel is now active", false)
         }
     
         RedisSlaveCountChange()
