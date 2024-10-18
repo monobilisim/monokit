@@ -382,7 +382,34 @@ func ExistsNote(service string, message string) bool {
 }
 
 
+func Delete(id int) {
 
+    if common.Config.Redmine.Enabled == false {
+        return
+    }
+
+    req, err := http.NewRequest("DELETE", common.Config.Redmine.Url + "/issues/" + strconv.Itoa(id) + ".json", nil)
+
+    if err != nil {
+        common.LogError("http.NewRequest error: " + err.Error())
+    }
+
+    req.Header.Set("Content-Type", "application/json")
+    req.Header.Set("X-Redmine-API-Key", common.Config.Redmine.Api_key)
+
+    client := &http.Client{
+        Timeout: time.Second * 10,
+    }
+
+    resp, err := client.Do(req)
+
+    if err != nil {
+        common.LogError("client.Do error: " + err.Error() + "\n" + "Redmine URL: " + common.Config.Redmine.Url + "/issues/" + strconv.Itoa(id) + ".json")
+        return
+    }
+
+    defer resp.Body.Close()
+}
 
 
 func Update(service string, message string, checkNote bool) {

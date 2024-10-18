@@ -143,6 +143,13 @@ func main() {
     issues.ExistsNoteCmd.MarkFlagRequired("service")
     issues.ExistsNoteCmd.MarkFlagRequired("note")
 
+    // issues.DeleteCmd
+    issues.IssueCmd.AddCommand(issues.DeleteCmd)
+
+    issues.DeleteCmd.Flags().IntP("id", "i", 0, "Issue ID")
+
+    issues.DeleteCmd.MarkFlagRequired("id")
+
     // news.CreateCmd
     news.NewsCmd.AddCommand(news.CreateCmd)
 

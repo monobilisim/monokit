@@ -24,6 +24,16 @@ var CreateCmd = &cobra.Command{
     },
 }
 
+var DeleteCmd = &cobra.Command{
+    Use:    "delete",
+    Short:  "Delete an existing issue in Redmine",
+    Run: func(cmd *cobra.Command, args []string) {
+        common.Init()
+        id, _ := cmd.Flags().GetInt("id")
+        Delete(id)
+    },
+}
+    
 var ExistsNoteCmd = &cobra.Command{
     Use: "existsNote",
     Short: "Check if an issue comment has already been created",
