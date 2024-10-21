@@ -7,6 +7,7 @@ import (
 	"github.com/monobilisim/monokit/common"
 	"github.com/monobilisim/monokit/osHealth"
 	"github.com/monobilisim/monokit/mysqlHealth"
+	"github.com/monobilisim/monokit/shutdownNotifier"
 	news "github.com/monobilisim/monokit/common/redmine/news"
 	issues "github.com/monobilisim/monokit/common/redmine/issues"
 )
@@ -33,6 +34,12 @@ func main() {
     var redmineCmd = &cobra.Command{
         Use:   "redmine",
         Short: "Redmine-related utilities",
+    }
+
+    var shutdownNotifierCmd = &cobra.Command{
+        Use:   "shutdownNotifier",
+        Short: "Shutdown Notifier",
+        Run: shutdownNotifier.Main,
     }
 
 	//// Common
@@ -185,6 +192,12 @@ func main() {
 	RedisCommandAdd()
 
     RmqCommandAdd()
+
+    /// Shutdown Notifier
+    RootCmd.AddCommand(shutdownNotifierCmd)
+
+    shutdownNotifierCmd.Flags().BoolP("poweron", "1", false, "Power On")
+    shutdownNotifierCmd.Flags().BoolP("poweroff", "0", false, "Power Off")
 
 	if err := RootCmd.Execute(); err != nil {
 		fmt.Println(err)
