@@ -28,6 +28,8 @@
 ---
 
 ## Tools
+- shutdownNotifier
+  - Notifies of a poweroff/poweron through the Slack webhook.
 
 - mysqlHealth
   - Checks MySQL health, including read and write operations.
@@ -37,6 +39,7 @@
 - redisHealth
   - Checks Redis health, including read and write operations.
   - Sends alarm notifications to a Slack webhook.
+  - Config: `/etc/mono/redis.yml` (optional)
 
 - rmqHealth
   - Checks RabbitMQ health, including Management API and node status.
