@@ -28,6 +28,12 @@
 ---
 
 ## Tools
+
+- k8sHealth
+    - Checks Kubernetes health, including node status and certificate expiration.
+    - Sends alarm notifications to a Slack webhook.
+    - Config: `/etc/mono/k8s.yaml`
+
 - shutdownNotifier
   - Notifies of a poweroff/poweron through the Slack webhook.
 

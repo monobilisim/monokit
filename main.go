@@ -6,6 +6,7 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/monobilisim/monokit/common"
 	"github.com/monobilisim/monokit/osHealth"
+	"github.com/monobilisim/monokit/k8sHealth"
 	"github.com/monobilisim/monokit/mysqlHealth"
 	"github.com/monobilisim/monokit/shutdownNotifier"
 	news "github.com/monobilisim/monokit/common/redmine/news"
@@ -40,6 +41,12 @@ func main() {
         Use:   "shutdownNotifier",
         Short: "Shutdown Notifier",
         Run: shutdownNotifier.Main,
+    }
+
+    var k8sHealthCmd = &cobra.Command{
+        Use:   "k8sHealth",
+        Short: "Kubernetes Health",
+        Run: k8sHealth.Main,
     }
 
 	//// Common
@@ -198,6 +205,17 @@ func main() {
 
     shutdownNotifierCmd.Flags().BoolP("poweron", "1", false, "Power On")
     shutdownNotifierCmd.Flags().BoolP("poweroff", "0", false, "Power Off")
+
+    /// Kubernetes Health
+    RootCmd.AddCommand(k8sHealthCmd)
+    
+    kubeconfig := os.Getenv("KUBECONFIG")
+
+    if kubeconfig == "" {
+        kubeconfig = os.Getenv("HOME") + "/.kube/config"
+    }
+
+    k8sHealthCmd.Flags().StringP("kubeconfig", "k", kubeconfig, "Kubeconfig file")
 
 	if err := RootCmd.Execute(); err != nil {
 		fmt.Println(err)

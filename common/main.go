@@ -94,3 +94,10 @@ func IsInArray(a string, list []string) bool {
     }
     return false
 }
+
+func FileExists(filePath string) bool {
+    if _, err := os.Stat(filePath); os.IsNotExist(err) {
+        return false
+    }
+    return true
+}
