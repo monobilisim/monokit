@@ -30,6 +30,8 @@ func Main(cmd *cobra.Command, args []string) {
 
     InitClientset(kubeconfig)
 
+    CheckPodRunningLogs()
+
     common.SplitSection("Master Node(s):")
     CheckNodes(true)
 

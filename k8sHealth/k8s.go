@@ -90,6 +90,43 @@ func CheckNodes(master bool) {
     }
 }
 
+func CheckPodRunningLogs() {
+    // Get all under TmpDir
+    files, err := os.ReadDir(common.TmpDir)
+    if err != nil {
+        common.LogError(err.Error())
+    }
+
+    var podExists bool
+    
+    // List all pods
+    pods, err := clientset.CoreV1().Pods("").List(context.TODO(), metav1.ListOptions{})
+    if err != nil {
+        common.LogError(err.Error())
+    }
+
+    // Iterate over all the files
+    for _, file := range files {
+        if strings.Contains(file.Name(), "_running.log") {
+            // Is a pod, so we split the pod name out of it
+            podName := strings.Split(file.Name(), "_running.log")[0]
+
+            // Iterate over all the pods
+            for _, pod := range pods.Items {
+                if pod.Name == podName {
+                    podExists = true
+                    break
+                }
+            }
+            
+            if podExists == false {
+                common.AlarmCheckUp(podName + "_running", "Pod '" + podName + "' doesn't exist anymore, likely replaced", false)
+            }
+        }
+    }
+}
+                
+
 func CheckRke2IngressNginx() {
     ingressNginxYaml := "/var/lib/rancher/rke2/server/manifests/rke2-ingress-nginx.yaml"
 
