@@ -274,8 +274,8 @@ func WriteDeployment(name string, namespace string) {
         common.LogError(err.Error())
     }
 
-    // Write TmpDir + name + "_deployment.txt"
-    file, err := os.Create(common.TmpDir + name + "_deployment.txt")
+    // Write TmpDir + "/" + name + "_deployment.txt"
+    file, err := os.Create(common.TmpDir + "/ " + name + "_deployment.txt")
     if err != nil {
         common.LogError(err.Error())
     }
@@ -287,10 +287,7 @@ func WriteDeployment(name string, namespace string) {
 
 func GetDeployment(name string) string {
     // Read file TmpDir + name + "_deployment.txt"
-    file, err := os.ReadFile(common.TmpDir + name + "_deployment.txt")
-    if err != nil {
-        common.LogError(err.Error())
-    }
+    file, _ := os.ReadFile(common.TmpDir + "/" + name + "_deployment.txt")
     return string(file)
 }
 
