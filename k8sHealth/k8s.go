@@ -79,8 +79,7 @@ func CheckNodes(master bool) {
             }
 
             if isReady == false {
-                common.AlarmCheckDown(string(node.Name) + "_ready", "Node " + node.Name + " is not Ready", false)
-              
+                common.AlarmCheckDown(string(node.Name) + "_ready", "Node " + node.Name + " is not Ready, is in " + string(node.Status.Conditions[0].Type), false)
                 common.PrettyPrintStr(string(node.Name), false, "Ready")
             } else {
                 common.AlarmCheckUp(string(node.Name) + "_ready", "Node " + node.Name + " is now Ready", false)
@@ -169,7 +168,7 @@ func CheckRke2IngressNginx() {
     }
 }
 
-func podAlarmCheckDown(podName string, namespace string) {
+func podAlarmCheckDown(podName string, namespace string, actualStatus string) {
     
     podStillExists := false
 
@@ -187,7 +186,7 @@ func podAlarmCheckDown(podName string, namespace string) {
     if podStillExists == false {
        common.AlarmCheckUp(podName + "_running", "Pod '" + podName + "' from namespace '" + namespace + "' doesn't exist anymore, likely replaced", false)
     } else {
-        common.AlarmCheckDown(podName + "_running", "Pod " + podName + " is not Running", false)
+        common.AlarmCheckDown(podName + "_running", "Pod " + podName + " is " + actualStatus, false)
     }
 }
 
@@ -207,7 +206,7 @@ func CheckPods() {
                 common.SplitSection("Pods:")
                 firstTime = false
             }
-            podAlarmCheckDown(string(pod.Name), string(pod.Namespace))
+            podAlarmCheckDown(string(pod.Name), string(pod.Namespace), string(pod.Status.Phase))
             common.PrettyPrintStr(string(pod.Name), false, "Running")
         } else {
             common.AlarmCheckUp(string(pod.Name) + "_running", "Pod " + pod.Name + " is now Running", false)
