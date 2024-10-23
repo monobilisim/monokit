@@ -1,14 +1,15 @@
 package main
 
 import (
-	"os"
 	"fmt"
-	"github.com/spf13/cobra"
 	"github.com/monobilisim/monokit/common"
-	"github.com/monobilisim/monokit/osHealth"
-	"github.com/monobilisim/monokit/mysqlHealth"
-	news "github.com/monobilisim/monokit/common/redmine/news"
 	issues "github.com/monobilisim/monokit/common/redmine/issues"
+	news "github.com/monobilisim/monokit/common/redmine/news"
+	"github.com/monobilisim/monokit/mysqlHealth"
+	"github.com/monobilisim/monokit/osHealth"
+	"github.com/monobilisim/monokit/pgsqlHealth"
+	"github.com/spf13/cobra"
+	"os"
 )
 
 var MonokitVersion = "devel"
@@ -24,16 +25,22 @@ func main() {
 		Run:   osHealth.Main,
 	}
 
-    var mysqlHealthCmd = &cobra.Command{
-        Use:   "mysqlHealth",
-        Short: "MySQL Health",
-        Run: mysqlHealth.Main,
-    }
+	var mysqlHealthCmd = &cobra.Command{
+		Use:   "mysqlHealth",
+		Short: "MySQL Health",
+		Run:   mysqlHealth.Main,
+	}
 
-    var redmineCmd = &cobra.Command{
-        Use:   "redmine",
-        Short: "Redmine-related utilities",
-    }
+	var pgsqlHealthCmd = &cobra.Command{
+		Use:   "pgsqlHealth",
+		Short: "PostgreSQL Health",
+		Run:   pgsqlHealth.Main,
+	}
+
+	var redmineCmd = &cobra.Command{
+		Use:   "redmine",
+		Short: "Redmine-related utilities",
+	}
 
 	//// Common
 	RootCmd.AddCommand(redmineCmd)
@@ -65,13 +72,13 @@ func main() {
 	common.AlarmCheckDownCmd.Flags().StringP("message", "m", "", "Message")
 	common.AlarmCheckDownCmd.Flags().StringP("scriptName", "n", "", "Script name")
 	common.AlarmCheckDownCmd.Flags().BoolP("noInterval", "i", false, "Disable interval check")
-    common.AlarmCheckDownCmd.MarkFlagRequired("message")
+	common.AlarmCheckDownCmd.MarkFlagRequired("message")
 	common.AlarmCheckDownCmd.MarkFlagRequired("service")
 	common.AlarmCheckDownCmd.MarkFlagRequired("scriptName")
 
 	/// Redmine
 	redmineCmd.AddCommand(issues.IssueCmd)
-    redmineCmd.AddCommand(news.NewsCmd)
+	redmineCmd.AddCommand(news.NewsCmd)
 
 	// issues.CreateCmd
 	issues.IssueCmd.AddCommand(issues.CreateCmd)
@@ -134,57 +141,58 @@ func main() {
 	issues.CheckDownCmd.MarkFlagRequired("service")
 	issues.CheckDownCmd.MarkFlagRequired("message")
 
-    // issues.ExistsNoteCmd
-    issues.IssueCmd.AddCommand(issues.ExistsNoteCmd)
+	// issues.ExistsNoteCmd
+	issues.IssueCmd.AddCommand(issues.ExistsNoteCmd)
 
-    issues.ExistsNoteCmd.Flags().StringP("service", "s", "", "Service Name")
-    issues.ExistsNoteCmd.Flags().StringP("note", "n", "", "Note")
+	issues.ExistsNoteCmd.Flags().StringP("service", "s", "", "Service Name")
+	issues.ExistsNoteCmd.Flags().StringP("note", "n", "", "Note")
 
-    issues.ExistsNoteCmd.MarkFlagRequired("service")
-    issues.ExistsNoteCmd.MarkFlagRequired("note")
+	issues.ExistsNoteCmd.MarkFlagRequired("service")
+	issues.ExistsNoteCmd.MarkFlagRequired("note")
 
-    // issues.DeleteCmd
-    issues.IssueCmd.AddCommand(issues.DeleteCmd)
+	// issues.DeleteCmd
+	issues.IssueCmd.AddCommand(issues.DeleteCmd)
 
-    issues.DeleteCmd.Flags().IntP("id", "i", 0, "Issue ID")
+	issues.DeleteCmd.Flags().IntP("id", "i", 0, "Issue ID")
 
-    issues.DeleteCmd.MarkFlagRequired("id")
+	issues.DeleteCmd.MarkFlagRequired("id")
 
-    // news.CreateCmd
-    news.NewsCmd.AddCommand(news.CreateCmd)
+	// news.CreateCmd
+	news.NewsCmd.AddCommand(news.CreateCmd)
 
-    news.CreateCmd.Flags().StringP("title", "t", "", "Title")
-    news.CreateCmd.Flags().StringP("description", "d", "", "Description")
-    news.CreateCmd.Flags().BoolP("noDuplicate", "n", false, "Check for duplicates, return ID if exists")
+	news.CreateCmd.Flags().StringP("title", "t", "", "Title")
+	news.CreateCmd.Flags().StringP("description", "d", "", "Description")
+	news.CreateCmd.Flags().BoolP("noDuplicate", "n", false, "Check for duplicates, return ID if exists")
 
-    news.CreateCmd.MarkFlagRequired("title")
-    news.CreateCmd.MarkFlagRequired("description")
+	news.CreateCmd.MarkFlagRequired("title")
+	news.CreateCmd.MarkFlagRequired("description")
 
-    // news.DeleteCmd
-    news.NewsCmd.AddCommand(news.DeleteCmd)
+	// news.DeleteCmd
+	news.NewsCmd.AddCommand(news.DeleteCmd)
 
-    news.DeleteCmd.Flags().StringP("id", "i", "", "News ID")
+	news.DeleteCmd.Flags().StringP("id", "i", "", "News ID")
 
-    news.DeleteCmd.MarkFlagRequired("id")
+	news.DeleteCmd.MarkFlagRequired("id")
 
-    // news.ExistsCmd
-    news.NewsCmd.AddCommand(news.ExistsCmd)
+	// news.ExistsCmd
+	news.NewsCmd.AddCommand(news.ExistsCmd)
 
-    news.ExistsCmd.Flags().StringP("title", "t", "", "Title")
-    news.ExistsCmd.Flags().StringP("description", "d", "", "Description")
+	news.ExistsCmd.Flags().StringP("title", "t", "", "Title")
+	news.ExistsCmd.Flags().StringP("description", "d", "", "Description")
 
-    news.ExistsCmd.MarkFlagRequired("title")
-    news.ExistsCmd.MarkFlagRequired("description")
+	news.ExistsCmd.MarkFlagRequired("title")
+	news.ExistsCmd.MarkFlagRequired("description")
 
 	/// OS Health
 	RootCmd.AddCommand(osHealthCmd)
 
-    /// MySQL Health
+	/// MySQL Health
 	RootCmd.AddCommand(mysqlHealthCmd)
+	RootCmd.AddCommand(pgsqlHealthCmd)
 
 	RedisCommandAdd()
 
-    RmqCommandAdd()
+	RmqCommandAdd()
 
 	if err := RootCmd.Execute(); err != nil {
 		fmt.Println(err)
