@@ -10,3 +10,8 @@ func RmqCommandAdd() {
     // rmqHealth is not supported on anything other than Linux
     return
 }
+
+func pmgHealthAdd() {
+    // pmgHealth is not supported on anything other than Linux
+    return
+}

@@ -7,7 +7,6 @@ import (
 	"github.com/monobilisim/monokit/common"
 	"github.com/monobilisim/monokit/osHealth"
 	"github.com/monobilisim/monokit/k8sHealth"
-    "github.com/monobilisim/monokit/pmgHealth"
 	"github.com/monobilisim/monokit/mysqlHealth"
 	"github.com/monobilisim/monokit/shutdownNotifier"
 	news "github.com/monobilisim/monokit/common/redmine/news"
@@ -48,12 +47,6 @@ func main() {
         Use:   "k8sHealth",
         Short: "Kubernetes Health",
         Run: k8sHealth.Main,
-    }
-
-    var pmgHealthCmd = &cobra.Command{
-        Use:   "pmgHealth",
-        Short: "Proxmox Mail Gateway Health",
-        Run:   pmgHealth.Main,
     }
 
 	//// Common
@@ -210,8 +203,7 @@ func main() {
     /// Shutdown Notifier
     RootCmd.AddCommand(shutdownNotifierCmd)
 
-    /// Proxmox Mail Gateway Health
-    RootCmd.AddCommand(pmgHealthCmd)
+    PmgCommandAdd()
 
     shutdownNotifierCmd.Flags().BoolP("poweron", "1", false, "Power On")
     shutdownNotifierCmd.Flags().BoolP("poweroff", "0", false, "Power Off")

@@ -3,8 +3,9 @@ package main
 
 import (
     "github.com/spf13/cobra"
-    "github.com/monobilisim/monokit/redisHealth"
+    "github.com/monobilisim/monokit/pmgHealth"
     "github.com/monobilisim/monokit/rmqHealth"
+    "github.com/monobilisim/monokit/redisHealth"
 )
 
 func RedisCommandAdd() {
@@ -25,4 +26,14 @@ func RmqCommandAdd() {
     }
 
     RootCmd.AddCommand(rmqHealthCmd)
+}
+
+func PmgCommandAdd() {
+    var pmgHealthCmd = &cobra.Command{
+        Use:   "pmgHealth",
+        Short: "Proxmox Mail Gateway Health",
+        Run: pmgHealth.Main,
+    }
+
+    RootCmd.AddCommand(pmgHealthCmd)
 }
