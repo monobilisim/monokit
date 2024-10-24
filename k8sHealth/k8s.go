@@ -201,7 +201,7 @@ func CheckPods() {
 
     // Iterate over all the pods
     for _, pod := range pods.Items {
-        if pod.Status.Phase != v1.PodRunning && pod.Status.Phase != v1.PodSucceeded {
+        if pod.Status.Phase != v1.PodRunning && pod.Status.Phase != v1.PodSucceeded && pod.Status.Phase != v1.PodPending {
             if firstTime {
                 common.SplitSection("Pods:")
                 firstTime = false
@@ -209,7 +209,7 @@ func CheckPods() {
             podAlarmCheckDown(string(pod.Name), string(pod.Namespace), string(pod.Status.Phase))
             common.PrettyPrintStr(string(pod.Name), false, "Running")
         } else {
-            common.AlarmCheckUp(string(pod.Name) + "_running", "Pod " + pod.Name + " is now Running", false)
+            common.AlarmCheckUp(string(pod.Name) + "_running", "Pod " + pod.Name + " is now " + string(pod.Status.Phase), false)
         }
     }
 }
@@ -245,7 +245,7 @@ func CheckCertManager() {
     for _, item := range certManager.Items {
         for _, condition := range item.Status.Conditions {
             if condition.Type == "Ready" {
-                if condition.Status != "True" {
+                if condition.Reason != "Ready" {
                     common.PrettyPrintStr(item.Metadata.Name, false, "Ready")
                     common.AlarmCheckDown(item.Metadata.Name + "_ready", "Certificate named '" + item.Metadata.Name + "' is not Ready", false)
                 } else {
