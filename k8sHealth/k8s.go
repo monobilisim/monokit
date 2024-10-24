@@ -209,7 +209,7 @@ func CheckPods() {
             podAlarmCheckDown(string(pod.Name), string(pod.Namespace), string(pod.Status.Phase))
             common.PrettyPrintStr(string(pod.Name), false, "Running")
         } else {
-            common.AlarmCheckUp(string(pod.Name) + "_running", "Pod " + pod.Name + " is now Running", false)
+            common.AlarmCheckUp(string(pod.Name) + "_running", "Pod " + pod.Name + " is now " + string(pod.Status.Phase), false)
         }
     }
 }
