@@ -201,7 +201,7 @@ func CheckPods() {
 
     // Iterate over all the pods
     for _, pod := range pods.Items {
-        if pod.Status.Phase != v1.PodRunning && pod.Status.Phase != v1.PodSucceeded {
+        if pod.Status.Phase != v1.PodRunning && pod.Status.Phase != v1.PodSucceeded && pod.Status.Phase != v1.PodPending {
             if firstTime {
                 common.SplitSection("Pods:")
                 firstTime = false
