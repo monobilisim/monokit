@@ -29,6 +29,11 @@
 
 ## Tools
 
+- pmgHealth
+    - Checks PMG health, including service status, queued messages and PostgreSQL status.
+    - Sends alarm notifications to a Slack webhook.
+    - Config: `/etc/mono/mail.yaml`
+
 - k8sHealth
     - Checks Kubernetes health, including node status and certificate expiration.
     - Sends alarm notifications to a Slack webhook.

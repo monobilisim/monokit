@@ -1,0 +1,17 @@
+k8s:
+  log_list:
+    - test-namespace/service/test
+    - test-namespace/pod/test2
+  floating_ips:
+    - 127.0.0.1
+  ingress_floating_ips:
+    - 127.0.0.1
+
+aws:
+  endpoint_url: https://s3.test.com
+  bucket: test-bucket
+  access_key_id: test-key
+  secret_access_key: test-secret-key
+
+send_alarm: true
+send_dm_alarm: true

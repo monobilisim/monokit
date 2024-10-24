@@ -1,0 +1,13 @@
+pmg:
+  queue_limit: 50
+
+postal:
+  message_threshold: 100
+  held_treshold: 100
+  check_message: true
+
+zimbra:
+  z_url: example.com
+  restart: false
+  queue_limit: 50
+  restart_limit: 2
