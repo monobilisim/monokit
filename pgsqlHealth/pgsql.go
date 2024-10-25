@@ -8,7 +8,9 @@ import (
 	"github.com/monobilisim/monokit/common"
 	"gopkg.in/yaml.v3"
 	"os"
+	"strconv"
 	"strings"
+	"time"
 )
 
 var Connection *sql.DB
@@ -107,14 +109,108 @@ func uptime() {
 	common.PrettyPrintStr("PostgreSQL uptime", true, fmt.Sprintf("%dd %dh %dm %ds", days, hours, minutes, seconds))
 }
 
+func writeActiveConnections() {
+	query := `
+		SELECT pid,usename, client_addr, now() - pg_stat_activity.query_start AS duration, query, state
+		FROM pg_stat_activity
+		WHERE state='active'
+		ORDER BY duration DESC;
+	`
+	//run the query and write its output to a file
+	rows, err := Connection.Query(query)
+	if err != nil {
+		common.LogError(fmt.Sprintf("Error executing query: %s - Error: %v\n", query, err))
+		return
+	}
+	defer rows.Close()
+
+	dayOfWeek := time.Now().Weekday().String()
+	logFileName := fmt.Sprintf("/var/log/monodb/pgsql-stat_activity-%s.log", dayOfWeek)
+	logFile, err := os.Create(logFileName)
+	if err != nil {
+		common.LogError("Failed to create log file: " + err.Error())
+	}
+	defer logFile.Close()
+
+	// Write query results to log file
+	_, _ = fmt.Fprintf(logFile, "Query executed at: %v\n\n", time.Now())
+	_, _ = fmt.Fprintf(logFile, "%-5s %-10s %-15s %-20s %-50s %-10s\n", "PID", "User", "Client Addr", "Duration", "Query", "State")
+	_, _ = fmt.Fprintln(logFile, strings.Repeat("-", 120))
+
+	for rows.Next() {
+		var (
+			pid        int
+			usename    string
+			clientAddr string
+			duration   string
+			query      string
+			state      string
+		)
+
+		err := rows.Scan(&pid, &usename, &clientAddr, &duration, &query, &state)
+		if err != nil {
+			common.LogError("Failed to scan row: " + err.Error())
+			continue
+		}
+
+		_, _ = fmt.Fprintf(logFile, "%-5d %-10s %-15s %-20s %-50s %-10s\n",
+			pid, usename, clientAddr, duration, query[:40], state)
+	}
+
+}
+
 func activeConnections() {
-	var maxConn, used int
-	query := `SELECT max_conn, used FROM (SELECT COUNT(*) used FROM pg_stat_activity) t1, (SELECT setting::int max_conn FROM pg_settings WHERE name='max_connections') t2`
+	var maxConn, used, increase int
+	aboveLimitFile := common.TmpDir + "/last-connection-above-limit.txt"
+
+	query := `
+		SELECT max_conn, used FROM (SELECT COUNT(*) used
+        FROM pg_stat_activity) t1, (SELECT setting::int max_conn FROM pg_settings WHERE name='max_connections') t2
+	`
 	err := Connection.QueryRow(query).Scan(&maxConn, &used)
 	if err != nil {
 		common.LogError(fmt.Sprintf("Error executing query: %s - Error: %v\n", query, err))
 		common.PrettyPrintStr("PostgreSQL active connections", false, "accessible")
 		return
 	}
-	common.PrettyPrintStr("PostgreSQL active connections", true, fmt.Sprintf("%d/%d", used, maxConn))
+	usedPercent := (used * 100) / maxConn
+
+	if _, err := os.Stat(aboveLimitFile); os.IsNotExist(err) {
+		increase = 1
+	} else {
+		// set increase to the content of the file
+		content, err := os.ReadFile(aboveLimitFile)
+		if err != nil {
+			common.LogError(fmt.Sprintf("Error reading file: %v\n", err))
+			increase = 1
+		}
+		increase = int(content[0])
+	}
+
+	if usedPercent >= DbHealthConfig.Postgres.Limits.Conn_percent {
+		if _, err := os.Stat(aboveLimitFile); os.IsNotExist(err) {
+			writeActiveConnections()
+
+		}
+		common.PrettyPrintStr("Number of active connections", false, fmt.Sprintf("%d/%d and above %d", used, maxConn, DbHealthConfig.Postgres.Limits.Conn_percent))
+		difference := (used - maxConn) / 10
+		if difference > increase {
+			writeActiveConnections()
+			increase = difference + 1
+		}
+		fmt.Println("-----------------", increase)
+		fmt.Println("-----------------", []byte{byte(increase)})
+		err = os.WriteFile(aboveLimitFile, []byte(strconv.Itoa(increase)), 0644)
+		if err != nil {
+			common.LogError(fmt.Sprintf("Error writing file: %v\n", err))
+		}
+	} else {
+		common.PrettyPrintStr("Number of active connections", true, fmt.Sprintf("%d/%d", used, maxConn))
+		if _, err := os.Stat(aboveLimitFile); err == nil {
+			err := os.Remove(aboveLimitFile)
+			if err != nil {
+				common.LogError(fmt.Sprintf("Error deleting file: %v\n", err))
+			}
+		}
+	}
 }
