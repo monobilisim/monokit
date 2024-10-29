@@ -2,18 +2,40 @@ package pgsqlHealth
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	_ "github.com/lib/pq"
 	"github.com/monobilisim/monokit/common"
 	"gopkg.in/yaml.v3"
+	"log"
+	"net/http"
 	"os"
+	"reflect"
 	"strconv"
 	"strings"
 	"time"
 )
 
 var Connection *sql.DB
+var nodeName string
+
+type Response struct {
+	Members []Member `json:"members"`
+	Pause   bool     `json:"pause"`
+	Scope   string   `json:"scope"`
+}
+
+type Member struct {
+	Name     string `json:"name"`
+	Role     string `json:"role"`
+	State    string `json:"state"`
+	APIURL   string `json:"api_url"`
+	Host     string `json:"host"`
+	Port     int64  `json:"port"`
+	Timeline int64  `json:"timeline"`
+	Lag      *int64 `json:"lag,omitempty"`
+}
 
 func getPatroniUrl() (string, error) {
 	// Read the file
@@ -25,6 +47,7 @@ func getPatroniUrl() (string, error) {
 
 	// Create a struct to hold the YAML data
 	type patroniConf struct {
+		Name    string `json:"name"`
 		Restapi struct {
 			ConnectAddress string `yaml:"connect_address"`
 		} `yaml:"restapi"`
@@ -36,6 +59,7 @@ func getPatroniUrl() (string, error) {
 		common.LogError(fmt.Sprintf("couldn't unmarshal patroni config file: %v\n", err))
 		return "", err
 	}
+	nodeName = patroni.Name
 
 	return patroni.Restapi.ConnectAddress, nil
 }
@@ -213,4 +237,109 @@ func activeConnections() {
 			}
 		}
 	}
+}
+
+func runningQueries() {
+	query := `SELECT COUNT(*) AS active_queries_count FROM pg_stat_activity WHERE state = 'active';`
+
+	var activeQueriesCount int
+	err := Connection.QueryRow(query).Scan(&activeQueriesCount)
+	if err != nil {
+		common.LogError(fmt.Sprintf("Error executing query: %s - Error: %v\n", query, err))
+		common.PrettyPrintStr("Number of running queries", false, "accessible")
+		return
+	}
+
+	if activeQueriesCount > DbHealthConfig.Postgres.Limits.Query {
+		common.PrettyPrintStr("Number of running queries", false, fmt.Sprintf("%d/%d", activeQueriesCount, DbHealthConfig.Postgres.Limits.Query))
+	} else {
+		common.PrettyPrintStr("Number of running queries", true, fmt.Sprintf("%d/%d", activeQueriesCount, DbHealthConfig.Postgres.Limits.Query))
+	}
+}
+
+func clusterStatus() {
+	outputJSON := common.TmpDir + "/raw_output.json"
+	if common.SystemdUnitActive("patroni.service") {
+		common.PrettyPrintStr("Patroni Service", true, "accessible")
+	} else {
+		common.PrettyPrintStr("Patroni Service", false, "accessible")
+	}
+	clusterURL := "http://" + PATRONI_API_URL + "/cluster"
+
+	client := &http.Client{
+		Timeout: time.Second * 10,
+	}
+
+	resp, err := client.Get(clusterURL)
+	if err != nil {
+		common.LogError(fmt.Sprintf("Error executing query: %s - Error: %v\n", clusterURL, err))
+		common.PrettyPrintStr("Patroni API", false, "accessible")
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 400 {
+		common.PrettyPrintStr("Patroni API", false, "accessible")
+		return
+	}
+	common.PrettyPrintStr("Patroni API", true, "accessible")
+
+	var result Response
+	err = json.NewDecoder(resp.Body).Decode(&result)
+	if err != nil {
+		common.LogError(fmt.Sprintf("Error decoding JSON: %v\n", err))
+		return
+	}
+
+	var oldResult Response
+	if _, err := os.Stat(outputJSON); err == nil {
+		oldOutput, err := os.ReadFile(outputJSON)
+		if err != nil {
+			common.LogError(fmt.Sprintf("Error reading file: %v\n", err))
+			return
+		}
+		err = json.Unmarshal(oldOutput, &oldResult)
+		if err != nil {
+			log.Fatal("Error during Unmarshal(): ", err)
+		}
+	}
+
+	for _, member := range result.Members {
+		if member.Name == nodeName {
+			common.PrettyPrintStr("This node", true, member.Role)
+		}
+	}
+
+	common.SplitSection("Cluster Roles:")
+	for _, member := range result.Members {
+		common.PrettyPrintStr(member.Name, true, member.Role)
+		if reflect.DeepEqual(oldResult, (Response{})) {
+			continue
+		}
+		for _, oldMember := range oldResult.Members {
+			if oldMember.Name == member.Name {
+				if oldMember.Role != member.Role {
+					common.PrettyPrintStr(member.Name, false, oldMember.Role+" -> "+member.Role)
+					if oldMember.Name == nodeName {
+						// send alarm
+					}
+					if member.Role == "leader" {
+						// send new leader alarm
+						if DbHealthConfig.Postgres.Leader_switch_hook != "" {
+							// run leade switch hook
+						}
+					}
+				}
+			}
+		}
+	}
+
+	f, err := os.Create(outputJSON)
+	if err != nil {
+		common.LogError(fmt.Sprintf("Error creating file: %v\n", err))
+		return
+	}
+	defer f.Close()
+	encoder := json.NewEncoder(f)
+	encoder.Encode(result)
 }

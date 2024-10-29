@@ -46,4 +46,10 @@ func Main(cmd *cobra.Command, args []string) {
 
 	common.SplitSection("Active Connections:")
 	activeConnections()
+
+	common.SplitSection("Running Queries:")
+	runningQueries()
+
+	common.SplitSection("Cluster Status:")
+	clusterStatus()
 }
