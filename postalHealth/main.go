@@ -15,6 +15,7 @@ import (
     "github.com/monobilisim/monokit/common"
     "github.com/docker/docker/api/types/container"
     mail "github.com/monobilisim/monokit/common/mail"
+    issue "github.com/monobilisim/monokit/common/redmine/issues"
 )
 
 var MailHealthConfig mail.MailHealth
@@ -125,12 +126,13 @@ func MySQLConnect(dbName string, dbPath string, doPrint bool) *sql.DB {
         }
         common.LogError("Couldn't connect to MySQL for " + dbName + ": " + err.Error())
         common.AlarmCheckDown("mysql_" + dbName, "Couldn't connect to MySQL for " + dbName + ": " + err.Error(), false)
-        //TODO: Create Redmine issue aswell
+        issue.CheckDown("mysql_" + dbName, common.Config.Identifier + " sunucusunda " + dbName + " veritabanına bağlanılamadı", "Bağlantı hatası: " + err.Error())
     } else {
         if doPrint {
             common.PrettyPrintStr("MySQL connection for " + dbName, true, "connected")
         }
         common.AlarmCheckUp("mysql_" + dbName, "MySQL connection for " + dbName + " is up", false)
+        issue.CheckUp("mysql_" + dbName, "Bağlantı başarılı bir şekilde kuruldu, kapatılıyor")
     }
 
     return db
