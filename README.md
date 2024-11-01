@@ -29,6 +29,12 @@
 
 ## Tools
 
+- postalHealth
+    - Check Postal health, including service status, containers, and queued messages.
+    - Sends alarm notifications to a Slack webhook.
+    - Opens an issue in Redmine if the database is down.
+    - Config: `/etc/mono/mail.yaml`
+
 - pmgHealth
     - Checks PMG health, including service status, queued messages and PostgreSQL status.
     - Sends alarm notifications to a Slack webhook.
