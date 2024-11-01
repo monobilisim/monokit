@@ -203,6 +203,8 @@ func main() {
     /// Shutdown Notifier
     RootCmd.AddCommand(shutdownNotifierCmd)
 
+    PostalCommandAdd() 
+
     PmgCommandAdd()
 
     shutdownNotifierCmd.Flags().BoolP("poweron", "1", false, "Power On")

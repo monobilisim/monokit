@@ -6,6 +6,7 @@ import (
     "github.com/monobilisim/monokit/pmgHealth"
     "github.com/monobilisim/monokit/rmqHealth"
     "github.com/monobilisim/monokit/redisHealth"
+    "github.com/monobilisim/monokit/postalHealth"
 )
 
 func RedisCommandAdd() {
@@ -36,4 +37,14 @@ func PmgCommandAdd() {
     }
 
     RootCmd.AddCommand(pmgHealthCmd)
+}
+
+func PostalCommandAdd() {
+    var postalHealthCmd = &cobra.Command{
+        Use:   "postalHealth",
+        Short: "Postal Health",
+        Run: postalHealth.Main,
+    }
+
+    RootCmd.AddCommand(postalHealthCmd)
 }

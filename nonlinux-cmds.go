@@ -15,3 +15,8 @@ func PmgCommandAdd() {
     // pmgHealth is not supported on anything other than Linux
     return
 }
+
+func PostalCommandAdd() {
+    // postalHealth is not supported on anything other than Linux
+    return
+}
