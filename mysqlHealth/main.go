@@ -12,7 +12,7 @@ import (
 var DbHealthConfig db.DbHealth
 
 func Main(cmd *cobra.Command, args []string) {
-	version := "3.0.0"
+	version := "3.1.0"
 	common.ScriptName = "mysqlHealth"
 	common.TmpDir = common.TmpDir + "mysqlHealth"
 	common.Init()
@@ -26,6 +26,7 @@ func Main(cmd *cobra.Command, args []string) {
 	fmt.Println("MySQL Health Check REWRITE - v" + version + " - " + time.Now().Format("2006-01-02 15:04:05"))
 
 	Connect()
+	defer Connection.Close()
 
 	common.SplitSection("MySQL Access:")
 
