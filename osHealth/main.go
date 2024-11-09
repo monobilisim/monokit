@@ -34,6 +34,10 @@ func Main(cmd *cobra.Command, args []string) {
     common.Init()
     common.ConfInit("os", &OsHealthConfig)
 
+    if OsHealthConfig.Load.Issue_Multiplier == 0 {
+        OsHealthConfig.Load.Issue_Multiplier = 1
+    }
+
     fmt.Println("OS Health Check REWRITE - v" + version + " - " + time.Now().Format("2006-01-02 15:04:05"))
     
     DiskUsage()
