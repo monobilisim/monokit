@@ -13,6 +13,7 @@ part_use_limit: 90
 dynamic_limit_interval: 0
 load:
   limit_multiplier: 0.8
+  issue_multiplier: 1
   limit: 20
 
 ram_limit: 91
