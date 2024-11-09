@@ -14,6 +14,7 @@ type OsHealth struct {
      Part_use_limit float64
 
      Load struct {
+         Issue_Multiplier float64
          Limit_Multiplier float64
      }
 
