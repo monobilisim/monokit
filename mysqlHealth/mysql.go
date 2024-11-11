@@ -21,7 +21,7 @@ import (
 var Connection *sql.DB
 
 func mariadbOrMysql() string {
-	_, err := exec.LookPath("mysql")
+	_, err := exec.LookPath("/usr/bin/mysql")
 	if err != nil {
 		return "mariadb"
 	}
@@ -29,10 +29,10 @@ func mariadbOrMysql() string {
 }
 
 func FindMyCnf() []string {
-	cmd := exec.Command(mariadbOrMysql()+"d", "--verbose", "--help")
+	cmd := exec.Command("/usr/sbin/"+mariadbOrMysql()+"d", "--verbose", "--help")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		common.LogError("Error running " + mariadbOrMysql() + "d command:" + err.Error())
+		common.LogError("Error running " + "/usr/sbin/" + mariadbOrMysql() + "d command:" + err.Error())
 		return nil
 	}
 
@@ -319,10 +319,10 @@ func CheckClusterSynced() {
 }
 
 func CheckDB() {
-	cmd := exec.Command(mariadbOrMysql(), "--auto-repair", "--all-databases")
+	cmd := exec.Command("/usr/bin/"+mariadbOrMysql(), "--auto-repair", "--all-databases")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		common.LogError("Error running " + mariadbOrMysql() + " command:" + err.Error())
+		common.LogError("Error running " + "/usr/bin/" + mariadbOrMysql() + " command:" + err.Error())
 		return
 	}
 
@@ -340,7 +340,7 @@ func CheckDB() {
 	}
 
 	if len(tables) > 0 {
-		message := fmt.Sprintf("[MySQL - %s] [:info:] MySQL - `%s` result\n", common.Config.Identifier, mariadbOrMysql())
+		message := fmt.Sprintf("[MySQL - %s] [:info:] MySQL - `%s` result\n", common.Config.Identifier, "/usr/bin/"+mariadbOrMysql()+" --auto-repair --all-databases")
 		for _, table := range tables {
 			message += table + "\n"
 		}
@@ -349,12 +349,20 @@ func CheckDB() {
 }
 
 func checkPMM() {
+	notInstalled := `
+dpkg-query: package 'pmm2-client' is not installed and no information is available
+Use dpkg --info (= dpkg-deb --info) to examine archive files.
+    `
 	cmd := exec.Command("dpkg", "-s", "pmm2-client")
 	var out bytes.Buffer
+	var stderr bytes.Buffer
 	cmd.Stdout = &out
+	cmd.Stderr = &stderr
 	err := cmd.Run()
 	if err != nil {
-		common.LogError(fmt.Sprintf("Error executing dpkg command: %v\n", err))
+		if strings.TrimSpace(stderr.String()) != strings.TrimSpace(notInstalled) {
+			common.LogError(fmt.Sprintf("Error executing dpkg command: %v\n", err))
+		}
 		return
 	}
 
