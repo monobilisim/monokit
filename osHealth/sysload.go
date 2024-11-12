@@ -30,9 +30,9 @@ func SysLoad() {
     }
     
     if loadAvg.Load1 > loadLimitIssue {
-        issues.CheckDown("sysload", common.Config.Identifier + " için sistem yükü " + strconv.FormatFloat(loadLimitIssue, 'f', 2, 64) + " üstüne çıktı", "Sistem yükü: " + strconv.FormatFloat(loadAvg.Load1, 'f', 2, 64) + "\n Limit: " + strconv.FormatFloat(loadLimitIssue, 'f', 2, 64), true, OsHealthConfig.Load.Issue_Interval)
+		issues.CheckDown("sysload", common.Config.Identifier + " için sistem yükü " + strconv.FormatFloat(loadLimitIssue, 'f', 2, 64) + " üstüne çıktı", "CPU sayısı: " + strconv.Itoa(cpuCount) + "\n Sistem yükü: " + strconv.FormatFloat(loadAvg.Load1, 'f', 2, 64) + "\n Limit: " + strconv.FormatFloat(loadLimitIssue, 'f', 2, 64), true, OsHealthConfig.Load.Issue_Interval)
     } else {
-        issues.CheckUp("sysload", "Sistem yükü artık " + strconv.FormatFloat(loadLimitIssue, 'f', 2, 64) + " üstünde değil, Sistem yükü: " + strconv.FormatFloat(loadAvg.Load1, 'f', 2, 64))
+		issues.CheckUp("sysload", "Sistem yükü artık " + strconv.FormatFloat(loadLimitIssue, 'f', 2, 64) + " üstünde değil, Sistem yükü: " + strconv.FormatFloat(loadAvg.Load1, 'f', 2, 64) + "\n Limit: " + strconv.FormatFloat(loadLimitIssue, 'f', 2, 64) + "\n CPU sayısı: " + strconv.Itoa(cpuCount))
     }
 
     if loadAvg.Load1 > loadLimit {
