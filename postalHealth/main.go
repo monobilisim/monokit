@@ -126,7 +126,7 @@ func MySQLConnect(dbName string, dbPath string, doPrint bool) *sql.DB {
         }
         common.LogError("Couldn't connect to MySQL for " + dbName + ": " + err.Error())
         common.AlarmCheckDown("mysql_" + dbName, "Couldn't connect to MySQL for " + dbName + ": " + err.Error(), false)
-        issue.CheckDown("mysql_" + dbName, common.Config.Identifier + " sunucusunda " + dbName + " veritabanına bağlanılamadı", "Bağlantı hatası: " + err.Error())
+        issue.CheckDown("mysql_" + dbName, common.Config.Identifier + " sunucusunda " + dbName + " veritabanına bağlanılamadı", "Bağlantı hatası: " + err.Error(), false, 0)
     } else {
         if doPrint {
             common.PrettyPrintStr("MySQL connection for " + dbName, true, "connected")
