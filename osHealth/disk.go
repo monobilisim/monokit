@@ -62,7 +62,7 @@ func DiskUsage() {
         }
 
 
-        issues.CheckDown("disk", common.Config.Identifier + " için disk doluluk seviyesi %"+strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64)+" üstüne çıktı", output.String())
+        issues.CheckDown("disk", common.Config.Identifier + " için disk doluluk seviyesi %"+strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64)+" üstüne çıktı", output.String(), false, 0)
         
         id := issues.Show("disk")
 

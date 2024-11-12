@@ -86,8 +86,16 @@ func CheckUp(service string, message string) {
     }
 }
 
-func CheckDown(service string, subject string, message string) {
-    // Remove slashes from service and replace them with -
+func CheckDown(service string, subject string, message string, EnableCustomIntervals bool, CustomInterval float64) {
+    var interval float64
+
+	if EnableCustomIntervals {
+		interval = CustomInterval
+	} else {
+		interval = common.Config.Redmine.Interval
+	}
+
+	// Remove slashes from service and replace them with -
     serviceReplaced := strings.Replace(service, "/", "-", -1)
     filePath := common.TmpDir + "/" + serviceReplaced + "-redmine-stat.log"
     currentDate := time.Now().Format("2006-01-02 15:04:05 -0700")
@@ -136,7 +144,7 @@ func CheckDown(service string, subject string, message string) {
                     Locked: true,
                  }
 
-        if common.Config.Redmine.Interval == 0 {
+        if interval == 0 {
             if oldDateParsed.Format("2006-01-02") != time.Now().Format("2006-01-02") {
                 jsonData, err := json.Marshal(&common.ServiceFile{Date: currentDate, Locked: false})
 
@@ -171,7 +179,7 @@ func CheckDown(service string, subject string, message string) {
                 // currentDate - oldDate in minutes
                 timeDiff := time.Now().Sub(oldDateParsed) //.Minutes()
 
-                if timeDiff.Minutes() >= common.Config.Redmine.Interval {
+                if timeDiff.Minutes() >= interval {
                     jsonData, err := json.Marshal(finJson)
                     if err != nil {
                         common.LogError("Error marshalling JSON: \n" + err.Error())
@@ -211,7 +219,7 @@ func CheckDown(service string, subject string, message string) {
         }
 
 
-        if common.Config.Redmine.Interval == 0 {
+        if interval == 0 {
             redmineWrapper(service, subject, message)
         }
     }

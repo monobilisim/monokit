@@ -124,6 +124,6 @@ var CheckDownCmd = &cobra.Command{
         service, _ := cmd.Flags().GetString("service")
         subject, _ := cmd.Flags().GetString("subject")
         message, _ := cmd.Flags().GetString("message")
-        CheckDown(service, subject, message)
+        CheckDown(service, subject, message, false, 0)
     },
 }
