@@ -16,11 +16,9 @@ func SysLoad() {
         return
     }
    
-    loadLimitIssueMultiplier := OsHealthConfig.Load.Limit_Multiplier * OsHealthConfig.Load.Issue_Multiplier
-
     loadLimit := float64(cpuCount) * OsHealthConfig.Load.Limit_Multiplier
 
-    loadLimitIssue := loadLimit * loadLimitIssueMultiplier
+    loadLimitIssue := loadLimit * OsHealthConfig.Load.Issue_Multiplier
 
     loadAvg, err := load.Avg()
 
