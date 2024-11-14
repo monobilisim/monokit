@@ -353,6 +353,7 @@ func checkPMM() {
 dpkg-query: package 'pmm2-client' is not installed and no information is available
 Use dpkg --info (= dpkg-deb --info) to examine archive files.
     `
+	dpkgNotFound := `exec: "dpkg": executable file not found in $PATH`
 	cmd := exec.Command("dpkg", "-s", "pmm2-client")
 	var out bytes.Buffer
 	var stderr bytes.Buffer
@@ -360,9 +361,10 @@ Use dpkg --info (= dpkg-deb --info) to examine archive files.
 	cmd.Stderr = &stderr
 	err := cmd.Run()
 	if err != nil {
-		if strings.TrimSpace(stderr.String()) != strings.TrimSpace(notInstalled) {
-			common.LogError(fmt.Sprintf("Error executing dpkg command: %v\n", err))
+		if strings.TrimSpace(stderr.String()) == strings.TrimSpace(notInstalled) || strings.TrimSpace(err.Error()) == strings.TrimSpace(dpkgNotFound) {
+			return
 		}
+		common.LogError(fmt.Sprintf("Error executing dpkg command: %v\n", err))
 		return
 	}
 
