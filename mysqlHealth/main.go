@@ -29,6 +29,13 @@ func Main(cmd *cobra.Command, args []string) {
 
 	Connect()
 	defer Connection.Close()
+	if err := Connection.Ping(); err != nil {
+		fmt.Println("Can't ping MySQL")
+		common.LogError("Can't ping MySQL connection. err: " + err.Error())
+		common.AlarmCheckDown("ping", "Can't ping MySQL connection. err: "+err.Error(), false)
+		return
+	}
+	common.AlarmCheckUp("ping", "MySQL ping returns no error.", false)
 
 	common.SplitSection("MySQL Access:")
 
