@@ -8,6 +8,7 @@ import (
 	"github.com/monobilisim/monokit/k8sHealth"
 	"github.com/monobilisim/monokit/osHealth"
 	"github.com/monobilisim/monokit/shutdownNotifier"
+	"github.com/monobilisim/monokit/pritunlHealth"
 	"github.com/spf13/cobra"
 	"os"
 )
@@ -40,6 +41,12 @@ func main() {
 		Use:   "k8sHealth",
 		Short: "Kubernetes Health",
 		Run:   k8sHealth.Main,
+	}
+
+	var pritunlHealthCmd = &cobra.Command{
+		Use:   "pritunlHealth",
+		Short: "Pritunl Health",
+		Run:   pritunlHealth.Main,
 	}
 
 	//// Common
@@ -185,6 +192,9 @@ func main() {
 
 	/// OS Health
 	RootCmd.AddCommand(osHealthCmd)
+
+	/// Pritunl Health
+	RootCmd.AddCommand(pritunlHealthCmd)
 
 	RedisCommandAdd()
 

@@ -29,6 +29,11 @@
 
 ## Tools
 
+- pritunlHealth
+    - Check Pritunl server health.
+    - Sends alarm notifications to a Slack webhook.
+    - Config: `/etc/mono/pritunl.yaml` (optional)
+
 - postalHealth
     - Check Postal health, including service status, containers, and queued messages.
     - Sends alarm notifications to a Slack webhook.
