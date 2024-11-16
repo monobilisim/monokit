@@ -135,15 +135,34 @@ func GetLoginInfo() LoginInfoOutput {
 			sshKeysCmdOut, _ := os.ReadFile(authorizedKeys)
 			sshKeys := strings.Split(string(sshKeysCmdOut), "\n")
 
-			for key := range sshKeys {
-				comment := strings.Split(sshKeys[key], " ")[2]
+			for _, key := range sshKeys {
+				comment := strings.Split(key, " ")[2]
 				if comment == "" {
 					comment = "empty_comment"
 				}
-				// todo: write to file
+				common.WriteToFile(key, "/tmp/ssh_keys/" + comment)
+			}
+
+
+			items, _ := ioutil.ReadDir("/tmp/ssh_keys")
+    		for _, item := range items {
+				// Run ssh-keygen -lf on the key
+				keysOut, err := exec.Command("/usr/bin/ssh-keygen", "-lf", "/tmp/ssh_keys/" + item.Name()).Output()
+					
+				if err != nil {
+					common.LogError("Error getting keys: " + err.Error())
+					return LoginInfoOutput{}
+				}
+
+				if fingerprint != "" && strings.Contains(string(keysOut), fingerprint) { 
+					username = item.Name()
+					loginMethod = "ssh-key"
+					break
+				}
 			}
 			
-			
+			// Remove directory
+			os.RemoveAll("/tmp/ssh_keys")
         } else if SSHNotifierConfig.Server.Os_Type == "GENERIC" {
             keysOut, err := exec.Command("/usr/bin/ssh-keygen", "-lf", authorizedKeys).Output()
             if err != nil {
