@@ -29,6 +29,10 @@
 
 ## Tools
 
+- sshNotifier
+    - Notifies of a successful SSH login/logout through the Slack webhook.
+    - Config: `/etc/mono/ssh-notifier.yaml`
+
 - pritunlHealth
     - Check Pritunl server health.
     - Sends alarm notifications to a Slack webhook.
