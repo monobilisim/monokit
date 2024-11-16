@@ -9,6 +9,7 @@ import (
 	"github.com/monobilisim/monokit/osHealth"
 	"github.com/monobilisim/monokit/shutdownNotifier"
 	"github.com/monobilisim/monokit/pritunlHealth"
+	"github.com/monobilisim/monokit/sshNotifier"
 	"github.com/spf13/cobra"
 	"os"
 )
@@ -47,6 +48,12 @@ func main() {
 		Use:   "pritunlHealth",
 		Short: "Pritunl Health",
 		Run:   pritunlHealth.Main,
+	}
+
+	var sshNotifierCmd = &cobra.Command{
+		Use:   "sshNotifier",
+		Short: "SSH Notifier",
+		Run:   sshNotifier.Main,
 	}
 
 	//// Common
@@ -214,6 +221,12 @@ func main() {
 
 	/// Kubernetes Health
 	RootCmd.AddCommand(k8sHealthCmd)
+
+	/// SSH Notifier
+	RootCmd.AddCommand(sshNotifierCmd)
+
+	sshNotifierCmd.Flags().BoolP("login", "1", false, "Login")
+	sshNotifierCmd.Flags().BoolP("logout", "0", false, "Logout")
 
 	kubeconfig := os.Getenv("KUBECONFIG")
 

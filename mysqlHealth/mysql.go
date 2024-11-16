@@ -344,7 +344,7 @@ func CheckDB() {
 		for _, table := range tables {
 			message += table + "\n"
 		}
-		common.Alarm(message)
+		common.Alarm(message, "", "", false)
 	}
 }
 

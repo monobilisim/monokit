@@ -51,7 +51,7 @@ var AlarmSendCmd = &cobra.Command{
     Run: func(cmd *cobra.Command, args []string) {
         Init()
         message, _ := cmd.Flags().GetString("message")
-        Alarm(message)
+        Alarm(message, "", "", false)
     },
 }
 
@@ -94,7 +94,7 @@ func AlarmCheckUp(service string, message string, noInterval bool) {
         return
     } else {
         os.Remove(file_path)
-        Alarm(messageFinal)
+        Alarm(messageFinal, "", "", false)
     }
 }
 
@@ -166,7 +166,7 @@ func AlarmCheckDown(service string, message string, noInterval bool) {
 
                 err = os.WriteFile(filePath, jsonData, 0644)
 
-                Alarm(messageFinal)
+                Alarm(messageFinal, "", "", false)
             }
             return
         }
@@ -185,7 +185,7 @@ func AlarmCheckDown(service string, message string, noInterval bool) {
                 LogError("Error writing to file: \n" + err.Error())
             }
             
-            Alarm(messageFinal)
+            Alarm(messageFinal, "", "", false)
         } else {
             if j.Locked == false {
                 // currentDate - oldDate in minutes
@@ -203,7 +203,7 @@ func AlarmCheckDown(service string, message string, noInterval bool) {
                         LogError("Error writing to file: \n" + err.Error())
                     }
 
-                    Alarm(messageFinal)
+                    Alarm(messageFinal, "", "", false)
                 }
             }
         }
@@ -232,7 +232,7 @@ func AlarmCheckDown(service string, message string, noInterval bool) {
 
 
         if Config.Alarm.Interval == 0 {
-            Alarm(messageFinal)
+            Alarm(messageFinal, "", "", false)
         }
     }        
 }
@@ -243,7 +243,7 @@ type ResponseData struct {
     Code string `json:"code"`
 }
 
-func Alarm(m string) {
+func Alarm(m string, customStream string, customTopic string, onlyFirstWebhook bool) {
     if Config.Alarm.Enabled == false {
         return
     }
@@ -253,6 +253,13 @@ func Alarm(m string) {
     body:= []byte(`{"text":"` + message + `"}`)
 
     for _, webhook_url := range Config.Alarm.Webhook_urls {
+
+		if customStream != "" && customTopic != "" {
+			// Remove everything after &
+			webhook_url = strings.Split(webhook_url, "&")[0]
+			webhook_url = webhook_url + "&stream=" + customStream + "&topic=" + customTopic
+		}
+
         r, err := http.NewRequest("POST", webhook_url, bytes.NewBuffer(body))
         r.Header.Set("Content-Type", "application/json")
 
@@ -286,5 +293,9 @@ func Alarm(m string) {
         }
 
         defer res.Body.Close()
+
+		if onlyFirstWebhook == true {
+			break
+		}
     }
 }
