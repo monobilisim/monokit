@@ -35,9 +35,9 @@ func SysLoad() {
 
     if loadAvg.Load1 > loadLimit {
         common.PrettyPrint("System Load", common.Fail + " more than " + strconv.FormatFloat(loadLimit, 'f', 2, 64) + "%", loadAvg.Load1, false, true, false, 0)
-        common.AlarmCheckDown("sysload", "System load is now more than " + strconv.FormatFloat(loadLimit, 'f', 2, 64) + "%, System load: " + strconv.FormatFloat(loadAvg.Load1, 'f', 2, 64), false)
+        common.AlarmCheckDown("sysload", "System load is now more than " + strconv.FormatFloat(loadLimit, 'f', 2, 64) + "%, System load: " + strconv.FormatFloat(loadAvg.Load1, 'f', 2, 64)+ "%", false)
     } else {
         common.PrettyPrint("System Load", common.Green + " less than " + strconv.FormatFloat(loadLimit, 'f', 2, 64) + "%", loadAvg.Load1, false, true, false, 0)
-        common.AlarmCheckUp("sysload", "System load is now less than " + strconv.FormatFloat(loadLimit, 'f', 2, 64) + "%, System load: " + strconv.FormatFloat(loadAvg.Load1, 'f', 2, 64), false)
+        common.AlarmCheckUp("sysload", "System load is now less than " + strconv.FormatFloat(loadLimit, 'f', 2, 64) + "%, System load: " + strconv.FormatFloat(loadAvg.Load1, 'f', 2, 64) + "%", false)
     }
 }
