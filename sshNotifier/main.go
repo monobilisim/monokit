@@ -9,6 +9,7 @@ import (
 	"bytes"
 	"slices"
 	"os/exec"
+	"strconv"
     "strings"
 	"net/http"
 	"io/ioutil"
@@ -46,6 +47,8 @@ type LoginInfoOutput struct {
     Date string `json:"date"`
     Type string `json:"type"`
     LoginMethod string `json:"login_method"`
+	Ppid string `json:"ppid"`
+	PamUser string `json:"pam_user"`
 }
 
 type DatabaseRequest struct {
@@ -68,7 +71,7 @@ func Grep(pattern string, contents string) string {
 	return ""
 }
 
-func GetLoginInfo() LoginInfoOutput {
+func GetLoginInfo(customType string) LoginInfoOutput {
     var logFile string
 	var loginMethod string
     var keyword string
@@ -77,7 +80,7 @@ func GetLoginInfo() LoginInfoOutput {
     var authorizedKeys string
 	var username string
 
-    ppid = os.Getenv("PPID")
+    ppid = strconv.Itoa(os.Getppid())
 
     // Check if /var/log/secure exists
     if _, err := os.Stat("/var/log/secure"); os.IsNotExist(err) {
@@ -215,23 +218,37 @@ func GetLoginInfo() LoginInfoOutput {
 		loginMethod = "password"
 	}
 
+	var pamType string
+	if customType != "" {
+		pamType = customType
+	} else {
+		pamType = os.Getenv("PAM_TYPE")
+	}
+
 	return LoginInfoOutput{
 		Username: username,
 		Fingerprint: fingerprint,
 		Server: pamUser + "@" + common.Config.Identifier,
 		RemoteIp: os.Getenv("PAM_RHOST"),
 		Date: time.Now().Format("02.01.2006 15:04:05"),
-		Type: os.Getenv("PAM_TYPE"),
+		Type: pamType,
 		LoginMethod: loginMethod,
+		Ppid: ppid,
+		PamUser: pamUser,
 	}
 
 }
 
 func listFiles(dir string) []string {
+	// Check if the directory exists
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		return []string{}
+	}
+
     var files []string
 
     err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
-       if !d.IsDir() && filepath.Ext(path) == ".log" && filepath.Ext(path) == ".txt" {
+       if !d.IsDir() && (filepath.Ext(path) == ".log") {
           files = append(files, path)
        }
        return nil
@@ -277,9 +294,9 @@ func NotifyAndSave(loginInfo LoginInfoOutput) {
 	var message string
 
 	if loginInfo.Type == "open_session" {
-		message = "[ " + common.Config.Identifier + " ] " + "[ :green: Login ] { " + loginInfo.Username + "@" + loginInfo.RemoteIp + " } >> " + loginInfo.Server + " - " + os.Getenv("PPID") + " }"
+		message = "[ " + common.Config.Identifier + " ] " + "[ :green: Login ] { " + loginInfo.Username + "@" + loginInfo.RemoteIp + " } >> { " + SSHNotifierConfig.Server.Address + " - " + loginInfo.Ppid + " }"
 	} else {
-		message = "[ " + common.Config.Identifier + " ] " + "[ :red_circle: Logout ] { " + loginInfo.Username + "@" + loginInfo.RemoteIp + " } << " + loginInfo.Server + " - " + os.Getenv("PPID") + " }"
+		message = "[ " + common.Config.Identifier + " ] " + "[ :red_circle: Logout ] { " + loginInfo.Username + "@" + loginInfo.RemoteIp + " } << { " + SSHNotifierConfig.Server.Address + " - " + loginInfo.Ppid + " }"
 	}
 	
 	if strings.Contains(loginInfo.Username, "@") {
@@ -296,8 +313,8 @@ func NotifyAndSave(loginInfo LoginInfoOutput) {
 
 	var dbReq DatabaseRequest
 
-	dbReq.Ppid = "'" + os.Getenv("PPID") + "'"
-	dbReq.LinuxUser = "'" + os.Getenv("PAM_USER") + "'"
+	dbReq.Ppid = "'" + loginInfo.Ppid + "'"
+	dbReq.LinuxUser = "'" + loginInfo.PamUser + "'"
 	dbReq.Type = "'" + loginInfo.Type + "'"
 	dbReq.KeyComment = "'" + loginInfo.Username + "'"
 	dbReq.Host = "'" + loginInfo.Server + "'"
@@ -318,10 +335,17 @@ func Main(cmd *cobra.Command, args []string) {
     common.Init()
     common.ConfInit("ssh-notifier", &SSHNotifierConfig)
 
-	//login, _ := cmd.Flags().GetBool("login")
-	//logout, _ := cmd.Flags().GetBool("logout")
+	var customType string
+	login, _ := cmd.Flags().GetBool("login")
+	logout, _ := cmd.Flags().GetBool("logout")
+
+	if login {
+		customType = "open_session"
+	} else if logout {
+		customType = "close_session"
+	}
 
     time.Sleep(1 * time.Second) // Wait for PAM to finish
 
-	NotifyAndSave(GetLoginInfo())
+	NotifyAndSave(GetLoginInfo(customType))
 }
