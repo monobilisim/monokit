@@ -25,3 +25,26 @@ func ConnsByProc(prefix string) uint32 {
 	}
     return 0000
 }
+
+func ConnsByProcMulti(prefix string) []uint32 {
+
+	var ports []uint32
+
+	procs, _ := process.Processes()
+
+	for _, proc := range procs {
+		procName, _ := proc.Name()
+
+		if strings.HasPrefix(procName, prefix) {
+			conn, _ := proc.Connections()
+			for _, c := range conn {
+				if c.Laddr.Port != 0 {
+					ports = append(ports, c.Laddr.Port)
+		        } else {
+					continue
+				}
+			}
+		}
+	}
+	return ports
+}
