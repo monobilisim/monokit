@@ -37,8 +37,10 @@ func Main(cmd *cobra.Command, args []string) {
 
 	if !common.SystemdUnitActive("redis.service") && !common.SystemdUnitActive("redis-server.service") {
 		common.PrettyPrintStr("Service redis-server", false, "active")
+		common.AlarmCheckDown("redis_server_svc", "Service redis-server is not active", false)
 	} else {
 		common.PrettyPrintStr("Service redis-server", true, "active")
+		common.AlarmCheckUp("redis_server_svc", "Service redis-server is now active", false)
 	}
 
 	IsSentinel := RedisIsSentinel()
