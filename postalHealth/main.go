@@ -52,7 +52,7 @@ func Main(cmd *cobra.Command, args []string) {
 }
 
 func Services() {
-    apiClient, err := client.NewClientWithOpts(client.FromEnv)
+    apiClient, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
     defer apiClient.Close()
     if common.SystemdUnitActive("postal.service") {
         if err != nil {
