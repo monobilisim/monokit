@@ -29,6 +29,10 @@
 
 ## Tools
 
+- traefikHealth
+    - Check Traefik health, including service status and logs.
+    - Sends alarm notifications to a Slack webhook.
+
 - sshNotifier
     - Notifies of a successful SSH login/logout through the Slack webhook.
     - Config: `/etc/mono/ssh-notifier.yaml`

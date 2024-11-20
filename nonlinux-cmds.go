@@ -26,3 +26,8 @@ func PostalCommandAdd() {
 	// postalHealth is not supported on anything other than Linux
 	return
 }
+
+func TraefikCommandAdd() {
+	// traefikHealth is not supported on anything other than Linux
+	return
+}

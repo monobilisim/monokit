@@ -8,6 +8,7 @@ import (
 	"github.com/monobilisim/monokit/postalHealth"
 	"github.com/monobilisim/monokit/redisHealth"
 	"github.com/monobilisim/monokit/rmqHealth"
+	"github.com/monobilisim/monokit/traefikHealth"
 	"github.com/spf13/cobra"
 )
 
@@ -59,4 +60,14 @@ func PostalCommandAdd() {
 	}
 
 	RootCmd.AddCommand(postalHealthCmd)
+}
+
+func TraefikCommandAdd() {
+	var traefikHealthCmd = &cobra.Command{
+		Use:   "traefikHealth",
+		Short: "Traefik Health",
+		Run:   traefikHealth.Main,
+	}
+
+	RootCmd.AddCommand(traefikHealthCmd)
 }
