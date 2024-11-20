@@ -15,6 +15,15 @@ func SplitSection(section string) {
     fmt.Println("--------------------------------------------------")
 }
 
+func ContainsUint32(a uint32, b []uint32) bool {
+	for _, c := range b {
+		if a == c {
+			return true
+		}
+	}
+	return false
+}
+
 func IsEmptyOrWhitespace(filePath string) bool {
         file, err := os.Open(filePath)
         if err != nil {
