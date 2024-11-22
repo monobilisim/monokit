@@ -1,0 +1,6 @@
+ports_to_check:
+  - 80
+  - 443
+
+types_to_check:
+  - error
