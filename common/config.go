@@ -32,11 +32,11 @@ func ConfExists(configName string) bool {
 
     for _, file := range yamlFiles {
         if _, err := os.Stat("/etc/mono/" + file); os.IsNotExist(err) {
-            return false
+            return true
         }
     }
 
-    return true
+    return false
 }
 
 
