@@ -377,10 +377,10 @@ Use dpkg --info (= dpkg-deb --info) to examine archive files.
 				common.SplitSection("PMM Status:")
 				if common.SystemdUnitActive("pmm-agent.service") {
 					common.PrettyPrintStr("Service pmm-agent", true, "active")
-					common.AlarmCheckDown("mysql-pmm-agent", "Service pmm-agent", true)
+					common.AlarmCheckDown("mysql-pmm-agent", "Service pmm-agent", false)
 				} else {
 					common.PrettyPrintStr("Service pmm-agent", false, "active")
-					common.AlarmCheckUp("mysql-pmm-agent", "Service pmm-agent", true)
+					common.AlarmCheckUp("mysql-pmm-agent", "Service pmm-agent", false)
 				}
 			}
 			break
