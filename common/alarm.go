@@ -231,7 +231,7 @@ func AlarmCheckDown(service string, message string, noInterval bool) {
         }
 
 
-        if Config.Alarm.Interval == 0 {
+        if Config.Alarm.Interval == 0 || noInterval == true {
             Alarm(messageFinal, "", "", false)
         }
     }        
