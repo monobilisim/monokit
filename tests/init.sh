@@ -44,4 +44,6 @@ cat /etc/mono/global.yaml
 sudo cp ../config/os.yml /etc/mono/os.yml
 
 
-sleep 10 # wait for redmine to start
+until curl http://localhost:8080; do
+sleep 1
+done
