@@ -20,7 +20,7 @@ docker compose exec -it db mysql -u root -pexample redmine -e "SELECT * FROM pro
 
 docker compose down
 
-docker compose up -d
+docker compose up &
 
 mkdir -p /etc/mono
 
