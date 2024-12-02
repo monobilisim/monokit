@@ -9,4 +9,4 @@ builds:
     env:
       - CGO_ENABLED=0
     ldflags:
-      - -X common.MonokitVersion={{ .Version }}
+      - -X github.com/monobilisim/monokit/common.MonokitVersion={{ .Version }}
