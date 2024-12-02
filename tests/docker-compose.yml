@@ -1,7 +1,7 @@
 services:
 
   redmine:
-    image: redmine
+    image: redmine:5.1.4-bookworm
     restart: always
     ports:
       - 8080:3000
