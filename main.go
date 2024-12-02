@@ -14,10 +14,9 @@ import (
 	"os"
 )
 
-var MonokitVersion = "devel"
 var RootCmd = &cobra.Command{
 	Use:     "monokit",
-	Version: MonokitVersion,
+	Version: common.MonokitVersion,
 }
 
 func main() {
@@ -59,6 +58,14 @@ func main() {
 	//// Common
 	RootCmd.AddCommand(redmineCmd)
 	RootCmd.AddCommand(common.AlarmCmd)
+    
+    common.UpdateCmd.Flags().StringP("version", "v", "", "Custom version")
+    common.UpdateCmd.Flags().BoolP("force", "f", false, "Force update")
+    RootCmd.AddCommand(common.UpdateCmd)
+
+    common.MigrateCmd.Flags().StringP("from", "f", "", "From version")
+    common.MigrateCmd.MarkFlagRequired("from")
+    RootCmd.AddCommand(common.MigrateCmd)
 
 	/// Alarm
 

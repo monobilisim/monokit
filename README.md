@@ -90,6 +90,13 @@
 - alarm
   - Sends alarm notifications to a Slack webhook.
   - Config: `/etc/mono/global.yaml`
+
+- update
+  - Updates the monokit binary to the latest version.
+  - Allows you to choose the version to update with the `--version` flag.
+
+- migrate
+    - Migrates from a old version of Monokit to a new one in case of a breaking change.
 ---
 
 ## Usage

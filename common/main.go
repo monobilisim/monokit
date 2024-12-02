@@ -9,6 +9,7 @@ import (
 
 var Config Common
 var TmpPath string
+var MonokitVersion = "devel"
 
 func SplitSection(section string) {
     fmt.Println("\n" + section)
