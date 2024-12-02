@@ -55,7 +55,7 @@ func DownloadAndExtract(url string, runMigrations bool, oldVersion string) {
         }
 
         if hdr.Name == "monokit" {
-            f, err := os.Create("monokit")
+            f, err := os.Create(TmpDir + "monokit")
             if err != nil {
                 LogError("Couldn't create monokit binary: " + err.Error())
             }
@@ -71,7 +71,7 @@ func DownloadAndExtract(url string, runMigrations bool, oldVersion string) {
     os.Rename(MonokitPath, MonokitPath + ".bak")
 
     // Move monokit binary to the correct path
-    os.Rename("monokit", MonokitPath)
+    os.Rename(TmpDir + "monokit", MonokitPath)
     os.Chmod(MonokitPath, 0755)
 
     if runMigrations {
