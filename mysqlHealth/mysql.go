@@ -71,16 +71,40 @@ func ParseMyCnfAndConnect(profile string) (string, error) {
 					continue
 				}
 
+                if host == "" {
+				    host = s.Key("host").String()
+                }
 
-				host = s.Key("host").String()
-				port = s.Key("port").String()
-				dbname = s.Key("dbname").String()
-				user = s.Key("user").String()
-				password = s.Key("password").String()
-				socket = s.Key("socket").String()
+                if port == "" {
+				    port = s.Key("port").String()
+                }
+
+                if dbname == "" {
+				    dbname = s.Key("dbname").String()
+                }
+
+                if user == "" {
+				    user = s.Key("user").String()
+                }
+
+                if password == "" {
+				    password = s.Key("password").String()
+                }
+
+                if socket == "" {
+				    socket = s.Key("socket").String()
+                }
                 
                 if socket != "" {
-                    finalConn = fmt.Sprintf("%s:%s@unix(%s)/%s", user, password, socket, dbname)
+
+                    if user == "" {
+                        user = "root"
+                    }
+                    if password == "" {
+                        finalConn = fmt.Sprintf("%s@unix(%s)/%s", user, socket, dbname)
+                    } else {
+                        finalConn = fmt.Sprintf("%s:%s@unix(%s)/%s", user, password, socket, dbname)
+                    }
                 } else {
                     if port == "" {
                         port = "3306"
@@ -93,11 +117,20 @@ func ParseMyCnfAndConnect(profile string) (string, error) {
                 if err == nil {
                     err = Connection.Ping()
                     if err == nil {
-                        fmt.Println("Connected to MySQL with profile: " + s.Name())
-                        fmt.Println("Connection string: " + finalConn)
-                        fmt.Println("MyCnf path: " + path)
+                        if os.Getenv("MONOKIT_DEBUG") == "1" || os.Getenv("MONOKIT_DEBUG") == "true" { 
+                            fmt.Println("Connected to MySQL with profile: " + s.Name())
+                            fmt.Println("Connection string: " + finalConn)
+                            fmt.Println("MyCnf path: " + path)
+                        }
 				        found = true
                         break
+                    } else {
+                        if os.Getenv("MONOKIT_DEBUG") == "1" || os.Getenv("MONOKIT_DEBUG") == "true" {
+                            fmt.Println("Error pinging MySQL with profile: " + s.Name())
+                            fmt.Println("Connection string: " + finalConn)
+                            fmt.Println("MyCnf path: " + path)
+                            fmt.Println("Error: " + err.Error())
+                        }
                     }
                 }
 			}
@@ -125,7 +158,7 @@ func SelectNow() {
 	// Simple query to check if the connection is working
 	rows, err := Connection.Query("SELECT NOW()")
 	if err != nil {
-		common.LogError("Error querying database: " + err.Error())
+		common.LogError("Error querying database for simple SELECT NOW(): " + err.Error())
 		common.AlarmCheckDown("now", "Couldn't run a 'SELECT' statement on MySQL", false)
 		common.PrettyPrintStr("MySQL", false, "accessible")
 		return
@@ -139,7 +172,7 @@ func SelectNow() {
 func CheckProcessCount() {
 	rows, err := Connection.Query("SHOW PROCESSLIST")
 	if err != nil {
-		common.LogError("Error querying database: " + err.Error())
+		common.LogError("Error querying database for SHOW PROCESSLIST: " + err.Error())
 		common.AlarmCheckDown("processlist", "Couldn't run a 'SHOW PROCESSLIST' statement on MySQL", false)
 		common.PrettyPrintStr("Number of Processes", false, "accessible")
 		return
@@ -172,7 +205,7 @@ func InaccessibleClusters() {
 	var listening_clusters_array []string
 
 	if err := rows.Scan(&ignored, &listening_clusters); err != nil {
-		common.LogError("Error querying database: " + err.Error())
+		common.LogError("Error querying database for incoming addresses: " + err.Error())
 		return
 	}
 
@@ -240,7 +273,7 @@ func CheckClusterStatus() {
     rows := Connection.QueryRow("SHOW STATUS WHERE Variable_name = 'wsrep_cluster_size'")
 
 	if err := rows.Scan(&varname, &cluster_size); err != nil {
-		common.LogError("Error querying database: " + err.Error())
+		common.LogError("Error querying database for cluster size: " + err.Error())
 		return
 	}
 
@@ -277,7 +310,7 @@ func CheckNodeStatus() {
 	var status string
 
 	if err := rows.Scan(&name, &status); err != nil {
-		common.LogError("Error querying database: " + err.Error())
+		common.LogError("Error querying database for node status: " + err.Error())
 		return
 	}
 
@@ -300,7 +333,7 @@ func CheckClusterSynced() {
 	var status string
 
 	if err := rows.Scan(&name, &status); err != nil {
-		common.LogError("Error querying database: " + err.Error())
+		common.LogError("Error querying database for local_state_comment: " + err.Error())
 		return
 	}
 
