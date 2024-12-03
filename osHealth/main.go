@@ -20,6 +20,7 @@ type OsHealth struct {
      }
 
      Ram_Limit float64
+     Ram_Limit_Issue float64
 
      Alarm struct {
          Enabled bool

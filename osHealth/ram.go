@@ -4,6 +4,7 @@ import (
     "strconv"
     "github.com/shirou/gopsutil/v4/mem"
     "github.com/monobilisim/monokit/common"
+    issues "github.com/monobilisim/monokit/common/redmine/issues"
 )
 
 
@@ -16,6 +17,13 @@ func RamUsage() {
     }
 
     ramLimit := OsHealthConfig.Ram_Limit
+    ramLimitIssue := OsHealthConfig.Ram_Limit_Issue
+
+    if virtualMemory.UsedPercent > ramLimitIssue {
+        issues.CheckDown("ram", common.Config.Identifier + " için hafıza kullanımı " + strconv.FormatFloat(ramLimit, 'f', 0, 64) + "%'nin üstüne çıktı", "Hafıza kullanımı: " + strconv.FormatFloat(virtualMemory.UsedPercent, 'f', 0, 64) + "%\n Hafıza limiti: " + strconv.FormatFloat(ramLimit, 'f', 0, 64) + "%", false, 0)
+    } else {
+        issues.CheckUp("ram", common.Config.Identifier + " için hafıza kullanımı " + strconv.FormatFloat(ramLimit, 'f', 0, 64) + "%'nin altına düştü")
+    }
 
     if virtualMemory.UsedPercent > ramLimit {
         common.PrettyPrint("RAM Usage", common.Fail + " more than " + strconv.FormatFloat(ramLimit, 'f', 0, 64) + "%", virtualMemory.UsedPercent, true, false, false, 0)
