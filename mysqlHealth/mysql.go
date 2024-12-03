@@ -53,9 +53,11 @@ func FindMyCnf() []string {
 	return nil
 }
 
-func MyCnf(profile string) (string, error) {
+func ParseMyCnfAndConnect(profile string) (string, error) {
 	var host, port, dbname, user, password, socket string
 	var found bool
+
+    var finalConn string
 
 	for _, path := range FindMyCnf() {
 		if _, err := os.Stat(path); err == nil {
@@ -69,7 +71,6 @@ func MyCnf(profile string) (string, error) {
 					continue
 				}
 
-				found = true
 
 				host = s.Key("host").String()
 				port = s.Key("port").String()
@@ -77,9 +78,28 @@ func MyCnf(profile string) (string, error) {
 				user = s.Key("user").String()
 				password = s.Key("password").String()
 				socket = s.Key("socket").String()
+                
+                if socket != "" {
+                    finalConn = fmt.Sprintf("%s:%s@unix(%s)/%s", user, password, socket, dbname)
+                } else {
+                    if port == "" {
+                        port = "3306"
+                    }
+                    finalConn = fmt.Sprintf("%s:%s@tcp(%s:%s)/%s", user, password, host, port, dbname)
+                }
+                
+                err = Connect(finalConn)
 
-				// Break after finding the first matching profile
-				break
+                if err == nil {
+                    err = Connection.Ping()
+                    if err == nil {
+                        fmt.Println("Connected to MySQL with profile: " + s.Name())
+                        fmt.Println("Connection string: " + finalConn)
+                        fmt.Println("MyCnf path: " + path)
+				        found = true
+                        break
+                    }
+                }
 			}
 		}
 	}
@@ -88,31 +108,17 @@ func MyCnf(profile string) (string, error) {
 		return "", fmt.Errorf("no matching entry found for profile %s", profile)
 	}
 
-	if socket != "" {
-		return fmt.Sprintf("%s:%s@unix(%s)/%s", user, password, socket, dbname), nil
-	}
-
-	if port == "" {
-		port = "3306"
-	}
-
-	return fmt.Sprintf("%s:%s@tcp(%s:%s)/%s", user, password, host, port, dbname), nil
+    return finalConn, nil
 }
 
-func Connect() {
-	connStr, err := MyCnf("client")
-	if err != nil {
-		common.LogError(err.Error())
-		return
-	}
-
+func Connect(connStr string) error {
 	db, err := sql.Open("mysql", connStr)
 	if err != nil {
-		common.LogError("Error connecting to database: " + err.Error())
-		return
+		return err
 	}
 
 	Connection = db
+    return nil
 }
 
 func SelectNow() {

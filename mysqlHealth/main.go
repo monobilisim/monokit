@@ -26,16 +26,22 @@ func Main(cmd *cobra.Command, args []string) {
 	}
 
 	fmt.Println("MySQL Health Check REWRITE - v" + version + " - " + time.Now().Format("2006-01-02 15:04:05"))
+    
+    finalConnStr, err := ParseMyCnfAndConnect("client")
 
-	Connect()
-	defer Connection.Close()
-	if err := Connection.Ping(); err != nil {
-		fmt.Println("Can't ping MySQL")
+	if err != nil {
 		common.LogError("Can't ping MySQL connection. err: " + err.Error())
 		common.AlarmCheckDown("ping", "Can't ping MySQL connection. err: "+err.Error(), false)
-		return
-	}
-	common.AlarmCheckUp("ping", "MySQL ping returns no error.", false)
+    }
+
+    if Connect(finalConnStr) != nil {
+        common.LogError("Can't connect to a MySQL connection. err: " + err.Error())
+        common.AlarmCheckDown("ping", "Can't connect to a MySQL connection. err: "+err.Error(), false)
+    }
+
+	defer Connection.Close()
+	
+    //common.AlarmCheckUp("ping", "MySQL ping returns no error.", false)
 
 	common.SplitSection("MySQL Access:")
 
