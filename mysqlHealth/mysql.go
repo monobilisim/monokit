@@ -218,10 +218,6 @@ func InaccessibleClusters() {
 }
 
 func CheckClusterStatus() {
-	rows := Connection.QueryRow("SHOW STATUS WHERE Variable_name = 'wsrep_cluster_size'")
-
-	var ignored string
-	var cluster_size int
 	var identifierRedmine string
 
 	// Split the identifier into two parts using a hyphen
@@ -238,23 +234,19 @@ func CheckClusterStatus() {
 
 	}
 
-	if err := rows.Scan(&ignored, &cluster_size); err != nil {
-		common.LogError("Error querying database: " + err.Error())
-		return
-	}
-
 	var varname string
-	var value string
-	rows = Connection.QueryRow("SHOW STATUS WHERE Variable_name = 'wsrep_cluster_size'")
+	var cluster_size int
 
-	if err := rows.Scan(&varname, &value); err != nil {
+    rows := Connection.QueryRow("SHOW STATUS WHERE Variable_name = 'wsrep_cluster_size'")
+
+	if err := rows.Scan(&varname, &cluster_size); err != nil {
 		common.LogError("Error querying database: " + err.Error())
 		return
 	}
 
 	if cluster_size == DbHealthConfig.Mysql.Cluster.Size {
 		common.AlarmCheckUp("cluster_size", "Cluster size is accurate: "+fmt.Sprintf("%d", cluster_size)+"/"+fmt.Sprintf("%d", DbHealthConfig.Mysql.Cluster.Size), false)
-		issues.CheckUp("cluster-size", "MySQL Cluster boyutu: "+strconv.Itoa(cluster_size)+" - "+common.Config.Identifier+"\n`"+varname+": "+value+"`")
+		issues.CheckUp("cluster-size", "MySQL Cluster boyutu: "+strconv.Itoa(cluster_size)+" - "+common.Config.Identifier+"\n`"+varname+": "+strconv.Itoa(cluster_size)+"`")
 		common.PrettyPrint("Cluster Size", "", float64(cluster_size), false, false, true, float64(DbHealthConfig.Mysql.Cluster.Size))
 	} else if cluster_size == 0 {
 		common.AlarmCheckDown("cluster_size", "Couldn't get cluster size", false)
@@ -262,7 +254,7 @@ func CheckClusterStatus() {
 		issues.Update("cluster-size", "`SHOW STATUS WHERE Variable_name = 'wsrep_cluster_size'` sorgusunda cluster boyutu alınamadı.", true)
 	} else {
 		common.AlarmCheckDown("cluster_size", "Cluster size is not accurate: "+fmt.Sprintf("%d", cluster_size)+"/"+fmt.Sprintf("%d", DbHealthConfig.Mysql.Cluster.Size), false)
-		issues.Update("cluster-size", "MySQL Cluster boyutu: "+strconv.Itoa(cluster_size)+" - "+common.Config.Identifier+"\n`"+varname+": "+value+"`", true)
+		issues.Update("cluster-size", "MySQL Cluster boyutu: "+strconv.Itoa(cluster_size)+" - "+common.Config.Identifier+"\n`"+varname+": "+strconv.Itoa(cluster_size)+"`", true)
 		common.PrettyPrint("Cluster Size", "", float64(cluster_size), false, false, true, float64(DbHealthConfig.Mysql.Cluster.Size))
 	}
 
@@ -274,7 +266,7 @@ func CheckClusterStatus() {
 			common.WriteToFile(common.TmpDir+"/mysql-cluster-size-redmine.log", issueIdIfExists)
 		}
 
-		issues.CheckDown("cluster-size", "MySQL Cluster boyutu: "+strconv.Itoa(cluster_size)+" - "+identifierRedmine, "MySQL Cluster boyutu: "+strconv.Itoa(cluster_size)+" - "+common.Config.Identifier+"\n`"+varname+": "+value+"`", false, 0)
+		issues.CheckDown("cluster-size", "MySQL Cluster boyutu: "+strconv.Itoa(cluster_size)+" - "+identifierRedmine, "MySQL Cluster boyutu: "+strconv.Itoa(cluster_size)+" - "+common.Config.Identifier+"\n`"+varname+": "+strconv.Itoa(cluster_size)+"`", false, 0)
 	}
 }
 
