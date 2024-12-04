@@ -67,7 +67,7 @@ func ParseMyCnfAndConnect(profile string) (string, error) {
 			}
 
 			for _, s := range cfg.Sections() {
-				if profile != "" && s.Name() != profile {
+                if profile != "" && string.Contains(s.Name(), profile) {
 					continue
 				}
 
