@@ -2,7 +2,6 @@ package sshNotifier
 
 import (
     "os"
-    "fmt"
     "time"
 	"io/fs"
     "bufio"
@@ -96,14 +95,14 @@ func GetLoginInfo(customType string) LoginInfoOutput {
     }
 
     if _, err := os.Stat(logFile); os.IsNotExist(err) {
-        fmt.Println("Logfile " + logFile + " does not exist, aborting.")
+        common.LogError("Logfile " + logFile + " does not exist, aborting.")
         return LoginInfoOutput{}
     }
 
     // Read the log file
     file, err := ioutil.ReadFile(logFile)
     if err != nil {
-        fmt.Println("Error opening file:", err)
+        common.LogError("Error opening file: " + err.Error())
         return LoginInfoOutput{}
     }
 
@@ -137,9 +136,18 @@ func GetLoginInfo(customType string) LoginInfoOutput {
         if SSHNotifierConfig.Server.Os_Type == "RHEL6" {
 			sshKeysCmdOut, _ := os.ReadFile(authorizedKeys)
 			sshKeys := strings.Split(string(sshKeysCmdOut), "\n")
+            
+            var comment string
 
 			for _, key := range sshKeys {
-				comment := strings.Split(key, " ")[2]
+                comment_multi := strings.Split(key, " ")
+                
+                if len(comment_multi) >= 2 {
+                    comment = comment_multi[2]
+                } else {  
+                    comment = ""
+                }
+
 				if comment == "" {
 					comment = "empty_comment"
 				}
@@ -163,6 +171,10 @@ func GetLoginInfo(customType string) LoginInfoOutput {
 					break
 				}
 			}
+
+            if username == "" {
+                username = pamUser
+            }
 			
 			// Remove directory
 			os.RemoveAll("/tmp/ssh_keys")
@@ -305,10 +317,10 @@ func NotifyAndSave(loginInfo LoginInfoOutput) {
 
 	fileList := slices.Concat(listFiles("/tmp/mono"), listFiles("/tmp/mono.sh"))
 
-	if len(fileList) > 0 {
-		common.Alarm(message, "", "", false)
-	} else {
+	if len(fileList) == 0 {
 		common.Alarm(message, SSHNotifierConfig.Webhook.Stream, loginInfo.Username, true)
+	} else {
+		common.Alarm(message, "", "", false)
 	}
 
 	var dbReq DatabaseRequest
