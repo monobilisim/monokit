@@ -10,6 +10,7 @@ import (
 	"github.com/monobilisim/monokit/shutdownNotifier"
 	"github.com/monobilisim/monokit/pritunlHealth"
 	"github.com/monobilisim/monokit/sshNotifier"
+    "github.com/monobilisim/monokit/lbPolicy"
 	"github.com/spf13/cobra"
 	"os"
 )
@@ -54,6 +55,24 @@ func main() {
 		Short: "SSH Notifier",
 		Run:   sshNotifier.Main,
 	}
+
+    var lbPolicyCmd = &cobra.Command{
+        Use:   "lbPolicy",
+        Short: "Load Balancer Policy Switcher/Viewer",
+    }
+
+    var lbPolicySwitchCmd = &cobra.Command{
+        Use:   "switch",
+        Short: "Switch Load Balancer Policy",
+        Run:   lbPolicy.Switch,
+    }
+
+    var lbPolicyListCmd = &cobra.Command{
+        Use:   "list",
+        Short: "List Load Balancer Policies",
+        Run:   lbPolicy.List,
+    }
+
 
 	//// Common
 	RootCmd.AddCommand(redmineCmd)
@@ -233,6 +252,18 @@ func main() {
 
 	/// SSH Notifier
 	RootCmd.AddCommand(sshNotifierCmd)
+
+    /// Load Balancer Policy
+    RootCmd.AddCommand(lbPolicyCmd)
+
+    lbPolicyCmd.AddCommand(lbPolicySwitchCmd)
+    lbPolicySwitchCmd.Flags().StringP("server", "s", "", "Server")
+    lbPolicySwitchCmd.MarkFlagRequired("server")
+    lbPolicySwitchCmd.Flags().StringArrayP("configs", "c", nil, "Config name (default: all)")
+
+    lbPolicyCmd.AddCommand(lbPolicyListCmd)
+    lbPolicyListCmd.Flags().StringArrayP("configs", "c", nil, "Config names to output the list of (default: all)")
+
 
 	sshNotifierCmd.Flags().BoolP("login", "1", false, "Login")
 	sshNotifierCmd.Flags().BoolP("logout", "0", false, "Logout")
