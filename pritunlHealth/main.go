@@ -65,6 +65,93 @@ func Main(cmd *cobra.Command, args []string) {
 	// Get to the pritunl database
 	db := client.Database("pritunl")
 
+    ServerStatus(ctx, db)
+    UsersStatus(ctx, db)
+}
+
+func ClientUpCheck(userIdActual bson.ObjectID, ctx context.Context, db *mongo.Database) int {
+    
+    // Get to the clients collection
+    collection := db.Collection("clients")
+
+    // make a for loop to get all the clients
+    cursor, err := collection.Find(ctx, bson.D{})
+    if err != nil {
+        common.LogError("Couldn't get the collection: " + err.Error())
+        common.AlarmCheckDown("pritunl_clients", "Couldn't get the clients collection: " + err.Error(), false)
+        return 0
+    } else {
+        common.AlarmCheckUp("pritunl_clients", "Clients collection is now available", false)
+    }
+
+    defer cursor.Close(ctx)
+
+    counter := 0
+
+    for cursor.Next(ctx) {
+        var result bson.M
+        err := cursor.Decode(&result)
+        if err != nil {
+            fmt.Println("Error: " + err.Error())
+            return 0
+        }
+    
+        // Get user_id
+        userId := result["user_id"]
+
+        if userId == userIdActual {
+            counter++
+        }
+    }
+
+    return counter
+}
+
+func UsersStatus(ctx context.Context, db *mongo.Database) {
+    // Get to the users collection
+    collection := db.Collection("users")
+
+    common.SplitSection("User Status")
+
+    // make a for loop to get all the users
+    cursor, err := collection.Find(ctx, bson.D{})
+    if err != nil {
+        common.LogError("Couldn't get the collection: " + err.Error())
+        common.AlarmCheckDown("pritunl_users", "Couldn't get the users collection: " + err.Error(), false)
+        return
+    } else {
+        common.AlarmCheckUp("pritunl_users", "Users collection is now available", false)
+    }
+
+    defer cursor.Close(ctx)
+
+    for cursor.Next(ctx) {
+        var result bson.M
+        err := cursor.Decode(&result)
+        if err != nil {
+            fmt.Println("Error: " + err.Error())
+            return
+        }
+   
+        name := result["name"].(string)
+        if name == "" || name == "undefined" {
+            continue
+        }
+
+        // Get id
+        isUp := ClientUpCheck(result["_id"].(bson.ObjectID), ctx, db)
+
+        if isUp == 0 {
+            common.PrettyPrintStr("User " + name, false, "online")
+            common.AlarmCheckDown("user_" + name, "User " + name + " is down, no client is connected", false)
+        } else {
+            common.PrettyPrintStr("User " + name, true, "online")
+            common.AlarmCheckUp("user_" + name, "User " + name + " is now up, " + fmt.Sprint(isUp) + " client(s) is/are connected", false)
+        }
+    }
+}
+
+func ServerStatus(ctx context.Context, db *mongo.Database) {
 	// Get to the servers collection
 	collection := db.Collection("servers")
 
