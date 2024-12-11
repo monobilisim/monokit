@@ -6,8 +6,10 @@ import (
     "sort"
     "time"
     "bufio"
+    "bytes"
     "errors"
     "strconv"
+    "reflect"
     "strings"
     "net/http"
     "encoding/json"
@@ -178,7 +180,7 @@ func SwitchMain(server string) {
 
     if Config.Caddy.Loop_Order == "SERVERS" {
         //var caddyServersWithoutBadUrls []string
-        //var badUrls []string
+        var badUrls []string
         for _, urlToFind := range Config.Caddy.Servers {
             for urlUp := range Config.Caddy.Api_Urls {
                 url := strings.Split(Config.Caddy.Api_Urls[urlUp], "@")[1]
@@ -186,13 +188,15 @@ func SwitchMain(server string) {
                 fmt.Println("Checking " + urlToFind + " on " + url)
                 err := IdentifyRequest(server, url, usernamePassword, urlToFind)
                 if err != nil {
-                    common.LogError(err.Error())
-                    //badUrls = append(badUrls, url)
+                    badUrls = append(badUrls, url)
                 }
             }
             time.Sleep(Config.Caddy.Lb_Policy_Change_Sleep * time.Second)
         }
-        //if len(badUrls) > 0 
+        if len(badUrls) > 0 {
+            badUrlsHumanReadable := strings.Join(badUrls, ", ")
+            common.AlarmCheckDown("failupstrm", "Failed to switch upstreams for the following URLs: " + badUrlsHumanReadable, true)
+        }
     }
 }
 
@@ -227,6 +231,38 @@ func ParseQuick[T int | map[string]interface{}](query string, json map[string]in
     }
 
     return res, nil
+}
+
+
+func ParseChangeUpstreams(query string, json map[string]interface{}, variable []string) map[string]interface{} {
+    var res map[string]interface{}
+    code, err := gojq.Parse(query)
+    if err != nil {
+        return res
+    }
+    compiled, err := gojq.Compile(
+        code,
+        gojq.WithVariables([]string{variable[0]}),
+    )
+
+    if err != nil {
+        return res
+    }
+
+    iter := compiled.Run(json, variable[1])
+    for {
+        result, ok := iter.Next()
+        if !ok {
+            break
+        }
+        if _, ok := result.(error); ok {
+            return res
+        }
+        res = result.(map[string]interface{})
+        return res
+    }
+
+    return res
 }
 
 
@@ -311,7 +347,7 @@ func IdentifyRequest(srvArg string, url string, usernamePassword string, urlToFi
         }
 
         if request != nil {
-            ChangeUpstreams(srvArg, identifier, url, actualUrl, server, routeId, request)
+            ChangeUpstreams(srvArg, identifier, url, actualUrl, server, routeId, request, usernamePassword)
         }
 
     }
@@ -319,7 +355,48 @@ func IdentifyRequest(srvArg string, url string, usernamePassword string, urlToFi
     return nil
 }
 
-func ChangeUpstreams(switchTo string, identifier string, url string, actualUrl string, server string, routeId int, req map[string]interface{}) {
+func SendRequest(jsonPayload map[string]interface{}, url string, usernamePassword string) error {
+	// Convert the JSON payload to a byte array
+	payloadBytes, err := json.Marshal(jsonPayload)
+	if err != nil {
+		return fmt.Errorf("failed to marshal JSON payload: %w", err)
+	}
+
+	// Create a new HTTP request
+	req, err := http.NewRequest(http.MethodPatch, url, bytes.NewBuffer(payloadBytes))
+	if err != nil {
+		return fmt.Errorf("failed to create HTTP request: %w", err)
+	}
+
+	// Set the Content-Type header
+	req.Header.Set("Content-Type", "application/json")
+
+	// Add Basic Auth if username and password are provided
+	if usernamePassword != "" {
+		credentials := strings.SplitN(usernamePassword, ":", 2)
+		if len(credentials) != 2 {
+			return fmt.Errorf("invalid usernamePassword format, expected 'username:password'")
+		}
+		req.SetBasicAuth(credentials[0], credentials[1])
+	}
+
+	// Send the request using the HTTP client
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send HTTP request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	// Check the HTTP response status code
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return fmt.Errorf("received non-2xx response: %s", resp.Status)
+	}
+
+	return nil
+}
+
+func ChangeUpstreams(switchTo string, identifier string, url string, actualUrl string, server string, routeId int, req map[string]interface{}, UsernamePassword string) {
     if noChangesCounter > Config.Caddy.Nochange_Exit_Threshold {
         fmt.Println("No changes were made for " + strconv.Itoa(noChangesCounter) + " times.")
         os.Exit(0)
@@ -333,13 +410,77 @@ func ChangeUpstreams(switchTo string, identifier string, url string, actualUrl s
         case "first_dc1", "first_dc2":
             second := strings.Split(switchTo, "_")[1]
             fmt.Println("Switching to " + second)
+            reqToSend := ParseChangeUpstreams(`
+                .handle[] |= (
+                  .routes[] |= (
+                    .handle[] |= (
+                      if .handler == "reverse_proxy" then
+                        (
+                          if (.upstreams | length) == 2 and (.upstreams[1].dial | contains($SRVNAME))
+                            then .upstreams |= [.[1], .[0]]
+                            else .
+                          end
+                        )
+                        | (.load_balancing.selection_policy.policy = "first") # Set policy here
+                      else .
+                      end
+                    )
+                  )
+                )`, req, []string{"$SRVNAME", second})
+                
+                if reflect.DeepEqual(reqToSend, req) && !Config.Caddy.Override_Config {
+                    fmt.Println("No changes were made as the upstreams are already in " + second + " order")
+                    noChangesCounter++
+                    return
+                }
+
+                fmt.Println("Sending request to change lb_policy to " + switchTo)
+
+                // Send the request
+                err := SendRequest(reqToSend, reqUrl, UsernamePassword)
+
+                if err == nil {
+                    fmt.Println(url + "'s upstream has been switched to " + switchTo)
+                } else {
+                    fmt.Println("Failed to switch " + url + "'s upstream to " + switchTo)
+                    common.AlarmCheckDown("failupstrm_" + switchTo, "Failed to switch " + url + "'s upstream to " + switchTo + ": " + err.Error(), true)
+                }
+
         case "round_robin", "ip_hash":
-            fmt.Println("Switching to " + switchTo)
+            reqToSend := ParseChangeUpstreams(`
+                .handle[] |= (
+                  .routes[] |= (
+                    .handle[] |= (
+                      if .handler == "reverse_proxy"
+                      then .load_balancing.selection_policy.policy = $LB_POLICY
+                      else .
+                      end
+                    )
+                  )
+                )`, req, []string{"$LB_POLICY", switchTo})
+
+            if reflect.DeepEqual(reqToSend, req) && !Config.Caddy.Override_Config {
+                fmt.Println("No changes were made as the upstreams are already in " + switchTo + " order")
+                noChangesCounter++
+                return
+            } 
+
+            fmt.Println("Sending request to change lb_policy to " + switchTo)
+            
+            err := SendRequest(reqToSend, reqUrl, UsernamePassword)
+
+            if err == nil {
+                fmt.Println(url + "'s upstream has been switched to " + switchTo)
+            } else {
+                fmt.Println("Failed to switch " + url + "'s upstream to " + switchTo)
+                common.AlarmCheckDown("failupstrm_" + switchTo, "Failed to switch " + url + "'s upstream to " + switchTo + ": " + err.Error(), true)
+            }
+
         default:
             common.LogError("Invalid load balancing policy")
             os.Exit(1)
     }
 
-    //os.MkdirAll("/tmp/glb/" + actualUrl + "/" + identifier, os.ModePerm)
-    //common.WriteToFile("/tmp/glb/" + actualUrl + "/" + identifier + "/lb_policy", switchTo)
+    os.MkdirAll("/tmp/glb/" + actualUrl + "/" + identifier, os.ModePerm)
+    common.WriteToFile("/tmp/glb/" + actualUrl + "/" + identifier + "/lb_policy", switchTo)
 }
