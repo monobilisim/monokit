@@ -117,6 +117,7 @@ func Update(specificVersion string, force bool) {
             if strings.Contains(assetMap["name"].(string), os) && strings.Contains(assetMap["name"].(string), arch) {
                 url = assetMap["browser_download_url"].(string)
                 version = release["tag_name"].(string)
+                version = strings.TrimPrefix(version, "v")
                 break
             }
         }
