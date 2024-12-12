@@ -11,6 +11,7 @@ import (
 	"github.com/monobilisim/monokit/pritunlHealth"
 	"github.com/monobilisim/monokit/sshNotifier"
     "github.com/monobilisim/monokit/lbPolicy"
+    "github.com/monobilisim/monokit/wppconnectHealth"
 	"github.com/spf13/cobra"
 	"os"
 )
@@ -73,6 +74,11 @@ func main() {
         Run:   lbPolicy.List,
     }
 
+    var wppconnectHealthCmd = &cobra.Command{
+        Use:   "wppconnectHealth",
+        Short: "WPPConnect Health",
+        Run:   wppconnectHealth.Main,
+    }
 
 	//// Common
 	RootCmd.AddCommand(redmineCmd)
@@ -252,6 +258,9 @@ func main() {
 
 	/// SSH Notifier
 	RootCmd.AddCommand(sshNotifierCmd)
+
+    /// WPPConnect
+    RootCmd.AddCommand(wppconnectHealthCmd)
 
     /// Load Balancer Policy
     RootCmd.AddCommand(lbPolicyCmd)

@@ -1,0 +1,6 @@
+wpp:
+  secret: test
+  url: https://example.com
+
+alarm:
+  enabled: true

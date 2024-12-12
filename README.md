@@ -101,6 +101,12 @@
 - lbPolicy
     - Allows you to switch between the load balancing policies on Caddy, and list current policies.
     - Config: `/etc/mono/glb-*.yaml`
+
+- wppconnectHealth
+    - Checks WPPConnect health, phone status.
+    - Sends alarm notifications to a Slack webhook.
+    - Config: `/etc/mono/wppconnect.yaml`
+
 ---
 
 ## Usage
