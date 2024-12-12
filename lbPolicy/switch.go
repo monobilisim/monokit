@@ -19,6 +19,18 @@ import (
 
 var noChangesCounter int
 
+func AlarmCustom(msgType string, message string) {
+    customStream := false
+
+    if Config.Alarm.Stream != "" && Config.Alarm.Topic != "" {
+        customStream = true
+    }
+
+    common.Alarm("[lbPolicy - " + common.Config.Identifier + "] [:" + msgType + ":] " + message, Config.Alarm.Stream, Config.Alarm.Topic, customStream)
+
+}
+
+
 func hostnameToURL(hostname string) (string, error) {
 	// Split the hostname into parts
 	parts := strings.Split(hostname, "-")
@@ -210,9 +222,9 @@ func SwitchMain(server string) {
         if len(badUrls) > 0 {
             badUrlsHumanReadable := strings.Join(badUrls, ", ")
             fmt.Println("Failed to switch upstreams for the following URLs: " + badUrlsHumanReadable)
-            common.Alarm("[lbPolicy - " + common.Config.Identifier + "] [:yellow_circle:] Partially failed to switch upstreams to " + server + " for the following servers: " + strings.Join(Config.Caddy.Servers, ", ") + ". Failed to switch upstreams for the following URLs: " + badUrlsHumanReadable, "", "", false)
+            AlarmCustom("yellow_circle", "Partially failed to switch upstreams to " + server + " for the following servers: " + strings.Join(Config.Caddy.Servers, ", ") + ". Failed to switch upstreams for the following URLs: " + badUrlsHumanReadable)
         } else {
-            common.Alarm("[lbPolicy - " + common.Config.Identifier + "] [:green_circle:] The URL(s) " + strings.Join(Config.Caddy.Servers, ", ") + " have been completely switched to " + server, "", "", false)
+            AlarmCustom("green_circle", "The URL(s) " + strings.Join(Config.Caddy.Servers, ", ") + " have been completely switched to " + server)
         }
 
     } else if Config.Caddy.Loop_Order == "API_URLS" {
@@ -228,7 +240,7 @@ func SwitchMain(server string) {
             }
             time.Sleep(Config.Caddy.Lb_Policy_Change_Sleep * time.Second)
         }
-        common.Alarm("[lbPolicy - " + common.Config.Identifier + "] [:green_circle:] The URL(s) " + strings.Join(CensoredApiUrls, ", ") + " have been completely switched to " + server, "", "", false)
+        AlarmCustom("green_circle", "The URL(s) " + strings.Join(CensoredApiUrls, ", ") + " have been completely switched to " + server)
     } else {
         common.LogError("Invalid loop order")
         os.Exit(1)
@@ -504,7 +516,7 @@ func ChangeUpstreams(urlToFind string, switchTo string, identifier string, url s
                     fmt.Println(url + "'s upstream has been switched to " + switchTo)
                 } else {
                     fmt.Println("Failed to switch " + url + "'s upstream to " + switchTo)
-                    common.AlarmCheckDown("failupstrm_" + switchTo, "Failed to switch " + url + "'s upstream to " + switchTo + ": " + strings.ReplaceAll(err.Error(), "\"", "'"), true)
+                    AlarmCustom("red_circle", "Failed to switch " + url + "'s upstream to " + switchTo + ": " + strings.ReplaceAll(err.Error(), "\"", "'"))
                 }
 
         case "round_robin", "ip_hash":
@@ -534,7 +546,7 @@ func ChangeUpstreams(urlToFind string, switchTo string, identifier string, url s
                 fmt.Println(url + "'s upstream has been switched to " + switchTo)
             } else {
                 fmt.Println("Failed to switch " + url + "'s upstream to " + switchTo)
-                common.AlarmCheckDown("failupstrm_" + switchTo, "Failed to switch " + url + "'s upstream to " + switchTo + ": " + err.Error(), true)
+                AlarmCustom("red_circle", "Failed to switch " + url + "'s upstream to " + switchTo + ": " + strings.ReplaceAll(err.Error(), "\"", "'"))
             }
 
         default:

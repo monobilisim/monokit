@@ -20,6 +20,11 @@ type ConfigStruct struct {
         Loop_Order string
         Lb_Policy_Change_Sleep time.Duration
     }
+    
+    Alarm struct {
+        Stream string
+        Topic string
+    }
 }
 
 var Config ConfigStruct
