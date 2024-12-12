@@ -97,6 +97,10 @@
 
 - migrate
     - Migrates from a old version of Monokit to a new one in case of a breaking change.
+
+- lbPolicy
+    - Allows you to switch between the load balancing policies on Caddy, and list current policies.
+    - Config: `/etc/mono/glb-*.yaml`
 ---
 
 ## Usage
