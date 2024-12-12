@@ -197,8 +197,11 @@ func SwitchMain(server string) {
         if len(badUrls) > 0 {
             badUrlsHumanReadable := strings.Join(badUrls, ", ")
             fmt.Println("Failed to switch upstreams for the following URLs: " + badUrlsHumanReadable)
-            common.AlarmCheckDown("failupstrm", "Failed to switch upstreams for the following URLs: " + badUrlsHumanReadable, true)
+            common.Alarm("[lbPolicy - " + common.Config.Identifier + "] [:yellow_circle:] Partially failed to switch upstreams for the following servers: " + strings.Join(Config.Caddy.Servers, ", ") + ". Failed to switch upstreams for the following URLs: " + badUrlsHumanReadable)
+        } else {
+            common.Alarm("[lbPolicy - " + common.Config.Identifier + "] [:green_circle:] The URL(s) " + strings.Join(Config.Caddy.Servers, ", ") + " have been completely switched to " + server)
         }
+
     }
 }
 
