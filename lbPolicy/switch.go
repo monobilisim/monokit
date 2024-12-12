@@ -382,7 +382,7 @@ func IdentifyRequest(srvArg string, url string, usernamePassword string, urlToFi
         }
 
         if request != nil {
-            ChangeUpstreams(srvArg, identifier, url, actualUrl, server, routeId, request, usernamePassword)
+            ChangeUpstreams(urlToFind, srvArg, identifier, url, actualUrl, server, routeId, request, usernamePassword)
         }
 
     }
@@ -444,7 +444,7 @@ func SendRequest(jsonPayload map[string]interface{}, url string, usernamePasswor
 	return nil
 }
 
-func ChangeUpstreams(switchTo string, identifier string, url string, actualUrl string, server string, routeId int, req map[string]interface{}, UsernamePassword string) {
+func ChangeUpstreams(urlToFind string, switchTo string, identifier string, url string, actualUrl string, server string, routeId int, req map[string]interface{}, UsernamePassword string) {
     if noChangesCounter > Config.Caddy.Nochange_Exit_Threshold {
         fmt.Println("No changes were made for " + strconv.Itoa(noChangesCounter) + " times.")
         os.Exit(0)
@@ -529,6 +529,6 @@ func ChangeUpstreams(switchTo string, identifier string, url string, actualUrl s
             os.Exit(1)
     }
 
-    os.MkdirAll("/tmp/glb/" + actualUrl + "/" + identifier, os.ModePerm)
-    common.WriteToFile("/tmp/glb/" + actualUrl + "/" + identifier + "/lb_policy", switchTo)
+    os.MkdirAll("/tmp/glb/" + urlToFind + "/" + identifier, os.ModePerm)
+    common.WriteToFile("/tmp/glb/" + urlToFind + "/" + identifier + "/lb_policy", switchTo)
 }
