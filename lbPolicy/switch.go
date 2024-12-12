@@ -188,6 +188,7 @@ func SwitchMain(server string) {
                 fmt.Println("Checking " + urlToFind + " on " + url)
                 err := IdentifyRequest(server, url, usernamePassword, urlToFind)
                 if err != nil {
+                    fmt.Println("Failed to switch upstreams for " + url + ": " + err.Error())
                     badUrls = append(badUrls, url)
                 }
             }
@@ -195,6 +196,7 @@ func SwitchMain(server string) {
         }
         if len(badUrls) > 0 {
             badUrlsHumanReadable := strings.Join(badUrls, ", ")
+            fmt.Println("Failed to switch upstreams for the following URLs: " + badUrlsHumanReadable)
             common.AlarmCheckDown("failupstrm", "Failed to switch upstreams for the following URLs: " + badUrlsHumanReadable, true)
         }
     }
@@ -278,12 +280,25 @@ func IdentifyRequest(srvArg string, url string, usernamePassword string, urlToFi
     }
 
     req.SetBasicAuth(strings.Split(usernamePassword, ":")[0], strings.Split(usernamePassword, ":")[1])
-    client := &http.Client{}
-    
+    client := &http.Client{Timeout: time.Second * 10}
+   
+    maxRetries := 2
     resp, err := client.Do(req)
+
     
     if err != nil {
-        return err
+        for i := 0; i < maxRetries; i++ {
+            fmt.Println("Retrying " + actualUrl + " for " + identifier)
+            err = nil
+            resp, err = client.Do(req)
+            if err == nil {
+                break
+            }
+        }
+
+        if err != nil {
+            return err
+        }
     }
 
     defer resp.Body.Close()
@@ -381,10 +396,23 @@ func SendRequest(jsonPayload map[string]interface{}, url string, usernamePasswor
 	}
 
 	// Send the request using the HTTP client
-	client := &http.Client{}
+    client := &http.Client{Timeout: time.Second * 10}
+    maxRetries := 2
 	resp, err := client.Do(req)
+
 	if err != nil {
-		return fmt.Errorf("failed to send HTTP request: %w", err)
+        for i := 0; i < maxRetries; i++ {
+            fmt.Println("Retrying " + url)
+            err = nil
+            resp, err = client.Do(req)
+            if err == nil {
+                break
+            }
+        }
+
+        if err != nil {
+		    return fmt.Errorf("failed to send HTTP request: %w", err)
+        }
 	}
 	defer resp.Body.Close()
 
@@ -443,7 +471,7 @@ func ChangeUpstreams(switchTo string, identifier string, url string, actualUrl s
                     fmt.Println(url + "'s upstream has been switched to " + switchTo)
                 } else {
                     fmt.Println("Failed to switch " + url + "'s upstream to " + switchTo)
-                    common.AlarmCheckDown("failupstrm_" + switchTo, "Failed to switch " + url + "'s upstream to " + switchTo + ": " + err.Error(), true)
+                    common.AlarmCheckDown("failupstrm_" + switchTo, "Failed to switch " + url + "'s upstream to " + switchTo + ": " + strings.ReplaceAll(err.Error(), "\"", "'"), true)
                 }
 
         case "round_robin", "ip_hash":
