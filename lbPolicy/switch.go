@@ -197,11 +197,28 @@ func SwitchMain(server string) {
         if len(badUrls) > 0 {
             badUrlsHumanReadable := strings.Join(badUrls, ", ")
             fmt.Println("Failed to switch upstreams for the following URLs: " + badUrlsHumanReadable)
-            common.Alarm("[lbPolicy - " + common.Config.Identifier + "] [:yellow_circle:] Partially failed to switch upstreams for the following servers: " + strings.Join(Config.Caddy.Servers, ", ") + ". Failed to switch upstreams for the following URLs: " + badUrlsHumanReadable)
+            common.Alarm("[lbPolicy - " + common.Config.Identifier + "] [:yellow_circle:] Partially failed to switch upstreams for the following servers: " + strings.Join(Config.Caddy.Servers, ", ") + ". Failed to switch upstreams for the following URLs: " + badUrlsHumanReadable, "", "", false)
         } else {
-            common.Alarm("[lbPolicy - " + common.Config.Identifier + "] [:green_circle:] The URL(s) " + strings.Join(Config.Caddy.Servers, ", ") + " have been completely switched to " + server)
+            common.Alarm("[lbPolicy - " + common.Config.Identifier + "] [:green_circle:] The URL(s) " + strings.Join(Config.Caddy.Servers, ", ") + " have been completely switched to " + server, "", "", false)
         }
 
+    } else if Config.Caddy.Loop_Order == "API_URLS" {
+        for urlUp := range Config.Caddy.Api_Urls {
+            for _, urlToFind := range Config.Caddy.Servers {
+                url := strings.Split(Config.Caddy.Api_Urls[urlUp], "@")[1]
+                usernamePassword := strings.Split(Config.Caddy.Api_Urls[urlUp], "@")[0]
+                fmt.Println("Checking " + urlToFind + " on " + url)
+                err := IdentifyRequest(server, url, usernamePassword, urlToFind)
+                if err != nil {
+                    fmt.Println("Failed to switch upstreams for " + url + ": " + err.Error())
+                }
+            }
+            time.Sleep(Config.Caddy.Lb_Policy_Change_Sleep * time.Second)
+        }
+        common.Alarm("[lbPolicy - " + common.Config.Identifier + "] [:green_circle:] The URL(s) " + strings.Join(CensoredApiUrls, ", ") + " have been completely switched to " + server, "", "", false)
+    } else {
+        common.LogError("Invalid loop order")
+        os.Exit(1)
     }
 }
 
