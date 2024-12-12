@@ -1,0 +1,63 @@
+#
+# Caddy LB-Policy Switcher configuration
+#
+
+caddy:
+  # Caddy API URLs
+  # Format: "username:password@host:port;identifier"
+  # Example: "testusername:testpassword@localhost:2019;identifier"
+  api_urls:
+    - "testusername:testpassword@localhost:2019;identifier"
+
+  # Caddy server/vHost names
+  # The script will switch the LB policy for these servers
+  # Format: "vhost_name"
+  # Example: ":80" or "test.com"
+  servers:
+    - test.com
+
+  # Caddy whoami LB URLs
+  #
+  # The script will adjust the priority of the CADDY_API_URLS according to the first that respond
+  # to these urls.
+  #
+  # The URL must use https://github.com/traefik/whoami and a hostname that matches the example below
+  # Example output:
+  # Hostname test-test2-test3 will result in https://api.test3.test2.test.biz.tr
+  #
+  # Format: "url"
+  # Example: "whoami.test.com"
+  lb_urls:
+    - "https://whoami.test.com"
+
+  # Override config even if it is the same
+  # Default: false
+  override_config: false
+
+  # Threshold to exit after a certain number of no changes.
+  # Only matters if override_config is true
+  # Default: 3
+  nochange_exit_threshold: 3
+
+  # Loop order
+  # SERVERS: Prioritize servers
+  # API_URLS: Prioritize API URLs
+  # Default: "API_URLS"
+  loop_order: "API_URLS"
+
+  # Enable/Disable dynamic API URLs
+  # If set to false, the script will not use the CADDY_LB_URLS to adjust the priority of the CADDY_API_URLS
+  # Default: true
+  dynamic_api_urls: true
+
+  # Sleep for every change in seconds
+  # Default: 1
+  lb_policy_change_sleep: 1
+
+# Alarm Stream/Topic
+# Custom alarm stream/topic, different from the one listed on global.yaml
+# Both has to be set in order for it to work
+# Default: ""
+alarm:
+  stream: "test-stream"
+  topic: "test-lb"
