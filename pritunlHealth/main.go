@@ -142,11 +142,11 @@ func UsersStatus(ctx context.Context, db *mongo.Database) {
         isUp := ClientUpCheck(result["_id"].(bson.ObjectID), ctx, db)
 
         if isUp == 0 {
-            common.PrettyPrintStr("User " + name, false, "online")
-            common.AlarmCheckDown("user_" + name, "User " + name + " is down, no client is connected", false)
+            fmt.Println(common.Blue + "User " + name + " is " + common.Fail + "offline" + common.Reset)
+            common.AlarmCheckDown("user_" + name, "User " + name + " is offline, no client is connected", false)
         } else {
             common.PrettyPrintStr("User " + name, true, "online")
-            common.AlarmCheckUp("user_" + name, "User " + name + " is now up, " + fmt.Sprint(isUp) + " client(s) is/are connected", false)
+            common.AlarmCheckUp("user_" + name, "User " + name + " is now online, " + fmt.Sprint(isUp) + " client(s) is/are connected", false)
         }
     }
 }
@@ -176,7 +176,7 @@ func ServerStatus(ctx context.Context, db *mongo.Database) {
 			fmt.Println("Error: " + err.Error())
 			return
 		}
-	
+        
 		// Get status
 		status := result["status"].(string)
 
