@@ -31,7 +31,8 @@ func ConfExists(configName string) bool {
     yamlFiles := [2]string{configName + ".yaml", configName + ".yml"}
 
     for _, file := range yamlFiles {
-        if _, err := os.Stat("/etc/mono/" + file); os.IsNotExist(err) {
+        // Check if the file exists
+        if _, err := os.Stat("/etc/mono/" + file); err == nil {
             return true
         }
     }
