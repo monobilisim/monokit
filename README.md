@@ -107,6 +107,11 @@
     - Sends alarm notifications to a Slack webhook.
     - Config: `/etc/mono/wppconnect.yaml`
 
+- daemon
+    - Daemonizes Monokit, allowing you to run it as a service.
+    - Runs health checks with the specified interval.
+    - Config: `/etc/mono/daemon.yaml`
+
 ---
 
 ## Usage

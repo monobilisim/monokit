@@ -12,6 +12,7 @@ import (
 	"github.com/monobilisim/monokit/sshNotifier"
     "github.com/monobilisim/monokit/lbPolicy"
     "github.com/monobilisim/monokit/wppconnectHealth"
+    "github.com/monobilisim/monokit/daemon"
 	"github.com/spf13/cobra"
 	"os"
 )
@@ -78,6 +79,12 @@ func main() {
         Use:   "wppconnectHealth",
         Short: "WPPConnect Health",
         Run:   wppconnectHealth.Main,
+    }
+
+    var daemon = &cobra.Command{
+        Use:   "daemon",
+        Short: "Daemon",
+        Run:   daemon.Main,
     }
 
 	//// Common
@@ -228,6 +235,11 @@ func main() {
 
 	news.ExistsCmd.MarkFlagRequired("title")
 	news.ExistsCmd.MarkFlagRequired("description")
+
+    /// Daemon
+    RootCmd.AddCommand(daemon)
+
+    daemon.Flags().BoolP("once", "o", false, "Run once (Daemonless mode)")
 
 	/// OS Health
 	RootCmd.AddCommand(osHealthCmd)
