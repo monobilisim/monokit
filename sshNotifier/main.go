@@ -15,6 +15,7 @@ import (
 	"path/filepath"
 	"encoding/json"
     "github.com/spf13/cobra"
+    "github.com/spf13/viper"
     "github.com/monobilisim/monokit/common"
 )
 
@@ -34,6 +35,7 @@ var SSHNotifierConfig struct {
     Ssh_Post_Url_Backup string
 
     Webhook struct {
+        Modify_Stream bool
         Stream string
     }
 }
@@ -318,7 +320,11 @@ func NotifyAndSave(loginInfo LoginInfoOutput) {
 	fileList := slices.Concat(listFiles("/tmp/mono"), listFiles("/tmp/mono.sh"))
 
 	if len(fileList) == 0 {
-		common.Alarm(message, SSHNotifierConfig.Webhook.Stream, loginInfo.Username, true)
+        if !SSHNotifierConfig.Webhook.Modify_Stream {
+            common.Alarm(message, "", "", false)
+        } else {
+		    common.Alarm(message, SSHNotifierConfig.Webhook.Stream, loginInfo.Username, true)
+        }
 	} else {
 		common.Alarm(message, "", "", false)
 	}
@@ -345,6 +351,8 @@ func NotifyAndSave(loginInfo LoginInfoOutput) {
 func Main(cmd *cobra.Command, args []string) {
     common.ScriptName = "sshNotifier"
     common.Init()
+    viper.SetDefault("webhook.modify_stream", true)
+    viper.SetDefault("webhook.stream", "ssh")
     common.ConfInit("ssh-notifier", &SSHNotifierConfig)
 
 	var customType string
