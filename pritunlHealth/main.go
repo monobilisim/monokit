@@ -3,6 +3,7 @@ package pritunlHealth
 import (
     "fmt"
     "time"
+    "slices"
 	"context"
     "github.com/spf13/cobra"
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -15,12 +16,13 @@ import (
 
 type PritunlHealth struct {
 	Url string
+    Allowed_orgs []string
 }
 
 var PritunlHealthConfig PritunlHealth
 
 func Main(cmd *cobra.Command, args []string) {
-    version := "0.1.0"
+    version := "1.0.0"
     common.ScriptName = "pritunlHealth"
     common.TmpDir = common.TmpDir + "pritunlHealth"
     common.Init()
@@ -107,6 +109,60 @@ func ClientUpCheck(userIdActual bson.ObjectID, ctx context.Context, db *mongo.Da
     return counter
 }
 
+func OrgCheck(orgIdActual bson.ObjectID, ctx context.Context, db *mongo.Database) bool {
+    // Get to the organizations collection
+    collection := db.Collection("organizations")
+
+    // make a for loop to get all the organizations
+    cursor, err := collection.Find(ctx, bson.D{})
+    if err != nil {
+        common.LogError("Couldn't get the collection: " + err.Error())
+        common.AlarmCheckDown("pritunl_organizations", "Couldn't get the organizations collection: " + err.Error(), false)
+        return false
+    } else {
+        common.AlarmCheckUp("pritunl_organizations", "Organizations collection is now available", false)
+    }
+
+    defer cursor.Close(ctx)
+
+    for cursor.Next(ctx) {
+        var result bson.M
+        err := cursor.Decode(&result)
+        if err != nil {
+            fmt.Println("Error: " + err.Error())
+            return false
+        }
+
+        if result["name"] == nil || result["_id"] == nil { 
+            continue
+        }
+    
+        // Get id
+        id := result["_id"]
+
+        // Get name
+        name := result["name"].(string)
+
+        if name == "" || name == "undefined" {
+            continue
+        }
+
+        // Check if name is in the allowed_orgs
+        if len(PritunlHealthConfig.Allowed_orgs) > 0 {
+            if !slices.Contains(PritunlHealthConfig.Allowed_orgs, name) {
+                continue
+            }
+        }
+
+
+        if id == orgIdActual {
+            return true
+        }
+    }
+
+    return false
+}
+
 func UsersStatus(ctx context.Context, db *mongo.Database) {
     // Get to the users collection
     collection := db.Collection("users")
@@ -135,6 +191,13 @@ func UsersStatus(ctx context.Context, db *mongo.Database) {
    
         name := result["name"].(string)
         if name == "" || name == "undefined" {
+            continue
+        }
+
+        // get org_id
+        orgId := OrgCheck(result["org_id"].(bson.ObjectID), ctx, db)
+
+        if orgId == false {
             continue
         }
 
