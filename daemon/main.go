@@ -9,13 +9,7 @@ import (
     "github.com/monobilisim/monokit/common"
     "github.com/monobilisim/monokit/osHealth"
     "github.com/monobilisim/monokit/k8sHealth"
-    "github.com/monobilisim/monokit/mysqlHealth"
-    //"github.com/monobilisim/monokit/pmgHealth"
     "github.com/monobilisim/monokit/pritunlHealth"
-    //"github.com/monobilisim/monokit/redisHealth"
-    //"github.com/monobilisim/monokit/postalHealth"
-    //"github.com/monobilisim/monokit/traefikHealth"
-    //"github.com/monobilisim/monokit/rabbitmqHealth"
     "github.com/monobilisim/monokit/wppconnectHealth"
 )
 
@@ -126,11 +120,7 @@ func RunAll() {
     }
 
     if CommExists("mysqld", false) || CommExists("mariadbd", false) {
-        mysqlHealthCmd := &cobra.Command{
-            Run: mysqlHealth.Main,
-            DisableFlagParsing: true,
-        }
-        mysqlHealthCmd.ExecuteC()
+        MysqlCommandExecute()
     }
     
     if CommExists("redis-server", false) {
