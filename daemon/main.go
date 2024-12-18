@@ -20,7 +20,6 @@ type HealthCheck struct {
 
 type Daemon struct {
     Frequency int // Frequency to run health checks
-    Logger   string // Logger to use, systemd or logfile
     Debug    bool // Debug mode
     Health_Checks []HealthCheck
 }
@@ -62,7 +61,6 @@ func Main(cmd *cobra.Command, args []string) {
         common.ConfInit("daemon", &DaemonConfig)
     } else {
         DaemonConfig.Frequency = 60
-        DaemonConfig.Logger = "logfile"
     }
 
 
@@ -72,7 +70,6 @@ func Main(cmd *cobra.Command, args []string) {
     
     if runOnce {
         fmt.Println("Running once")
-        DaemonConfig.Logger = "logfile"
         RunAll()
         os.Exit(0)
     }
@@ -95,7 +92,7 @@ func RunAll() {
     }
     osHealthCmd.ExecuteC()
     
-    if CommExists("pritunl", true) {
+    if CommExists("pritunl", false) {
         var pritunlHealthCmd = &cobra.Command{
             Run: pritunlHealth.Main,
             DisableFlagParsing: true,
@@ -103,11 +100,11 @@ func RunAll() {
         pritunlHealthCmd.ExecuteC()
     } 
 
-    if CommExists("postal", true) {
+    if CommExists("postal", false) {
         PostalCommandExecute()
     }
 
-    if CommExists("pmg", true) {
+    if CommExists("pmgversion", false) {
         PmgCommandExecute()
     }
     
