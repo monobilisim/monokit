@@ -29,7 +29,12 @@ func DiskUsage() {
             continue
         }
 
-        usage, _ := disk.Usage(partition.Mountpoint)
+        usage, err := disk.Usage(partition.Mountpoint)
+
+        if err != nil {
+            common.LogError("An error occurred while fetching disk usage for " + partition.Mountpoint + "\n" + err.Error())
+            continue
+        }
         
         if usage.UsedPercent > OsHealthConfig.Part_use_limit {
             common.PrettyPrint("Disk usage at " + partition.Mountpoint, common.Fail + " more than " + strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64) + "%", usage.UsedPercent, true, false, false, 0)

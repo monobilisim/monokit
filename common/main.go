@@ -70,6 +70,13 @@ func ConvertBytes(bytes uint64) string {
 }
 
 func Init() {
+    var userMode bool = false
+
+    // Check if user is root
+    if os.Geteuid() != 0 {
+        userMode = true
+    }
+
     // Create TmpDir if it doesn't exist
     if _, err := os.Stat(TmpDir); os.IsNotExist(err) {
         err = os.MkdirAll(TmpDir, 0755)
@@ -81,7 +88,7 @@ func Init() {
 
     }
     
-    LogInit()
+    LogInit(userMode)
     ConfInit("global", &Config)
 }
 

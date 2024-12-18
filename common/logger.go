@@ -9,7 +9,23 @@ import (
     "github.com/sirupsen/logrus"
 )
 
-func LogInit() {
+func LogInit(userMode bool) {
+
+    logfilePath := "/var/log/monokit.log"
+
+    if userMode {
+        xdgStateHome := os.Getenv("XDG_STATE_HOME")
+        if xdgStateHome == "" {
+            xdgStateHome = os.Getenv("HOME") + "/.local/state"
+        }
+
+        // Create the directory if it doesn't exist
+        if _, err := os.Stat(xdgStateHome + "/monokit"); os.IsNotExist(err) {
+            os.MkdirAll(xdgStateHome + "/monokit", 0755)
+        }
+
+        logfilePath = xdgStateHome + "/monokit/monokit.log"
+    }
 
     logrus.SetReportCaller(true)
     logrus.SetFormatter(&logrus.JSONFormatter{                                             
@@ -20,7 +36,7 @@ func LogInit() {
         },                                                                           
     })
 
-    logFile, err := os.OpenFile("/var/log/monokit.log", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+    logFile, err := os.OpenFile(logfilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
     if err != nil {
         panic(err)
     }
