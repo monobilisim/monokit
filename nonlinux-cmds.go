@@ -12,6 +12,11 @@ func MysqlCommandAdd() {
 	return
 }
 
+func PgsqlCommandAdd() {
+    // pgsqlHealth is not supported on anything other than Linux
+    return
+}
+
 func RmqCommandAdd() {
 	// rmqHealth is not supported on anything other than Linux
 	return

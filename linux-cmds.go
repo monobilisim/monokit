@@ -9,6 +9,7 @@ import (
 	"github.com/monobilisim/monokit/redisHealth"
 	"github.com/monobilisim/monokit/rmqHealth"
 	"github.com/monobilisim/monokit/traefikHealth"
+	"github.com/monobilisim/monokit/pgsqlHealth"
 	"github.com/spf13/cobra"
 )
 
@@ -20,6 +21,16 @@ func RedisCommandAdd() {
 	}
 
 	RootCmd.AddCommand(redisHealthCmd)
+}
+
+func PgsqlCommandAdd() {
+    var pgsqlHealthCmd = &cobra.Command{
+        Use:   "pgsqlHealth",
+        Short: "PostgreSQL Health",
+        Run:   pgsqlHealth.Main,
+    }
+
+    RootCmd.AddCommand(pgsqlHealthCmd)
 }
 
 func MysqlCommandAdd() {

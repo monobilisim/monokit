@@ -1,20 +1,22 @@
+//go:build linux
 package pgsqlHealth
 
 import (
-	"database/sql"
-	"encoding/json"
-	"errors"
-	"fmt"
-	_ "github.com/lib/pq"
-	"github.com/monobilisim/monokit/common"
-	"gopkg.in/yaml.v3"
-	"log"
-	"net/http"
 	"os"
-	"reflect"
+	"fmt"
+	"log"
+	"time"
+	"errors"
 	"strconv"
 	"strings"
-	"time"
+	"reflect"
+	"net/http"
+	"database/sql"
+	"encoding/json"
+	"gopkg.in/yaml.v3"
+	_ "github.com/lib/pq"
+	"github.com/monobilisim/monokit/common"
+    //issues "github.com/monobilisim/monokit/common/redmine/issues"
 )
 
 var Connection *sql.DB
@@ -66,38 +68,45 @@ func getPatroniUrl() (string, error) {
 
 func Connect() error {
 	pgPass := "/var/lib/postgresql/.pgpass"
-	content, err := os.ReadFile(pgPass)
-	if err != nil {
-		common.LogError("Error reading file: " + err.Error())
-		return err
-	}
+    var psqlConn string
+    if _, err := os.Stat(pgPass); err == nil {
+	    content, err := os.ReadFile(pgPass)
+	    if err != nil {
+	    	common.LogError("Error reading file: " + err.Error())
+	    	return err
+	    }
 
-	// Split the content into lines
-	lines := strings.Split(string(content), "\n")
+	    // Split the content into lines
+	    lines := strings.Split(string(content), "\n")
 
-	var host, port, user, password string
+	    var host, port, user, password string
 
-	// Find the line containing "localhost"
-	for _, line := range lines {
-		if strings.Contains(line, "localhost") {
-			// Parse the line using colon (:) as a separator
-			parts := strings.Split(strings.TrimSpace(line), ":")
-			if len(parts) != 5 {
-				common.LogError("Invalid .pgpass file format")
-				return errors.New("invalid .pgpass file format")
-			}
+	    // Find the line containing "localhost"
+	    for _, line := range lines {
+	    	if strings.Contains(line, "localhost") {
+	    		// Parse the line using colon (:) as a separator
+	    		parts := strings.Split(strings.TrimSpace(line), ":")
+	    		if len(parts) != 5 {
+	    			common.LogError("Invalid .pgpass file format")
+	    			return errors.New("invalid .pgpass file format")
+	    		}
 
-			host = parts[0]
-			port = parts[1]
-			user = parts[3]
-			password = parts[4]
+	    		host = parts[0]
+	    		port = parts[1]
+	    		user = parts[3]
+	    		password = parts[4]
 
-			break
-		}
-	}
+	    		break
+	    	}
+	    }
 
-	// connection string
-	psqlConn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=postgres sslmode=disable", host, port, user, password)
+	    // connection string
+	    psqlConn = fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=postgres sslmode=disable", host, port, user, password)
+    } else {
+        // Try to do UNIX auth
+        psqlConn = "dbname=postgres sslmode=disable host=/var/run/postgresql"
+    }
+
 
 	// open database
 	db, err := sql.Open("postgres", psqlConn)
@@ -195,8 +204,12 @@ func activeConnections() {
 	if err != nil {
 		common.LogError(fmt.Sprintf("Error executing query: %s - Error: %v\n", query, err))
 		common.PrettyPrintStr("PostgreSQL active connections", false, "accessible")
+        common.AlarmCheckDown("postgres_active_conn", "An error occurred while checking active connections: " + err.Error(), false)
 		return
-	}
+	} else {
+        common.AlarmCheckUp("postgres_active_conn", "Active connections are now accessible", true)
+    }
+
 	usedPercent := (used * 100) / maxConn
 
 	if _, err := os.Stat(aboveLimitFile); os.IsNotExist(err) {
@@ -216,7 +229,8 @@ func activeConnections() {
 			writeActiveConnections()
 
 		}
-		common.PrettyPrintStr("Number of active connections", false, fmt.Sprintf("%d/%d and above %d", used, maxConn, DbHealthConfig.Postgres.Limits.Conn_percent))
+		common.PrettyPrintStr("Number of active connections", true, fmt.Sprintf("%d/%d and above %d", used, maxConn, DbHealthConfig.Postgres.Limits.Conn_percent))
+        common.AlarmCheckDown("postgres_num_active_conn", fmt.Sprintf("Number of active connections: %d/%d and above %d", used, maxConn, DbHealthConfig.Postgres.Limits.Conn_percent), false)
 		difference := (used - maxConn) / 10
 		if difference > increase {
 			writeActiveConnections()
@@ -230,6 +244,7 @@ func activeConnections() {
 		}
 	} else {
 		common.PrettyPrintStr("Number of active connections", true, fmt.Sprintf("%d/%d", used, maxConn))
+        common.AlarmCheckUp("postgres_num_active_conn", fmt.Sprintf("Number of active connections is now: %d/%d", used, maxConn), true)
 		if _, err := os.Stat(aboveLimitFile); err == nil {
 			err := os.Remove(aboveLimitFile)
 			if err != nil {
@@ -247,24 +262,32 @@ func runningQueries() {
 	if err != nil {
 		common.LogError(fmt.Sprintf("Error executing query: %s - Error: %v\n", query, err))
 		common.PrettyPrintStr("Number of running queries", false, "accessible")
+        common.AlarmCheckDown("postgres_running_queries", "An error occurred while checking running queries: " + err.Error(), false)
 		return
-	}
+	} else {
+        common.AlarmCheckUp("postgres_running_queries", "Running queries are now accessible", true)
+    }
 
 	if activeQueriesCount > DbHealthConfig.Postgres.Limits.Query {
-		common.PrettyPrintStr("Number of running queries", false, fmt.Sprintf("%d/%d", activeQueriesCount, DbHealthConfig.Postgres.Limits.Query))
+		common.PrettyPrintStr("Number of running queries", true, fmt.Sprintf("%d/%d", activeQueriesCount, DbHealthConfig.Postgres.Limits.Query))
+        common.AlarmCheckDown("postgres_num_running_queries", fmt.Sprintf("Number of running queries: %d/%d", activeQueriesCount, DbHealthConfig.Postgres.Limits.Query), false)
 	} else {
 		common.PrettyPrintStr("Number of running queries", true, fmt.Sprintf("%d/%d", activeQueriesCount, DbHealthConfig.Postgres.Limits.Query))
+        common.AlarmCheckUp("postgres_num_running_queries", fmt.Sprintf("Number of running queries is now: %d/%d", activeQueriesCount, DbHealthConfig.Postgres.Limits.Query), true)
 	}
 }
 
 func clusterStatus() {
+    
+    if common.SystemdUnitActive("patroni.service") {
+        common.PrettyPrintStr("Patroni Service", true, "accessible")
+        common.AlarmCheckDown("patroni_service", "Patroni service is now accessible", true)
+    } else {
+        common.PrettyPrintStr("Patroni Service", false, "accessible")
+    }
+
 	outputJSON := common.TmpDir + "/raw_output.json"
-	if common.SystemdUnitActive("patroni.service") {
-		common.PrettyPrintStr("Patroni Service", true, "accessible")
-	} else {
-		common.PrettyPrintStr("Patroni Service", false, "accessible")
-	}
-	clusterURL := "http://" + PATRONI_API_URL + "/cluster"
+	clusterURL := "http://" + patroniApiUrl + "/cluster"
 
 	client := &http.Client{
 		Timeout: time.Second * 10,

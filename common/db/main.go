@@ -22,6 +22,9 @@ type Postgres struct {
 	Alarm struct {
 		Enabled bool
 	}
+
+    Wal_g_verify_hour string
+
 	Leader_switch_hook string
 }
 
