@@ -2,18 +2,23 @@
 package common
 
 import (
+    "context"
     "github.com/coreos/go-systemd/v22/dbus"
 )
 
 func SystemdUnitActive(unitName string) bool {
+    ctx := context.Background()
+
     // Check if the unit is active
-    systemdConnection, err := dbus.NewSystemdConnection()
+    systemdConnection, err := dbus.NewSystemConnectionContext(ctx)
     
     if err != nil {
         LogError("Error connecting to systemd: " + err.Error())
     }
 
-    listOfUnits, err := systemdConnection.ListUnits()
+    defer systemdConnection.Close()
+
+    listOfUnits, err := systemdConnection.ListUnitsContext(ctx)
 
     if err != nil {
         LogError("Error listing systemd units: " + err.Error())
@@ -25,6 +30,5 @@ func SystemdUnitActive(unitName string) bool {
         }
     }
 
-    systemdConnection.Close()
     return false
 }
