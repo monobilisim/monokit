@@ -1,5 +1,4 @@
 frequency: 60 # Frequency to run health checks in seconds
-logger: systemd # Logger to use, systemd or logfile
 debug: false # Enable debug logging
 health_checks:
   - name: mysqld
