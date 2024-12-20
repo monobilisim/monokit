@@ -5,6 +5,18 @@ import (
     "strings"
 )
 
+func ProcGrep(procName string) bool {
+    procs, _ := process.Processes()
+
+    for _, proc := range procs {
+        name, _ := proc.Name()
+        if strings.Contains(name, procName) {
+            return true
+        }
+    }
+    return false
+}
+
 func ConnsByProc(prefix string) uint32 {
 
 	procs, _ := process.Processes()
