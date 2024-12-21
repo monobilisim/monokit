@@ -12,6 +12,7 @@ import (
     "os/exec"
     "strings"
     "net/http"
+    "io/ioutil"
     "crypto/tls"
     "github.com/spf13/cobra"
     "github.com/monobilisim/monokit/common"
@@ -21,6 +22,7 @@ import (
 var MailHealthConfig mail.MailHealth
 var zimbraPath string
 var restartCounter int
+var templateFile string
 
 func Main(cmd *cobra.Command, args []string) {
     version := "2.0.0"
@@ -66,7 +68,6 @@ func Main(cmd *cobra.Command, args []string) {
 
 func CheckIpAccess() {
     var productName string
-    var templateFile string
     var certFile string
     var keyFile string
     var message string = "Hello World!"
@@ -267,6 +268,45 @@ func CheckZimbraServices() {
     }
 }
 
+func modifyFile(templateFile string) {
+	// Read the file content
+	content, err := ioutil.ReadFile(templateFile)
+	if err != nil {
+	    common.LogError("Error reading file: " + err.Error())
+    }
+
+	text := string(content)
+
+    if strings.Contains(text, "nginx-php-fpm.conf") {
+        return
+    }
+
+	// Define regex patterns and replacements
+	blockRegex := regexp.MustCompile(`(?s)(Microsoft-Server-ActiveSync.*?# For audit)`)
+	modifiedBlock := blockRegex.ReplaceAllStringFunc(text, func(match string) string {
+		match = regexp.MustCompile(`proxy_pass`).ReplaceAllString(match, "### proxy_pass")
+		match = regexp.MustCompile(`proxy_read_timeout`).ReplaceAllString(match, "### proxy_read_timeout")
+		match = regexp.MustCompile(`proxy_buffering`).ReplaceAllString(match, "### proxy_buffering")
+		return regexp.MustCompile(`# For audit`).ReplaceAllString(match, `# Z-PUSH start
+        include /etc/nginx-php-fpm.conf;
+        # Z-PUSH end
+
+        # For audit`)
+	})
+
+	// Write the modified content back to the file
+	if err := ioutil.WriteFile(templateFile, []byte(modifiedBlock), 0644); err != nil {
+	    common.LogError("Error writing to file: " + err.Error())
+    }
+
+
+    fmt.Println("Added Z-Push block to " + templateFile + " file, restarting zimbra proxy service...")
+    _, err = ExecZimbraCommand("zmproxyctl restart")
+    if err != nil {
+        common.LogError("Error restarting zimbra proxy service: " + err.Error())
+    }
+}
+
 func ExecZimbraCommand(command string) (string, error) {
     zimbraUser := "zimbra"
 
@@ -324,6 +364,14 @@ func CheckZPush() {
     } else {
         common.PrettyPrintStr("Z-Push", false, "Running")
         common.AlarmCheckDown("zpush", "Z-Push is not running", false)
+    }
+
+    // Check if /etc/nginx-php-fpm.conf exists
+    if _, err := os.Stat("/etc/nginx-php-fpm.conf"); os.IsNotExist(err) {
+        common.PrettyPrintStr("Z-Push Nginx Config file", false, "found")
+    } else {
+        common.PrettyPrintStr("Z-Push Nginx Config file", true, "found")
+        modifyFile(templateFile)
     }
 }
 
