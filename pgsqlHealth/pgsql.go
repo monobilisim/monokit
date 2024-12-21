@@ -8,6 +8,7 @@ import (
 	"time"
 	"errors"
 	"strconv"
+    "os/exec"
 	"strings"
 	"reflect"
 	"net/http"
@@ -342,14 +343,45 @@ func clusterStatus() {
 		for _, oldMember := range oldResult.Members {
 			if oldMember.Name == member.Name {
 				if oldMember.Role != member.Role {
-					common.PrettyPrintStr(member.Name, false, oldMember.Role+" -> "+member.Role)
+					common.PrettyPrintStr(member.Name, true, oldMember.Role+" -> "+member.Role)
 					if oldMember.Name == nodeName {
-						// send alarm
+                        common.Alarm("[ Patroni - " + common.Config.Identifier + " ] [:info:] Role of " + member.Name + " has changed! Old: **" + oldMember.Role + "** New: **" + member.Role + "**", "", "", false)
 					}
 					if member.Role == "leader" {
-						// send new leader alarm
+                        common.Alarm("[ Patroni - " + common.Config.Identifier + " ] [:check:] " + member.Name + " is now the leader!", "", "", false)
 						if DbHealthConfig.Postgres.Leader_switch_hook != "" {
-							// run leade switch hook
+                            // send a request to patroniApiUrl and get .role
+                            req, err := http.NewRequest("GET", member.APIURL, nil)
+                            if err != nil {
+                                common.LogError(fmt.Sprintf("Error creating request: %v\n", err))
+                                return
+                            }
+
+                            resp, err := client.Do(req)
+
+                            if err != nil {
+                                common.LogError(fmt.Sprintf("Error executing request: %v\n", err))
+                                return
+                            }
+
+                            var role map[string]interface{}
+                            err = json.NewDecoder(resp.Body).Decode(&role)
+
+                            if err != nil {
+                                common.LogError(fmt.Sprintf("Error decoding JSON: %v\n", err))
+                                return
+                            }
+
+                            if role["role"] == "leader" {
+                                cmd := exec.Command(DbHealthConfig.Postgres.Leader_switch_hook)
+                                err := cmd.Run()
+                                if err != nil {
+                                    common.LogError(fmt.Sprintf("Error running leader switch hook: %v\n", err))
+                                    common.Alarm("[ Patroni - " + common.Config.Identifier + " ] [:red_circle:] Error running leader switch hook: " + err.Error(), "", "", false)
+                                } else {
+                                    common.Alarm("[ Patroni - " + common.Config.Identifier + " ] [:check:] Leader switch hook has been run successfully!", "", "", false)
+                                }
+                            }
 						}
 					}
 				}

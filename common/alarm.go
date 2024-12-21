@@ -1,13 +1,13 @@
 package common
 
 import (
-    "bytes"
-    "net/http"
-    "time"
-    "encoding/json"
     "io"
     "os"
+    "time"
+    "bytes"
     "strings"
+    "net/http"
+    "encoding/json"
     "github.com/spf13/cobra"
 )
 
