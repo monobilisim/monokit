@@ -13,17 +13,14 @@ import (
     "strings"
     "net/http"
     "crypto/tls"
-    "database/sql"
     "github.com/spf13/cobra"
-    _ "github.com/go-sql-driver/mysql"
     "github.com/monobilisim/monokit/common"
     mail "github.com/monobilisim/monokit/common/mail"
 )
 
 var MailHealthConfig mail.MailHealth
-var MainDB *sql.DB
-var MessageDB *sql.DB
 var zimbraPath string
+var restartCounter int
 
 func Main(cmd *cobra.Command, args []string) {
     version := "2.0.0"
@@ -210,9 +207,29 @@ func CheckIpAccess() {
 
     if err != nil {
         common.PrettyPrintStr("Access with IP", false, "accessible")
+        common.AlarmCheckDown("accesswithip", "Can't access to zimbra through plain IP: " + ipAddress, false)
     } else {
         common.PrettyPrintStr("Access with IP", true, "accessible")
+        common.AlarmCheckUp("accesswithip", "Can access to zimbra through plain IP: " + ipAddress, false)
     }
+}
+
+func RestartZimbraService(service string) {
+    if restartCounter > MailHealthConfig.Zimbra.Restart_Limit {
+        common.AlarmCheckDown(service, "Restart limit reached for " + service, false)
+        return
+    }
+    
+    _, err := ExecZimbraCommand("zmcontrol start")
+    
+    if err != nil {
+        common.LogError("Error starting Zimbra service " + service + ": " + err.Error())
+        return
+    }
+
+    restartCounter++
+
+    CheckZimbraServices()
 }
 
 func CheckZimbraServices() {
@@ -242,6 +259,10 @@ func CheckZimbraServices() {
             common.AlarmCheckUp(serviceName, serviceName + " is now running", false)
         } else {
             common.PrettyPrintStr(serviceName, false, "Running")
+            common.AlarmCheckDown(serviceName, serviceName + " is not running", false)
+            if MailHealthConfig.Zimbra.Restart {
+                RestartZimbraService(serviceName)
+            }
         }
     }
 }
@@ -257,7 +278,7 @@ func ExecZimbraCommand(command string) (string, error) {
     }
 
     // Execute command
-    cmd := exec.Command("/bin/su", zimbraUser, "-c", zimbraPath + "/bin/" + command)
+    cmd = exec.Command("/bin/su", zimbraUser, "-c", zimbraPath + "/bin/" + command)
     
     var out bytes.Buffer
 	cmd.Stdout = &out
