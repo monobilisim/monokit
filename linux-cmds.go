@@ -10,6 +10,7 @@ import (
 	"github.com/monobilisim/monokit/rmqHealth"
 	"github.com/monobilisim/monokit/traefikHealth"
 	"github.com/monobilisim/monokit/pgsqlHealth"
+	"github.com/monobilisim/monokit/zimbraHealth"
 	"github.com/spf13/cobra"
 )
 
@@ -21,6 +22,16 @@ func RedisCommandAdd() {
 	}
 
 	RootCmd.AddCommand(redisHealthCmd)
+}
+
+func ZimbraCommandAdd() {
+    var zimbraHealthCmd = &cobra.Command{
+        Use:   "zimbraHealth",
+        Short: "Zimbra Health",
+        Run:   zimbraHealth.Main,
+    }
+
+    RootCmd.AddCommand(zimbraHealthCmd)
 }
 
 func PgsqlCommandAdd() {

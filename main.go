@@ -264,6 +264,8 @@ func main() {
 
     PgsqlCommandAdd()
 
+    ZimbraCommandAdd()
+
 	shutdownNotifierCmd.Flags().BoolP("poweron", "1", false, "Power On")
 	shutdownNotifierCmd.Flags().BoolP("poweroff", "0", false, "Power Off")
 

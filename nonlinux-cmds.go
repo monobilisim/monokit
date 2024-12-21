@@ -36,3 +36,8 @@ func TraefikCommandAdd() {
 	// traefikHealth is not supported on anything other than Linux
 	return
 }
+
+func ZimbraCommandAdd() {
+    // zimbraHealth is not supported on anything other than Linux
+    return
+}
