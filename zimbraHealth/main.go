@@ -14,7 +14,6 @@ import (
     "net/http"
     "io/ioutil"
     "crypto/tls"
-    "path/filepath"
     "github.com/spf13/cobra"
     "github.com/monobilisim/monokit/common"
     mail "github.com/monobilisim/monokit/common/mail"
@@ -65,9 +64,6 @@ func Main(cmd *cobra.Command, args []string) {
         common.SplitSection("SSL Expiration:")
         CheckSSL()
     }
-
-    common.SplitSection("Logo Check:")
-    checkLogo()
 }
 
 func CheckIpAccess() {
@@ -282,56 +278,6 @@ func changeImmutable(filePath string, add bool) {
 	if err != nil {
         common.LogError("Error changing file attributes: " + err.Error())
 	}
-}
-
-func checkLogo() {
-    const (
-	    newLogo1  = "/opt/zimbraLogo/logo300x.png"
-	    newLogo2  = "/opt/zimbraLogo/logo200x.png"
-	    logoPath  = "/opt/zimbra/jetty_base/webapps/zimbra/skins/_base/logos"
-	    nameLogo1 = "AppBanner_white.png"
-	    nameLogo2 = "AppBanner.png"
-	    nameLogo3 = "LoginBanner_white.png"
-	    nameLogo4 = "LoginBanner.png"
-    )
-
-	appBannerWhitePath := filepath.Join(logoPath, nameLogo1)
-	if common.IsOlderThan(appBannerWhitePath, 180) {
-        common.PrettyPrintStr("AppBanner_white.png", true, "more than 180 minutes old")
-		return
-	}
-
-    common.PrettyPrintStr("AppBanner_white.png", false, "more than 180 minutes old")
-	oldLogoPath := filepath.Join(logoPath, "oldLogo")
-	common.CreateDirIfNotExists(oldLogoPath)
-
-	common.MoveFile(filepath.Join(logoPath, nameLogo1), filepath.Join(oldLogoPath, nameLogo1+".back"))
-	common.MoveFile(filepath.Join(logoPath, nameLogo3), filepath.Join(oldLogoPath, nameLogo3+".back"))
-	common.MoveFile(filepath.Join(logoPath, nameLogo2), filepath.Join(oldLogoPath, nameLogo2+".back"))
-	common.MoveFile(filepath.Join(logoPath, nameLogo4), filepath.Join(oldLogoPath, nameLogo4+".back"))
-
-	changeImmutable(newLogo1, false)
-	changeImmutable(newLogo2, false)
-
-	common.MoveFile(newLogo1, filepath.Join(logoPath, nameLogo1))
-	common.MoveFile(newLogo1, filepath.Join(logoPath, nameLogo2))
-	common.MoveFile(newLogo2, filepath.Join(logoPath, nameLogo3))
-	common.MoveFile(newLogo2, filepath.Join(logoPath, nameLogo4))
-
-	common.ChangeOwnership(filepath.Join(logoPath, nameLogo1), "zimbra:zimbra")
-	common.ChangeOwnership(filepath.Join(logoPath, nameLogo2), "zimbra:zimbra")
-	common.ChangeOwnership(filepath.Join(logoPath, nameLogo3), "zimbra:zimbra")
-	common.ChangeOwnership(filepath.Join(logoPath, nameLogo4), "zimbra:zimbra")
-
-    _, err := ExecZimbraCommand("zmmailboxdctl restart")
-    if err != nil {
-        common.LogError("Error restarting zimbra mailboxd service: " + err.Error())
-    }
-
-	time.Sleep(3 * time.Second)
-
-	changeImmutable(newLogo1, true)
-	changeImmutable(newLogo2, true)
 }
 
 func modifyFile(templateFile string) {
