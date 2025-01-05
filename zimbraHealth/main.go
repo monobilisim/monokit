@@ -475,7 +475,7 @@ func CheckSSL() {
         common.PrettyPrintStr("SSL Certificate", true, fmt.Sprintf("expiring in %d days", days))
         common.AlarmCheckDown("sslcert", "SSL Certificate is expiring in " + fmt.Sprintf("%d days", days), false)
         viewDeployedCert, _ := ExecZimbraCommand("zmcertmgr viewdeployedcrt")
-        issues.CheckDown("sslcert", common.Config.Identifier + " sunucusunun SSL sertifikası bitimine " + fmt.Sprintf("%d gün kaldı", days), "```" + viewDeployedCert + "```", false, 0)
+        issues.CheckDown("sslcert", common.Config.Identifier + " sunucusunun SSL sertifikası bitimine " + fmt.Sprintf("%d gün kaldı", days), "```json\n" + viewDeployedCert + "\n```", false, 0)
     } else {
         common.PrettyPrintStr("SSL Certificate", true, fmt.Sprintf("expiring in %d days", days))
         common.AlarmCheckUp("sslcert", "SSL Certificate is expiring in " + fmt.Sprintf("%d days", days), false)
