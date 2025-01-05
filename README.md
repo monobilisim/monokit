@@ -48,6 +48,12 @@
     - Opens an issue in Redmine if the database is down.
     - Config: `/etc/mono/mail.yaml`
 
+- zimbraHealth
+    - Check Zimbra health, including service status, queued messages, SSL certificate expiry and Z-Push status.
+    - Sends alarm notifications to a Slack webhook.
+    - Opens an issue in Redmine if the SSL certificate is about to expire.
+    - Config: `/etc/mono/mail.yaml`
+
 - pmgHealth
     - Checks PMG health, including service status, queued messages and PostgreSQL status.
     - Sends alarm notifications to a Slack webhook.
@@ -63,6 +69,11 @@
 
 - mysqlHealth
   - Checks MySQL health, including read and write operations.
+  - Sends alarm notifications to a Slack webhook.
+  - Config: `/etc/mono/db.yaml`
+
+- pgsqlHealth
+  - Checks PostgreSQL health, including read and write operations.
   - Sends alarm notifications to a Slack webhook.
   - Config: `/etc/mono/db.yaml`
 
