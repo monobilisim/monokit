@@ -204,14 +204,21 @@ func CheckIpAccess() {
         common.LogError("Error creating request: " + err.Error())
     }
 
-    _, err = httpClient.Do(req)
+    resp, err = httpClient.Do(req)
 
     if err != nil {
+        common.LogError("Error getting response: " + err.Error())
         common.PrettyPrintStr("Access with IP", false, "accessible")
-        common.AlarmCheckDown("accesswithip", "Can't access to zimbra through plain IP: " + ipAddress, false)
-    } else {
+        common.AlarmCheckDown("accesswithip", "Can't access to the IP at all: " + ipAddress + " - " + err.Error(), false)
+        return
+    }
+
+    if ! strings.Contains(resp.Contents, message) {
         common.PrettyPrintStr("Access with IP", true, "accessible")
-        common.AlarmCheckUp("accesswithip", "Can access to zimbra through plain IP: " + ipAddress, false)
+        common.AlarmCheckDown("accesswithip", "Can access to zimbra through plain IP: " + ipAddress, false)
+    } else {
+        common.PrettyPrintStr("Access with IP", true, "not accessible")
+        common.AlarmCheckUp("accesswithip", "Can't access to zimbra through plain IP: " + ipAddress, false)
     }
 }
 
