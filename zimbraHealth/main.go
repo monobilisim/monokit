@@ -249,12 +249,7 @@ func RestartZimbraService(service string) {
 func CheckZimbraServices() {
     var zimbraServices []string
     
-    status, err := ExecZimbraCommand("zmcontrol status")
-    
-    if err != nil {
-        common.LogError("Error getting zimbra status: " + err.Error())
-        return
-    }
+    status, _ := ExecZimbraCommand("zmcontrol status")
     
     for _, service := range strings.Split(status, "\n")[1:] {
         svc := strings.Join(strings.Fields(service), " ")
@@ -351,7 +346,7 @@ func ExecZimbraCommand(command string) (string, error) {
     cmd.Run()
 
     if cmd.ProcessState.ExitCode() != 0 {
-        return "", fmt.Errorf("Command failed: " + command)
+        return out.String(), fmt.Errorf("Command failed: " + command + " with stdout: " + out.String())
     }
 
     return out.String(), nil
