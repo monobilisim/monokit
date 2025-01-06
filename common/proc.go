@@ -1,16 +1,29 @@
 package common
 
 import (
-    "github.com/shirou/gopsutil/v4/process"
+    "os"
     "strings"
+    "github.com/shirou/gopsutil/v4/process"
 )
 
-func ProcGrep(procName string) bool {
+func ProcGrep(procName string, ignoreCurrentProc bool, getFullProcName bool) bool {
+    var name string
     procs, _ := process.Processes()
+    pid := os.Getpid()
 
     for _, proc := range procs {
-        name, _ := proc.Name()
+        
+        name, _ = proc.Name()
+        if getFullProcName {
+            name, _ = proc.Cmdline()
+        }
+        
         if strings.Contains(name, procName) {
+            if ignoreCurrentProc {
+                if int(proc.Pid) == int(pid) { 
+                    continue
+                }
+            }
             return true
         }
     }

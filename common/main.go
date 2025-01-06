@@ -5,6 +5,7 @@ import (
     "fmt"
     "bufio"
     "unicode"
+    "strconv"
 )
 
 var Config Common
@@ -87,7 +88,12 @@ func Init() {
         }
 
     }
-    
+
+    if ProcGrep("monokit " + ScriptName, true, true) {
+        fmt.Println("Monokit is already running, exiting...")
+        os.Exit(1)
+    }
+
     LogInit(userMode)
     ConfInit("global", &Config)
 }
