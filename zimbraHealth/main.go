@@ -34,7 +34,7 @@ func Main(cmd *cobra.Command, args []string) {
 
     fmt.Println("Zimbra Health Check REWRITE - v" + version + " - " + time.Now().Format("2006-01-02 15:04:05"))
     
-    if common.ProcGrep("install.sh") {
+    if common.ProcGrep("install.sh", true, true) {
         fmt.Println("Installation is running. Exiting.")
         return
     }
@@ -202,10 +202,19 @@ func CheckIpAccess() {
     req, err := http.NewRequest("GET", "https://" + ipAddress, nil)
 
     if err != nil {
-        common.LogError("Error creating request: " + err.Error())
+        common.PrettyPrintStr("Access with IP", false, "accessible")
+        common.AlarmCheckDown("accesswithip", "Can't access to the IP at all: " + ipAddress + " - " + err.Error(), false)
+        return
     }
 
     resp, err := httpClient.Do(req)
+
+    if err != nil {
+        common.PrettyPrintStr("Access with IP", false, "accessible")
+        common.AlarmCheckDown("accesswithip", "Can't access to the IP at all: " + ipAddress + " - " + err.Error(), false)
+        return
+    }
+
 
     defer resp.Body.Close()
 
