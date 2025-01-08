@@ -190,28 +190,6 @@ func podAlarmCheckDown(podName string, namespace string, actualStatus string) {
     }
 }
 
-func ComparePods(podList string, lastPodList string) {
-    // Compare the last pod list with the current one
-    if common.FileExists(lastPodList) {
-        lastPods, err := os.ReadFile(lastPodList)
-        if err != nil {
-            common.LogError(err.Error())
-            return
-        }
-
-        lastPodsSplit := strings.Split(string(lastPods), " :: ")
-        for _, lastPod := range lastPodsSplit {
-            if !strings.Contains(podList, lastPod) {
-                podName := strings.Split(lastPod, "++")[0]
-                namespace := strings.Split(lastPod, "++")[1]
-                common.AlarmCheckDown("pod_disappeared", "Pod '" + podName + "' from namespace '" + namespace + "' disappeared from the pods list, likely terminated", true)
-                // Remove alarm file
-                os.Remove(common.TmpDir + "/pod_disappeared.log")
-            }
-        }
-    }
-}
-
 func CheckPods() { 
     firstTime := true
 
@@ -270,11 +248,6 @@ func CheckPods() {
     }
     
     podListJoined := strings.Join(podList, " :: ")
-
-    ComparePods(podListJoined, common.TmpDir + "/last_pods")
-    
-    // Write pods.Items to a file
-    common.WriteToFile(common.TmpDir + "/last_pods", podListJoined)
 }
 
 
