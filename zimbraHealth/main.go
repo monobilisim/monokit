@@ -34,7 +34,7 @@ func Main(cmd *cobra.Command, args []string) {
 
     fmt.Println("Zimbra Health Check REWRITE - v" + version + " - " + time.Now().Format("2006-01-02 15:04:05"))
     
-    if common.ProcGrep("install.sh", true, true) {
+    if common.ProcGrep("install.sh", true) {
         fmt.Println("Installation is running. Exiting.")
         return
     }

@@ -15,6 +15,8 @@ import (
     "github.com/monobilisim/monokit/daemon"
 	"github.com/spf13/cobra"
 	"os"
+    "os/signal"
+    "syscall"
 )
 
 var RootCmd = &cobra.Command{
@@ -301,8 +303,20 @@ func main() {
 
 	k8sHealthCmd.Flags().StringP("kubeconfig", "k", kubeconfig, "Kubeconfig file")
 
+    c := make(chan os.Signal)
+    signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+    go func(){
+            <-c
+            os.Remove(common.TmpDir + "/monokit.lock")
+            os.Exit(1)
+    }()
+
+
 	if err := RootCmd.Execute(); err != nil {
+        os.Remove(common.TmpDir + "/monokit.lock")
 		fmt.Println(err)
 		os.Exit(1)
 	}
+    
+    os.Remove(common.TmpDir + "/monokit.lock")
 }
