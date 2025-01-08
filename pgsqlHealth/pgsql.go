@@ -43,21 +43,26 @@ type Member struct {
 func walgVerify() {
     var integrityCheck string
     var timelineCheck string
-    verifyOut, err := exec.Command("wal-g", "wal-verify", "integrity", "timeline").Output()
+    var err error
+    cmd := exec.Command("wal-g", "wal-verify", "integrity", "timeline")
+    cmd.Stderr = nil
+    var out strings.Builder
+    cmd.Stdout = &out
+    err = cmd.Run()
     if err != nil {
         common.LogError(fmt.Sprintf("Error executing command: %v\n", err))
         return
     }
 
-    for _, line := range strings.Split(string(verifyOut), "\n") {
-        if strings.Contains(line, "Integrity check status") {
+    for _, line := range strings.Split(string(out.String()), "\n") {
+        if strings.Contains(line, "integrity check status:") {
             integrityCheck = strings.Split(line, ": ")[1]
         }
-        if strings.Contains(line, "Timeline check status") {
+        if strings.Contains(line, "timeline check status:") {
             timelineCheck = strings.Split(line, ": ")[1]
         }
     }
-    
+   
     if integrityCheck != "OK" {
         common.PrettyPrintStr("WAL-G integrity check", false, "OK")
         common.AlarmCheckDown("wal_g_integrity_check", "WAL-G integrity check failed, integrity check status: " + integrityCheck, false)
