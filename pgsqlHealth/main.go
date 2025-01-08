@@ -2,10 +2,12 @@
 package pgsqlHealth
 
 import (
+    "io"
 	"os"
 	"fmt"
 	"time"
 	"errors"
+    "os/exec"
     "net/http"
     "encoding/json"
 	"github.com/spf13/cobra"
@@ -18,16 +20,18 @@ var patroniApiUrl string
 
 func Main(cmd *cobra.Command, args []string) {
 	version := "3.0.0"
-	common.ScriptName = "pgsqlHealth"
-	common.TmpDir = common.TmpDir + "pgsqlHealth"
-	common.Init()
-	common.ConfInit("db", &DbHealthConfig)
-    
+    common.ScriptName = "pgsqlHealth"
+
     // Check if user is postgres
     if os.Getenv("USER") != "postgres" {
         common.LogError("This script must be run as the postgres user")
         return
     }
+
+	common.TmpDir = os.Getenv("HOME") + "/.local/share/mono/" + "pgsqlHealth"
+	common.Init()
+	common.ConfInit("db", &DbHealthConfig)
+    
 
 	//var isCluster bool
 
@@ -68,32 +72,46 @@ func Main(cmd *cobra.Command, args []string) {
         DbHealthConfig.Postgres.Wal_g_verify_hour = "03:00"
     }
 
-    //var role string
+    var role string
 
-    //role = "undefined"
+    role = "undefined"
+    hour := time.Now().Format("15:04")
+
+    lookPath, _ := exec.LookPath("wal-g")
     
     // Check if patroni is installed
     if _, err := os.Stat("/etc/patroni/patroni.yml"); !errors.Is(err, os.ErrNotExist) {
 	    common.SplitSection("Cluster Status:")
 	    clusterStatus()
         // curl -s patroniApiUrl | jq -r .role
-        patroniRole, _ := http.Get(patroniApiUrl + "/patroni")
-        fmt.Println(patroniRole)
+        patroniRole, err := http.Get("http://" + patroniApiUrl + "/patroni")
+        if err != nil {
+            common.LogError(fmt.Sprintf("Error getting patroni role: %v\n", err))
+            return
+        }
+        
+        defer patroniRole.Body.Close()
 
-        patroniRoleJson := json.NewDecoder(patroniRole.Body)
-        patroniRoleJson.Decode(&patroniRole)
-        fmt.Println(patroniRole)
+        body, err := io.ReadAll(patroniRole.Body)
+        if err != nil {
+            common.LogError(fmt.Sprintf("Error reading patroni role body: %v\n", err))
+            return
+        }
+        
+        var patroniRoleJson map[string]interface{}
+        err = json.Unmarshal(body, &patroniRoleJson)
 
-        //role = patroniRole["role"]
+        if err != nil {
+            common.LogError(fmt.Sprintf("Error decoding patroni role json: %v\n", err))
+            return
+        }
 
-        //hour := time.Now().Format("15:04")
-
-        // Check if the command wal-g exists
+        role = patroniRoleJson["role"].(string)
     }
 
-    //if (role == "master" || role == "undefined") && exec.LookPath("wal-g") != "" && hour == DbHealthConfig.Postgres.Wal_g_verify_hour {
-        //walgVerify()
-    //}
+    if (role == "master" || role == "undefined") && lookPath != "" && hour == DbHealthConfig.Postgres.Wal_g_verify_hour {
+        walgVerify()
+    }
 
 
     if common.DpkgPackageExists("pmm2-client") {

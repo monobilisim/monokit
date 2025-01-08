@@ -17,7 +17,7 @@ import (
 	"gopkg.in/yaml.v3"
 	_ "github.com/lib/pq"
 	"github.com/monobilisim/monokit/common"
-    //issues "github.com/monobilisim/monokit/common/redmine/issues"
+    issues "github.com/monobilisim/monokit/common/redmine/issues"
 )
 
 var Connection *sql.DB
@@ -38,6 +38,46 @@ type Member struct {
 	Port     int64  `json:"port"`
 	Timeline int64  `json:"timeline"`
 	Lag      *int64 `json:"lag,omitempty"`
+}
+
+func walgVerify() {
+    var integrityCheck string
+    var timelineCheck string
+    verifyOut, err := exec.Command("wal-g", "wal-verify", "integrity", "timeline").Output()
+    if err != nil {
+        common.LogError(fmt.Sprintf("Error executing command: %v\n", err))
+        return
+    }
+
+    for _, line := range strings.Split(string(verifyOut), "\n") {
+        if strings.Contains(line, "Integrity check status") {
+            integrityCheck = strings.Split(line, ": ")[1]
+        }
+        if strings.Contains(line, "Timeline check status") {
+            timelineCheck = strings.Split(line, ": ")[1]
+        }
+    }
+    
+    if integrityCheck != "OK" {
+        common.PrettyPrintStr("WAL-G integrity check", false, "OK")
+        common.AlarmCheckDown("wal_g_integrity_check", "WAL-G integrity check failed, integrity check status: " + integrityCheck, false)
+        issues.CheckDown("wal_g_integrity_check", "WAL-G bütünlük kontrolü başarısız oldu", "Bütünlük durumu: " + integrityCheck, false, 0)
+    } else {
+        common.PrettyPrintStr("WAL-G integrity check", true, "OK")
+        common.AlarmCheckUp("wal_g_integrity_check", "WAL-G integrity check is now OK", false)
+        issues.CheckUp("wal_g_integrity_check", "WAL-G bütünlük kontrolü başarılı \n Bütünlük durumu: " + integrityCheck)
+    }
+
+    if timelineCheck != "OK" {
+        common.PrettyPrintStr("WAL-G timeline check", false, "OK")
+        common.AlarmCheckDown("wal_g_timeline_check", "WAL-G timeline check failed, timeline check status: " + timelineCheck, false)
+        issues.CheckDown("wal_g_timeline_check", "WAL-G timeline kontrolü başarısız oldu", "Timeline durumu: " + timelineCheck, false, 0)
+    } else {
+        common.PrettyPrintStr("WAL-G timeline check", true, "OK")
+        common.AlarmCheckUp("wal_g_timeline_check", "WAL-G timeline check is now OK", false)
+        issues.CheckUp("wal_g_timeline_check", "WAL-G timeline kontrolü başarılı \n Timeline durumu: " + timelineCheck)
+    }
+
 }
 
 func getPatroniUrl() (string, error) {
@@ -282,9 +322,10 @@ func clusterStatus() {
     
     if common.SystemdUnitActive("patroni.service") {
         common.PrettyPrintStr("Patroni Service", true, "accessible")
-        common.AlarmCheckDown("patroni_service", "Patroni service is now accessible", true)
+        common.AlarmCheckUp("patroni_service", "Patroni service is now accessible", false)
     } else {
         common.PrettyPrintStr("Patroni Service", false, "accessible")
+        common.AlarmCheckDown("patroni_service", "Patroni service is not accessible", false)
     }
 
 	outputJSON := common.TmpDir + "/raw_output.json"
