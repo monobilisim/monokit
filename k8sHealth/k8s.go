@@ -198,8 +198,6 @@ func CheckPods() {
     if err != nil {
         common.LogError(err.Error())
     }
-   
-    var podList []string
     
     // Iterate over all the pods
     for _, pod := range pods.Items {
@@ -243,11 +241,7 @@ func CheckPods() {
                 common.AlarmCheckDown(pod.Name + "_container", "Container '" + containerStatus.Name + "' from pod '" + pod.Name + "' is waiting for reason '" + containerStatus.State.Waiting.Reason + "'", false)
             }
         }
-
-        podList = append(podList, " :: " + pod.Name + "++" + pod.Namespace)
     }
-    
-    podListJoined := strings.Join(podList, " :: ")
 }
 
 
