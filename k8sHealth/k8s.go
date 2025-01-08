@@ -190,6 +190,28 @@ func podAlarmCheckDown(podName string, namespace string, actualStatus string) {
     }
 }
 
+func ComparePods(podList string, lastPodList string) {
+    // Compare the last pod list with the current one
+    if common.FileExists(lastPodList) {
+        lastPods, err := os.ReadFile(lastPodList)
+        if err != nil {
+            common.LogError(err.Error())
+            return
+        }
+
+        lastPodsSplit := strings.Split(string(lastPods), " :: ")
+        for _, lastPod := range lastPodsSplit {
+            if !strings.Contains(podList, lastPod) {
+                podName := strings.Split(lastPod, "++")[0]
+                namespace := strings.Split(lastPod, "++")[1]
+                common.AlarmCheckDown("pod_disappeared", "Pod '" + podName + "' from namespace '" + namespace + "' disappeared from the pods list, likely terminated", true)
+                // Remove alarm file
+                os.Remove(common.TmpDir + "/pod_disappeared.log")
+            }
+        }
+    }
+}
+
 func CheckPods() { 
     firstTime := true
 
@@ -198,9 +220,13 @@ func CheckPods() {
     if err != nil {
         common.LogError(err.Error())
     }
-
+   
+    var podList []string
+    
     // Iterate over all the pods
     for _, pod := range pods.Items {
+
+            
         if pod.Status.Phase != v1.PodRunning && pod.Status.Phase != v1.PodSucceeded && pod.Status.Phase != v1.PodPending {
             if firstTime {
                 common.SplitSection("Pods:")
@@ -211,7 +237,44 @@ func CheckPods() {
         } else {
             common.AlarmCheckUp(string(pod.Name) + "_running", "Pod " + pod.Name + " is now " + string(pod.Status.Phase), false)
         }
+
+
+        for _, containerStatus := range pod.Status.ContainerStatuses {
+            if containerStatus.State.Running != nil && containerStatus.State.Waiting == nil && containerStatus.State.Terminated == nil {
+                common.AlarmCheckUp(pod.Name + "_container", "Container '" + containerStatus.Name + "' from pod '" + pod.Name + "' is now Running", false)
+                continue
+            }
+
+            if containerStatus.State.Terminated != nil && containerStatus.State.Terminated.Reason == "Completed" {
+                continue
+            }
+            
+            if firstTime {
+                common.SplitSection("Pods:")
+                firstTime = false
+            }
+            
+
+            if containerStatus.State.Terminated != nil && containerStatus.State.Terminated.Reason != "Completed" {
+                common.PrettyPrintStr("Container " + containerStatus.Name + " from pod " + pod.Name, false, "Running")
+               common.AlarmCheckDown(pod.Name + "_container", "Container '" + containerStatus.Name + "' from pod '" + pod.Name + "' is terminated with Reason '" + containerStatus.State.Terminated.Reason + "'", false)
+            }
+
+            if containerStatus.State.Waiting != nil {
+                common.PrettyPrintStr("Container " + containerStatus.Name + " from pod " + pod.Name, false, "Running")
+                common.AlarmCheckDown(pod.Name + "_container", "Container '" + containerStatus.Name + "' from pod '" + pod.Name + "' is waiting for reason '" + containerStatus.State.Waiting.Reason + "'", false)
+            }
+        }
+
+        podList = append(podList, " :: " + pod.Name + "++" + pod.Namespace)
     }
+    
+    podListJoined := strings.Join(podList, " :: ")
+
+    ComparePods(podListJoined, common.TmpDir + "/last_pods")
+    
+    // Write pods.Items to a file
+    common.WriteToFile(common.TmpDir + "/last_pods", podListJoined)
 }
 
 
