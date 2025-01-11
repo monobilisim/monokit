@@ -260,7 +260,7 @@ func CheckZimbraServices() {
     var zimbraServices []string
     
     status, _ := ExecZimbraCommand("zmcontrol status")
-    
+
     for _, service := range strings.Split(status, "\n")[1:] {
         svc := strings.Join(strings.Fields(service), " ")
         svcSplit := strings.Split(svc, " ")
@@ -269,8 +269,9 @@ func CheckZimbraServices() {
             continue
         }
         
-        serviceStatus := svcSplit[len(svcSplit)-1]
-        serviceName := strings.Join(svcSplit[:len(svcSplit)-1], " ")
+        serviceName := svcSplit[0]
+        serviceStatus := strings.Replace(strings.Join(svcSplit[:len(svcSplit)-1], " "), serviceName + " ", "", 1)
+
         zimbraServices = append(zimbraServices, serviceName)
 
         if serviceStatus == "Running" {
