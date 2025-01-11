@@ -106,9 +106,13 @@ func CheckPodRunningLogs() {
 
     // Iterate over all the files
     for _, file := range files {
-        if strings.Contains(file.Name(), "_running.log") {
-            // Is a pod, so we split the pod name out of it
-            podName := strings.Split(file.Name(), "_running.log")[0]
+        if strings.Contains(file.Name(), "_running.log") || strings.Contains(file.Name(), "_container.log") {
+            var podName string
+            var podNamespace string
+
+            // naming: podNamespace-podName_container.log
+            podName = strings.Split(strings.Split(file.Name(), "-")[1], "_")[0]
+            podNamespace = strings.Split(podName, "-")[0]
 
             // Iterate over all the pods
             for _, pod := range pods.Items {
@@ -119,7 +123,7 @@ func CheckPodRunningLogs() {
             }
             
             if podExists == false {
-                common.AlarmCheckUp(podName + "_running", "Pod '" + podName + "' doesn't exist anymore, likely replaced", false)
+                common.AlarmCheckUp(podNamespace + "-" + podName + "_running", "Pod '" + podName + "' doesn't exist anymore, likely replaced", false)
             }
         }
     }
@@ -184,9 +188,9 @@ func podAlarmCheckDown(podName string, namespace string, actualStatus string) {
     }
 
     if podStillExists == false {
-       common.AlarmCheckUp(podName + "_running", "Pod '" + podName + "' from namespace '" + namespace + "' doesn't exist anymore, likely replaced", false)
+       common.AlarmCheckUp(namespace + "-" + podName + "_running", "Pod '" + podName + "' from namespace '" + namespace + "' doesn't exist anymore, likely replaced", false)
     } else {
-        common.AlarmCheckDown(podName + "_running", "Pod " + podName + " is " + actualStatus, false)
+        common.AlarmCheckDown(namespace + "-" + podName + "_running", "Pod " + podName + " is " + actualStatus, false)
     }
 }
 
@@ -211,13 +215,13 @@ func CheckPods() {
             podAlarmCheckDown(string(pod.Name), string(pod.Namespace), string(pod.Status.Phase))
             common.PrettyPrintStr(string(pod.Name), false, "Running")
         } else {
-            common.AlarmCheckUp(string(pod.Name) + "_running", "Pod " + pod.Name + " is now " + string(pod.Status.Phase), false)
+            common.AlarmCheckUp(pod.Namespace + "-" + string(pod.Name) + "_running", "Pod " + pod.Name + " is now " + string(pod.Status.Phase), false)
         }
 
 
         for _, containerStatus := range pod.Status.ContainerStatuses {
             if containerStatus.State.Running != nil && containerStatus.State.Waiting == nil && containerStatus.State.Terminated == nil {
-                common.AlarmCheckUp(pod.Name + "_container", "Container '" + containerStatus.Name + "' from pod '" + pod.Name + "' is now Running", false)
+                common.AlarmCheckUp(pod.Namespace + "-" + pod.Name + "_container", "Container '" + containerStatus.Name + "' from pod '" + pod.Name + "' is now Running", false)
                 continue
             }
 
@@ -233,12 +237,12 @@ func CheckPods() {
 
             if containerStatus.State.Terminated != nil && containerStatus.State.Terminated.Reason != "Completed" {
                 common.PrettyPrintStr("Container " + containerStatus.Name + " from pod " + pod.Name, false, "Running")
-               common.AlarmCheckDown(pod.Name + "_container", "Container '" + containerStatus.Name + "' from pod '" + pod.Name + "' is terminated with Reason '" + containerStatus.State.Terminated.Reason + "'", false)
+               common.AlarmCheckDown(pod.Namespace + "-" + pod.Name + "_container", "Container '" + containerStatus.Name + "' from pod '" + pod.Name + "' is terminated with Reason '" + containerStatus.State.Terminated.Reason + "'", false)
             }
 
             if containerStatus.State.Waiting != nil {
                 common.PrettyPrintStr("Container " + containerStatus.Name + " from pod " + pod.Name, false, "Running")
-                common.AlarmCheckDown(pod.Name + "_container", "Container '" + containerStatus.Name + "' from pod '" + pod.Name + "' is waiting for reason '" + containerStatus.State.Waiting.Reason + "'", false)
+                common.AlarmCheckDown(pod.Namespace + "-" + pod.Name + "_container", "Container '" + containerStatus.Name + "' from pod '" + pod.Name + "' is waiting for reason '" + containerStatus.State.Waiting.Reason + "'", false)
             }
         }
     }
