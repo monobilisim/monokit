@@ -263,14 +263,25 @@ func CheckZimbraServices() {
 
     for _, service := range strings.Split(status, "\n")[1:] {
         svc := strings.Join(strings.Fields(service), " ")
-        svcSplit := strings.Split(svc, " ")
+        svcSplit := strings.Split(strings.ToLower(svc), "running")
         
         if len(svcSplit) < 2 {
             continue
         }
+
+        var serviceName string
+        var serviceStatus string
         
-        serviceName := svcSplit[0]
-        serviceStatus := strings.Replace(strings.Join(svcSplit[:len(svcSplit)-1], " "), serviceName + " ", "", 1)
+        if strings.Contains(svc, "is not running") {
+            serviceName = strings.TrimSpace(strings.ReplaceAll(svcSplit[0], "is not", ""))
+            serviceStatus = "Not Running"
+        } else {
+            serviceName = svcSplit[0]
+            serviceStatus = "Running"
+        }
+
+        fmt.Println(serviceName)
+        fmt.Println(serviceStatus)
 
         zimbraServices = append(zimbraServices, serviceName)
 
