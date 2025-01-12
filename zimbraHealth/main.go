@@ -280,9 +280,6 @@ func CheckZimbraServices() {
             serviceStatus = "Running"
         }
 
-        fmt.Println(serviceName)
-        fmt.Println(serviceStatus)
-
         zimbraServices = append(zimbraServices, serviceName)
 
         if serviceStatus == "Running" {
