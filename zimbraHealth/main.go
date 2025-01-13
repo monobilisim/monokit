@@ -276,7 +276,7 @@ func CheckZimbraServices() {
             serviceName = strings.TrimSpace(strings.ReplaceAll(svcSplit[0], "is not", ""))
             serviceStatus = "Not Running"
         } else {
-            serviceName = svcSplit[0]
+            serviceName = strings.TrimSpace(svcSplit[0])
             serviceStatus = "Running"
         }
 
