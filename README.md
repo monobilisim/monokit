@@ -139,6 +139,8 @@ Replace NAME with the name of the tool you want to run (e.g. `osHealth`).
 
 A log file will be put on `/var/log/monokit.log` if you want to check the errors. They will also be printed to stdout.
 
+If you use Monokit on a place where there is no proper color support, you can disable the color output by setting the `MONOKIT_NOCOLOR`  environment variable to `true` or `1`.
+
 ---
 
 

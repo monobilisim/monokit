@@ -95,6 +95,11 @@ func Init() {
     
     // Create lockfile
     os.Create(TmpDir + "/monokit.lock")
+        
+    // Check if env variable MONOKIT_NOCOLOR is set to true
+    if os.Getenv("MONOKIT_NOCOLOR") == "true" || os.Getenv("MONOKIT_NOCOLOR") == "1" {
+        RemoveColors()
+    }
 
     LogInit(userMode)
     ConfInit("global", &Config)
