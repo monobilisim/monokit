@@ -26,7 +26,7 @@ var restartCounter int
 var templateFile string
 
 func Main(cmd *cobra.Command, args []string) {
-    version := "2.0.0"
+    version := "2.1.0"
     common.ScriptName = "zimbraHealth"
     common.TmpDir = common.TmpDir + "zimbraHealth"
     common.Init()
@@ -46,7 +46,7 @@ func Main(cmd *cobra.Command, args []string) {
     CheckZimbraServices()
 
     common.SplitSection("Zimbra Version:")
-    zimbraVer, err := ExecZimbraCommand("zmcontrol -v")
+    zimbraVer, err := ExecZimbraCommand("zmcontrol -v", false, false)
     if err != nil {
         common.LogError("Error getting zimbra version: " + err.Error())
     }
@@ -64,7 +64,14 @@ func Main(cmd *cobra.Command, args []string) {
     if date == "01:00" {
         common.SplitSection("SSL Expiration:")
         CheckSSL()
+
+        Zmfixperms()
     }
+}
+
+func Zmfixperms() {
+    // Run zmfixperms
+    _, _ = ExecZimbraCommand("libexec/zmfixperms", true, true)
 }
 
 func CheckIpAccess() {
@@ -244,7 +251,7 @@ func RestartZimbraService(service string) {
         return
     }
     
-    _, err := ExecZimbraCommand("zmcontrol start")
+    _, err := ExecZimbraCommand("zmcontrol start", false, false)
     
     if err != nil {
         common.LogError("Error starting Zimbra service " + service + ": " + err.Error())
@@ -259,7 +266,7 @@ func RestartZimbraService(service string) {
 func CheckZimbraServices() {
     var zimbraServices []string
     
-    status, _ := ExecZimbraCommand("zmcontrol status")
+    status, _ := ExecZimbraCommand("zmcontrol status", false, false)
 
     for _, service := range strings.Split(status, "\n")[1:] {
         svc := strings.Join(strings.Fields(service), " ")
@@ -340,13 +347,13 @@ func modifyFile(templateFile string) {
 
 
     fmt.Println("Added Z-Push block to " + templateFile + " file, restarting zimbra proxy service...")
-    _, err = ExecZimbraCommand("zmproxyctl restart")
+    _, err = ExecZimbraCommand("zmproxyctl restart", false, false)
     if err != nil {
         common.LogError("Error restarting zimbra proxy service: " + err.Error())
     }
 }
 
-func ExecZimbraCommand(command string) (string, error) {
+func ExecZimbraCommand(command string, fullPath bool, runAsRoot bool) (string, error) {
     zimbraUser := "zimbra"
 
     // Check if zimbra user exists
@@ -356,8 +363,18 @@ func ExecZimbraCommand(command string) (string, error) {
         zimbraUser = "zextras"
     }
 
+    if runAsRoot {
+        zimbraUser = "root"
+    }
+   
+    cmd = nil
+
     // Execute command
-    cmd = exec.Command("/bin/su", zimbraUser, "-c", zimbraPath + "/bin/" + command)
+    if fullPath {
+        cmd = exec.Command("/bin/su", zimbraUser, "-c", zimbraPath + "/" + command)
+    } else {
+        cmd = exec.Command("/bin/su", zimbraUser, "-c", zimbraPath + "/bin/" + command)
+    }
     
     var out bytes.Buffer
 	cmd.Stdout = &out
@@ -454,11 +471,11 @@ func CheckQueuedMessages() {
 
 func CheckSSL() {
     var mailHost string
-    zmHostname, err := ExecZimbraCommand("zmhostname")
+    zmHostname, err := ExecZimbraCommand("zmhostname", false, false)
     if err != nil {
         common.LogError("Error getting zimbra hostname: " + err.Error())
     }
-    mailHost1, err := ExecZimbraCommand("zmprov gs " + zmHostname)
+    mailHost1, err := ExecZimbraCommand("zmprov gs " + zmHostname, false, false)
     if err != nil {
         common.LogError("Error getting mail host: " + err.Error())
     }
@@ -492,7 +509,7 @@ func CheckSSL() {
     if days < 10 {
         common.PrettyPrintStr("SSL Certificate", true, fmt.Sprintf("expiring in %d days", days))
         common.AlarmCheckDown("sslcert", "SSL Certificate is expiring in " + fmt.Sprintf("%d days", days), false)
-        viewDeployedCert, _ := ExecZimbraCommand("zmcertmgr viewdeployedcrt")
+        viewDeployedCert, _ := ExecZimbraCommand("zmcertmgr viewdeployedcrt", false, false)
         issues.CheckDown("sslcert", common.Config.Identifier + " sunucusunun SSL sertifikası bitimine " + fmt.Sprintf("%d gün kaldı", days), "```json\n" + viewDeployedCert + "\n```", false, 0)
     } else {
         common.PrettyPrintStr("SSL Certificate", true, fmt.Sprintf("expiring in %d days", days))
