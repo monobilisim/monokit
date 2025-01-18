@@ -60,6 +60,10 @@ func Main(cmd *cobra.Command, args []string) {
     common.SplitSection("Queued Messages:")
     CheckQueuedMessages()
     
+    if !common.IsEmptyOrWhitespaceStr(MailHealthConfig.Zimbra.Webhook_tail.Logfile) && !common.IsEmptyOrWhitespaceStr(MailHealthConfig.Zimbra.Webhook_tail.Filter) {
+        TailWebhook(MailHealthConfig.Zimbra.Webhook_tail.Logfile, MailHealthConfig.Zimbra.Webhook_tail.Filter)
+    }
+
     date := time.Now().Format("13:04")
     if date == "01:00" {
         common.SplitSection("SSL Expiration:")
@@ -68,6 +72,51 @@ func Main(cmd *cobra.Command, args []string) {
         Zmfixperms()
     }
 }
+
+
+func escapeJSON(input string) string {
+	output := bytes.Buffer{}
+	for _, r := range input {
+		switch r {
+		case '"':
+			output.WriteString(`\"`)
+		case '\\':
+			output.WriteString(`\\`)
+		default:
+			output.WriteRune(r)
+		}
+	}
+	return output.String()
+}
+
+func TailWebhook(filePath string, pattern string) {
+    // Compile the regex pattern
+	regex, err := regexp.Compile(pattern)
+	if err != nil {
+        common.LogError("Invalid regex pattern: " + err.Error())
+    }
+	
+    // Open the file
+	file, err := os.Open(filePath)
+	if err != nil {
+        common.LogError("Error opening file: " + err.Error())
+	}
+	defer file.Close()
+
+	// Read the file line by line
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		line := scanner.Text()
+		if regex.MatchString(line) {
+            common.AlarmCheckDown("webhook_tail_" + escapeJSON(strings.ReplaceAll(line, " ", "_")), "Webhook tail matched: " + escapeJSON(line), false)
+        }
+	}
+
+	if err := scanner.Err(); err != nil {
+        common.LogError("Error reading file: " + err.Error())
+	}
+}    
+
 
 func Zmfixperms() {
     // Run zmfixperms

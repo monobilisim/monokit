@@ -11,6 +11,10 @@ type Zimbra struct {
     Restart bool
     Queue_Limit int
     Restart_Limit int
+    Webhook_tail struct {
+        Logfile string
+        Filter string
+    }
 }
 
 type Pmg struct {

@@ -11,3 +11,6 @@ zimbra:
   restart: false
   queue_limit: 50
   restart_limit: 2
+  webhook_tail:
+    logfile: /opt/zimbra/log/cbpolicyd.log
+    filter: 'test'
