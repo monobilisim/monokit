@@ -11,6 +11,7 @@ import (
 	"github.com/monobilisim/monokit/traefikHealth"
 	"github.com/monobilisim/monokit/pgsqlHealth"
 	"github.com/monobilisim/monokit/zimbraHealth"
+	"github.com/monobilisim/monokit/zimbraLdap"
 	"github.com/spf13/cobra"
 )
 
@@ -31,6 +32,15 @@ func ZimbraCommandAdd() {
         Run:   zimbraHealth.Main,
     }
 
+    var zimbraLdapCmd = &cobra.Command{
+        Use:   "zimbraLdap",
+        Short: "Zimbra LDAP",
+        Run:   func(cmd *cobra.Command, args []string) {
+            zimbraLdap.Main()
+        },
+    }
+    
+    RootCmd.AddCommand(zimbraLdapCmd)
     RootCmd.AddCommand(zimbraHealthCmd)
 }
 

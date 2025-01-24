@@ -29,6 +29,9 @@
 
 ## Tools
 
+- zimbraLdap
+    - Runs ldap.sh script.
+
 - traefikHealth
     - Check Traefik health, including service status and logs.
     - Sends alarm notifications to a Slack webhook.
