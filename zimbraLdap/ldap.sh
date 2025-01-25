@@ -15,4 +15,4 @@ su - zimbra -c "/opt/zimbra/libexec/zmslapcat -c \"$backup_dir\""
 su - zimbra -c "/opt/zimbra/libexec/zmslapcat \"$backup_dir\""
 
 # Remove old backups (older than 7 days)
-find "$backup_dir" -type f -name "ldap-*" -mtime +7 -exec rm {} \;
+find "$backup_dir" -type f \( -name "ldap-*" -o -name "ldap.*" \)  -mtime +7 -exec rm {} \;
