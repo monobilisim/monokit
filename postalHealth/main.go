@@ -57,7 +57,7 @@ func Services() {
     if common.SystemdUnitActive("postal.service") {
         if err != nil {
             common.LogError("Couldn't connect to Docker API: " + err.Error())
-            common.AlarmCheckDown("docker", "Couldn't connect to Docker API: " + err.Error(), false)
+            common.AlarmCheckDown("docker", "Couldn't connect to Docker API: " + err.Error(), false, "", "")
             common.PrettyPrintStr("Docker API", false, "connected")
         }
 
@@ -67,7 +67,7 @@ func Services() {
         containers, err := apiClient.ContainerList(context.Background(), container.ListOptions{All: true})
         if err != nil {
             common.LogError("Couldn't list containers: " + err.Error())
-            common.AlarmCheckDown("docker", "Couldn't list containers: " + err.Error(), false)
+            common.AlarmCheckDown("docker", "Couldn't list containers: " + err.Error(), false, "", "")
             common.PrettyPrintStr("Docker containers", false, "listed")
         }
 
@@ -83,7 +83,7 @@ func Services() {
                         postalServicesExist = true
                         common.PrettyPrintStr("Postal container " + name, true, "running")
                     } else {
-                        common.AlarmCheckDown("docker_" + name, "Postal container " + name + " is not running, state: " + container.State, false)
+                        common.AlarmCheckDown("docker_" + name, "Postal container " + name + " is not running, state: " + container.State, false, "", "")
                         postalServicesExist = true
                         common.PrettyPrintStr("Postal container " + name, false, "running")
                     }
@@ -92,11 +92,11 @@ func Services() {
         }
 
         if !postalServicesExist {
-            common.AlarmCheckDown("postal_containers", "Couldn't find any running Postal containers", false)
+            common.AlarmCheckDown("postal_containers", "Couldn't find any running Postal containers", false, "", "")
             common.PrettyPrintStr("Postal service", false, "running")
         }
     } else {
-        common.AlarmCheckDown("postal", "Postal service is not active", false)
+        common.AlarmCheckDown("postal", "Postal service is not active", false, "", "")
         common.PrettyPrintStr("Postal service", false, "active")
     }
 }
@@ -108,7 +108,7 @@ func MySQLConnect(dbName string, dbPath string, doPrint bool) *sql.DB {
     err := viper.ReadInConfig()
     if err != nil {
         common.LogError("Couldn't read Postal config file: " + err.Error())
-        common.AlarmCheckDown("mysql", "Couldn't read Postal config file: " + err.Error(), false)
+        common.AlarmCheckDown("mysql", "Couldn't read Postal config file: " + err.Error(), false, "", "")
     }
 
     dbHost := viper.GetString(dbName + ".host")
@@ -125,7 +125,7 @@ func MySQLConnect(dbName string, dbPath string, doPrint bool) *sql.DB {
             common.PrettyPrintStr("MySQL connection for " + dbName, false, "connected")
         }
         common.LogError("Couldn't connect to MySQL for " + dbName + ": " + err.Error())
-        common.AlarmCheckDown("mysql_" + dbName, "Couldn't connect to MySQL for " + dbName + ": " + err.Error(), false)
+        common.AlarmCheckDown("mysql_" + dbName, "Couldn't connect to MySQL for " + dbName + ": " + err.Error(), false, "", "")
         issue.CheckDown("mysql_" + dbName, common.Config.Identifier + " sunucusunda " + dbName + " veritabanına bağlanılamadı", "Bağlantı hatası: " + err.Error(), false, 0)
     } else {
         if doPrint {
@@ -146,7 +146,7 @@ func GetMessageQueue() {
     rows, err := MessageDB.Query("SELECT COUNT(*) FROM postal.queued_messages")
     if err != nil {
         common.LogError("Couldn't get message queue count: " + err.Error())
-        common.AlarmCheckDown("mysql_queue", "Couldn't get message queue count from database message_db: " + err.Error(), false)
+        common.AlarmCheckDown("mysql_queue", "Couldn't get message queue count from database message_db: " + err.Error(), false, "", "")
     }
 
     var count int
@@ -163,7 +163,7 @@ func GetHeldMessages() {
     rows, err := MessageDB.Query("SELECT id, permalink FROM postal.servers")
     if err != nil {
         common.LogError("Couldn't get held messages: " + err.Error())
-        common.AlarmCheckDown("mysql_held", "Couldn't get held messages from database message_db: " + err.Error(), false)
+        common.AlarmCheckDown("mysql_held", "Couldn't get held messages from database message_db: " + err.Error(), false, "", "")
     } else {
         common.AlarmCheckUp("mysql_held", "Can get Held messages count again", false)
     }
@@ -182,7 +182,7 @@ func GetHeldMessages() {
         dbMessageHeld, err := dbTemp.Query("SELECT COUNT(id) FROM messages WHERE status = 'Held'")
         if err != nil {
             common.LogError("Couldn't get held messages: " + err.Error())
-            common.AlarmCheckDown("mysql_held", "Couldn't get held messages from database message_db: " + err.Error(), false)
+            common.AlarmCheckDown("mysql_held", "Couldn't get held messages from database message_db: " + err.Error(), false, "", "")
         } else {
             common.AlarmCheckUp("mysql_held", "Can get Held messages count again", false)
         }
@@ -198,7 +198,7 @@ func GetHeldMessages() {
             common.AlarmCheckUp("mysql_held_" + variable, "Held messages for " + name + " is below threshold", false)
         } else {
             common.PrettyPrintStr("Held messages for " + name + " (" + variable + ")", true, fmt.Sprintf("%d", count))
-            common.AlarmCheckDown("mysql_held_" + variable, "Held messages for " + name + " is above threshold", false)
+            common.AlarmCheckDown("mysql_held_" + variable, "Held messages for " + name + " is above threshold", false, "", "")
         }
 
         MySQLDisconnect(dbTemp)

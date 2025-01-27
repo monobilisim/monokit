@@ -44,7 +44,7 @@ func RedisInit() {
 	if ping != "PONG" || pingerr != nil {
 		common.LogError("Error while trying to ping Redis: " + pingerr.Error() + "\n" + "Tried ports: " + fmt.Sprint(common.ConnsByProc("redis-server")) + " and " + RedisHealthConfig.Port)
 		common.PrettyPrintStr("Redis", false, "pingable")
-		common.AlarmCheckDown("redis_ping", "Trying to ping Redis failed", false)
+		common.AlarmCheckDown("redis_ping", "Trying to ping Redis failed", false, "", "")
 	} else {
 		common.PrettyPrintStr("Redis", true, "pingable")
 		common.AlarmCheckUp("redis_ping", "Redis is pingable again", false)
@@ -77,7 +77,7 @@ func RedisSlaveCountChange() {
 		common.AlarmCheckUp("redis_slave_count", "Slave count is now correct", false)
 	} else {
 		common.PrettyPrintStr("Slave Count", false, strconv.Itoa(RedisHealthConfig.Slave_count))
-		common.AlarmCheckDown("redis_slave_count", "Slave count is incorrect, intended: "+strconv.Itoa(RedisHealthConfig.Slave_count)+", actual: "+strings.Split(scanner.Text(), "connected_slaves:")[1], false)
+		common.AlarmCheckDown("redis_slave_count", "Slave count is incorrect, intended: "+strconv.Itoa(RedisHealthConfig.Slave_count)+", actual: "+strings.Split(scanner.Text(), "connected_slaves:")[1], false, "", "")
 	}
 
 }
@@ -120,7 +120,7 @@ func redisAlarmRoleChange(isMaster bool) {
 			if isMaster {
 				common.AlarmCheckUp("redis_role", "Redis role changed to master", false)
 			} else {
-				common.AlarmCheckDown("redis_role", "Redis role changed to slave", false)
+				common.AlarmCheckDown("redis_role", "Redis role changed to slave", false, "", "")
 			}
 			return
 		}
@@ -169,7 +169,7 @@ func RedisReadWriteTest(isSentinel bool) {
 			if RedisMaster {
 				common.LogError("Can't Write to Redis (sentinel): " + err.Error())
 				common.PrettyPrintStr("Redis", false, "writeable")
-				common.AlarmCheckDown("redis_write", "Trying to write a string to Redis failed", false)
+				common.AlarmCheckDown("redis_write", "Trying to write a string to Redis failed", false, "", "")
 				return
 			} else {
 				// It is a worker node, so we can't write to it
@@ -178,7 +178,7 @@ func RedisReadWriteTest(isSentinel bool) {
 		} else {
 			common.LogError("Can't Write to Redis: " + err.Error())
 			common.PrettyPrintStr("Redis", false, "writeable")
-			common.AlarmCheckDown("redis_write", "Trying to write a string to Redis failed", false)
+			common.AlarmCheckDown("redis_write", "Trying to write a string to Redis failed", false, "", "")
 			return
 		}
 	} else {
@@ -191,7 +191,7 @@ func RedisReadWriteTest(isSentinel bool) {
 	if err != nil {
 		common.LogError("Can't Read what is written to Redis: " + err.Error())
 		common.PrettyPrintStr("Redis", false, "readable")
-		common.AlarmCheckDown("redis_read", "Trying to read string from Redis failed", false)
+		common.AlarmCheckDown("redis_read", "Trying to read string from Redis failed", false, "", "")
 		return
 	} else {
 		common.AlarmCheckUp("redis_read", "Successfully read string from Redis", false)
@@ -199,7 +199,7 @@ func RedisReadWriteTest(isSentinel bool) {
 
 	if val != "bar" {
 		common.PrettyPrintStr("Redis", false, "readable")
-		common.AlarmCheckDown("redis_read_value", "The string that is read from Redis doesn't match the expected value", false)
+		common.AlarmCheckDown("redis_read_value", "The string that is read from Redis doesn't match the expected value", false, "", "")
 	} else {
 		common.PrettyPrintStr("Redis", true, "readable")
 		common.AlarmCheckUp("redis_read_value", "The Redis value now matches with the expected value", false)

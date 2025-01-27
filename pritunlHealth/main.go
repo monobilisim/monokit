@@ -40,7 +40,7 @@ func Main(cmd *cobra.Command, args []string) {
 	client, err := mongo.Connect(options.Client().ApplyURI(PritunlHealthConfig.Url))
 	if err != nil {
 		common.LogError("Couldn't connect to the server: " + err.Error())
-		common.AlarmCheckDown("pritunl_connect", "Couldn't connect to the server: " + err.Error(), false)
+		common.AlarmCheckDown("pritunl_connect", "Couldn't connect to the server: " + err.Error(), false, "", "")
 		return
 	} else {
 		common.AlarmCheckUp("pritunl_connect", "Server is now connected", false)
@@ -58,7 +58,7 @@ func Main(cmd *cobra.Command, args []string) {
 	err = client.Ping(ctx, readpref.Primary())
 	if err != nil {
 		common.LogError("Couldn't ping the server: " + err.Error())
-		common.AlarmCheckDown("pritunl_ping", "Couldn't ping the server: " + err.Error(), false)
+		common.AlarmCheckDown("pritunl_ping", "Couldn't ping the server: " + err.Error(), false, "", "")
 		return
 	} else {
 		common.AlarmCheckUp("pritunl_ping", "Server is now pingable", false)
@@ -80,7 +80,7 @@ func ClientUpCheck(userIdActual bson.ObjectID, ctx context.Context, db *mongo.Da
     cursor, err := collection.Find(ctx, bson.D{})
     if err != nil {
         common.LogError("Couldn't get the collection: " + err.Error())
-        common.AlarmCheckDown("pritunl_clients", "Couldn't get the clients collection: " + err.Error(), false)
+        common.AlarmCheckDown("pritunl_clients", "Couldn't get the clients collection: " + err.Error(), false, "", "")
         return 0
     } else {
         common.AlarmCheckUp("pritunl_clients", "Clients collection is now available", false)
@@ -117,7 +117,7 @@ func OrgCheck(orgIdActual bson.ObjectID, ctx context.Context, db *mongo.Database
     cursor, err := collection.Find(ctx, bson.D{})
     if err != nil {
         common.LogError("Couldn't get the collection: " + err.Error())
-        common.AlarmCheckDown("pritunl_organizations", "Couldn't get the organizations collection: " + err.Error(), false)
+        common.AlarmCheckDown("pritunl_organizations", "Couldn't get the organizations collection: " + err.Error(), false, "", "")
         return false
     } else {
         common.AlarmCheckUp("pritunl_organizations", "Organizations collection is now available", false)
@@ -173,7 +173,7 @@ func UsersStatus(ctx context.Context, db *mongo.Database) {
     cursor, err := collection.Find(ctx, bson.D{})
     if err != nil {
         common.LogError("Couldn't get the collection: " + err.Error())
-        common.AlarmCheckDown("pritunl_users", "Couldn't get the users collection: " + err.Error(), false)
+        common.AlarmCheckDown("pritunl_users", "Couldn't get the users collection: " + err.Error(), false, "", "")
         return
     } else {
         common.AlarmCheckUp("pritunl_users", "Users collection is now available", false)
@@ -206,7 +206,7 @@ func UsersStatus(ctx context.Context, db *mongo.Database) {
 
         if isUp == 0 {
             fmt.Println(common.Blue + "User " + name + " is " + common.Fail + "offline" + common.Reset)
-            common.AlarmCheckDown("user_" + name, "User " + name + " is offline, no client is connected", false)
+            common.AlarmCheckDown("user_" + name, "User " + name + " is offline, no client is connected", false, "", "")
         } else {
             common.PrettyPrintStr("User " + name, true, "online")
             common.AlarmCheckUp("user_" + name, "User " + name + " is now online, " + fmt.Sprint(isUp) + " client(s) is/are connected", false)
@@ -224,7 +224,7 @@ func ServerStatus(ctx context.Context, db *mongo.Database) {
 	cursor, err := collection.Find(ctx, bson.D{})
 	if err != nil {
 		common.LogError("Couldn't get the collection: " + err.Error())
-		common.AlarmCheckDown("pritunl", "Couldn't get the collection: " + err.Error(), false)
+		common.AlarmCheckDown("pritunl", "Couldn't get the collection: " + err.Error(), false, "", "")
 		return
 	} else {
 		common.AlarmCheckUp("pritunl", "Collection is now available", false)
@@ -245,7 +245,7 @@ func ServerStatus(ctx context.Context, db *mongo.Database) {
 
 		if status != "online" {
 			common.PrettyPrintStr("Server " + result["name"].(string), false, "online")
-			common.AlarmCheckDown("server_" + result["name"].(string), "Server " + result["name"].(string) + " is down, status '" + status + "'", false)
+			common.AlarmCheckDown("server_" + result["name"].(string), "Server " + result["name"].(string) + " is down, status '" + status + "'", false, "", "")
 		} else {
 			common.PrettyPrintStr("Server " + result["name"].(string), true, "online")
 			common.AlarmCheckUp("server_" + result["name"].(string), "Server " + result["name"].(string) + " is now up, status '" + status + "'", false)

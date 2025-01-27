@@ -108,7 +108,7 @@ func TailWebhook(filePath string, pattern string) {
 	for scanner.Scan() {
 		line := scanner.Text()
 		if regex.MatchString(line) {
-            common.AlarmCheckDown("webhook_tail_" + escapeJSON(strings.ReplaceAll(line, " ", "_")), "Webhook tail matched: " + escapeJSON(line), false)
+            common.AlarmCheckDown("webhook_tail_" + escapeJSON(strings.ReplaceAll(line, " ", "_")), "Webhook tail matched: " + escapeJSON(line), false, "", "")
         }
 	}
 
@@ -259,7 +259,7 @@ func CheckIpAccess() {
 
     if err != nil {
         common.PrettyPrintStr("Access with IP", false, "accessible")
-        common.AlarmCheckDown("accesswithip", "Can't access to the IP at all: " + ipAddress + " - " + err.Error(), false)
+        common.AlarmCheckDown("accesswithip", "Can't access to the IP at all: " + ipAddress + " - " + err.Error(), false, "", "")
         return
     }
 
@@ -267,7 +267,7 @@ func CheckIpAccess() {
 
     if err != nil {
         common.PrettyPrintStr("Access with IP", false, "accessible")
-        common.AlarmCheckDown("accesswithip", "Can't access to the IP at all: " + ipAddress + " - " + err.Error(), false)
+        common.AlarmCheckDown("accesswithip", "Can't access to the IP at all: " + ipAddress + " - " + err.Error(), false, "", "")
         return
     }
 
@@ -281,13 +281,13 @@ func CheckIpAccess() {
     if err != nil {
         common.LogError("Error getting response: " + err.Error())
         common.PrettyPrintStr("Access with IP", false, "accessible")
-        common.AlarmCheckDown("accesswithip", "Can't access to the IP at all: " + ipAddress + " - " + err.Error(), false)
+        common.AlarmCheckDown("accesswithip", "Can't access to the IP at all: " + ipAddress + " - " + err.Error(), false, "", "")
         return
     }
 
     if ! strings.Contains(bodyStr, message) {
         common.PrettyPrintStr("Access with IP", true, "accessible")
-        common.AlarmCheckDown("accesswithip", "Can access to zimbra through plain IP: " + ipAddress, false)
+        common.AlarmCheckDown("accesswithip", "Can access to zimbra through plain IP: " + ipAddress, false, "", "")
     } else {
         common.PrettyPrintStr("Access with IP", true, "not accessible")
         common.AlarmCheckUp("accesswithip", "Can't access to zimbra through plain IP: " + ipAddress, false)
@@ -296,7 +296,7 @@ func CheckIpAccess() {
 
 func RestartZimbraService(service string) {
     if restartCounter > MailHealthConfig.Zimbra.Restart_Limit {
-        common.AlarmCheckDown(service, "Restart limit reached for " + service, false)
+        common.AlarmCheckDown(service, "Restart limit reached for " + service, false, "", "")
         return
     }
     
@@ -343,7 +343,7 @@ func CheckZimbraServices() {
             common.AlarmCheckUp(serviceName, serviceName + " is now running", false)
         } else {
             common.PrettyPrintStr(serviceName, false, "Running")
-            common.AlarmCheckDown(serviceName, serviceName + " is not running", false)
+            common.AlarmCheckDown(serviceName, serviceName + " is not running", false, "", "")
             if MailHealthConfig.Zimbra.Restart {
                 RestartZimbraService(serviceName)
             }
@@ -468,7 +468,7 @@ func CheckZPush() {
         common.AlarmCheckUp("zpush", "Z-Push is now running", false)
     } else {
         common.PrettyPrintStr("Z-Push", false, "Running")
-        common.AlarmCheckDown("zpush", "Z-Push is not running", false)
+        common.AlarmCheckDown("zpush", "Z-Push is not running", false, "", "")
     }
 
     // Check if /etc/nginx-php-fpm.conf exists
@@ -512,7 +512,7 @@ func CheckQueuedMessages() {
     common.PrettyPrint("Queued Messages", "", float64(count), false, false, true, float64(MailHealthConfig.Zimbra.Queue_Limit))
 
     if count > MailHealthConfig.Zimbra.Queue_Limit {
-        common.AlarmCheckDown("mailq", "Mail queue is over the limit", false)
+        common.AlarmCheckDown("mailq", "Mail queue is over the limit", false, "", "")
     } else {
         common.AlarmCheckUp("mailq", "Mail queue is under the limit", false)
     }
@@ -557,7 +557,7 @@ func CheckSSL() {
     days := int(cert.NotAfter.Sub(time.Now()).Hours() / 24)
     if days < 10 {
         common.PrettyPrintStr("SSL Certificate", true, fmt.Sprintf("expiring in %d days", days))
-        common.AlarmCheckDown("sslcert", "SSL Certificate is expiring in " + fmt.Sprintf("%d days", days), false)
+        common.AlarmCheckDown("sslcert", "SSL Certificate is expiring in " + fmt.Sprintf("%d days", days), false, "", "")
         viewDeployedCert, _ := ExecZimbraCommand("zmcertmgr viewdeployedcrt", false, false)
         issues.CheckDown("sslcert", common.Config.Identifier + " sunucusunun SSL sertifikası bitimine " + fmt.Sprintf("%d gün kaldı", days), "```json\n" + viewDeployedCert + "\n```", false, 0)
     } else {

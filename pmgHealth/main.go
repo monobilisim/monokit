@@ -25,7 +25,7 @@ func CheckPmgServices() {
             common.AlarmCheckUp(service, service + " is working again", false)
         } else {
             common.PrettyPrintStr(service, false, "running")
-            common.AlarmCheckDown(service, service + " is not running", false)
+            common.AlarmCheckDown(service, service + " is not running", false, "", "")
         }
     }
 }
@@ -34,7 +34,7 @@ func PostgreSQLStatus() {
     cmd := exec.Command("pg_isready", "-q")
     err := cmd.Run()
     if err != nil {
-        common.AlarmCheckDown("postgres", "PostgreSQL is not running", false)
+        common.AlarmCheckDown("postgres", "PostgreSQL is not running", false, "", "")
         common.PrettyPrintStr("PostgreSQL", false, "running")
     } else {
         common.AlarmCheckUp("postgres", "PostgreSQL is now running", false)
@@ -50,7 +50,7 @@ func QueuedMessages() {
 	err := cmd.Run()
 	if err != nil {
 		common.LogError("Error running mailq: " + err.Error())
-        common.AlarmCheckDown("mailq_run", "Error running mailq: " + err.Error(), false)
+        common.AlarmCheckDown("mailq_run", "Error running mailq: " + err.Error(), false, "", "")
 		return
 	} else {
         common.AlarmCheckUp("mailq_run", "mailq command executed successfully", false)
@@ -72,7 +72,7 @@ func QueuedMessages() {
         common.AlarmCheckUp("queued_msg", "Number of queued messages is acceptable - " + strconv.Itoa(count) + "/" + strconv.Itoa(MailHealthConfig.Pmg.Queue_Limit), false)
         common.PrettyPrintStr("Number of queued messages", true, strconv.Itoa(count) + "/" + strconv.Itoa(MailHealthConfig.Pmg.Queue_Limit))
     } else {
-        common.AlarmCheckDown("queued_msg", "Number of queued messages is above limit - " + strconv.Itoa(count) + "/" + strconv.Itoa(MailHealthConfig.Pmg.Queue_Limit), false)
+        common.AlarmCheckDown("queued_msg", "Number of queued messages is above limit - " + strconv.Itoa(count) + "/" + strconv.Itoa(MailHealthConfig.Pmg.Queue_Limit), false, "", "")
         common.PrettyPrintStr("PMG Queue", true, strconv.Itoa(count) + "/" + strconv.Itoa(MailHealthConfig.Pmg.Queue_Limit))
     }
 }

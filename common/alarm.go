@@ -41,7 +41,7 @@ var AlarmCheckDownCmd = &cobra.Command{
         message, _ := cmd.Flags().GetString("message")
         ScriptName, _ = cmd.Flags().GetString("scriptName")
         noInterval, _ := cmd.Flags().GetBool("noInterval")
-        AlarmCheckDown(service, message, noInterval)
+        AlarmCheckDown(service, message, noInterval, "", "")
     },
 }
 
@@ -104,7 +104,7 @@ type ServiceFile struct {
 }
 
 
-func AlarmCheckDown(service string, message string, noInterval bool) {
+func AlarmCheckDown(service string, message string, noInterval bool, customStream string, customTopic string) {
     // Remove slashes from service and replace them with -
     serviceReplaced := strings.Replace(service, "/", "-", -1)
     filePath := TmpDir + "/" + serviceReplaced + ".log"
@@ -166,7 +166,7 @@ func AlarmCheckDown(service string, message string, noInterval bool) {
 
                 err = os.WriteFile(filePath, jsonData, 0644)
 
-                Alarm(messageFinal, "", "", false)
+                Alarm(messageFinal, customStream, customTopic, false)
             }
             return
         }
@@ -185,7 +185,7 @@ func AlarmCheckDown(service string, message string, noInterval bool) {
                 LogError("Error writing to file: \n" + err.Error())
             }
             
-            Alarm(messageFinal, "", "", false)
+            Alarm(messageFinal, customStream, customTopic, false)
         } else {
             if j.Locked == false {
                 // currentDate - oldDate in minutes
@@ -203,7 +203,7 @@ func AlarmCheckDown(service string, message string, noInterval bool) {
                         LogError("Error writing to file: \n" + err.Error())
                     }
 
-                    Alarm(messageFinal, "", "", false)
+                    Alarm(messageFinal, customStream, customTopic, false)
                 }
             }
         }
@@ -232,7 +232,7 @@ func AlarmCheckDown(service string, message string, noInterval bool) {
 
 
         if Config.Alarm.Interval == 0 || noInterval == true {
-            Alarm(messageFinal, "", "", false)
+            Alarm(messageFinal, customStream, customTopic, false)
         }
     }        
 }

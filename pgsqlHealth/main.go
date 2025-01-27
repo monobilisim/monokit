@@ -52,7 +52,7 @@ func Main(cmd *cobra.Command, args []string) {
 	if err != nil {
 		common.LogError(fmt.Sprintf("Error connecting to PostgreSQL: %v\n", err))
 		common.PrettyPrintStr("PostgreSQL", false, "accessible")
-        common.AlarmCheckDown("pgsql_conn", "PostgreSQL connection failed: " + err.Error(), false)
+        common.AlarmCheckDown("pgsql_conn", "PostgreSQL connection failed: " + err.Error(), false, "", "")
 		return
 	} else {
 	    common.PrettyPrintStr("PostgreSQL", true, "accessible")
@@ -121,7 +121,7 @@ func Main(cmd *cobra.Command, args []string) {
             common.AlarmCheckUp("pmm_agent", "PMM Agent is now running", false)
         } else {
             common.PrettyPrintStr("PMM Agent", false, "running")
-            common.AlarmCheckDown("pmm_agent", "PMM Agent is not running", false)
+            common.AlarmCheckDown("pmm_agent", "PMM Agent is not running", false, "", "")
         }
     }
 }

@@ -31,12 +31,12 @@ func Main(cmd *cobra.Command, args []string) {
 
 	if err != nil {
 		common.LogError("Can't ping MySQL connection. err: " + err.Error())
-		common.AlarmCheckDown("ping", "Can't ping MySQL connection. err: "+err.Error(), false)
+		common.AlarmCheckDown("ping", "Can't ping MySQL connection. err: "+err.Error(), false, "", "")
     }
 
     if Connect(finalConnStr) != nil {
         common.LogError("Can't connect to a MySQL connection. err: " + err.Error())
-        common.AlarmCheckDown("ping", "Can't connect to a MySQL connection. err: "+err.Error(), false)
+        common.AlarmCheckDown("ping", "Can't connect to a MySQL connection. err: "+err.Error(), false, "", "")
     }
 
 	defer Connection.Close()

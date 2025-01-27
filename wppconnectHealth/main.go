@@ -141,7 +141,7 @@ func WppCheck() {
             common.AlarmCheckUp(session.(string), "Session " + session.(string) + ", named '" + contactName + "', is now " + status, false)
         } else {
             fmt.Println(common.Blue + contactName + ", Session " + session.(string) + " " + common.Fail + status + common.Reset)
-            common.AlarmCheckDown(session.(string), "Session " + session.(string) + ", named '" + contactName + "', is " + status, false)
+            common.AlarmCheckDown(session.(string), "Session " + session.(string) + ", named '" + contactName + "', is " + status, false, "", "")
         }
     }
 }

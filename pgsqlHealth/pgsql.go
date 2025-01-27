@@ -65,7 +65,7 @@ func walgVerify() {
    
     if integrityCheck != "OK" {
         common.PrettyPrintStr("WAL-G integrity check", false, "OK")
-        common.AlarmCheckDown("wal_g_integrity_check", "WAL-G integrity check failed, integrity check status: " + integrityCheck, false)
+        common.AlarmCheckDown("wal_g_integrity_check", "WAL-G integrity check failed, integrity check status: " + integrityCheck, false, "", "")
         issues.CheckDown("wal_g_integrity_check", "WAL-G bütünlük kontrolü başarısız oldu", "Bütünlük durumu: " + integrityCheck, false, 0)
     } else {
         common.PrettyPrintStr("WAL-G integrity check", true, "OK")
@@ -75,7 +75,7 @@ func walgVerify() {
 
     if timelineCheck != "OK" {
         common.PrettyPrintStr("WAL-G timeline check", false, "OK")
-        common.AlarmCheckDown("wal_g_timeline_check", "WAL-G timeline check failed, timeline check status: " + timelineCheck, false)
+        common.AlarmCheckDown("wal_g_timeline_check", "WAL-G timeline check failed, timeline check status: " + timelineCheck, false, "", "")
         issues.CheckDown("wal_g_timeline_check", "WAL-G timeline kontrolü başarısız oldu", "Timeline durumu: " + timelineCheck, false, 0)
     } else {
         common.PrettyPrintStr("WAL-G timeline check", true, "OK")
@@ -250,7 +250,7 @@ func activeConnections() {
 	if err != nil {
 		common.LogError(fmt.Sprintf("Error executing query: %s - Error: %v\n", query, err))
 		common.PrettyPrintStr("PostgreSQL active connections", false, "accessible")
-        common.AlarmCheckDown("postgres_active_conn", "An error occurred while checking active connections: " + err.Error(), false)
+        common.AlarmCheckDown("postgres_active_conn", "An error occurred while checking active connections: " + err.Error(), false, "", "")
 		return
 	} else {
         common.AlarmCheckUp("postgres_active_conn", "Active connections are now accessible", true)
@@ -276,7 +276,7 @@ func activeConnections() {
 
 		}
 		common.PrettyPrintStr("Number of active connections", true, fmt.Sprintf("%d/%d and above %d", used, maxConn, DbHealthConfig.Postgres.Limits.Conn_percent))
-        common.AlarmCheckDown("postgres_num_active_conn", fmt.Sprintf("Number of active connections: %d/%d and above %d", used, maxConn, DbHealthConfig.Postgres.Limits.Conn_percent), false)
+        common.AlarmCheckDown("postgres_num_active_conn", fmt.Sprintf("Number of active connections: %d/%d and above %d", used, maxConn, DbHealthConfig.Postgres.Limits.Conn_percent), false, "", "")
 		difference := (used - maxConn) / 10
 		if difference > increase {
 			writeActiveConnections()
@@ -308,7 +308,7 @@ func runningQueries() {
 	if err != nil {
 		common.LogError(fmt.Sprintf("Error executing query: %s - Error: %v\n", query, err))
 		common.PrettyPrintStr("Number of running queries", false, "accessible")
-        common.AlarmCheckDown("postgres_running_queries", "An error occurred while checking running queries: " + err.Error(), false)
+        common.AlarmCheckDown("postgres_running_queries", "An error occurred while checking running queries: " + err.Error(), false, "", "")
 		return
 	} else {
         common.AlarmCheckUp("postgres_running_queries", "Running queries are now accessible", true)
@@ -316,7 +316,7 @@ func runningQueries() {
 
 	if activeQueriesCount > DbHealthConfig.Postgres.Limits.Query {
 		common.PrettyPrintStr("Number of running queries", true, fmt.Sprintf("%d/%d", activeQueriesCount, DbHealthConfig.Postgres.Limits.Query))
-        common.AlarmCheckDown("postgres_num_running_queries", fmt.Sprintf("Number of running queries: %d/%d", activeQueriesCount, DbHealthConfig.Postgres.Limits.Query), false)
+        common.AlarmCheckDown("postgres_num_running_queries", fmt.Sprintf("Number of running queries: %d/%d", activeQueriesCount, DbHealthConfig.Postgres.Limits.Query), false, "", "")
 	} else {
 		common.PrettyPrintStr("Number of running queries", true, fmt.Sprintf("%d/%d", activeQueriesCount, DbHealthConfig.Postgres.Limits.Query))
         common.AlarmCheckUp("postgres_num_running_queries", fmt.Sprintf("Number of running queries is now: %d/%d", activeQueriesCount, DbHealthConfig.Postgres.Limits.Query), true)
@@ -330,7 +330,7 @@ func clusterStatus() {
         common.AlarmCheckUp("patroni_service", "Patroni service is now accessible", false)
     } else {
         common.PrettyPrintStr("Patroni Service", false, "accessible")
-        common.AlarmCheckDown("patroni_service", "Patroni service is not accessible", false)
+        common.AlarmCheckDown("patroni_service", "Patroni service is not accessible", false, "", "")
     }
 
 	outputJSON := common.TmpDir + "/raw_output.json"

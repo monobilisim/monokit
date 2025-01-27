@@ -79,7 +79,7 @@ func CheckNodes(master bool) {
             }
 
             if isReady == false {
-                common.AlarmCheckDown(string(node.Name) + "_ready", "Node " + node.Name + " is not Ready, is in " + string(node.Status.Conditions[0].Type), false)
+                common.AlarmCheckDown(string(node.Name) + "_ready", "Node " + node.Name + " is not Ready, is in " + string(node.Status.Conditions[0].Type), false, "", "")
                 common.PrettyPrintStr(string(node.Name), false, "Ready")
             } else {
                 common.AlarmCheckUp(string(node.Name) + "_ready", "Node " + node.Name + " is now Ready", false)
@@ -167,7 +167,7 @@ func CheckRke2IngressNginx() {
             common.PrettyPrintStr(floatingIp, true, "available and returned HTTP " + strconv.Itoa(response.StatusCode))
         } else {
             common.PrettyPrintStr(floatingIp, false, "available or returned HTTP " + strconv.Itoa(response.StatusCode))
-            common.AlarmCheckDown("floating_unexpected_ " + floatingIp, "Floating IP " + floatingIp + " is not available or returned HTTP " + strconv.Itoa(response.StatusCode), false)
+            common.AlarmCheckDown("floating_unexpected_ " + floatingIp, "Floating IP " + floatingIp + " is not available or returned HTTP " + strconv.Itoa(response.StatusCode), false, "", "")
         }
     }
 }
@@ -190,7 +190,7 @@ func podAlarmCheckDown(podName string, namespace string, actualStatus string) {
     if podStillExists == false {
        common.AlarmCheckUp(namespace + "-" + podName + "_running", "Pod '" + podName + "' from namespace '" + namespace + "' doesn't exist anymore, likely replaced", false)
     } else {
-        common.AlarmCheckDown(namespace + "-" + podName + "_running", "Pod " + podName + " is " + actualStatus, false)
+        common.AlarmCheckDown(namespace + "-" + podName + "_running", "Pod " + podName + " is " + actualStatus, false, "", "")
     }
 }
 
@@ -237,12 +237,12 @@ func CheckPods() {
 
             if containerStatus.State.Terminated != nil && containerStatus.State.Terminated.Reason != "Completed" {
                 common.PrettyPrintStr("Container " + containerStatus.Name + " from pod " + pod.Name, false, "Running")
-               common.AlarmCheckDown(pod.Namespace + "-" + pod.Name + "_container", "Container '" + containerStatus.Name + "' from pod '" + pod.Name + "' is terminated with Reason '" + containerStatus.State.Terminated.Reason + "'", false)
+               common.AlarmCheckDown(pod.Namespace + "-" + pod.Name + "_container", "Container '" + containerStatus.Name + "' from pod '" + pod.Name + "' is terminated with Reason '" + containerStatus.State.Terminated.Reason + "'", false, "", "")
             }
 
             if containerStatus.State.Waiting != nil {
                 common.PrettyPrintStr("Container " + containerStatus.Name + " from pod " + pod.Name, false, "Running")
-                common.AlarmCheckDown(pod.Namespace + "-" + pod.Name + "_container", "Container '" + containerStatus.Name + "' from pod '" + pod.Name + "' is waiting for reason '" + containerStatus.State.Waiting.Reason + "'", false)
+                common.AlarmCheckDown(pod.Namespace + "-" + pod.Name + "_container", "Container '" + containerStatus.Name + "' from pod '" + pod.Name + "' is waiting for reason '" + containerStatus.State.Waiting.Reason + "'", false, "", "")
             }
         }
     }
@@ -281,7 +281,7 @@ func CheckCertManager() {
             if condition.Type == "Ready" {
                 if condition.Status != "True" {
                     common.PrettyPrintStr(item.Metadata.Name, false, "Ready")
-                    common.AlarmCheckDown(item.Metadata.Name + "_ready", "Certificate named '" + item.Metadata.Name + "' is not Ready", false)
+                    common.AlarmCheckDown(item.Metadata.Name + "_ready", "Certificate named '" + item.Metadata.Name + "' is not Ready", false, "", "")
                 } else {
                     common.AlarmCheckUp(item.Metadata.Name + "_ready", "Certificate named '" + item.Metadata.Name + "' is now Ready", false)
                 }
@@ -319,7 +319,7 @@ func CheckKubeVip() {
             err = pinger.Run()
             if err != nil {
                 common.PrettyPrintStr(floatingIp, false, "available")
-                common.AlarmCheckDown("floating_unexpected_ " + floatingIp, "Floating IP " + floatingIp + " is not available", false)
+                common.AlarmCheckDown("floating_unexpected_ " + floatingIp, "Floating IP " + floatingIp + " is not available", false, "", "")
             } else {
                 common.AlarmCheckUp("floating_unexpected_ " + floatingIp, "Floating IP " + floatingIp + " is available", false)
             }
@@ -360,7 +360,7 @@ func CheckClusterApiCert() {
     // Check if the certificate is expired
     if cert.NotAfter.Before(time.Now()) {
         common.PrettyPrintStr("kube-apiserver", true, "expired")
-        common.AlarmCheckDown("kube-apiserver_expired", "kube-apiserver certificate is expired", false)
+        common.AlarmCheckDown("kube-apiserver_expired", "kube-apiserver certificate is expired", false, "", "")
     } else {
         common.PrettyPrintStr("kube-apiserver", true, "not expired")
         common.AlarmCheckUp("kube-apiserver_expired", "kube-apiserver certificate is now valid", false)

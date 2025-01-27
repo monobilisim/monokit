@@ -72,12 +72,12 @@ func DiskUsage() {
         id := issues.Show("disk")
 
         if id == "" {
-            common.AlarmCheckDown("disk_redmineissue", "Redmine issue could not be created for disk usage", false)
-            common.AlarmCheckDown("disk", msg, false)
+            common.AlarmCheckDown("disk_redmineissue", "Redmine issue could not be created for disk usage", false, "", "")
+            common.AlarmCheckDown("disk", msg, false, "", "")
         } else {
             common.AlarmCheckUp("disk_redmineissue", "Redmine issue has been created for disk usage", false)
             msg = msg + "\n\n" + "Redmine Issue: " + common.Config.Redmine.Url + "/issues/" + id
-            common.AlarmCheckDown("disk", msg, false)
+            common.AlarmCheckDown("disk", msg, false, "", "")
         }
 
     } else {

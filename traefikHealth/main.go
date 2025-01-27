@@ -128,7 +128,7 @@ func Main(cmd *cobra.Command, args []string) {
 
 	if !common.SystemdUnitActive("traefik.service") {
 		common.PrettyPrintStr("Service traefik", false, "active")
-		common.AlarmCheckDown("traefik_svc", "Service traefik is not active", false)
+		common.AlarmCheckDown("traefik_svc", "Service traefik is not active", false, "", "")
 	} else {
 		common.PrettyPrintStr("Service traefik", true, "active")
 		common.AlarmCheckUp("traefik_svc", "Service traefik is now active", false)
@@ -144,7 +144,7 @@ func Main(cmd *cobra.Command, args []string) {
 			common.AlarmCheckUp("traefik_port_"+fmt.Sprint(port), "Port "+fmt.Sprint(port)+" is open", false)
 		} else {
 			common.PrettyPrintStr("Port "+fmt.Sprint(port), false, "closed")
-			common.AlarmCheckDown("traefik_port_"+fmt.Sprint(port), "Port "+fmt.Sprint(port)+" is closed", false)
+			common.AlarmCheckDown("traefik_port_"+fmt.Sprint(port), "Port "+fmt.Sprint(port)+" is closed", false, "", "")
 		}
 	}
 
