@@ -43,6 +43,7 @@ var ExistsNoteCmd = &cobra.Command{
         note, _ := cmd.Flags().GetString("note")
         exists := ExistsNote(service, note)
         
+        os.RemoveFile(common.TmpDir + "/monokit.lock")
         if exists == true {
             os.Exit(0)
         } else {
