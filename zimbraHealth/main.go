@@ -26,7 +26,7 @@ var restartCounter int
 var templateFile string
 
 func Main(cmd *cobra.Command, args []string) {
-    version := "2.1.0"
+    version := "2.2.0"
     common.ScriptName = "zimbraHealth"
     common.TmpDir = common.TmpDir + "zimbraHealth"
     common.Init()
@@ -108,7 +108,7 @@ func TailWebhook(filePath string, pattern string) {
 	for scanner.Scan() {
 		line := scanner.Text()
 		if regex.MatchString(line) {
-            common.AlarmCheckDown("webhook_tail_" + escapeJSON(strings.ReplaceAll(line, " ", "_")), "Webhook tail matched: " + escapeJSON(line), false, "", "")
+            common.AlarmCheckDown("webhook_tail_" + escapeJSON(strings.ReplaceAll(line, " ", "_")), "Webhook tail matched: " + escapeJSON(line), false, MailHealthConfig.Zimbra.Webhook_tail.Stream, MailHealthConfig.Zimbra.Webhook_tail.Topic)
         }
 	}
 

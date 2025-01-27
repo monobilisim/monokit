@@ -14,6 +14,8 @@ type Zimbra struct {
     Webhook_tail struct {
         Logfile string
         Filter string
+        Stream string
+        Topic string
     }
 }
 
