@@ -97,6 +97,7 @@ var ExistsCmd = &cobra.Command{
         
         exists := Exists(subject, date, search)
         
+        os.Remove(common.TmpDir + "/monokit.lock") 
         if exists != "" {
             fmt.Println(exists)
             os.Exit(0)
