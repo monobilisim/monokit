@@ -79,3 +79,10 @@ jobs:
             cat /var/log/monokit.log
             exit 1
           fi
+
+      - name: health/osHealth/redmine-ram.sh
+        run: |
+          if ! sudo bash -xe tests/health/osHealth/redmine-ram.sh; then
+            cat /var/log/monokit.log
+            exit 1
+          fi
