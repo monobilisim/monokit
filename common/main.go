@@ -89,8 +89,14 @@ func Init() {
     }
 
     if FileExists(TmpDir + "/monokit.lock") {
-        fmt.Println("Monokit is already running, exiting...")
-        os.Exit(1)
+        // Check if a process is also running
+        if !ProcGrep("monokit", true) {
+            // Remove lockfile
+            os.Remove(TmpDir + "/monokit.lock")
+        } else {
+            fmt.Println("Monokit is already running, exiting...")
+            os.Exit(1)
+        }
     }
     
     // Create lockfile
