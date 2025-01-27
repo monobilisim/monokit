@@ -22,7 +22,7 @@ docker compose down
 
 docker compose up -d
 
-mkdir -p /etc/mono
+sudo mkdir -p /etc/mono
 
 cat << EOF | sudo tee /etc/mono/global.yaml
 identifier: ci
