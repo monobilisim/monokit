@@ -117,8 +117,15 @@ func TailWebhook(filePath string, pattern string) {
                 return
             }
             id := matches[1]
-
-            common.AlarmCheckDown("webhook_tail_" + id, "Webhook tail matched: " + escapeJSON(line), false, MailHealthConfig.Zimbra.Webhook_tail.Stream, MailHealthConfig.Zimbra.Webhook_tail.Topic)
+            
+            // Check if the file exists
+            if _, err := os.Stat(common.TmpDir + "/webhook_tail_" + id); os.IsNotExist(err) {
+                // Create the file
+                os.Create(common.TmpDir + "/webhook_tail_" + id)
+                
+                // Send the alarm
+                common.Alarm("[zimbraHealth - " + common.Config.Identifier + "] Webhook tail matched: " + escapeJSON(line), MailHealthConfig.Zimbra.Webhook_tail.Stream, MailHealthConfig.Zimbra.Webhook_tail.Topic, true)
+            }
         }
 	}
 
