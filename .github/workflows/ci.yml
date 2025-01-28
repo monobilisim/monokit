@@ -86,3 +86,17 @@ jobs:
             cat /var/log/monokit.log
             exit 1
           fi
+      
+      - name: health/rmqHealth/init-rmq.sh
+        run: |
+          if ! sudo bash -xe tests/health/rmqHealth/init-rmq.sh; then
+            cat /var/log/monokit.log
+            exit 1
+          fi
+
+      - name: health/rmqHealth/test.sh
+        run: |
+          if ! sudo bash -xe tests/health/rmqHealth/test.sh; then
+            cat /var/log/monokit.log
+            exit 1
+          fi
