@@ -100,3 +100,10 @@ jobs:
             cat /var/log/monokit.log
             exit 1
           fi
+      
+      - name: health/k8sHealth/init-k8s.sh
+        run: |
+          if ! sudo bash -xe tests/health/rmqHealth/init-rmq.sh; then
+            cat /var/log/monokit.log
+            exit 1
+          fi  
