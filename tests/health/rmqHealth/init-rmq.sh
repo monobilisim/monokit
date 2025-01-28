@@ -1,52 +1,44 @@
-#!/usr/bin/env bash
-#
-# install_rabbitmq_debian.sh
-#
-# Installs RabbitMQ (and Erlang) on a Debian-based system, then enables
-# the management plugin to allow browser-based administration.
+#!/bin/sh
 
-set -e
+sudo apt-get install curl gnupg apt-transport-https -y
 
-# --- 1. Ensure system is up-to-date and necessary packages are installed ---
-echo "[INFO] Updating package list and installing dependencies..."
-sudo apt-get update -y
-sudo apt-get install -y curl gnupg apt-transport-https lsb-release
+## Team RabbitMQ's main signing key
+curl -1sLf "https://keys.openpgp.org/vks/v1/by-fingerprint/0A9AF2115F4687BD29803A206B73A36E6026DFCA" | sudo gpg --dearmor | sudo tee /usr/share/keyrings/com.rabbitmq.team.gpg > /dev/null
+## Community mirror of Cloudsmith: modern Erlang repository
+curl -1sLf https://github.com/rabbitmq/signing-keys/releases/download/3.0/cloudsmith.rabbitmq-erlang.E495BB49CC4BBE5B.key | sudo gpg --dearmor | sudo tee /usr/share/keyrings/rabbitmq.E495BB49CC4BBE5B.gpg > /dev/null
+## Community mirror of Cloudsmith: RabbitMQ repository
+curl -1sLf https://github.com/rabbitmq/signing-keys/releases/download/3.0/cloudsmith.rabbitmq-server.9F4587F226208342.key | sudo gpg --dearmor | sudo tee /usr/share/keyrings/rabbitmq.9F4587F226208342.gpg > /dev/null
 
-# --- 2. Import RabbitMQ repository signing key ---
-echo "[INFO] Adding RabbitMQ signing key..."
-curl -1sLf 'https://keys.cloudsmith.io/public/rabbitmq/rabbitmq/sign.asc' | sudo apt-key add -
+## Add apt repositories maintained by Team RabbitMQ
+sudo tee /etc/apt/sources.list.d/rabbitmq.list <<EOF
+## Provides modern Erlang/OTP releases
+##
+deb [arch=amd64 signed-by=/usr/share/keyrings/rabbitmq.E495BB49CC4BBE5B.gpg] https://ppa1.rabbitmq.com/rabbitmq/rabbitmq-erlang/deb/ubuntu noble main
+deb-src [signed-by=/usr/share/keyrings/rabbitmq.E495BB49CC4BBE5B.gpg] https://ppa1.rabbitmq.com/rabbitmq/rabbitmq-erlang/deb/ubuntu noble main
 
-# --- 3. Add the RabbitMQ + Erlang repositories ---
-# Detect your Debian release codename (e.g. buster, bullseye)
-DIST_CODENAME="$(lsb_release -sc)"
-echo "[INFO] Detected codename: $DIST_CODENAME"
+# another mirror for redundancy
+deb [arch=amd64 signed-by=/usr/share/keyrings/rabbitmq.E495BB49CC4BBE5B.gpg] https://ppa2.rabbitmq.com/rabbitmq/rabbitmq-erlang/deb/ubuntu noble main
+deb-src [signed-by=/usr/share/keyrings/rabbitmq.E495BB49CC4BBE5B.gpg] https://ppa2.rabbitmq.com/rabbitmq/rabbitmq-erlang/deb/ubuntu noble main
 
-# Create /etc/apt/sources.list.d/rabbitmq.list if it doesn't exist
-echo "[INFO] Adding RabbitMQ and Erlang repositories to /etc/apt/sources.list.d/rabbitmq.list..."
-cat <<EOF | sudo tee /etc/apt/sources.list.d/rabbitmq.list
-# Erlang repository
-deb https://dl.cloudsmith.io/public/rabbitmq/rabbitmq-erlang/deb/debian $DIST_CODENAME main
+## Provides RabbitMQ
+##
+deb [arch=amd64 signed-by=/usr/share/keyrings/rabbitmq.9F4587F226208342.gpg] https://ppa1.rabbitmq.com/rabbitmq/rabbitmq-server/deb/ubuntu noble main
+deb-src [signed-by=/usr/share/keyrings/rabbitmq.9F4587F226208342.gpg] https://ppa1.rabbitmq.com/rabbitmq/rabbitmq-server/deb/ubuntu noble main
 
-# RabbitMQ repository
-deb https://dl.cloudsmith.io/public/rabbitmq/rabbitmq-server/deb/debian $DIST_CODENAME main
+# another mirror for redundancy
+deb [arch=amd64 signed-by=/usr/share/keyrings/rabbitmq.9F4587F226208342.gpg] https://ppa2.rabbitmq.com/rabbitmq/rabbitmq-server/deb/ubuntu noble main
+deb-src [signed-by=/usr/share/keyrings/rabbitmq.9F4587F226208342.gpg] https://ppa2.rabbitmq.com/rabbitmq/rabbitmq-server/deb/ubuntu noble main
 EOF
 
-# --- 4. Update package list again now that new repos are added ---
-echo "[INFO] Updating package list with new repositories..."
+## Update package indices
 sudo apt-get update -y
 
-# --- 5. Install RabbitMQ Server ---
-echo "[INFO] Installing rabbitmq-server..."
-sudo apt-get install -y rabbitmq-server
+## Install Erlang packages
+sudo apt-get install -y erlang-base \
+                        erlang-asn1 erlang-crypto erlang-eldap erlang-ftp erlang-inets \
+                        erlang-mnesia erlang-os-mon erlang-parsetools erlang-public-key \
+                        erlang-runtime-tools erlang-snmp erlang-ssl \
+                        erlang-syntax-tools erlang-tftp erlang-tools erlang-xmerl
 
-# --- 6. Enable and start RabbitMQ service ---
-echo "[INFO] Enabling and starting the RabbitMQ service..."
-sudo systemctl enable rabbitmq-server
-sudo systemctl start rabbitmq-server
-
-# --- 7. (Optional) Enable the RabbitMQ Management Plugin ---
-echo "[INFO] Enabling the RabbitMQ management plugin..."
-sudo rabbitmq-plugins enable rabbitmq_management
-
-# --- 8. Confirm status ---
-sudo systemctl status rabbitmq-server --no-pager
+## Install rabbitmq-server and its dependencies
+sudo apt-get install rabbitmq-server -y --fix-missing
