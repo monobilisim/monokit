@@ -1,2 +1,2 @@
 #!/bin/sh
-monokit rmqHealth
+./bin/monokit rmqHealth
