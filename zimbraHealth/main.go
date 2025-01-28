@@ -108,7 +108,17 @@ func TailWebhook(filePath string, pattern string) {
 	for scanner.Scan() {
 		line := scanner.Text()
 		if regex.MatchString(line) {
-            common.AlarmCheckDown("webhook_tail_" + escapeJSON(strings.ReplaceAll(line, " ", "_")), "Webhook tail matched: " + escapeJSON(line), false, MailHealthConfig.Zimbra.Webhook_tail.Stream, MailHealthConfig.Zimbra.Webhook_tail.Topic)
+            // Use regex to get the ID from the log line
+            // `- (\d+)\]` matches the ID in the log line
+            re := regexp.MustCompile(`- (\d+)\]`)
+            matches := re.FindStringSubmatch(line)
+            if len(matches) < 2 {
+                common.LogError("Error matching ID in log line: " + line)
+                return
+            }
+            id := matches[1]
+
+            common.AlarmCheckDown("webhook_tail_" + id, "Webhook tail matched: " + escapeJSON(line), false, MailHealthConfig.Zimbra.Webhook_tail.Stream, MailHealthConfig.Zimbra.Webhook_tail.Topic)
         }
 	}
 
