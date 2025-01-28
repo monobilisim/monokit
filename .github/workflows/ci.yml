@@ -114,3 +114,17 @@ jobs:
             cat /var/log/monokit.log
             exit 1
           fi 
+      - name: health/pgsqlHealth/init-pgsql.sh
+        run: |
+          if ! sudo bash -xe tests/health/pgsqlHealth/init-pgsql.sh; then
+            cat /var/log/monokit.log
+            exit 1
+          fi 
+  
+      - name: health/pgsqlHealth/test.sh
+        run: |
+          if ! sudo bash -xe tests/health/k8sHealth/test.sh; then
+            cat /var/log/monokit.log
+            exit 1
+          fi 
+  
