@@ -1,3 +1,3 @@
 #!/bin/sh
 set -e
-sudo -s postgres ./bin/monokit pgsqlHealth
+sudo -u postgres ./bin/monokit pgsqlHealth
