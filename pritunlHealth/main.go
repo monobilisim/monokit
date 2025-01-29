@@ -5,6 +5,7 @@ import (
     "time"
     "slices"
 	"context"
+    "strings"
     "github.com/spf13/cobra"
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
@@ -17,6 +18,11 @@ import (
 type PritunlHealth struct {
 	Url string
     Allowed_orgs []string
+}
+
+type Client struct {
+    User_id bson.ObjectID
+    Real_address string
 }
 
 var PritunlHealthConfig PritunlHealth
@@ -71,8 +77,8 @@ func Main(cmd *cobra.Command, args []string) {
     UsersStatus(ctx, db)
 }
 
-func ClientUpCheck(userIdActual bson.ObjectID, ctx context.Context, db *mongo.Database) int {
-    
+func ClientUpCheck(userIdActual bson.ObjectID, ctx context.Context, db *mongo.Database) []Client {
+
     // Get to the clients collection
     collection := db.Collection("clients")
 
@@ -81,32 +87,37 @@ func ClientUpCheck(userIdActual bson.ObjectID, ctx context.Context, db *mongo.Da
     if err != nil {
         common.LogError("Couldn't get the collection: " + err.Error())
         common.AlarmCheckDown("pritunl_clients", "Couldn't get the clients collection: " + err.Error(), false, "", "")
-        return 0
+        return []Client{}
     } else {
         common.AlarmCheckUp("pritunl_clients", "Clients collection is now available", false)
     }
 
     defer cursor.Close(ctx)
 
-    counter := 0
+    var res []Client
 
     for cursor.Next(ctx) {
         var result bson.M
         err := cursor.Decode(&result)
         if err != nil {
             fmt.Println("Error: " + err.Error())
-            return 0
+            return []Client{}
         }
     
+        var userId bson.ObjectID
+
         // Get user_id
-        userId := result["user_id"]
+        userId = result["user_id"].(bson.ObjectID)
+        
+        // Get IP address
+        ipAddr := result["real_address"].(string)
 
         if userId == userIdActual {
-            counter++
+            res = append(res, Client{userId, ipAddr})
         }
     }
 
-    return counter
+    return res
 }
 
 func OrgCheck(orgIdActual bson.ObjectID, ctx context.Context, db *mongo.Database) bool {
@@ -203,15 +214,27 @@ func UsersStatus(ctx context.Context, db *mongo.Database) {
 
         // Get id
         isUp := ClientUpCheck(result["_id"].(bson.ObjectID), ctx, db)
+        
+        var addresses []string
+        var addressesStr string
 
-        if isUp == 0 {
+        for _, realAddr := range isUp {
+            addresses = append(addresses, realAddr.Real_address)
+        }
+
+        if len(addresses) > 0 {
+            addressesStr = strings.Join(addresses, ", ")
+        }
+
+        if len(isUp) == 0 {
             fmt.Println(common.Blue + "User " + name + " is " + common.Fail + "offline" + common.Reset)
             common.AlarmCheckDown("user_" + name, "User " + name + " is offline, no client is connected", false, "", "")
         } else {
             common.PrettyPrintStr("User " + name, true, "online")
-            common.AlarmCheckUp("user_" + name, "User " + name + " is now online, " + fmt.Sprint(isUp) + " client(s) is/are connected", false)
+            common.AlarmCheckUp("user_" + name, "User " + name + " is now online, " + fmt.Sprint(len(isUp)) + " client(s) is/are connected with IP(s): " + addressesStr, false)
         }
     }
+
 }
 
 func ServerStatus(ctx context.Context, db *mongo.Database) {
