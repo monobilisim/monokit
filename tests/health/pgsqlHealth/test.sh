@@ -5,7 +5,7 @@ set -e
 sudo mkdir -p /etc/mono
 sudo cp ./config/db.yml /etc/mono/db.yml
 
-sudo -u postgres /bin/sh -c "./bin/monokit pgsqlHealth" > out.log
+sudo -u postgres /bin/sh -c "MONOKIT_NOCOLOR=1 ./bin/monokit pgsqlHealth" > out.log
 
 echo "=== Output ==="
 cat out.log
