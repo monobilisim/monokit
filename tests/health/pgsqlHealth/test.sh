@@ -1,12 +1,11 @@
 #!/bin/sh
 set -e
 
-export MONOKIT_NOCOLOR=1
 
 sudo mkdir -p /etc/mono
 sudo cp ./config/db.yml /etc/mono/db.yml
 
-sudo -u postgres ./bin/monokit pgsqlHealth > out.log
+MONOKIT_NOCOLOR=1 sudo -u postgres ./bin/monokit pgsqlHealth > out.log
 
 echo "=== Output ==="
 cat out.log
