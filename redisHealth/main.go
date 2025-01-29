@@ -21,7 +21,10 @@ func Main(cmd *cobra.Command, args []string) {
 	common.ScriptName = "redisHealth"
 	common.TmpDir = common.TmpDir + "redisHealth"
 	common.Init()
-	common.ConfInit("redis", &RedisHealthConfig)
+    
+    if common.ConfExists("redis") {
+	    common.ConfInit("redis", &RedisHealthConfig)
+    }
 
 	if RedisHealthConfig.Port == "" {
 		RedisHealthConfig.Port = "6379"
