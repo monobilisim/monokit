@@ -127,4 +127,17 @@ jobs:
             cat /var/log/monokit.log
             exit 1
           fi 
-  
+    
+      - name: health/redisHealth/init-redis.sh
+        run: |
+          if ! sudo bash -xe tests/health/redisHealth/init-redis.sh; then
+            cat /var/log/monokit.log
+            exit 1
+          fi
+
+      - name: health/redisHealth/test.sh
+        run: |
+          if ! sudo bash -xe tests/health/redisHealth/test.sh; then
+            cat /var/log/monokit.log
+            exit 1
+          fi
