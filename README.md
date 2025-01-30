@@ -29,6 +29,11 @@
 
 ## Tools
 
+- versionCheck
+    - Checks the version of various services, including OPNsense, Zimbra and Proxmox.
+    - Creates a Redmine news entry if the version has been updated.
+    - Config: `/etc/mono/global.yaml`
+
 - zimbraLdap
     - Runs ldap.sh script.
 

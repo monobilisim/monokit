@@ -1,0 +1,57 @@
+package common
+
+import (
+    "os"
+    "fmt"
+    "time"
+    "io/ioutil"
+    "github.com/spf13/cobra"
+    "github.com/monobilisim/monokit/common"
+    news "github.com/monobilisim/monokit/common/redmine/news"
+)
+
+func StoreVersion(service string, version string) {
+    common.WriteToFile(common.TmpDir + "/" + service + ".version", version)
+}
+
+func GatherVersion(service string) string {
+    // Check if the service has a file
+    if _, err := os.Stat(common.TmpDir + "/" + service + ".version"); os.IsNotExist(err) {
+        return ""
+    }
+
+    // Read the file
+    content, err := ioutil.ReadFile(common.TmpDir + "/" + service + ".version")
+    if err != nil {
+        return ""
+    }
+
+    return string(content)
+}
+
+func CreateNews(service string, oldVersion string, newVersion string) {
+    news.Create(common.Config.Identifier + " sunucusunun " + service + " sürümü güncellendi", common.Config.Identifier + " sunucusunda " + service + ", " + oldVersion + " sürümünden " + newVersion + " sürümüne yükseltildi.", true)
+}
+
+
+func VersionCheck(cmd *cobra.Command, args []string) {
+    version := "0.1.0"
+    common.ScriptName = "versionCheck"
+    common.TmpDir = "/var/cache/mono/" + common.ScriptName
+    common.Init()
+
+    fmt.Println("versionCheck - v" + version + " - " + time.Now().Format("2006-01-02 15:04:05"))
+    
+    // Proxmox
+    ProxmoxVECheck()
+    ProxmoxMGCheck()
+    ProxmoxBSCheck()
+
+    // Zimbra
+    ZimbraCheck()
+
+    // OPNsense
+    OPNsenseCheck()
+}
+
+

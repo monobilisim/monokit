@@ -5,6 +5,7 @@ import (
 	"github.com/monobilisim/monokit/common"
 	issues "github.com/monobilisim/monokit/common/redmine/issues"
 	news "github.com/monobilisim/monokit/common/redmine/news"
+    verCheck "github.com/monobilisim/monokit/common/versionCheck"
 	"github.com/monobilisim/monokit/k8sHealth"
 	"github.com/monobilisim/monokit/osHealth"
 	"github.com/monobilisim/monokit/shutdownNotifier"
@@ -87,6 +88,12 @@ func main() {
         Use:   "daemon",
         Short: "Daemon",
         Run:   daemon.Main,
+    }
+
+    var versionCheckCmd = &cobra.Command{
+        Use:   "versionCheck",
+        Short: "Version Check",
+        Run:   verCheck.VersionCheck,
     }
 
 	//// Common
@@ -276,6 +283,9 @@ func main() {
 
 	/// SSH Notifier
 	RootCmd.AddCommand(sshNotifierCmd)
+
+    /// Version Check
+    RootCmd.AddCommand(versionCheckCmd)
 
     /// WPPConnect
     RootCmd.AddCommand(wppconnectHealthCmd)

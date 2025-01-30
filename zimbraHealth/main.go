@@ -17,6 +17,7 @@ import (
     "github.com/spf13/cobra"
     "github.com/monobilisim/monokit/common"
     mail "github.com/monobilisim/monokit/common/mail"
+    ver "github.com/monobilisim/monokit/common/versionCheck"
     issues "github.com/monobilisim/monokit/common/redmine/issues"
 )
 
@@ -45,13 +46,9 @@ func Main(cmd *cobra.Command, args []string) {
     common.SplitSection("Zimbra Services:")
     CheckZimbraServices()
 
-    common.SplitSection("Zimbra Version:")
-    zimbraVer, err := ExecZimbraCommand("zmcontrol -v", false, false)
-    if err != nil {
-        common.LogError("Error getting zimbra version: " + err.Error())
-    }
-    common.PrettyPrintStr("Zimbra Version", true, zimbraVer)
-    
+    common.SplitSection("Zimbra Version Check:")
+    ver.ZimbraCheck()
+
     if MailHealthConfig.Zimbra.Z_Url != "" {
         common.SplitSection("Checking Z-Push:")
         CheckZPush()
