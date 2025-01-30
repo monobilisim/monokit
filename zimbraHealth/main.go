@@ -26,7 +26,7 @@ var restartCounter int
 var templateFile string
 
 func Main(cmd *cobra.Command, args []string) {
-    version := "2.2.0"
+    version := "2.2.1"
     common.ScriptName = "zimbraHealth"
     common.TmpDir = common.TmpDir + "zimbraHealth"
     common.Init()
