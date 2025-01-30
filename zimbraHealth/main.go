@@ -221,16 +221,15 @@ func CheckIpAccess() {
 		message,
 	)
 
-    proxyBlock=fmt.Sprintf(`
-        server {
-            listen                  443 ssl http2;
-            server_name             %s;
-            ssl_certificate         %s;
-            ssl_certificate_key     %s;
-            location / {
-                    return 200 '%s';
-            }
-        }`, ipAddress, certFile, keyFile, message)
+    proxyBlock=fmt.Sprintf(`server {
+listen                  443 ssl http2;
+server_name             %s;
+ssl_certificate         %s;
+ssl_certificate_key     %s;
+location / {
+    return 200 '%s';
+}
+}`, ipAddress, certFile, keyFile, message)
 
 
     // Run regexPattern on templateFile
