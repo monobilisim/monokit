@@ -214,7 +214,7 @@ func CheckIpAccess() {
     }
 
     regexPattern = fmt.Sprintf(
-	    `(?m)\n?(server\s+?{\n?\s+listen\s+443\s+ssl\s+http2;\n?\s+server_name\n?\s+%s;\n?\s+ssl_certificate\s+%s;\n?\s+ssl_certificate_key\s+%s;\n?\s+location\s+/\s+{\n?\s+return\s+200\s+'%s';\n?\s+}\n?})`,
+	    `(?m)\n?(server\s+?{\n?\s+listen\s+443\s+ssl\s+http2;\n?\s+server_name\n?\s+%s;\n?\s+ssl_certificate\s+%s;\n?\s+ssl_certificate_key\s+%s;\n?\s+location\s+\/\s+{\n?\s+return\s+200\s+'%s';\n?\s+}\n?})`,
 		ipAddress,
 		certFile,
 		keyFile,
