@@ -1,23 +1,25 @@
 //go:build linux
+
 package pgsqlHealth
 
 import (
-	"os"
-	"fmt"
-	"log"
-	"time"
-	"errors"
-	"strconv"
-    "os/exec"
-	"strings"
-	"reflect"
-	"net/http"
 	"database/sql"
 	"encoding/json"
-	"gopkg.in/yaml.v3"
+	"errors"
+	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"os/exec"
+	"reflect"
+	"strconv"
+	"strings"
+	"time"
+
 	_ "github.com/lib/pq"
 	"github.com/monobilisim/monokit/common"
-    issues "github.com/monobilisim/monokit/common/redmine/issues"
+	issues "github.com/monobilisim/monokit/common/redmine/issues"
+	"gopkg.in/yaml.v3"
 )
 
 var Connection *sql.DB
@@ -41,47 +43,47 @@ type Member struct {
 }
 
 func walgVerify() {
-    var integrityCheck string
-    var timelineCheck string
-    var err error
-    cmd := exec.Command("wal-g", "wal-verify", "integrity", "timeline")
-    cmd.Stderr = nil
-    var out strings.Builder
-    cmd.Stdout = &out
-    err = cmd.Run()
-    if err != nil {
-        common.LogError(fmt.Sprintf("Error executing command: %v\n", err))
-        return
-    }
+	var integrityCheck string
+	var timelineCheck string
+	var err error
+	cmd := exec.Command("wal-g", "wal-verify", "integrity", "timeline")
+	cmd.Stderr = nil
+	var out strings.Builder
+	cmd.Stdout = &out
+	err = cmd.Run()
+	if err != nil {
+		common.LogError(fmt.Sprintf("Error executing command: %v\n", err))
+		return
+	}
 
-    for _, line := range strings.Split(string(out.String()), "\n") {
-        if strings.Contains(line, "integrity check status:") {
-            integrityCheck = strings.Split(line, ": ")[1]
-        }
-        if strings.Contains(line, "timeline check status:") {
-            timelineCheck = strings.Split(line, ": ")[1]
-        }
-    }
-   
-    if integrityCheck != "OK" {
-        common.PrettyPrintStr("WAL-G integrity check", false, "OK")
-        common.AlarmCheckDown("wal_g_integrity_check", "WAL-G integrity check failed, integrity check status: " + integrityCheck, false, "", "")
-        issues.CheckDown("wal_g_integrity_check", "WAL-G bütünlük kontrolü başarısız oldu", "Bütünlük durumu: " + integrityCheck, false, 0)
-    } else {
-        common.PrettyPrintStr("WAL-G integrity check", true, "OK")
-        common.AlarmCheckUp("wal_g_integrity_check", "WAL-G integrity check is now OK", false)
-        issues.CheckUp("wal_g_integrity_check", "WAL-G bütünlük kontrolü başarılı \n Bütünlük durumu: " + integrityCheck)
-    }
+	for _, line := range strings.Split(string(out.String()), "\n") {
+		if strings.Contains(line, "integrity check status:") {
+			integrityCheck = strings.Split(line, ": ")[1]
+		}
+		if strings.Contains(line, "timeline check status:") {
+			timelineCheck = strings.Split(line, ": ")[1]
+		}
+	}
 
-    if timelineCheck != "OK" {
-        common.PrettyPrintStr("WAL-G timeline check", false, "OK")
-        common.AlarmCheckDown("wal_g_timeline_check", "WAL-G timeline check failed, timeline check status: " + timelineCheck, false, "", "")
-        issues.CheckDown("wal_g_timeline_check", "WAL-G timeline kontrolü başarısız oldu", "Timeline durumu: " + timelineCheck, false, 0)
-    } else {
-        common.PrettyPrintStr("WAL-G timeline check", true, "OK")
-        common.AlarmCheckUp("wal_g_timeline_check", "WAL-G timeline check is now OK", false)
-        issues.CheckUp("wal_g_timeline_check", "WAL-G timeline kontrolü başarılı \n Timeline durumu: " + timelineCheck)
-    }
+	if integrityCheck != "OK" {
+		common.PrettyPrintStr("WAL-G integrity check", false, "OK")
+		common.AlarmCheckDown("wal_g_integrity_check", "WAL-G integrity check failed, integrity check status: "+integrityCheck, false, "", "")
+		issues.CheckDown("wal_g_integrity_check", "WAL-G bütünlük kontrolü başarısız oldu", "Bütünlük durumu: "+integrityCheck, false, 0)
+	} else {
+		common.PrettyPrintStr("WAL-G integrity check", true, "OK")
+		common.AlarmCheckUp("wal_g_integrity_check", "WAL-G integrity check is now OK", false)
+		issues.CheckUp("wal_g_integrity_check", "WAL-G bütünlük kontrolü başarılı \n Bütünlük durumu: "+integrityCheck)
+	}
+
+	if timelineCheck != "OK" {
+		common.PrettyPrintStr("WAL-G timeline check", false, "OK")
+		common.AlarmCheckDown("wal_g_timeline_check", "WAL-G timeline check failed, timeline check status: "+timelineCheck, false, "", "")
+		issues.CheckDown("wal_g_timeline_check", "WAL-G timeline kontrolü başarısız oldu", "Timeline durumu: "+timelineCheck, false, 0)
+	} else {
+		common.PrettyPrintStr("WAL-G timeline check", true, "OK")
+		common.AlarmCheckUp("wal_g_timeline_check", "WAL-G timeline check is now OK", false)
+		issues.CheckUp("wal_g_timeline_check", "WAL-G timeline kontrolü başarılı \n Timeline durumu: "+timelineCheck)
+	}
 
 }
 
@@ -114,45 +116,44 @@ func getPatroniUrl() (string, error) {
 
 func Connect() error {
 	pgPass := "/var/lib/postgresql/.pgpass"
-    var psqlConn string
-    if _, err := os.Stat(pgPass); err == nil {
-	    content, err := os.ReadFile(pgPass)
-	    if err != nil {
-	    	common.LogError("Error reading file: " + err.Error())
-	    	return err
-	    }
+	var psqlConn string
+	if _, err := os.Stat(pgPass); err == nil {
+		content, err := os.ReadFile(pgPass)
+		if err != nil {
+			common.LogError("Error reading file: " + err.Error())
+			return err
+		}
 
-	    // Split the content into lines
-	    lines := strings.Split(string(content), "\n")
+		// Split the content into lines
+		lines := strings.Split(string(content), "\n")
 
-	    var host, port, user, password string
+		var host, port, user, password string
 
-	    // Find the line containing "localhost"
-	    for _, line := range lines {
-	    	if strings.Contains(line, "localhost") {
-	    		// Parse the line using colon (:) as a separator
-	    		parts := strings.Split(strings.TrimSpace(line), ":")
-	    		if len(parts) != 5 {
-	    			common.LogError("Invalid .pgpass file format")
-	    			return errors.New("invalid .pgpass file format")
-	    		}
+		// Find the line containing "localhost"
+		for _, line := range lines {
+			if strings.Contains(line, "localhost") {
+				// Parse the line using colon (:) as a separator
+				parts := strings.Split(strings.TrimSpace(line), ":")
+				if len(parts) != 5 {
+					common.LogError("Invalid .pgpass file format")
+					return errors.New("invalid .pgpass file format")
+				}
 
-	    		host = parts[0]
-	    		port = parts[1]
-	    		user = parts[3]
-	    		password = parts[4]
+				host = parts[0]
+				port = parts[1]
+				user = parts[3]
+				password = parts[4]
 
-	    		break
-	    	}
-	    }
+				break
+			}
+		}
 
-	    // connection string
-	    psqlConn = fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=postgres sslmode=disable", host, port, user, password)
-    } else {
-        // Try to do UNIX auth
-        psqlConn = "dbname=postgres sslmode=disable host=/var/run/postgresql"
-    }
-
+		// connection string
+		psqlConn = fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=postgres sslmode=disable", host, port, user, password)
+	} else {
+		// Try to do UNIX auth
+		psqlConn = "dbname=postgres sslmode=disable host=/var/run/postgresql"
+	}
 
 	// open database
 	db, err := sql.Open("postgres", psqlConn)
@@ -250,11 +251,11 @@ func activeConnections() {
 	if err != nil {
 		common.LogError(fmt.Sprintf("Error executing query: %s - Error: %v\n", query, err))
 		common.PrettyPrintStr("PostgreSQL active connections", false, "accessible")
-        common.AlarmCheckDown("postgres_active_conn", "An error occurred while checking active connections: " + err.Error(), false, "", "")
+		common.AlarmCheckDown("postgres_active_conn", "An error occurred while checking active connections: "+err.Error(), false, "", "")
 		return
 	} else {
-        common.AlarmCheckUp("postgres_active_conn", "Active connections are now accessible", true)
-    }
+		common.AlarmCheckUp("postgres_active_conn", "Active connections are now accessible", true)
+	}
 
 	usedPercent := (used * 100) / maxConn
 
@@ -276,7 +277,7 @@ func activeConnections() {
 
 		}
 		common.PrettyPrintStr("Number of active connections", true, fmt.Sprintf("%d/%d and above %d", used, maxConn, DbHealthConfig.Postgres.Limits.Conn_percent))
-        common.AlarmCheckDown("postgres_num_active_conn", fmt.Sprintf("Number of active connections: %d/%d and above %d", used, maxConn, DbHealthConfig.Postgres.Limits.Conn_percent), false, "", "")
+		common.AlarmCheckDown("postgres_num_active_conn", fmt.Sprintf("Number of active connections: %d/%d and above %d", used, maxConn, DbHealthConfig.Postgres.Limits.Conn_percent), false, "", "")
 		difference := (used - maxConn) / 10
 		if difference > increase {
 			writeActiveConnections()
@@ -290,7 +291,7 @@ func activeConnections() {
 		}
 	} else {
 		common.PrettyPrintStr("Number of active connections", true, fmt.Sprintf("%d/%d", used, maxConn))
-        common.AlarmCheckUp("postgres_num_active_conn", fmt.Sprintf("Number of active connections is now: %d/%d", used, maxConn), true)
+		common.AlarmCheckUp("postgres_num_active_conn", fmt.Sprintf("Number of active connections is now: %d/%d", used, maxConn), true)
 		if _, err := os.Stat(aboveLimitFile); err == nil {
 			err := os.Remove(aboveLimitFile)
 			if err != nil {
@@ -308,33 +309,34 @@ func runningQueries() {
 	if err != nil {
 		common.LogError(fmt.Sprintf("Error executing query: %s - Error: %v\n", query, err))
 		common.PrettyPrintStr("Number of running queries", false, "accessible")
-        common.AlarmCheckDown("postgres_running_queries", "An error occurred while checking running queries: " + err.Error(), false, "", "")
+		common.AlarmCheckDown("postgres_running_queries", "An error occurred while checking running queries: "+err.Error(), false, "", "")
 		return
 	} else {
-        common.AlarmCheckUp("postgres_running_queries", "Running queries are now accessible", true)
-    }
+		common.AlarmCheckUp("postgres_running_queries", "Running queries are now accessible", true)
+	}
 
 	if activeQueriesCount > DbHealthConfig.Postgres.Limits.Query {
 		common.PrettyPrintStr("Number of running queries", true, fmt.Sprintf("%d/%d", activeQueriesCount, DbHealthConfig.Postgres.Limits.Query))
-        common.AlarmCheckDown("postgres_num_running_queries", fmt.Sprintf("Number of running queries: %d/%d", activeQueriesCount, DbHealthConfig.Postgres.Limits.Query), false, "", "")
+		common.AlarmCheckDown("postgres_num_running_queries", fmt.Sprintf("Number of running queries: %d/%d", activeQueriesCount, DbHealthConfig.Postgres.Limits.Query), false, "", "")
 	} else {
 		common.PrettyPrintStr("Number of running queries", true, fmt.Sprintf("%d/%d", activeQueriesCount, DbHealthConfig.Postgres.Limits.Query))
-        common.AlarmCheckUp("postgres_num_running_queries", fmt.Sprintf("Number of running queries is now: %d/%d", activeQueriesCount, DbHealthConfig.Postgres.Limits.Query), true)
+		common.AlarmCheckUp("postgres_num_running_queries", fmt.Sprintf("Number of running queries is now: %d/%d", activeQueriesCount, DbHealthConfig.Postgres.Limits.Query), true)
 	}
 }
 
 func clusterStatus() {
-    
-    if common.SystemdUnitActive("patroni.service") {
-        common.PrettyPrintStr("Patroni Service", true, "accessible")
-        common.AlarmCheckUp("patroni_service", "Patroni service is now accessible", false)
-    } else {
-        common.PrettyPrintStr("Patroni Service", false, "accessible")
-        common.AlarmCheckDown("patroni_service", "Patroni service is not accessible", false, "", "")
-    }
+
+	if common.SystemdUnitActive("patroni.service") {
+		common.PrettyPrintStr("Patroni Service", true, "accessible")
+		common.AlarmCheckUp("patroni_service", "Patroni service is now accessible", false)
+	} else {
+		common.PrettyPrintStr("Patroni Service", false, "accessible")
+		common.AlarmCheckDown("patroni_service", "Patroni service is not accessible", false, "", "")
+	}
 
 	outputJSON := common.TmpDir + "/raw_output.json"
 	clusterURL := "http://" + patroniApiUrl + "/cluster"
+	oldOutputFile := common.TmpDir + "/old_raw_output.json"
 
 	client := &http.Client{
 		Timeout: time.Second * 10,
@@ -374,8 +376,10 @@ func clusterStatus() {
 		}
 	}
 
+	// var thisNode Member
 	for _, member := range result.Members {
 		if member.Name == nodeName {
+			// thisNode = member
 			common.PrettyPrintStr("This node", true, member.Role)
 		}
 	}
@@ -391,47 +395,103 @@ func clusterStatus() {
 				if oldMember.Role != member.Role {
 					common.PrettyPrintStr(member.Name, true, oldMember.Role+" -> "+member.Role)
 					if oldMember.Name == nodeName {
-                        common.Alarm("[ Patroni - " + common.Config.Identifier + " ] [:info:] Role of " + member.Name + " has changed! Old: **" + oldMember.Role + "** New: **" + member.Role + "**", "", "", false)
+						common.Alarm("[ Patroni - "+common.Config.Identifier+" ] [:info:] Role of "+member.Name+" has changed! Old: **"+oldMember.Role+"** New: **"+member.Role+"**", "", "", false)
 					}
 					if member.Role == "leader" {
-                        common.Alarm("[ Patroni - " + common.Config.Identifier + " ] [:check:] " + member.Name + " is now the leader!", "", "", false)
+						common.Alarm("[ Patroni - "+common.Config.Identifier+" ] [:check:] "+member.Name+" is now the leader!", "", "", false)
 						if DbHealthConfig.Postgres.Leader_switch_hook != "" {
-                            // send a request to patroniApiUrl and get .role
-                            req, err := http.NewRequest("GET", member.APIURL, nil)
-                            if err != nil {
-                                common.LogError(fmt.Sprintf("Error creating request: %v\n", err))
-                                return
-                            }
+							// send a request to patroniApiUrl and get .role
+							req, err := http.NewRequest("GET", member.APIURL, nil)
+							if err != nil {
+								common.LogError(fmt.Sprintf("Error creating request: %v\n", err))
+								return
+							}
 
-                            resp, err := client.Do(req)
+							resp, err := client.Do(req)
 
-                            if err != nil {
-                                common.LogError(fmt.Sprintf("Error executing request: %v\n", err))
-                                return
-                            }
+							if err != nil {
+								common.LogError(fmt.Sprintf("Error executing request: %v\n", err))
+								return
+							}
 
-                            var role map[string]interface{}
-                            err = json.NewDecoder(resp.Body).Decode(&role)
+							var role map[string]interface{}
+							err = json.NewDecoder(resp.Body).Decode(&role)
 
-                            if err != nil {
-                                common.LogError(fmt.Sprintf("Error decoding JSON: %v\n", err))
-                                return
-                            }
+							if err != nil {
+								common.LogError(fmt.Sprintf("Error decoding JSON: %v\n", err))
+								return
+							}
 
-                            if role["role"] == "leader" {
-                                cmd := exec.Command(DbHealthConfig.Postgres.Leader_switch_hook)
-                                err := cmd.Run()
-                                if err != nil {
-                                    common.LogError(fmt.Sprintf("Error running leader switch hook: %v\n", err))
-                                    common.Alarm("[ Patroni - " + common.Config.Identifier + " ] [:red_circle:] Error running leader switch hook: " + err.Error(), "", "", false)
-                                } else {
-                                    common.Alarm("[ Patroni - " + common.Config.Identifier + " ] [:check:] Leader switch hook has been run successfully!", "", "", false)
-                                }
-                            }
+							if role["role"] == "leader" {
+								cmd := exec.Command(DbHealthConfig.Postgres.Leader_switch_hook)
+								err := cmd.Run()
+								if err != nil {
+									common.LogError(fmt.Sprintf("Error running leader switch hook: %v\n", err))
+									common.Alarm("[ Patroni - "+common.Config.Identifier+" ] [:red_circle:] Error running leader switch hook: "+err.Error(), "", "", false)
+								} else {
+									common.Alarm("[ Patroni - "+common.Config.Identifier+" ] [:check:] Leader switch hook has been run successfully!", "", "", false)
+								}
+							}
 						}
 					}
 				}
 			}
+		}
+	}
+
+	// Check cluster size
+	common.SplitSection("Cluster States:")
+	var runningClusters []Member
+	var stoppedClusters []Member
+	for _, member := range result.Members {
+		if member.State == "running" || member.State == "streaming" {
+			common.PrettyPrintStr(member.Name, true, member.State)
+			common.AlarmCheckUp("patroni_size", "Node "+member.Name+" state: "+member.State, true)
+			runningClusters = append(runningClusters, member)
+		} else {
+			common.PrettyPrintStr(member.Name, false, member.State)
+			common.AlarmCheckDown("patroni_size", "Node "+member.Name+" state: "+member.State, true, "", "")
+			stoppedClusters = append(stoppedClusters, member)
+		}
+	}
+	rcLen := strconv.Itoa(len(runningClusters))
+	clusterLen := strconv.Itoa(len(oldResult.Members))
+
+	if _, err := os.Stat(oldOutputFile); err == nil {
+		var oldResult Response
+		oldOutput, err := os.ReadFile(oldOutputFile)
+		if err != nil {
+			common.LogError(fmt.Sprintf("Error reading file: %v\n", err))
+			return
+		}
+		err = json.Unmarshal(oldOutput, &oldResult)
+		if err != nil {
+			log.Fatal("Error during Unmarshal(): ", err)
+		}
+
+		if len(oldResult.Members) == len(result.Members) {
+			issues.CheckUp("cluster_size_issue", "Patroni cluster size returnerd to normal: "+rcLen+"/"+clusterLen)
+			err := os.Remove(oldOutputFile)
+			if err != nil {
+				common.LogError(fmt.Sprintf("Error deleting file: %v\n", err))
+			}
+		} else {
+			issues.Update("cluster_size_issue", "Patroni cluster size: "+rcLen+"/"+clusterLen, true)
+		}
+
+	} else {
+		if len(stoppedClusters) > 0 {
+			f, err := os.Create(oldOutputFile)
+			if err != nil {
+				common.LogError(fmt.Sprintf("Error creating file: %v\n", err))
+				return
+			}
+			defer f.Close()
+			encoder := json.NewEncoder(f)
+			encoder.Encode(result)
+		}
+		if len(runningClusters) <= 1 {
+			issues.CheckDown("cluster_size_issue", "Patroni Cluster Size: "+rcLen+"/"+clusterLen, "Patroni cluster size: "+rcLen+"/"+clusterLen, false, 0)
 		}
 	}
 
