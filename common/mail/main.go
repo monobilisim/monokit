@@ -13,7 +13,7 @@ type Zimbra struct {
     Restart_Limit int
     Webhook_tail struct {
         Logfile string
-        Filter string
+        Quota_limit int
         Stream string
         Topic string
     }

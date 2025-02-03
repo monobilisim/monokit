@@ -9,6 +9,7 @@ import (
     "bytes"
     "bufio"
     "regexp"
+    "strconv"
     "os/exec"
     "strings"
     "net/http"
@@ -57,8 +58,8 @@ func Main(cmd *cobra.Command, args []string) {
     common.SplitSection("Queued Messages:")
     CheckQueuedMessages()
     
-    if !common.IsEmptyOrWhitespaceStr(MailHealthConfig.Zimbra.Webhook_tail.Logfile) && !common.IsEmptyOrWhitespaceStr(MailHealthConfig.Zimbra.Webhook_tail.Filter) {
-        TailWebhook(MailHealthConfig.Zimbra.Webhook_tail.Logfile, MailHealthConfig.Zimbra.Webhook_tail.Filter)
+    if !common.IsEmptyOrWhitespaceStr(MailHealthConfig.Zimbra.Webhook_tail.Logfile) && MailHealthConfig.Zimbra.Webhook_tail.Quota_limit != 0 {
+        TailWebhook(MailHealthConfig.Zimbra.Webhook_tail.Logfile, MailHealthConfig.Zimbra.Webhook_tail.Quota_limit)
     }
 
     date := time.Now().Format("13:04")
@@ -86,13 +87,7 @@ func escapeJSON(input string) string {
 	return output.String()
 }
 
-func TailWebhook(filePath string, pattern string) {
-    // Compile the regex pattern
-	regex, err := regexp.Compile(pattern)
-	if err != nil {
-        common.LogError("Invalid regex pattern: " + err.Error())
-    }
-	
+func TailWebhook(filePath string, quotaLimit int) {
     // Open the file
 	file, err := os.Open(filePath)
 	if err != nil {
@@ -104,27 +99,41 @@ func TailWebhook(filePath string, pattern string) {
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := scanner.Text()
-		if regex.MatchString(line) {
-            // Use regex to get the ID from the log line
-            // `- (\d+)\]` matches the ID in the log line
-            re := regexp.MustCompile(`- (\d+)\]`)
-            matches := re.FindStringSubmatch(line)
-            if len(matches) < 2 {
-                common.LogError("Error matching ID in log line: " + line)
-                return
-            }
-            id := matches[1]
-            
-            // Check if the file exists
-            if _, err := os.Stat(common.TmpDir + "/webhook_tail_" + id); os.IsNotExist(err) {
-                // Create the file
-                os.Create(common.TmpDir + "/webhook_tail_" + id)
-                
-                // Send the alarm
-                common.Alarm("[zimbraHealth - " + common.Config.Identifier + "] Webhook tail matched: " + escapeJSON(line), MailHealthConfig.Zimbra.Webhook_tail.Stream, MailHealthConfig.Zimbra.Webhook_tail.Topic, true)
-            }
+        // Use regex to get the ID from the log line
+        // `- (\d+)\]` matches the ID in the log line
+        re := regexp.MustCompile(`- (\d+)\]`)
+        matches := re.FindStringSubmatch(line)
+        if len(matches) < 2 {
+            common.LogError("Error matching ID in log line: " + line)
+            return
         }
-	}
+        id := matches[1]
+
+
+        // Add another regex
+        // `quota=([\d.]+)\/([\d.]+) \(([\d.]+)%\)` matches the quota in the log line
+        re = regexp.MustCompile(`quota=([\d.]+)\/([\d.]+) \(([\d.]+)%\)`)
+        matches = re.FindStringSubmatch(line)
+        if len(matches) != 4 {
+            continue
+        }
+        var percentage float64
+        percentage, _ = strconv.ParseFloat(matches[3], 2)
+        quotaLimitFloat, _ := strconv.ParseFloat(strconv.Itoa(quotaLimit), 2)
+
+        if percentage < quotaLimitFloat {
+            continue
+        }
+            
+        // Check if the file exists
+        if _, err := os.Stat(common.TmpDir + "/webhook_tail_" + id); os.IsNotExist(err) {
+            // Create the file
+            os.Create(common.TmpDir + "/webhook_tail_" + id)
+                
+            // Send the alarm
+            common.Alarm("[zimbraHealth - " + common.Config.Identifier + "] Quota limit is above " + strconv.Itoa(quotaLimit) + " " + escapeJSON(line), MailHealthConfig.Zimbra.Webhook_tail.Stream, MailHealthConfig.Zimbra.Webhook_tail.Topic, true)
+        }
+    }
 
 	if err := scanner.Err(); err != nil {
         common.LogError("Error reading file: " + err.Error())
