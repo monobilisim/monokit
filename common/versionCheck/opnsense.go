@@ -30,7 +30,7 @@ func OPNsenseCheck() {
     oldVersion := GatherVersion("opnsense")
 
     if oldVersion != "" && oldVersion == version {
-        fmt.Println("OPNsense is up to date.")
+        fmt.Println("OPNsense has not been updated.")
         return
     } else if oldVersion != "" && oldVersion != version {
         fmt.Println("OPNsense got updated.")

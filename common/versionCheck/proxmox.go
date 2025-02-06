@@ -30,7 +30,7 @@ func ProxmoxVECheck() {
     oldVersion := GatherVersion("pve")
 
     if oldVersion != "" && oldVersion == version {
-        fmt.Println("Proxmox VE is up to date.")
+        fmt.Println("Proxmox VE is not updated.")
         return
     } else if oldVersion != "" && oldVersion != version {
         fmt.Println("Proxmox VE has been updated.")
@@ -66,7 +66,7 @@ func ProxmoxMGCheck() {
     oldVersion := GatherVersion("pmg")
 
     if oldVersion != "" && oldVersion == version {
-        fmt.Println("Proxmox Mail Gateway is up to date.")
+        fmt.Println("Proxmox Mail Gateway is not updated.")
         return
     } else if oldVersion != "" && oldVersion != version {
         fmt.Println("Proxmox Mail Gateway has been updated.")
@@ -102,7 +102,7 @@ func ProxmoxBSCheck() {
     oldVersion := GatherVersion("pbs")
 
     if oldVersion != "" && oldVersion == version {
-        fmt.Println("Proxmox Backup Server is up to date.")
+        fmt.Println("Proxmox Backup Server is not updated.")
         return
     } else if oldVersion != "" && oldVersion != version {
         fmt.Println("Proxmox Backup Server has been updated.")

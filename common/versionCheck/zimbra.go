@@ -41,7 +41,7 @@ func ZimbraCheck() {
     oldVersion := GatherVersion("zimbra")
 
     if oldVersion != "" && oldVersion == version {
-        fmt.Println("Zimbra is up to date.")
+        fmt.Println("Zimbra is not updated yet.")
         return
     } else if oldVersion != "" && oldVersion != version {
         fmt.Println("Zimbra has been updated.")
