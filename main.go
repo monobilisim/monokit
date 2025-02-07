@@ -14,6 +14,7 @@ import (
     "github.com/monobilisim/monokit/lbPolicy"
     "github.com/monobilisim/monokit/wppconnectHealth"
     "github.com/monobilisim/monokit/daemon"
+    "github.com/monobilisim/monokit/api"
 	"github.com/spf13/cobra"
 	"os"
     "os/signal"
@@ -94,6 +95,18 @@ func main() {
         Use:   "versionCheck",
         Short: "Version Check",
         Run:   verCheck.VersionCheck,
+    }
+
+    var serverCmd = &cobra.Command{
+        Use:   "server",
+        Short: "Server",
+        Run:   api.Main,
+    }
+    
+    var clientCmd = &cobra.Command{
+        Use:  "client",
+        Short: "Client",
+        Run:   api.ClientMain,
     }
 
 	//// Common
@@ -286,6 +299,10 @@ func main() {
 
     /// Version Check
     RootCmd.AddCommand(versionCheckCmd)
+
+    /// API
+    RootCmd.AddCommand(serverCmd)
+    RootCmd.AddCommand(clientCmd)
 
     /// WPPConnect
     RootCmd.AddCommand(wppconnectHealthCmd)

@@ -29,6 +29,14 @@
 
 ## Tools
 
+- server
+    - An API server that gets information from other Monokit instances.
+    - Config: `/etc/mono/server.yaml`
+
+- client
+    - A client that sends information to the Monokit server.
+    - Config: `/etc/mono/client.yaml`
+
 - versionCheck
     - Checks the version of various services, including OPNsense, Zimbra and Proxmox.
     - Creates a Redmine news entry if the version has been updated.
