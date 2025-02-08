@@ -11,6 +11,8 @@ import (
     "github.com/spf13/cobra"
     "github.com/shirou/gopsutil/v4/cpu"
     "github.com/shirou/gopsutil/v4/mem"
+    "github.com/shirou/gopsutil/v4/net"
+    "github.com/shirou/gopsutil/v4/host"
     "github.com/monobilisim/monokit/common"
 )
 type Client struct {
@@ -38,10 +40,37 @@ func GetRAM() string {
     return fmt.Sprintf("%vGB", memory.Total / 1024 / 1024 / 1024)
 }
 
+func GetIP() string {
+    interfaces, err := net.Interfaces()
+    if err != nil {
+        common.LogError(err.Error())
+        return ""
+    }
+
+    for _, iface := range interfaces {
+        if iface.Name != "lo" {
+            return strings.Split(iface.Addrs[0].Addr, "/")[0]
+        }
+    }
+
+    return ""
+}
+
+func GetOS() string {
+    info, err := host.Info()
+    if err != nil {
+        common.LogError(err.Error())
+        return ""
+    }
+
+    return info.Platform + " " + info.PlatformVersion + " " + info.KernelVersion
+}
+    
+
 func SendReq(apiVersion string) {
 
     // Marshal the response to Host struct
-    host := Host{Name: common.Config.Identifier, CpuCores: GetCPUCores(), Ram: GetRAM(), MonokitVersion: common.MonokitVersion, Os: "Linux", EnabledComponents: "osHealth::zimbraHealth", IpAddress: "192.168.1.1", Status: "Online"}
+    host := Host{Name: common.Config.Identifier, CpuCores: GetCPUCores(), Ram: GetRAM(), MonokitVersion: common.MonokitVersion, Os: GetOS(), EnabledComponents: "osHealth::zimbraHealth", IpAddress: GetIP(), Status: "Online"}
 
     // Marshal the response to JSON
     hostJson, _ := json.Marshal(host)
