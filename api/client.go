@@ -21,6 +21,68 @@ type Client struct {
 
 var ClientConf Client
 
+func GetServiceStatus(serviceName string) (bool, string) {
+    apiVersion := "1"
+
+    req, err := http.NewRequest("GET", ClientConf.URL + "/api/v" + apiVersion + "/hostsList/" + common.Config.Identifier + "/" + serviceName, nil)
+
+    if err != nil {
+        common.LogError(err.Error())
+    }
+
+    client := &http.Client{}
+
+    resp, err := client.Do(req)
+
+    if err != nil {
+        common.LogError(err.Error())
+        return true, ""
+    }
+
+    defer resp.Body.Close()
+    
+    // Demarshal the response
+    var serviceStatus map[string]interface{}
+    json.NewDecoder(resp.Body).Decode(&serviceStatus)
+   
+    wantsUpdateTo := ""
+    if serviceStatus["wantsUpdateTo"] != nil {
+        wantsUpdateTo = serviceStatus["wantsUpdateTo"].(string)
+    }
+
+    if serviceStatus["status"] == nil {
+        return true, ""
+    }
+    
+    return (serviceStatus["status"] == "enabled" || serviceStatus["status"] == "not found"), wantsUpdateTo
+}
+
+func WrapperGetServiceStatus(serviceName string) {
+    common.ConfInit("client", &ClientConf)
+    
+    if ClientConf.URL == "" {
+        return
+    }
+
+    status, updateVersion := GetServiceStatus(serviceName)
+    
+    if !status {
+        fmt.Println(serviceName + " is disabled. Exiting...")
+        // Remove lockfile
+        common.RemoveLockfile()
+        os.Exit(0)
+    }
+
+    if updateVersion != common.MonokitVersion && updateVersion != "" {
+        fmt.Println(serviceName + " wants to be updated to " + updateVersion)
+        common.Update(updateVersion, false)
+
+        // Re-run sendReq after the update
+        SendReq("1")
+    }
+    
+}
+
 func GetCPUCores() int {
     cpuCount, err := cpu.Counts(true)
     if err != nil {
@@ -67,10 +129,51 @@ func GetOS() string {
 }
     
 
-func SendReq(apiVersion string) {
+func GetReq(apiVersion string) (map[string]interface{}, error) {
+    req, err := http.NewRequest("GET", ClientConf.URL + "/api/v" + apiVersion + "/hostsList/" + common.Config.Identifier, nil)
 
+    if err != nil {
+        common.LogError(err.Error())
+        return nil, err
+    }
+
+    client := &http.Client{}
+
+    resp, err := client.Do(req)
+
+    if err != nil {
+        common.LogError(err.Error())
+        return nil, err
+    }
+
+    defer resp.Body.Close()
+    
+    // Demarshal the response
+    var host map[string]interface{}
+    json.NewDecoder(resp.Body).Decode(&host)
+    
+    return host, nil
+}
+
+func SendReq(apiVersion string) {
+    
+    beforeHost, err := GetReq(apiVersion)
+    
+    if err != nil {
+        return
+    }
+    enabledComponents := "osHealth::pmgHealth::zimbraHealth::rmqHealth"
+
+    if beforeHost != nil && beforeHost["enabledComponents"] != nil {
+        enabledComponents = beforeHost["enabledComponents"].(string)
+    }
+
+    if enabledComponents == "" {
+        enabledComponents = "nil" // If there is no enabled components, set it to nil
+    }
+    
     // Marshal the response to Host struct
-    host := Host{Name: common.Config.Identifier, CpuCores: GetCPUCores(), Ram: GetRAM(), MonokitVersion: common.MonokitVersion, Os: GetOS(), EnabledComponents: "osHealth::zimbraHealth", IpAddress: GetIP(), Status: "Online"}
+    host := Host{Name: common.Config.Identifier, CpuCores: GetCPUCores(), Ram: GetRAM(), MonokitVersion: common.MonokitVersion, Os: GetOS(), EnabledComponents: enabledComponents, IpAddress: GetIP(), Status: "Online", WantsUpdateTo: ""}
 
     // Marshal the response to JSON
     hostJson, _ := json.Marshal(host)
@@ -80,6 +183,7 @@ func SendReq(apiVersion string) {
 
     if err != nil {
         common.LogError(err.Error())
+        return
     }
 
     req.Header.Set("Content-Type", "application/json")
@@ -90,6 +194,7 @@ func SendReq(apiVersion string) {
 
     if err != nil {
         common.LogError(err.Error())
+        return
     }
 
     defer resp.Body.Close()

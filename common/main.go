@@ -69,6 +69,10 @@ func ConvertBytes(bytes uint64) string {
     return fmt.Sprintf("%d %s", bytes, sizes[i])
 }
 
+func RemoveLockfile() {
+    os.Remove(TmpDir + "/monokit.lock")
+}
+
 func Init() {
     var userMode bool = false
 

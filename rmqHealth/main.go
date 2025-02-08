@@ -5,6 +5,7 @@ package rmqHealth
 import (
 	"fmt"
 	"github.com/monobilisim/monokit/common"
+	"github.com/monobilisim/monokit/api"
 	"github.com/spf13/cobra"
 	"net"
 	"os"
@@ -98,6 +99,7 @@ func Main(cmd *cobra.Command, args []string) {
     }
 
 	fmt.Println("RabbitMQ Health - v" + version + " - " + time.Now().Format("2006-01-02 15:04:05"))
+    api.WrapperGetServiceStatus("rmqHealth")
 
     serviceCheck()
     

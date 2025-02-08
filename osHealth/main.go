@@ -4,6 +4,7 @@ import (
     "fmt"
     "time"
     "github.com/spf13/cobra"
+    "github.com/monobilisim/monokit/api"
     "github.com/monobilisim/monokit/common"
 )
 
@@ -34,6 +35,8 @@ func Main(cmd *cobra.Command, args []string) {
     common.TmpDir = common.TmpDir + "osHealth"
     common.Init()
     common.ConfInit("os", &OsHealthConfig)
+
+    api.WrapperGetServiceStatus("osHealth")
 
     if OsHealthConfig.Load.Issue_Multiplier == 0 {
         OsHealthConfig.Load.Issue_Multiplier = 1

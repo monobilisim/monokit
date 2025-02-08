@@ -9,6 +9,7 @@ import (
     "strconv"
     "os/exec"
     "github.com/spf13/cobra"
+    "github.com/monobilisim/monokit/api"
     "github.com/monobilisim/monokit/common"
     mail "github.com/monobilisim/monokit/common/mail"
     ver "github.com/monobilisim/monokit/common/versionCheck"
@@ -84,6 +85,7 @@ func Main(cmd *cobra.Command, args []string) {
     common.TmpDir = common.TmpDir + "pmgHealth"
     common.Init()
     common.ConfInit("mail", &MailHealthConfig)
+    api.WrapperGetServiceStatus("pmgHealth")
 
     fmt.Println("PMG Health Check REWRITE - v" + version + " - " + time.Now().Format("2006-01-02 15:04:05"))
     
