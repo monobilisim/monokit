@@ -7,6 +7,7 @@ import (
     "strconv"
     "context"
     "strings"
+    "net/http"
     "database/sql"
     "github.com/spf13/viper"
     "github.com/spf13/cobra"
@@ -34,6 +35,9 @@ func Main(cmd *cobra.Command, args []string) {
     
     common.SplitSection("Postal Status:")
     Services()
+
+    common.SplitSection("Service Status:")
+    RequestCheck()
    
     common.SplitSection("MySQL Status:")
     MainDB = MySQLConnect("main_db", "postal", true)
@@ -50,6 +54,37 @@ func Main(cmd *cobra.Command, args []string) {
         GetHeldMessages()
     }
 }
+
+func RequestCheck() {
+    // Check localhost:5000/login (health-web), localhost:9090/health (health-worker), localhost:9091/health (health-smtp)
+    
+    services := []string{"web::5000/login", "worker::9090/health", "smtp::9091/health"}
+    for _, service := range services {
+        split := strings.Split(service, "::")
+        service := split[0]
+        port := split[1]
+        
+        sendAlarm := false
+
+        // Make a request to the service
+        resp, err := http.Get("http://localhost:" + port) 
+        if err != nil {
+            sendAlarm = true
+        }
+
+        if resp.StatusCode != 200 {
+            sendAlarm = true
+        }
+
+        if !sendAlarm {
+            common.PrettyPrintStr("Service " + service, true, "running")
+            common.AlarmCheckUp("service_" + service, "Service health-" + service + " is running", false)
+        } else {
+            common.PrettyPrintStr("Service " + service, false, "running")
+            common.AlarmCheckDown("service_" + service, "Service health-" + service + " is not running", false, "", "")
+        }
+    }
+} 
 
 func Services() {
     apiClient, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
