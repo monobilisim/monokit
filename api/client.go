@@ -58,6 +58,10 @@ func GetServiceStatus(serviceName string) (bool, string) {
 }
 
 func WrapperGetServiceStatus(serviceName string) {
+    if !common.ConfExists("client") {
+        return
+    }
+
     common.ConfInit("client", &ClientConf)
     
     if ClientConf.URL == "" {
