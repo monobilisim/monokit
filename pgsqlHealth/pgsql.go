@@ -39,7 +39,7 @@ type Member struct {
 	Host     string `json:"host"`
 	Port     int64  `json:"port"`
 	Timeline int64  `json:"timeline"`
-	Lag      *int64 `json:"lag,omitempty"`
+	// Lag      *int64 `json:"lag,omitempty"`
 }
 
 func walgVerify() {
@@ -439,7 +439,6 @@ func clusterStatus() {
 		}
 	}
 
-	// Check cluster size
 	common.SplitSection("Cluster States:")
 	var runningClusters []Member
 	var stoppedClusters []Member
@@ -449,13 +448,12 @@ func clusterStatus() {
 			common.AlarmCheckUp("patroni_size", "Node "+member.Name+" state: "+member.State, true)
 			runningClusters = append(runningClusters, member)
 		} else {
-			common.PrettyPrintStr(member.Name, false, member.State)
+			fmt.Println(common.Blue + member.Name + common.Reset + " is " + common.Fail + member.State + common.Reset)
 			common.AlarmCheckDown("patroni_size", "Node "+member.Name+" state: "+member.State, true, "", "")
 			stoppedClusters = append(stoppedClusters, member)
 		}
 	}
 	rcLen := strconv.Itoa(len(runningClusters))
-	clusterLen := strconv.Itoa(len(oldResult.Members))
 
 	if _, err := os.Stat(oldOutputFile); err == nil {
 		var oldResult Response
@@ -465,6 +463,10 @@ func clusterStatus() {
 			return
 		}
 		err = json.Unmarshal(oldOutput, &oldResult)
+		clusterLen := strconv.Itoa(len(oldResult.Members))
+		if len(runningClusters) <= 1 {
+			issues.CheckDown("cluster_size_issue", "Patroni Cluster Size: "+rcLen+"/"+clusterLen, "Patroni cluster size: "+rcLen+"/"+clusterLen, false, 0)
+		}
 		if err != nil {
 			log.Fatal("Error during Unmarshal(): ", err)
 		}
@@ -490,6 +492,7 @@ func clusterStatus() {
 			encoder := json.NewEncoder(f)
 			encoder.Encode(result)
 		}
+		clusterLen := strconv.Itoa(len(runningClusters) + len(stoppedClusters))
 		if len(runningClusters) <= 1 {
 			issues.CheckDown("cluster_size_issue", "Patroni Cluster Size: "+rcLen+"/"+clusterLen, "Patroni cluster size: "+rcLen+"/"+clusterLen, false, 0)
 		}
