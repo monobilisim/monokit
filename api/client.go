@@ -3,7 +3,6 @@ package api
 import (
     "os"
     "fmt"
-    "time"
     "bytes"
     "strings"
     "net/http"
@@ -204,8 +203,226 @@ func SendReq(apiVersion string) {
     defer resp.Body.Close()
 }
 
+func GetHosts(apiVersion string, hostName string) []Host {
+    // if hostName is empty, use /api/v1/hostsList
+    // if hostName is not empty, use /api/v1/hostsList/{hostName}
+    if hostName != "" {
+        req, err := http.NewRequest("GET", ClientConf.URL + "/api/v" + apiVersion + "/hostsList/" + hostName, nil)
+        
+        if err != nil {
+            common.LogError(err.Error())
+            return nil
+        }
+
+        client := &http.Client{}
+
+        resp, err := client.Do(req)
+
+        if err != nil {
+            common.LogError(err.Error())
+            return nil
+        }
+
+        defer resp.Body.Close()
+
+        // Demarshal the response
+        var host Host
+        json.NewDecoder(resp.Body).Decode(&host)
+
+        return []Host{host}
+    } else {
+        req, err := http.NewRequest("GET", ClientConf.URL + "/api/v" + apiVersion + "/hostsList", nil)
+        
+        if err != nil {
+            common.LogError(err.Error())
+            return nil
+        }
+
+        client := &http.Client{}
+
+        resp, err := client.Do(req)
+
+        if err != nil {
+            common.LogError(err.Error())
+            return nil
+        }
+
+        defer resp.Body.Close()
+
+        // Demarshal the response
+        var hosts []Host
+        json.NewDecoder(resp.Body).Decode(&hosts)
+
+
+        return hosts
+    }
+}
+
+
+func GetHostsPretty(hosts []Host) {
+    // Layout
+    // {name}
+    //      {CpuCores} cores
+    //      {Ram}
+    //      {Os}
+    //      {IpAddress}
+    // and so on...
+
+    for _, host := range hosts {
+        fmt.Println(common.Blue + host.Name + common.Reset)
+        fmt.Println(common.Green + "\tCPU: " + common.Reset + fmt.Sprintf("%v cores", host.CpuCores))
+        fmt.Println(common.Green + "\tMEM: " + common.Reset + fmt.Sprintf("%v", host.Ram))
+        fmt.Println(common.Green + "\tOS: " + common.Reset + host.Os) 
+        fmt.Println(common.Green + "\tIP: " + common.Reset + host.IpAddress)
+        fmt.Println(common.Green + "\tStatus: " + common.Reset + host.Status)
+        fmt.Println(common.Green + "\tMonokit Version: " + common.Reset + host.MonokitVersion)
+        fmt.Println(common.Green + "\tEnabled Components: " + common.Reset + host.EnabledComponents)
+        if host.WantsUpdateTo != "" {
+            fmt.Println(common.Green + "\tWill update to: " + common.Reset + host.WantsUpdateTo)
+        }
+
+        fmt.Println(common.Green + "\tUpdated At: " + common.Reset + fmt.Sprintf("%v", host.UpdatedAt))
+        fmt.Println(common.Green + "\tCreated At: " + common.Reset + fmt.Sprintf("%v", host.CreatedAt))
+    }
+}
+
+func SendUpdateTo(apiVersion string, hostName string, versionTo string) {
+    // POST /api/v1/hostsList/{hostName}/updateTo/{versionTo}
+    req, err := http.NewRequest("POST", ClientConf.URL + "/api/v" + apiVersion + "/hostsList/" + hostName + "/updateTo/" + versionTo, nil)
     
-func ClientMain(cmd *cobra.Command, args []string) {
+    if err != nil {
+        common.LogError(err.Error())
+        return
+    }
+
+    client := &http.Client{}
+
+    resp, err := client.Do(req)
+
+    if err != nil {
+        common.LogError(err.Error())
+        return
+    }
+
+    defer resp.Body.Close()
+
+    fmt.Println("Update request sent to " + hostName + " to update to " + versionTo)
+}
+
+
+func SendDisable(apiVersion string, hostName string, component string) {
+    // POST /api/v1/hostsList/{hostName}/disable/{component}
+
+    req, err := http.NewRequest("POST", ClientConf.URL + "/api/v" + apiVersion + "/hostsList/" + hostName + "/disable/" + component, nil)
+
+    if err != nil {
+        common.LogError(err.Error())
+        return
+    }
+
+    client := &http.Client{}
+
+    resp, err := client.Do(req)
+
+    if err != nil {
+        common.LogError(err.Error())
+        return
+    }
+
+    defer resp.Body.Close()
+
+    // Demarshal the response
+    var response map[string]interface{}
+
+    json.NewDecoder(resp.Body).Decode(&response)
+
+    if response["status"] == "not found" {
+        fmt.Println("Host with name " + hostName + " not found.")
+        return
+    } else if response["status"] == "disabled" {
+        fmt.Println("Component " + component + " is now disabled on " + hostName)
+    }
+}
+
+func SendEnable(apiVersion string, hostName string, component string) {
+    // POST /api/v1/hostsList/{hostName}/enable/{component}
+
+    req, err := http.NewRequest("POST", ClientConf.URL + "/api/v" + apiVersion + "/hostsList/" + hostName + "/enable/" + component, nil)
+
+    if err != nil {
+        common.LogError(err.Error())
+        return
+    }
+
+    client := &http.Client{}
+
+    resp, err := client.Do(req)
+
+    if err != nil {
+        common.LogError(err.Error())
+        return
+    }
+
+    defer resp.Body.Close()
+
+    // Demarshal the response
+    var response map[string]interface{}
+
+    json.NewDecoder(resp.Body).Decode(&response)
+
+    if response["status"] == "not found" {
+        fmt.Println("Host with name " + hostName + " not found.")
+        return
+    } else if response["status"] == "already enabled" {
+        fmt.Println("Component " + component + " is already enabled on " + hostName)
+        return
+    } else if response["status"] == "enabled" {
+        fmt.Println("Component " + component + " is now enabled on " + hostName)
+    }
+}
+
+func Update(cmd *cobra.Command, args []string) {
+    apiVersion := ClientInit()
+
+    SendReq(apiVersion)
+}
+
+func Get(cmd *cobra.Command, args []string) {
+    apiVersion := ClientInit()
+
+    if len(args) > 0 {
+        for _, hostName := range args {
+            GetHostsPretty(GetHosts(apiVersion, hostName))
+        }
+    } else {
+        GetHostsPretty(GetHosts(apiVersion, ""))
+    }
+}
+
+
+func Upgrade(cmd *cobra.Command, args []string) {
+    apiVersion := ClientInit()
+    versionTo, _ := cmd.Flags().GetString("version")
+    for _, hostName := range args {
+        SendUpdateTo(apiVersion, hostName, versionTo)
+    }
+}
+
+func Enable(cmd *cobra.Command, args []string) {
+    apiVersion := ClientInit()
+    component, _ := cmd.Flags().GetString("component")
+    SendEnable(apiVersion, args[0], component)
+}
+
+func Disable(cmd *cobra.Command, args []string) {
+    apiVersion := ClientInit()
+    component, _ := cmd.Flags().GetString("component")
+    for _, hostName := range args {
+        SendDisable(apiVersion, hostName, component)
+    }
+}
+
+func ClientInit() string {
     version := "1.0.0"
     apiVersion := strings.Split(version, ".")[0]
     common.ScriptName = "client"
@@ -213,12 +430,10 @@ func ClientMain(cmd *cobra.Command, args []string) {
     common.Init()
     common.ConfInit("client", &ClientConf)
 
-    fmt.Println("Monokit API Client - v" + version + " - " + time.Now().Format("2006-01-02 15:04:05") + " - API v" + apiVersion)
-
     if ClientConf.URL == "" {
         fmt.Println("error: API URL is not set.")
         os.Exit(1)
     }
 
-    SendReq(apiVersion)
+    return apiVersion
 }

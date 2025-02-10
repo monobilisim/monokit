@@ -99,15 +99,45 @@ func main() {
 
     var serverCmd = &cobra.Command{
         Use:   "server",
-        Short: "Server",
+        Short: "Monokit API Server",
         Run:   api.Main,
     }
     
     var clientCmd = &cobra.Command{
         Use:  "client",
-        Short: "Client",
-        Run:   api.ClientMain,
+        Short: "Monokit API Client, used for managing and updating information",
     }
+
+    var clientUpdateCmd = &cobra.Command{
+        Use:  "update",
+        Short: "Update the server info",
+        Run:   api.Update,
+    }
+        
+    var clientGetCmd = &cobra.Command{
+        Use:  "get",
+        Short: "Get server(s) info",
+        Run:   api.Get,
+    }
+
+    var clientUpgradeCmd = &cobra.Command{
+        Use:  "upgrade",
+        Short: "Upgrade server(s) with specified version",
+        Run:   api.Upgrade,
+    }
+
+    var clientEnableCmd = &cobra.Command{
+        Use:  "enable",
+        Short: "Enable monokit component(s) on server(s)",
+        Run:   api.Enable,
+    }
+
+    var clientDisableCmd = &cobra.Command{
+        Use:  "disable",
+        Short: "Disable monokit component(s) on server(s)",
+        Run:   api.Disable,
+    }
+
 
 	//// Common
 	RootCmd.AddCommand(redmineCmd)
@@ -302,6 +332,20 @@ func main() {
 
     /// API
     RootCmd.AddCommand(serverCmd)
+    clientCmd.AddCommand(clientUpdateCmd)
+    clientCmd.AddCommand(clientGetCmd)
+    clientCmd.AddCommand(clientUpgradeCmd)
+    clientUpgradeCmd.Flags().StringP("version", "v", "", "Version to upgrade")
+    clientUpgradeCmd.MarkFlagRequired("version")
+
+    clientCmd.AddCommand(clientEnableCmd)
+    clientEnableCmd.Flags().StringP("component", "c", "", "Component name")
+    clientEnableCmd.MarkFlagRequired("component")
+
+    clientCmd.AddCommand(clientDisableCmd)
+    clientDisableCmd.Flags().StringP("component", "c", "", "Component name")
+    clientDisableCmd.MarkFlagRequired("component")
+
     RootCmd.AddCommand(clientCmd)
 
     /// WPPConnect
