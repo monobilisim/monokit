@@ -11,6 +11,7 @@ import (
 	"io/ioutil"
 	"encoding/json"
 	"github.com/spf13/cobra"
+	"github.com/monobilisim/monokit/api"
 	"github.com/monobilisim/monokit/common"
 )
 
@@ -121,7 +122,9 @@ func Main(cmd *cobra.Command, args []string) {
 	if len(TraefikHealthConfig.Ports_To_Check) == 0 {
 		TraefikHealthConfig.Ports_To_Check = []uint32{80, 443}
 	}
-	
+    
+    api.WrapperGetServiceStatus("traefikHealth")
+
 	fmt.Println("Traefik Health - v" + version + " - " + time.Now().Format("2006-01-02 15:04:05"))
 
 	common.SplitSection("Service")

@@ -1,13 +1,14 @@
 package wppconnectHealth
 
 import (
-	"fmt"
-	"github.com/monobilisim/monokit/common"
-	"github.com/spf13/cobra"
-	"net/http"
 	"os"
-    "encoding/json"
+	"fmt"
 	"time"
+	"net/http"
+    "encoding/json"
+	"github.com/spf13/cobra"
+	"github.com/monobilisim/monokit/api"
+	"github.com/monobilisim/monokit/common"
 )
 
 var Config struct {
@@ -154,6 +155,8 @@ func Main(cmd *cobra.Command, args []string) {
 	common.TmpDir = common.TmpDir + "Health"
 	common.Init()
     common.ConfInit("wppconnect", &Config)
+
+    api.WrapperGetServiceStatus("wppconnectHealth")
 
 	fmt.Println("WPPConnect Health REWRITE - v" + version + " - " + time.Now().Format("2006-01-02 15:04:05") + "\n")
     

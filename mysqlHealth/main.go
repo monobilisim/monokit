@@ -5,10 +5,10 @@ package mysqlHealth
 import (
 	"fmt"
 	"time"
-
+	"github.com/spf13/cobra"
+	"github.com/monobilisim/monokit/api"
 	"github.com/monobilisim/monokit/common"
 	db "github.com/monobilisim/monokit/common/db"
-	"github.com/spf13/cobra"
 )
 
 var DbHealthConfig db.DbHealth
@@ -24,6 +24,8 @@ func Main(cmd *cobra.Command, args []string) {
 		DbHealthConfig.Mysql.Cluster.Check_table_day = "Sun"
 		DbHealthConfig.Mysql.Cluster.Check_table_hour = "05:00"
 	}
+
+    api.WrapperGetServiceStatus("mysqlHealth")
 
 	fmt.Println("MySQL Health Check REWRITE - v" + version + " - " + time.Now().Format("2006-01-02 15:04:05"))
     

@@ -13,6 +13,7 @@ import (
     "github.com/spf13/cobra"
     "github.com/docker/docker/client"
     _ "github.com/go-sql-driver/mysql"
+    "github.com/monobilisim/monokit/api"
     "github.com/monobilisim/monokit/common"
     "github.com/docker/docker/api/types/container"
     mail "github.com/monobilisim/monokit/common/mail"
@@ -30,6 +31,8 @@ func Main(cmd *cobra.Command, args []string) {
     common.Init()
     viper.SetDefault("postal.check_message", true)
     common.ConfInit("mail", &MailHealthConfig)
+
+    api.WrapperGetServiceStatus("postalHealth")
 
     fmt.Println("Postal Health Check REWRITE - v" + version + " - " + time.Now().Format("2006-01-02 15:04:05"))
     
