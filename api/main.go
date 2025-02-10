@@ -32,7 +32,7 @@ type Host struct {
     Ram string `json:"ram"`
     MonokitVersion string `json:"monokitVersion"`
     Os string `json:"os"`
-    EnabledComponents string `json:"enabledComponents"`
+    DisabledComponents string `json:"disabledComponents"`
     IpAddress string `json:"ipAddress"`
     Status string `json:"status"`
     UpdatedAt time.Time `json:"UpdatedAt"`
@@ -178,17 +178,23 @@ func Main(cmd *cobra.Command, args []string) {
         }
 
         host := hostsList[idx]
+        var enabled bool
 
-        enabledComponents := strings.Split(host.EnabledComponents, "::")
+        disabledComponents := strings.Split(host.DisabledComponents, "::")
 
-        for j := 0; j < len(enabledComponents); j++ {
-            if enabledComponents[j] == service {
-                c.JSON(http.StatusOK, gin.H{"status": "already enabled"})
-                return
+        for j := 0; j < len(disabledComponents); j++ {
+            if disabledComponents[j] == service {
+                disabledComponents = append(disabledComponents[:j], disabledComponents[j+1:]...)
+                c.JSON(http.StatusOK, gin.H{"status": "enabled"})
+                enabled = true
             }
         }
 
-        host.EnabledComponents = host.EnabledComponents + "::" + service
+        host.DisabledComponents = strings.Join(disabledComponents, "::")
+
+        if host.DisabledComponents == "" {
+            host.DisabledComponents = "nil"
+        }
 
         // Update the host in the pgsql database
 
@@ -198,7 +204,11 @@ func Main(cmd *cobra.Command, args []string) {
 
         db.Find(&hostsList)
 
-        c.JSON(http.StatusOK, gin.H{"status": "enabled"})
+        if enabled {
+            return
+        }
+
+        c.JSON(http.StatusOK, gin.H{"status": "already enabled"})
 
     })
 
@@ -220,16 +230,18 @@ func Main(cmd *cobra.Command, args []string) {
 
         host := hostsList[idx]
 
-        enabledComponents := strings.Split(host.EnabledComponents, "::")
+        disabledComponents := strings.Split(host.DisabledComponents, "::")
 
-        for j := 0; j < len(enabledComponents); j++ {
-            if enabledComponents[j] == service {
-                enabledComponents = append(enabledComponents[:j], enabledComponents[j+1:]...)
-                break
+        for j := 0; j < len(disabledComponents); j++ {
+            if disabledComponents[j] == service {
+                c.JSON(http.StatusOK, gin.H{"status": "already disabled"})
+                return
             }
         }
 
-        host.EnabledComponents = strings.Join(enabledComponents, "::")
+        disabledComponents = append(disabledComponents, service)
+
+        host.DisabledComponents = strings.Join(disabledComponents, "::")
 
         // Update the host in the pgsql database
 
@@ -262,15 +274,15 @@ func Main(cmd *cobra.Command, args []string) {
         host := hostsList[idx]
 
         wantsUpdateTo := host.WantsUpdateTo
-        enabledComponents := strings.Split(host.EnabledComponents, "::")
-        for j := 0; j < len(enabledComponents); j++ {
-            if enabledComponents[j] == service {
-                c.JSON(http.StatusOK, gin.H{"status": "enabled", "wantsUpdateTo": wantsUpdateTo})
+        disabledComponents := strings.Split(host.DisabledComponents, "::")
+        for j := 0; j < len(disabledComponents); j++ {
+            if disabledComponents[j] == service {
+                c.JSON(http.StatusOK, gin.H{"status": "disabled", "wantsUpdateTo": wantsUpdateTo})
                 return
             }
         }
 
-        c.JSON(http.StatusOK, gin.H{"status": "disabled", "wantsUpdateTo": wantsUpdateTo})
+        c.JSON(http.StatusOK, gin.H{"status": "enabled", "wantsUpdateTo": wantsUpdateTo})
     })
 
     r.Run(":" + ServerConfig.Port)

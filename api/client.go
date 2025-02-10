@@ -165,18 +165,18 @@ func SendReq(apiVersion string) {
     if err != nil {
         return
     }
-    enabledComponents := "osHealth::pmgHealth::zimbraHealth::rmqHealth"
+    disabledComponents := "nil"
 
-    if beforeHost != nil && beforeHost["enabledComponents"] != nil {
-        enabledComponents = beforeHost["enabledComponents"].(string)
+    if beforeHost != nil && beforeHost["disabledComponents"] != nil {
+        disabledComponents = beforeHost["disabledComponents"].(string)
     }
 
-    if enabledComponents == "" {
-        enabledComponents = "nil" // If there is no enabled components, set it to nil
+    if disabledComponents == "" {
+        disabledComponents = "nil" // If there is no disabled components, set it to nil
     }
     
     // Marshal the response to Host struct
-    host := Host{Name: common.Config.Identifier, CpuCores: GetCPUCores(), Ram: GetRAM(), MonokitVersion: common.MonokitVersion, Os: GetOS(), EnabledComponents: enabledComponents, IpAddress: GetIP(), Status: "Online", WantsUpdateTo: ""}
+    host := Host{Name: common.Config.Identifier, CpuCores: GetCPUCores(), Ram: GetRAM(), MonokitVersion: common.MonokitVersion, Os: GetOS(), DisabledComponents: disabledComponents, IpAddress: GetIP(), Status: "Online", WantsUpdateTo: ""}
 
     // Marshal the response to JSON
     hostJson, _ := json.Marshal(host)
@@ -276,7 +276,7 @@ func GetHostsPretty(hosts []Host) {
         fmt.Println(common.Green + "\tIP: " + common.Reset + host.IpAddress)
         fmt.Println(common.Green + "\tStatus: " + common.Reset + host.Status)
         fmt.Println(common.Green + "\tMonokit Version: " + common.Reset + host.MonokitVersion)
-        fmt.Println(common.Green + "\tEnabled Components: " + common.Reset + host.EnabledComponents)
+        fmt.Println(common.Green + "\tDisabled Components: " + common.Reset + host.DisabledComponents)
         if host.WantsUpdateTo != "" {
             fmt.Println(common.Green + "\tWill update to: " + common.Reset + host.WantsUpdateTo)
         }
@@ -346,7 +346,6 @@ func SendDisable(apiVersion string, hostName string, component string) {
 
 func SendEnable(apiVersion string, hostName string, component string) {
     // POST /api/v1/hostsList/{hostName}/enable/{component}
-
     req, err := http.NewRequest("POST", ClientConf.URL + "/api/v" + apiVersion + "/hostsList/" + hostName + "/enable/" + component, nil)
 
     if err != nil {
@@ -411,7 +410,9 @@ func Upgrade(cmd *cobra.Command, args []string) {
 func Enable(cmd *cobra.Command, args []string) {
     apiVersion := ClientInit()
     component, _ := cmd.Flags().GetString("component")
-    SendEnable(apiVersion, args[0], component)
+    for _, hostName := range args {
+        SendEnable(apiVersion, hostName, component)
+    }
 }
 
 func Disable(cmd *cobra.Command, args []string) {
