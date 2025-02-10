@@ -162,6 +162,91 @@ func Main(cmd *cobra.Command, args []string) {
 
     })
 
+    r.POST("/api/v" + apiVersion + "/hostsList/:name/enable/:service", func(c *gin.Context) {
+        name := c.Param("name")
+        service := c.Param("service")
+
+        db.Find(&hostsList)
+
+        idx := slices.IndexFunc(hostsList, func(h Host) bool {
+            return h.Name == name
+        })
+
+        if idx == -1 {
+            c.JSON(http.StatusOK, gin.H{"status": "not found"})
+            return
+        }
+
+        host := hostsList[idx]
+
+        enabledComponents := strings.Split(host.EnabledComponents, "::")
+
+        for j := 0; j < len(enabledComponents); j++ {
+            if enabledComponents[j] == service {
+                c.JSON(http.StatusOK, gin.H{"status": "already enabled"})
+                return
+            }
+        }
+
+        host.EnabledComponents = host.EnabledComponents + "::" + service
+
+        // Update the host in the pgsql database
+
+        db.Model(&Host{}).Where("name = ?", name).Updates(&host)
+
+        // Sync the hosts list
+
+        db.Find(&hostsList)
+
+        c.JSON(http.StatusOK, gin.H{"status": "enabled"})
+
+    })
+
+
+    r.POST("/api/v" + apiVersion + "/hostsList/:name/disable/:service", func(c *gin.Context) {
+        name := c.Param("name")
+        service := c.Param("service")
+
+        db.Find(&hostsList)
+
+        idx := slices.IndexFunc(hostsList, func(h Host) bool {
+            return h.Name == name
+        })
+
+        if idx == -1 {
+            c.JSON(http.StatusOK, gin.H{"status": "not found"})
+            return
+        }
+
+        host := hostsList[idx]
+
+        enabledComponents := strings.Split(host.EnabledComponents, "::")
+
+        for j := 0; j < len(enabledComponents); j++ {
+            if enabledComponents[j] == service {
+                enabledComponents = append(enabledComponents[:j], enabledComponents[j+1:]...)
+                break
+            }
+        }
+
+        host.EnabledComponents = strings.Join(enabledComponents, "::")
+
+        // Update the host in the pgsql database
+
+        db.Model(&Host{}).Where("name = ?", name).Updates(&host)
+
+        // Sync the hosts list
+
+        db.Find(&hostsList)
+
+        c.JSON(http.StatusOK, gin.H{"status": "disabled"})
+
+    })
+
+
+
+
+
     r.GET("/api/v" + apiVersion + "/hostsList/:name/:service", func(c *gin.Context) {
         name := c.Param("name")
         service := c.Param("service")
