@@ -7,9 +7,9 @@ cat <<EOF | sudo tee /etc/mono/server.yml
 postgres:
     host: localhost
     port: 5432
-    user: test
-    password: test
-    dbname: test
+    user: postgres
+    password: postgres
+    dbname: postgres
 EOF
 
 cat <<EOF | sudo tee /etc/mono/client.yml

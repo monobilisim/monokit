@@ -19,18 +19,5 @@ services:
     volumes:
       - db-data:/var/lib/mysql
 
-  postgres:
-    image: postgres:15
-    restart: always
-    ports:
-      - 5432:5432
-    environment:
-      POSTGRES_DB: test
-      POSTGRES_USER: test
-      POSTGRES_PASSWORD: example
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-
 volumes:
   db-data:
-  postgres-data:
