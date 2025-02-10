@@ -144,6 +144,11 @@ func Update(specificVersion string, force bool) {
     if MonokitVersion != "devel" {
         monokitVersionSplit := strings.Split(MonokitVersion, ".")
         versionSplit := strings.Split(version, ".")
+        
+        if strings.Contains(versionSplit[0], "v") {
+            versionSplit[0] = strings.TrimPrefix(versionSplit[0], "v")
+        }
+
         if monokitVersionSplit[0] != versionSplit[0] {
             if !force {
                 fmt.Println("A new major version is available. This might bring breaking changes. Monokit will attempt to migrate to the new vesrion. You can run with --force to update")
