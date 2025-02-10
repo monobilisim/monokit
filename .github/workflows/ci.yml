@@ -141,3 +141,24 @@ jobs:
             cat /var/log/monokit.log
             exit 1
           fi
+
+      - name: api/init.sh
+        run: |
+          if ! sudo bash -xe tests/api/init.sh; then
+            cat /var/log/monokit.log
+            exit 1
+          fi
+
+      - name: api/enabledisable.sh
+        run: |
+          if ! sudo bash -xe tests/api/enabledisable.sh; then
+            cat /var/log/monokit.log
+            exit 1
+          fi
+
+      - name: api/get.sh
+        run: |
+          if ! sudo bash -xe tests/api/get.sh; then
+            cat /var/log/monokit.log
+            exit 1
+          fi
