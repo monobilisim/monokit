@@ -4,6 +4,7 @@ import (
     "fmt"
     "time"
     "github.com/spf13/cobra"
+    "github.com/monobilisim/monokit/api"
     "github.com/monobilisim/monokit/common"
 )
 
@@ -25,6 +26,8 @@ func Main(cmd *cobra.Command, args []string) {
     common.ConfInit("k8s", &K8sHealthConfig)
 
     kubeconfig, _ := cmd.Flags().GetString("kubeconfig")
+    
+    api.WrapperGetServiceStatus("k8sHealth")
 
     fmt.Println("K8s Health Check REWRITE - v" + version + " - " + time.Now().Format("2006-01-02 15:04:05"))
 
