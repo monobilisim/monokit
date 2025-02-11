@@ -17,3 +17,5 @@ url: http://localhost:9989
 EOF
 
 nohup ./bin/monokit server &
+
+ss -tulpn | grep monokit
