@@ -11,6 +11,7 @@ ss -tulpn | grep 5432
 docker run -d --name postgres -p 5432:5432 -e POSTGRES_PASSWORD=test -e POSTGRES_DB=postgres -e POSTGRES_USER=postgres postgres:alpine
 
 ss -tulpn | grep 5432
+sleep 10
 
 cat <<EOF | sudo tee /etc/mono/server.yml
 postgres:
