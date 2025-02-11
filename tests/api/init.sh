@@ -6,7 +6,11 @@ mkdir -p /etc/mono
 sudo systemctl stop postgresql
 sudo apt remove -y postgresql
 
+ss -tulpn | grep 5432
+
 docker run -d --name postgres -p 5432:5432 -e POSTGRES_PASSWORD=test -e POSTGRES_DB=postgres -e POSTGRES_USER=postgres postgres:alpine
+
+ss -tulpn | grep 5432
 
 cat <<EOF | sudo tee /etc/mono/server.yml
 postgres:
