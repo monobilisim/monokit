@@ -21,7 +21,7 @@ var DbHealthConfig db.DbHealth
 var patroniApiUrl string
 
 func Main(cmd *cobra.Command, args []string) {
-	version := "3.0.0"
+	version := "4.0.0"
 	common.ScriptName = "pgsqlHealth"
 
 	// Check if user is postgres

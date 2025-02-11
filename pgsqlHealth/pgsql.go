@@ -454,6 +454,16 @@ func clusterStatus() {
 		}
 	}
 	rcLen := strconv.Itoa(len(runningClusters))
+	cmd := exec.Command("patronictl", "list")
+	out, listErr := cmd.Output()
+	var listTable string
+
+	if listErr != nil {
+		common.LogError(fmt.Sprintf("Error reading file: %v\n", listErr))
+		listTable = fmt.Sprintf("Couln't get tables from command `patronictl list`\n Error: %v", listErr)
+	} else {
+		listTable = manipulatePatroniListOutput(string(out))
+	}
 
 	if _, err := os.Stat(oldOutputFile); err == nil {
 		var oldResult Response
@@ -465,23 +475,29 @@ func clusterStatus() {
 		err = json.Unmarshal(oldOutput, &oldResult)
 		clusterLen := strconv.Itoa(len(oldResult.Members))
 		if len(runningClusters) <= 1 {
-			issues.CheckDown("cluster_size_issue", "Patroni Cluster Size: "+rcLen+"/"+clusterLen, "Patroni cluster size: "+rcLen+"/"+clusterLen, false, 0)
+			issues.CheckDown("cluster_size_issue", "Patroni Cluster Size: "+rcLen+"/"+clusterLen, "Patroni cluster size: "+rcLen+"/"+clusterLen+"\n"+listTable, false, 0)
 		}
 		if err != nil {
 			log.Fatal("Error during Unmarshal(): ", err)
 		}
 
 		if len(oldResult.Members) == len(result.Members) {
-			issues.CheckUp("cluster_size_issue", "Patroni cluster size returnerd to normal: "+rcLen+"/"+clusterLen)
+			issues.CheckUp("cluster_size_issue", "Patroni cluster size returnerd to normal: "+rcLen+"/"+clusterLen+"\n"+listTable)
 			err := os.Remove(oldOutputFile)
 			if err != nil {
 				common.LogError(fmt.Sprintf("Error deleting file: %v\n", err))
 			}
 		} else {
-			issues.Update("cluster_size_issue", "Patroni cluster size: "+rcLen+"/"+clusterLen, true)
+			issues.Update("cluster_size_issue", "Patroni cluster size: "+rcLen+"/"+clusterLen+"\n"+listTable, true)
 		}
 
 	} else {
+		var rslt Response
+		if len(oldResult.Members) > 0 {
+			rslt = oldResult
+		} else {
+			rslt = result
+		}
 		if len(stoppedClusters) > 0 {
 			f, err := os.Create(oldOutputFile)
 			if err != nil {
@@ -490,11 +506,11 @@ func clusterStatus() {
 			}
 			defer f.Close()
 			encoder := json.NewEncoder(f)
-			encoder.Encode(result)
+			encoder.Encode(rslt)
 		}
-		clusterLen := strconv.Itoa(len(runningClusters) + len(stoppedClusters))
+		clusterLen := strconv.Itoa(len(rslt.Members))
 		if len(runningClusters) <= 1 {
-			issues.CheckDown("cluster_size_issue", "Patroni Cluster Size: "+rcLen+"/"+clusterLen, "Patroni cluster size: "+rcLen+"/"+clusterLen, false, 0)
+			issues.CheckDown("cluster_size_issue", "Patroni Cluster Size: "+rcLen+"/"+clusterLen, "Patroni cluster size: "+rcLen+"/"+clusterLen+"\n"+listTable, false, 0)
 		}
 	}
 
@@ -506,4 +522,18 @@ func clusterStatus() {
 	defer f.Close()
 	encoder := json.NewEncoder(f)
 	encoder.Encode(result)
+}
+
+func manipulatePatroniListOutput(output string) string {
+	lines := strings.Split(output, "\n")
+	lines = lines[1:]
+
+	if len(lines) < 2 {
+		return strings.Join(lines, "\n")
+	}
+	lines[1] = "|--|--|--|--|--|--|"
+
+	lines = lines[:len(lines)-2]
+
+	return strings.Join(lines, "\n")
 }
