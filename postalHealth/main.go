@@ -27,7 +27,7 @@ var MainDB *sql.DB
 var MessageDB *sql.DB
 
 func Main(cmd *cobra.Command, args []string) {
-	version := "3.0.0"
+	version := "3.1.0"
 	common.ScriptName = "postalHealth"
 	common.TmpDir = common.TmpDir + "postalHealth"
 	common.Init()
