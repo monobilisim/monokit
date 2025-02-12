@@ -2,23 +2,24 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"os/signal"
+	"syscall"
+
 	"github.com/monobilisim/monokit/common"
+	api "github.com/monobilisim/monokit/common/api"
 	issues "github.com/monobilisim/monokit/common/redmine/issues"
 	news "github.com/monobilisim/monokit/common/redmine/news"
-    verCheck "github.com/monobilisim/monokit/common/versionCheck"
+	verCheck "github.com/monobilisim/monokit/common/versionCheck"
+	"github.com/monobilisim/monokit/daemon"
 	"github.com/monobilisim/monokit/k8sHealth"
+	"github.com/monobilisim/monokit/lbPolicy"
 	"github.com/monobilisim/monokit/osHealth"
-	"github.com/monobilisim/monokit/shutdownNotifier"
 	"github.com/monobilisim/monokit/pritunlHealth"
+	"github.com/monobilisim/monokit/shutdownNotifier"
 	"github.com/monobilisim/monokit/sshNotifier"
-    "github.com/monobilisim/monokit/lbPolicy"
-    "github.com/monobilisim/monokit/wppconnectHealth"
-    "github.com/monobilisim/monokit/daemon"
-    api "github.com/monobilisim/monokit/common/api"
+	"github.com/monobilisim/monokit/wppconnectHealth"
 	"github.com/spf13/cobra"
-	"os"
-    "os/signal"
-    "syscall"
 )
 
 var RootCmd = &cobra.Command{
@@ -62,94 +63,133 @@ func main() {
 		Run:   sshNotifier.Main,
 	}
 
-    var lbPolicyCmd = &cobra.Command{
-        Use:   "lbPolicy",
-        Short: "Load Balancer Policy Switcher/Viewer",
-    }
+	var lbPolicyCmd = &cobra.Command{
+		Use:   "lbPolicy",
+		Short: "Load Balancer Policy Switcher/Viewer",
+	}
 
-    var lbPolicySwitchCmd = &cobra.Command{
-        Use:   "switch",
-        Short: "Switch Load Balancer Policy",
-        Run:   lbPolicy.Switch,
-    }
+	var lbPolicySwitchCmd = &cobra.Command{
+		Use:   "switch",
+		Short: "Switch Load Balancer Policy",
+		Run:   lbPolicy.Switch,
+	}
 
-    var lbPolicyListCmd = &cobra.Command{
-        Use:   "list",
-        Short: "List Load Balancer Policies",
-        Run:   lbPolicy.List,
-    }
+	var lbPolicyListCmd = &cobra.Command{
+		Use:   "list",
+		Short: "List Load Balancer Policies",
+		Run:   lbPolicy.List,
+	}
 
-    var wppconnectHealthCmd = &cobra.Command{
-        Use:   "wppconnectHealth",
-        Short: "WPPConnect Health",
-        Run:   wppconnectHealth.Main,
-    }
+	var wppconnectHealthCmd = &cobra.Command{
+		Use:   "wppconnectHealth",
+		Short: "WPPConnect Health",
+		Run:   wppconnectHealth.Main,
+	}
 
-    var daemon = &cobra.Command{
-        Use:   "daemon",
-        Short: "Daemon",
-        Run:   daemon.Main,
-    }
+	var daemon = &cobra.Command{
+		Use:   "daemon",
+		Short: "Daemon",
+		Run:   daemon.Main,
+	}
 
-    var versionCheckCmd = &cobra.Command{
-        Use:   "versionCheck",
-        Short: "Version Check",
-        Run:   verCheck.VersionCheck,
-    }
+	var versionCheckCmd = &cobra.Command{
+		Use:   "versionCheck",
+		Short: "Version Check",
+		Run:   verCheck.VersionCheck,
+	}
 
-    var serverCmd = &cobra.Command{
-        Use:   "server",
-        Short: "Monokit API Server",
-        Run:   api.ServerMain,
-    }
-    
-    var clientCmd = &cobra.Command{
-        Use:  "client",
-        Short: "Monokit API Client, used for managing and updating information",
-    }
+	var serverCmd = &cobra.Command{
+		Use:   "server",
+		Short: "Monokit API Server",
+		Run:   api.ServerMain,
+	}
 
-    var clientUpdateCmd = &cobra.Command{
-        Use:  "update",
-        Short: "Update the server info",
-        Run:   api.Update,
-    }
-        
-    var clientGetCmd = &cobra.Command{
-        Use:  "get",
-        Short: "Get server(s) info",
-        Run:   api.Get,
-    }
+	var clientCmd = &cobra.Command{
+		Use:   "client",
+		Short: "Monokit API Client, used for managing and updating information",
+	}
 
-    var clientUpgradeCmd = &cobra.Command{
-        Use:  "upgrade",
-        Short: "Upgrade server(s) with specified version",
-        Run:   api.Upgrade,
-    }
+	var clientUpdateCmd = &cobra.Command{
+		Use:   "update",
+		Short: "Update the server info",
+		Run:   api.Update,
+	}
 
-    var clientEnableCmd = &cobra.Command{
-        Use:  "enable",
-        Short: "Enable monokit component(s) on server(s)",
-        Run:   api.Enable,
-    }
+	var clientGetCmd = &cobra.Command{
+		Use:   "get",
+		Short: "Get server(s) info",
+		Run:   api.Get,
+	}
 
-    var clientDisableCmd = &cobra.Command{
-        Use:  "disable",
-        Short: "Disable monokit component(s) on server(s)",
-        Run:   api.Disable,
-    }
+	var clientUpgradeCmd = &cobra.Command{
+		Use:   "upgrade",
+		Short: "Upgrade server(s) with specified version",
+		Run:   api.Upgrade,
+	}
 
+	var clientEnableCmd = &cobra.Command{
+		Use:   "enable",
+		Short: "Enable monokit component(s) on server(s)",
+		Run:   api.Enable,
+	}
+
+	var clientDisableCmd = &cobra.Command{
+		Use:   "disable",
+		Short: "Disable monokit component(s) on server(s)",
+		Run:   api.Disable,
+	}
+
+	var clientLoginCmd = &cobra.Command{
+		Use:   "login",
+		Short: "Login to the API server",
+		Run:   api.LoginCmd,
+	}
+
+	var adminCmd = &cobra.Command{
+		Use:   "admin",
+		Short: "Administrative commands",
+	}
+
+	var adminGroupsCmd = &cobra.Command{
+		Use:   "groups",
+		Short: "Manage groups",
+	}
+
+	var adminGroupsAddCmd = &cobra.Command{
+		Use:   "add [groupname]",
+		Short: "Add a new group",
+		Run:   api.AdminGroupsAdd,
+	}
+
+	var adminGroupsRmCmd = &cobra.Command{
+		Use:   "rm [groupname]",
+		Short: "Remove a group",
+		Run:   api.AdminGroupsRm,
+	}
+
+	var adminGroupsGetCmd = &cobra.Command{
+		Use:   "get",
+		Short: "List all groups",
+		Run:   api.AdminGroupsGet,
+	}
+
+	var adminGroupsAddHostCmd = &cobra.Command{
+		Use:   "addHost [hostname]",
+		Short: "Add a host to a group",
+		Run:   api.AdminGroupsAddHost,
+	}
 
 	//// Common
 	RootCmd.AddCommand(redmineCmd)
 	RootCmd.AddCommand(common.AlarmCmd)
-    
-    common.UpdateCmd.Flags().StringP("version", "v", "", "Custom version")
-    common.UpdateCmd.Flags().BoolP("force", "f", false, "Force update")
-    RootCmd.AddCommand(common.UpdateCmd)
 
-    common.MigrateCmd.Flags().StringP("from", "f", "", "From version")
-    common.MigrateCmd.MarkFlagRequired("from")
-    RootCmd.AddCommand(common.MigrateCmd)
+	common.UpdateCmd.Flags().StringP("version", "v", "", "Custom version")
+	common.UpdateCmd.Flags().BoolP("force", "f", false, "Force update")
+	RootCmd.AddCommand(common.UpdateCmd)
+
+	common.MigrateCmd.Flags().StringP("from", "f", "", "From version")
+	common.MigrateCmd.MarkFlagRequired("from")
+	RootCmd.AddCommand(common.MigrateCmd)
 
 	/// Alarm
 
@@ -288,10 +328,10 @@ func main() {
 	news.ExistsCmd.MarkFlagRequired("title")
 	news.ExistsCmd.MarkFlagRequired("description")
 
-    /// Daemon
-    RootCmd.AddCommand(daemon)
+	/// Daemon
+	RootCmd.AddCommand(daemon)
 
-    daemon.Flags().BoolP("once", "o", false, "Run once (Daemonless mode)")
+	daemon.Flags().BoolP("once", "o", false, "Run once (Daemonless mode)")
 
 	/// OS Health
 	RootCmd.AddCommand(osHealthCmd)
@@ -314,9 +354,9 @@ func main() {
 
 	TraefikCommandAdd()
 
-    PgsqlCommandAdd()
+	PgsqlCommandAdd()
 
-    ZimbraCommandAdd()
+	ZimbraCommandAdd()
 
 	shutdownNotifierCmd.Flags().BoolP("poweron", "1", false, "Power On")
 	shutdownNotifierCmd.Flags().BoolP("poweroff", "0", false, "Power Off")
@@ -327,41 +367,55 @@ func main() {
 	/// SSH Notifier
 	RootCmd.AddCommand(sshNotifierCmd)
 
-    /// Version Check
-    RootCmd.AddCommand(versionCheckCmd)
+	/// Version Check
+	RootCmd.AddCommand(versionCheckCmd)
 
-    /// API
-    RootCmd.AddCommand(serverCmd)
-    clientCmd.AddCommand(clientUpdateCmd)
-    clientCmd.AddCommand(clientGetCmd)
-    clientCmd.AddCommand(clientUpgradeCmd)
-    clientUpgradeCmd.Flags().StringP("version", "v", "", "Version to upgrade")
-    clientUpgradeCmd.MarkFlagRequired("version")
+	/// API
+	RootCmd.AddCommand(serverCmd)
+	clientCmd.AddCommand(clientUpdateCmd)
+	clientCmd.AddCommand(clientGetCmd)
+	clientCmd.AddCommand(clientUpgradeCmd)
+	clientUpgradeCmd.Flags().StringP("version", "v", "", "Version to upgrade")
+	clientUpgradeCmd.MarkFlagRequired("version")
 
-    clientCmd.AddCommand(clientEnableCmd)
-    clientEnableCmd.Flags().StringP("component", "c", "", "Component name")
-    clientEnableCmd.MarkFlagRequired("component")
+	clientCmd.AddCommand(clientEnableCmd)
+	clientEnableCmd.Flags().StringP("component", "c", "", "Component name")
+	clientEnableCmd.MarkFlagRequired("component")
 
-    clientCmd.AddCommand(clientDisableCmd)
-    clientDisableCmd.Flags().StringP("component", "c", "", "Component name")
-    clientDisableCmd.MarkFlagRequired("component")
+	clientCmd.AddCommand(clientDisableCmd)
+	clientDisableCmd.Flags().StringP("component", "c", "", "Component name")
+	clientDisableCmd.MarkFlagRequired("component")
 
-    RootCmd.AddCommand(clientCmd)
+	clientCmd.AddCommand(clientLoginCmd)
+	clientLoginCmd.Flags().String("username", "", "Username for login")
+	clientLoginCmd.MarkFlagRequired("username")
+	clientLoginCmd.Flags().String("password", "", "Password for login")
+	clientLoginCmd.MarkFlagRequired("password")
 
-    /// WPPConnect
-    RootCmd.AddCommand(wppconnectHealthCmd)
+	clientCmd.AddCommand(adminCmd)
+	adminCmd.AddCommand(adminGroupsCmd)
+	adminGroupsCmd.AddCommand(adminGroupsAddCmd)
+	adminGroupsCmd.AddCommand(adminGroupsRmCmd)
+	adminGroupsCmd.AddCommand(adminGroupsGetCmd)
+	adminGroupsCmd.AddCommand(adminGroupsAddHostCmd)
+	adminGroupsAddHostCmd.Flags().String("group", "", "Group name")
+	adminGroupsAddHostCmd.MarkFlagRequired("group")
 
-    /// Load Balancer Policy
-    RootCmd.AddCommand(lbPolicyCmd)
+	RootCmd.AddCommand(clientCmd)
 
-    lbPolicyCmd.AddCommand(lbPolicySwitchCmd)
-    lbPolicySwitchCmd.Flags().StringP("server", "s", "", "Server")
-    lbPolicySwitchCmd.MarkFlagRequired("server")
-    lbPolicySwitchCmd.Flags().StringArrayP("configs", "c", nil, "Config name (default: all)")
+	/// WPPConnect
+	RootCmd.AddCommand(wppconnectHealthCmd)
 
-    lbPolicyCmd.AddCommand(lbPolicyListCmd)
-    lbPolicyListCmd.Flags().StringArrayP("configs", "c", nil, "Config names to output the list of (default: all)")
+	/// Load Balancer Policy
+	RootCmd.AddCommand(lbPolicyCmd)
 
+	lbPolicyCmd.AddCommand(lbPolicySwitchCmd)
+	lbPolicySwitchCmd.Flags().StringP("server", "s", "", "Server")
+	lbPolicySwitchCmd.MarkFlagRequired("server")
+	lbPolicySwitchCmd.Flags().StringArrayP("configs", "c", nil, "Config name (default: all)")
+
+	lbPolicyCmd.AddCommand(lbPolicyListCmd)
+	lbPolicyListCmd.Flags().StringArrayP("configs", "c", nil, "Config names to output the list of (default: all)")
 
 	sshNotifierCmd.Flags().BoolP("login", "1", false, "Login")
 	sshNotifierCmd.Flags().BoolP("logout", "0", false, "Logout")
@@ -374,20 +428,19 @@ func main() {
 
 	k8sHealthCmd.Flags().StringP("kubeconfig", "k", kubeconfig, "Kubeconfig file")
 
-    c := make(chan os.Signal)
-    signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-    go func(){
-            <-c
-            os.Remove(common.TmpDir + "/monokit.lock")
-            os.Exit(1)
-    }()
-
+	c := make(chan os.Signal)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+	go func() {
+		<-c
+		os.Remove(common.TmpDir + "/monokit.lock")
+		os.Exit(1)
+	}()
 
 	if err := RootCmd.Execute(); err != nil {
-        os.Remove(common.TmpDir + "/monokit.lock")
+		os.Remove(common.TmpDir + "/monokit.lock")
 		fmt.Println(err)
 		os.Exit(1)
 	}
-    
-    os.Remove(common.TmpDir + "/monokit.lock")
+
+	os.Remove(common.TmpDir + "/monokit.lock")
 }
