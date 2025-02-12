@@ -14,7 +14,7 @@ import (
     "github.com/monobilisim/monokit/lbPolicy"
     "github.com/monobilisim/monokit/wppconnectHealth"
     "github.com/monobilisim/monokit/daemon"
-    "github.com/monobilisim/monokit/api"
+    api "github.com/monobilisim/monokit/common/api"
 	"github.com/spf13/cobra"
 	"os"
     "os/signal"
@@ -100,7 +100,7 @@ func main() {
     var serverCmd = &cobra.Command{
         Use:   "server",
         Short: "Monokit API Server",
-        Run:   api.Main,
+        Run:   api.ServerMain,
     }
     
     var clientCmd = &cobra.Command{

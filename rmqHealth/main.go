@@ -3,15 +3,15 @@
 package rmqHealth
 
 import (
-	"fmt"
-	"github.com/monobilisim/monokit/common"
-	"github.com/monobilisim/monokit/api"
-	"github.com/spf13/cobra"
-	"net"
 	"os"
-	"strings"
+	"fmt"
+	"net"
 	"time"
+	"strings"
+	"github.com/spf13/cobra"
+	"github.com/monobilisim/monokit/common"
     "github.com/michaelklishin/rabbit-hole/v2"
+	api "github.com/monobilisim/monokit/common/api"
 )
 
 var Config struct {

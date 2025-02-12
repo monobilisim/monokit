@@ -11,8 +11,8 @@ import (
 	"io/ioutil"
 	"encoding/json"
 	"github.com/spf13/cobra"
-	"github.com/monobilisim/monokit/api"
 	"github.com/monobilisim/monokit/common"
+	api "github.com/monobilisim/monokit/common/api"
 )
 
 type TraefikHealth struct {

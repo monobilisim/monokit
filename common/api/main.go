@@ -1,4 +1,4 @@
-package api
+package common
 
 import (
     "fmt"
@@ -43,7 +43,7 @@ type Host struct {
 var ServerConfig Server
 var hostsList []Host
 
-func Main(cmd *cobra.Command, args []string) {
+func ServerMain(cmd *cobra.Command, args []string) {
     version := "1.0.0"
     apiVersion := strings.Split(version, ".")[0]
     common.ScriptName = "server"

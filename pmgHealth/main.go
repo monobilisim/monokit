@@ -9,8 +9,8 @@ import (
     "strconv"
     "os/exec"
     "github.com/spf13/cobra"
-    "github.com/monobilisim/monokit/api"
     "github.com/monobilisim/monokit/common"
+    api "github.com/monobilisim/monokit/common/api"
     mail "github.com/monobilisim/monokit/common/mail"
     ver "github.com/monobilisim/monokit/common/versionCheck"
 )
