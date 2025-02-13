@@ -130,5 +130,57 @@ func SetupAdminRoutes(r *gin.Engine, db *gorm.DB) {
 
 			c.JSON(http.StatusOK, gin.H{"message": "Host added to group successfully"})
 		})
+
+		admin.DELETE("/groups/:name/hosts/:hostname", func(c *gin.Context) {
+			// Check if user is admin
+			user, exists := c.Get("user")
+			if !exists || user.(User).Role != "admin" {
+				c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+				return
+			}
+
+			groupName := c.Param("name")
+			hostname := c.Param("hostname")
+
+			var group Group
+			if result := db.Where("name = ?", groupName).First(&group); result.Error != nil {
+				c.JSON(http.StatusNotFound, gin.H{"error": "Group not found"})
+				return
+			}
+
+			var host Host
+			if result := db.Where("name = ?", hostname).First(&host); result.Error != nil {
+				c.JSON(http.StatusNotFound, gin.H{"error": "Host not found"})
+				return
+			}
+
+			// Remove host from group
+			if err := db.Model(&group).Association("Hosts").Delete(&host); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to remove host from group"})
+				return
+			}
+
+			// Update host's Groups field
+			currentGroups := strings.Split(host.Groups, ",")
+			updatedGroups := make([]string, 0)
+			for _, g := range currentGroups {
+				if strings.TrimSpace(g) != groupName {
+					updatedGroups = append(updatedGroups, strings.TrimSpace(g))
+				}
+			}
+
+			if len(updatedGroups) > 0 {
+				host.Groups = strings.Join(updatedGroups, ",")
+			} else {
+				host.Groups = "nil"
+			}
+
+			if err := db.Save(&host).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update host groups"})
+				return
+			}
+
+			c.JSON(http.StatusOK, gin.H{"message": "Host removed from group successfully"})
+		})
 	}
 }

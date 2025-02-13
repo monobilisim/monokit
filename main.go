@@ -179,6 +179,12 @@ func main() {
 		Run:   api.AdminGroupsAddHost,
 	}
 
+	var adminGroupsRemoveHostCmd = &cobra.Command{
+		Use:   "rmHost [hostname]",
+		Short: "Remove a host from a group",
+		Run:   api.AdminGroupsRemoveHost,
+	}
+
 	//// Common
 	RootCmd.AddCommand(redmineCmd)
 	RootCmd.AddCommand(common.AlarmCmd)
@@ -398,8 +404,11 @@ func main() {
 	adminGroupsCmd.AddCommand(adminGroupsRmCmd)
 	adminGroupsCmd.AddCommand(adminGroupsGetCmd)
 	adminGroupsCmd.AddCommand(adminGroupsAddHostCmd)
+	adminGroupsCmd.AddCommand(adminGroupsRemoveHostCmd)
 	adminGroupsAddHostCmd.Flags().String("group", "", "Group name")
 	adminGroupsAddHostCmd.MarkFlagRequired("group")
+	adminGroupsRemoveHostCmd.Flags().String("group", "", "Group name")
+	adminGroupsRemoveHostCmd.MarkFlagRequired("group")
 
 	RootCmd.AddCommand(clientCmd)
 

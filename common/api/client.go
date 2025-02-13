@@ -476,6 +476,7 @@ func ClientInit() string {
 
 	if ClientConf.URL == "" {
 		fmt.Println("error: API URL is not set.")
+		common.RemoveLockfile()
 		os.Exit(1)
 	}
 
@@ -540,11 +541,13 @@ func LoginCmd(cmd *cobra.Command, args []string) {
 
 	if username == "" || password == "" {
 		fmt.Println("error: username and password are required")
+		common.RemoveLockfile()
 		os.Exit(1)
 	}
 
 	if err := Login(username, password); err != nil {
 		fmt.Printf("Login failed: %v\n", err)
+		common.RemoveLockfile()
 		os.Exit(1)
 	}
 }
@@ -565,6 +568,14 @@ func init() {
 
 // Add these API functions after the existing ones
 
+// Update the admin helper functions to check for admin access
+func checkAdminAccess(resp *http.Response) error {
+	if resp.StatusCode == http.StatusForbidden {
+		return fmt.Errorf("not admin")
+	}
+	return nil
+}
+
 func adminGet(path string) (*http.Response, error) {
 	req, err := http.NewRequest("GET", ClientConf.URL+"/api/v1/admin/"+path, nil)
 	if err != nil {
@@ -573,7 +584,17 @@ func adminGet(path string) (*http.Response, error) {
 
 	addAuthHeader(req)
 	client := &http.Client{}
-	return client.Do(req)
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := checkAdminAccess(resp); err != nil {
+		resp.Body.Close()
+		return nil, err
+	}
+
+	return resp, nil
 }
 
 func adminPost(path string, data []byte) (*http.Response, error) {
@@ -585,7 +606,17 @@ func adminPost(path string, data []byte) (*http.Response, error) {
 	addAuthHeader(req)
 	req.Header.Set("Content-Type", "application/json")
 	client := &http.Client{}
-	return client.Do(req)
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := checkAdminAccess(resp); err != nil {
+		resp.Body.Close()
+		return nil, err
+	}
+
+	return resp, nil
 }
 
 func adminDelete(path string) (*http.Response, error) {
@@ -596,62 +627,17 @@ func adminDelete(path string) (*http.Response, error) {
 
 	addAuthHeader(req)
 	client := &http.Client{}
-	return client.Do(req)
-}
-
-// Update the admin command functions to use these helpers
-func AdminGroupsAdd(cmd *cobra.Command, args []string) {
-	ClientInit()
-
-	if len(args) == 0 {
-		fmt.Println("error: group name required")
-		os.Exit(1)
-	}
-
-	groupName := args[0]
-	data := []byte(fmt.Sprintf(`{"name":"%s"}`, groupName))
-
-	resp, err := adminPost("groups", data)
+	resp, err := client.Do(req)
 	if err != nil {
-		fmt.Printf("error: %v\n", err)
-		os.Exit(1)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		var errorResp map[string]string
-		json.NewDecoder(resp.Body).Decode(&errorResp)
-		fmt.Printf("error: %s\n", errorResp["error"])
-		os.Exit(1)
+		return nil, err
 	}
 
-	fmt.Printf("Group '%s' created successfully\n", groupName)
-}
-
-func AdminGroupsRm(cmd *cobra.Command, args []string) {
-	ClientInit()
-
-	if len(args) == 0 {
-		fmt.Println("error: group name required")
-		os.Exit(1)
+	if err := checkAdminAccess(resp); err != nil {
+		resp.Body.Close()
+		return nil, err
 	}
 
-	groupName := args[0]
-	resp, err := adminDelete("groups/" + groupName)
-	if err != nil {
-		fmt.Printf("error: %v\n", err)
-		os.Exit(1)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		var errorResp map[string]string
-		json.NewDecoder(resp.Body).Decode(&errorResp)
-		fmt.Printf("error: %s\n", errorResp["error"])
-		os.Exit(1)
-	}
-
-	fmt.Printf("Group '%s' removed successfully\n", groupName)
+	return resp, nil
 }
 
 func AdminGroupsGet(cmd *cobra.Command, args []string) {
@@ -659,7 +645,12 @@ func AdminGroupsGet(cmd *cobra.Command, args []string) {
 
 	resp, err := adminGet("groups")
 	if err != nil {
-		fmt.Printf("error: %v\n", err)
+		if err.Error() == "not admin" {
+			fmt.Println("error: admin access required")
+		} else {
+			fmt.Printf("error: %v\n", err)
+		}
+		common.RemoveLockfile()
 		os.Exit(1)
 	}
 	defer resp.Body.Close()
@@ -667,6 +658,7 @@ func AdminGroupsGet(cmd *cobra.Command, args []string) {
 	var groups []AdminGroupResponse
 	if err := json.NewDecoder(resp.Body).Decode(&groups); err != nil {
 		fmt.Printf("error decoding response: %v\n", err)
+		common.RemoveLockfile()
 		os.Exit(1)
 	}
 
@@ -681,24 +673,22 @@ func AdminGroupsGet(cmd *cobra.Command, args []string) {
 	}
 }
 
-func AdminGroupsAddHost(cmd *cobra.Command, args []string) {
+func AdminGroupsAdd(cmd *cobra.Command, args []string) {
 	ClientInit()
 
-	groupName, _ := cmd.Flags().GetString("group")
-	if groupName == "" {
-		fmt.Println("error: group name required")
-		os.Exit(1)
-	}
-
 	if len(args) == 0 {
-		fmt.Println("error: hostname required")
+		fmt.Println("error: group name required")
+		common.RemoveLockfile()
 		os.Exit(1)
 	}
 
-	hostname := args[0]
-	resp, err := adminPost("groups/"+groupName+"/hosts/"+hostname, nil)
+	groupName := args[0]
+	data := []byte(fmt.Sprintf(`{"name":"%s"}`, groupName))
+
+	resp, err := adminPost("groups", data)
 	if err != nil {
 		fmt.Printf("error: %v\n", err)
+		common.RemoveLockfile()
 		os.Exit(1)
 	}
 	defer resp.Body.Close()
@@ -707,8 +697,110 @@ func AdminGroupsAddHost(cmd *cobra.Command, args []string) {
 		var errorResp map[string]string
 		json.NewDecoder(resp.Body).Decode(&errorResp)
 		fmt.Printf("error: %s\n", errorResp["error"])
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+
+	fmt.Printf("Group '%s' created successfully\n", groupName)
+}
+
+func AdminGroupsRm(cmd *cobra.Command, args []string) {
+	ClientInit()
+
+	if len(args) == 0 {
+		fmt.Println("error: group name required")
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+
+	groupName := args[0]
+	resp, err := adminDelete("groups/" + groupName)
+	if err != nil {
+		fmt.Printf("error: %v\n", err)
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		var errorResp map[string]string
+		json.NewDecoder(resp.Body).Decode(&errorResp)
+		fmt.Printf("error: %s\n", errorResp["error"])
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+
+	fmt.Printf("Group '%s' removed successfully\n", groupName)
+}
+
+func AdminGroupsAddHost(cmd *cobra.Command, args []string) {
+	ClientInit()
+
+	groupName, _ := cmd.Flags().GetString("group")
+	if groupName == "" {
+		fmt.Println("error: group name required")
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+
+	if len(args) == 0 {
+		fmt.Println("error: hostname required")
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+
+	hostname := args[0]
+	resp, err := adminPost("groups/"+groupName+"/hosts/"+hostname, nil)
+	if err != nil {
+		fmt.Printf("error: %v\n", err)
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		var errorResp map[string]string
+		json.NewDecoder(resp.Body).Decode(&errorResp)
+		fmt.Printf("error: %s\n", errorResp["error"])
+		common.RemoveLockfile()
 		os.Exit(1)
 	}
 
 	fmt.Printf("Host '%s' added to group '%s' successfully\n", hostname, groupName)
+}
+
+func AdminGroupsRemoveHost(cmd *cobra.Command, args []string) {
+	ClientInit()
+
+	groupName, _ := cmd.Flags().GetString("group")
+	if groupName == "" {
+		fmt.Println("error: group name required")
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+
+	if len(args) == 0 {
+		fmt.Println("error: hostname required")
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+
+	hostname := args[0]
+	resp, err := adminDelete("groups/" + groupName + "/hosts/" + hostname)
+	if err != nil {
+		fmt.Printf("error: %v\n", err)
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		var errorResp map[string]string
+		json.NewDecoder(resp.Body).Decode(&errorResp)
+		fmt.Printf("error: %s\n", errorResp["error"])
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+
+	fmt.Printf("Host '%s' removed from group '%s' successfully\n", hostname, groupName)
 }
