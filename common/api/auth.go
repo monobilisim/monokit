@@ -1,6 +1,7 @@
 package common
 
 import (
+	"fmt"
 	"math/rand"
 	"net/http"
 	"strings"
@@ -10,19 +11,6 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
-
-type LoginRequest struct {
-	Username string `json:"username" binding:"required"`
-	Password string `json:"password" binding:"required"`
-}
-
-type RegisterRequest struct {
-	Username string `json:"username" binding:"required"`
-	Password string `json:"password" binding:"required"`
-	Email    string `json:"email" binding:"required"`
-	Role     string `json:"role" binding:"required"`
-	Groups   string `json:"groups"`
-}
 
 type User struct {
 	gorm.Model
@@ -46,10 +34,6 @@ type Group struct {
 	Name  string `json:"name"`
 	Hosts []Host `json:"hosts" gorm:"many2many:group_hosts;"`
 	Users []User `json:"users" gorm:"many2many:group_users;"`
-}
-
-type UpdateUserGroupsRequest struct {
-	Groups string `json:"groups" binding:"required"`
 }
 
 func HashPassword(password string) (string, error) {
@@ -85,123 +69,239 @@ func GenerateRandomString(length int) string {
 	return string(b)
 }
 
+// @Summary Register user
+// @Description Register a new user
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param user body RegisterRequest true "User registration info"
+// @Success 201 {object} map[string]string
+// @Failure 400 {object} ErrorResponse
+// @Failure 409 {object} ErrorResponse
+// @Router /auth/register [post]
+func registerUser(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req RegisterRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Check if user already exists
+		var existingUser User
+		if result := db.Where("username = ?", req.Username).First(&existingUser); result.Error == nil {
+			c.JSON(http.StatusConflict, gin.H{"error": "Username already exists"})
+			return
+		}
+
+		// Create new user
+		err := CreateUser(req.Username, req.Password, req.Email, req.Role, req.Groups, db)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
+			return
+		}
+
+		c.JSON(http.StatusCreated, gin.H{"message": "User created successfully"})
+	}
+}
+
+// @Summary Login user
+// @Description Authenticate user and get token
+// @Tags auth
+// @Accept json
+// @Produce json
+// @Param credentials body LoginRequest true "Login credentials"
+// @Success 200 {object} LoginResponse
+// @Failure 401 {object} ErrorResponse
+// @Router /auth/login [post]
+func loginUser(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		var req LoginRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Find user
+		var user User
+		if result := db.Where("username = ?", req.Username).First(&user); result.Error != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
+			return
+		}
+
+		// Verify password
+		if !VerifyPassword(req.Password, user.HashedPassword) {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
+			return
+		}
+
+		// Generate session token
+		token := GenerateRandomString(32)
+		timeout := time.Now().Add(24 * time.Hour)
+
+		// Create session
+		CreateSession(token, timeout, user, db)
+
+		c.JSON(http.StatusOK, gin.H{
+			"token": token,
+			"user": gin.H{
+				"username": user.Username,
+				"email":    user.Email,
+				"role":     user.Role,
+				"groups":   user.Groups,
+			},
+		})
+	}
+}
+
+// @Summary Logout user
+// @Description Invalidate user token
+// @Tags auth
+// @Security ApiKeyAuth
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]string
+// @Failure 400 {object} ErrorResponse
+// @Router /auth/logout [post]
+func logoutUser(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		token := c.GetHeader("Authorization")
+		if token == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "No token provided"})
+			return
+		}
+
+		// Delete session
+		db.Where("token = ?", token).Delete(&Session{})
+
+		c.JSON(http.StatusOK, gin.H{"message": "Logged out successfully"})
+	}
+}
+
+// createInitialAdmin creates an admin user if no users exist in the database
+func createInitialAdmin(db *gorm.DB) error {
+	// Check if any users exist
+	var count int64
+	if err := db.Model(&User{}).Count(&count).Error; err != nil {
+		return fmt.Errorf("failed to count users: %v", err)
+	}
+
+	// If users exist, don't create initial admin
+	if count > 0 {
+		return nil
+	}
+
+	// Create initial admin user
+	initialAdmin := User{
+		Username: "admin",
+		Email:    "admin@localhost",
+		Role:     "admin",
+		Groups:   "admins",
+	}
+
+	// Hash the default password "admin"
+	hashedPassword, err := HashPassword("admin")
+	if err != nil {
+		return fmt.Errorf("failed to hash password: %v", err)
+	}
+	initialAdmin.HashedPassword = hashedPassword
+
+	// Create the user
+	if err := db.Create(&initialAdmin).Error; err != nil {
+		return fmt.Errorf("failed to create initial admin: %v", err)
+	}
+
+	fmt.Println("Created initial admin user:")
+	fmt.Println("  Username: admin")
+	fmt.Println("  Password: admin")
+	fmt.Println("Please change the password immediately!")
+
+	return nil
+}
+
+// @Summary Update own user details
+// @Description Update your own username, password, or email
+// @Tags auth
+// @Security ApiKeyAuth
+// @Accept json
+// @Produce json
+// @Param user body UpdateMeRequest true "User details to update"
+// @Success 200 {object} map[string]string
+// @Failure 400 {object} ErrorResponse
+// @Failure 409 {object} ErrorResponse
+// @Router /auth/me/update [put]
+func updateMe(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		currentUser, exists := c.Get("user")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
+			return
+		}
+
+		var req UpdateMeRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Get current user from database to ensure we have latest data
+		var user User
+		if err := db.First(&user, currentUser.(User).ID).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user data"})
+			return
+		}
+
+		// Check if username is being changed and is available
+		if req.Username != "" && req.Username != user.Username {
+			var existingUser User
+			if result := db.Where("username = ?", req.Username).First(&existingUser); result.Error == nil {
+				c.JSON(http.StatusConflict, gin.H{"error": "Username already exists"})
+				return
+			}
+			user.Username = req.Username
+		}
+
+		// Update password if provided
+		if req.Password != "" {
+			hashedPassword, err := HashPassword(req.Password)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
+				return
+			}
+			user.HashedPassword = hashedPassword
+		}
+
+		// Update email if provided
+		if req.Email != "" {
+			user.Email = req.Email
+		}
+
+		// Save changes
+		if err := db.Save(&user).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "User details updated successfully"})
+	}
+}
+
 func SetupAuthRoutes(r *gin.Engine, db *gorm.DB) {
 	// Migrate auth-related schemas
 	db.AutoMigrate(&User{})
 	db.AutoMigrate(&Session{})
 	db.AutoMigrate(&Group{})
 
+	// Create initial admin user if no users exist
+	if err := createInitialAdmin(db); err != nil {
+		panic(err)
+	}
+
 	auth := r.Group("/api/v1/auth")
 	{
-		auth.POST("/register", func(c *gin.Context) {
-			var req RegisterRequest
-			if err := c.ShouldBindJSON(&req); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-				return
-			}
-
-			// Check if user already exists
-			var existingUser User
-			if result := db.Where("username = ?", req.Username).First(&existingUser); result.Error == nil {
-				c.JSON(http.StatusConflict, gin.H{"error": "Username already exists"})
-				return
-			}
-
-			// Create new user
-			err := CreateUser(req.Username, req.Password, req.Email, req.Role, req.Groups, db)
-			if err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
-				return
-			}
-
-			c.JSON(http.StatusCreated, gin.H{"message": "User created successfully"})
-		})
-
-		auth.POST("/login", func(c *gin.Context) {
-			var req LoginRequest
-			if err := c.ShouldBindJSON(&req); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-				return
-			}
-
-			// Find user
-			var user User
-			if result := db.Where("username = ?", req.Username).First(&user); result.Error != nil {
-				c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
-				return
-			}
-
-			// Verify password
-			if !VerifyPassword(req.Password, user.HashedPassword) {
-				c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
-				return
-			}
-
-			// Generate session token
-			token := GenerateRandomString(32)
-			timeout := time.Now().Add(24 * time.Hour)
-
-			// Create session
-			CreateSession(token, timeout, user, db)
-
-			c.JSON(http.StatusOK, gin.H{
-				"token": token,
-				"user": gin.H{
-					"username": user.Username,
-					"email":    user.Email,
-					"role":     user.Role,
-					"groups":   user.Groups,
-				},
-			})
-		})
-
-		auth.POST("/logout", func(c *gin.Context) {
-			token := c.GetHeader("Authorization")
-			if token == "" {
-				c.JSON(http.StatusBadRequest, gin.H{"error": "No token provided"})
-				return
-			}
-
-			// Delete session
-			db.Where("token = ?", token).Delete(&Session{})
-
-			c.JSON(http.StatusOK, gin.H{"message": "Logged out successfully"})
-		})
-
-		auth.PUT("/users/:username/groups", func(c *gin.Context) {
-			// Check if requester is admin
-			token := c.GetHeader("Authorization")
-			var session Session
-			if result := db.Preload("User").Where("token = ?", token).First(&session); result.Error != nil {
-				c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
-				return
-			}
-
-			if session.User.Role != "admin" {
-				c.JSON(http.StatusForbidden, gin.H{"error": "Only admins can update user groups"})
-				return
-			}
-
-			username := c.Param("username")
-			var req UpdateUserGroupsRequest
-			if err := c.ShouldBindJSON(&req); err != nil {
-				c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-				return
-			}
-
-			// Update user groups
-			result := db.Model(&User{}).Where("username = ?", username).Update("groups", req.Groups)
-			if result.Error != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user groups"})
-				return
-			}
-			if result.RowsAffected == 0 {
-				c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
-				return
-			}
-
-			c.JSON(http.StatusOK, gin.H{"message": "User groups updated successfully"})
-		})
+		auth.POST("/login", loginUser(db))
+		auth.POST("/logout", logoutUser(db))
+		auth.PUT("/me/update", AuthMiddleware(db), updateMe(db))
 	}
 
 	// Setup admin routes

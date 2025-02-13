@@ -168,6 +168,12 @@ To build monokit:
 ./build.sh
 ```
 
+You can also build the documentation by running:
+
+```
+./build.sh docs
+```
+
 The resulting binaries will be in the `bin` folder.
 
 ---

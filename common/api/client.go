@@ -23,16 +23,6 @@ type Client struct {
 
 var ClientConf Client
 
-type LoginResponse struct {
-	Token string `json:"token"`
-	User  struct {
-		Username string `json:"username"`
-		Email    string `json:"email"`
-		Role     string `json:"role"`
-		Groups   string `json:"groups"`
-	} `json:"user"`
-}
-
 type ClientAuth struct {
 	Token string
 }
@@ -552,22 +542,6 @@ func LoginCmd(cmd *cobra.Command, args []string) {
 	}
 }
 
-// Add this to your init() function or wherever you set up commands
-func init() {
-	loginCmd := &cobra.Command{
-		Use:   "login",
-		Short: "Login to the API server",
-		Run:   LoginCmd,
-	}
-	loginCmd.Flags().String("username", "", "Username for login")
-	loginCmd.Flags().String("password", "", "Password for login")
-
-	// Add to root command
-	// rootCmd.AddCommand(loginCmd)
-}
-
-// Add these API functions after the existing ones
-
 // Update the admin helper functions to check for admin access
 func checkAdminAccess(resp *http.Response) error {
 	if resp.StatusCode == http.StatusForbidden {
@@ -803,4 +777,234 @@ func AdminGroupsRemoveHost(cmd *cobra.Command, args []string) {
 	}
 
 	fmt.Printf("Host '%s' removed from group '%s' successfully\n", hostname, groupName)
+}
+
+// Add this function to handle user creation
+func AdminUsersCreate(cmd *cobra.Command, args []string) {
+	ClientInit()
+
+	username, _ := cmd.Flags().GetString("username")
+	password, _ := cmd.Flags().GetString("password")
+	email, _ := cmd.Flags().GetString("email")
+	role, _ := cmd.Flags().GetString("role")
+	groups, _ := cmd.Flags().GetString("groups")
+
+	if username == "" || password == "" || email == "" || role == "" {
+		fmt.Println("error: username, password, email, and role are required")
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+
+	data := map[string]string{
+		"username": username,
+		"password": password,
+		"email":    email,
+		"role":     role,
+		"groups":   groups,
+	}
+
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		fmt.Printf("error: %v\n", err)
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+
+	resp, err := adminPost("users", jsonData)
+	if err != nil {
+		if err.Error() == "not admin" {
+			fmt.Println("error: admin access required")
+		} else {
+			fmt.Printf("error: %v\n", err)
+		}
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		var errorResp map[string]string
+		json.NewDecoder(resp.Body).Decode(&errorResp)
+		fmt.Printf("error: %s\n", errorResp["error"])
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+
+	fmt.Printf("User '%s' created successfully with role '%s'\n", username, role)
+}
+
+func AdminUsersDelete(cmd *cobra.Command, args []string) {
+	ClientInit()
+
+	if len(args) == 0 {
+		fmt.Println("error: username required")
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+
+	username := args[0]
+	resp, err := adminDelete("users/" + username)
+	if err != nil {
+		if err.Error() == "not admin" {
+			fmt.Println("error: admin access required")
+		} else {
+			fmt.Printf("error: %v\n", err)
+		}
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		var errorResp map[string]string
+		json.NewDecoder(resp.Body).Decode(&errorResp)
+		fmt.Printf("error: %s\n", errorResp["error"])
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+
+	fmt.Printf("User '%s' deleted successfully\n", username)
+}
+
+func adminPut(path string, data []byte) (*http.Response, error) {
+	req, err := http.NewRequest("PUT", ClientConf.URL+"/api/v1/admin/"+path, bytes.NewBuffer(data))
+	if err != nil {
+		return nil, fmt.Errorf("error creating request: %v", err)
+	}
+
+	addAuthHeader(req)
+	req.Header.Set("Content-Type", "application/json")
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+
+	if err := checkAdminAccess(resp); err != nil {
+		resp.Body.Close()
+		return nil, err
+	}
+
+	return resp, nil
+}
+
+func AdminUsersUpdate(cmd *cobra.Command, args []string) {
+	ClientInit()
+
+	if len(args) == 0 {
+		fmt.Println("error: username required")
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+
+	username := args[0]
+	data := map[string]string{}
+
+	// Get all possible flags
+	if newUsername, _ := cmd.Flags().GetString("username"); newUsername != "" {
+		data["username"] = newUsername
+	}
+	if password, _ := cmd.Flags().GetString("password"); password != "" {
+		data["password"] = password
+	}
+	if email, _ := cmd.Flags().GetString("email"); email != "" {
+		data["email"] = email
+	}
+	if role, _ := cmd.Flags().GetString("role"); role != "" {
+		data["role"] = role
+	}
+	if groups, _ := cmd.Flags().GetString("groups"); groups != "" {
+		data["groups"] = groups
+	}
+
+	if len(data) == 0 {
+		fmt.Println("error: at least one field to update must be provided")
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		fmt.Printf("error: %v\n", err)
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+
+	resp, err := adminPut("users/"+username, jsonData)
+	if err != nil {
+		if err.Error() == "not admin" {
+			fmt.Println("error: admin access required")
+		} else {
+			fmt.Printf("error: %v\n", err)
+		}
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		var errorResp map[string]string
+		json.NewDecoder(resp.Body).Decode(&errorResp)
+		fmt.Printf("error: %s\n", errorResp["error"])
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+
+	fmt.Printf("User '%s' updated successfully\n", username)
+}
+
+func authPut(path string, data []byte) (*http.Response, error) {
+	req, err := http.NewRequest("PUT", ClientConf.URL+"/api/v1/auth/"+path, bytes.NewBuffer(data))
+	if err != nil {
+		return nil, fmt.Errorf("error creating request: %v", err)
+	}
+	addAuthHeader(req)
+	req.Header.Set("Content-Type", "application/json")
+	client := &http.Client{}
+	return client.Do(req)
+}
+
+func UpdateMe(cmd *cobra.Command, args []string) {
+	ClientInit()
+	data := map[string]string{}
+	if username, _ := cmd.Flags().GetString("username"); username != "" {
+		data["username"] = username
+	}
+	if password, _ := cmd.Flags().GetString("password"); password != "" {
+		data["password"] = password
+	}
+	if email, _ := cmd.Flags().GetString("email"); email != "" {
+		data["email"] = email
+	}
+
+	if len(data) == 0 {
+		fmt.Println("error: at least one of username, password, or email must be provided")
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		fmt.Printf("error: %v\n", err)
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+
+	resp, err := authPut("me/update", jsonData)
+	if err != nil {
+		fmt.Printf("error: %v\n", err)
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		var errorResp map[string]string
+		json.NewDecoder(resp.Body).Decode(&errorResp)
+		fmt.Printf("error: %s\n", errorResp["error"])
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+
+	fmt.Println("User details updated successfully")
 }

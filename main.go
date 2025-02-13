@@ -145,6 +145,12 @@ func main() {
 		Run:   api.LoginCmd,
 	}
 
+	var clientUpdateMeCmd = &cobra.Command{
+		Use:   "update-me",
+		Short: "Update your own user details",
+		Run:   api.UpdateMe,
+	}
+
 	var adminCmd = &cobra.Command{
 		Use:   "admin",
 		Short: "Administrative commands",
@@ -183,6 +189,29 @@ func main() {
 		Use:   "rmHost [hostname]",
 		Short: "Remove a host from a group",
 		Run:   api.AdminGroupsRemoveHost,
+	}
+
+	var adminUsersCmd = &cobra.Command{
+		Use:   "users",
+		Short: "Manage users",
+	}
+
+	var adminUsersCreateCmd = &cobra.Command{
+		Use:   "create",
+		Short: "Create a new user",
+		Run:   api.AdminUsersCreate,
+	}
+
+	var adminUsersDeleteCmd = &cobra.Command{
+		Use:   "delete [username]",
+		Short: "Delete a user",
+		Run:   api.AdminUsersDelete,
+	}
+
+	var adminUsersUpdateCmd = &cobra.Command{
+		Use:   "update [username]",
+		Short: "Update a user's details",
+		Run:   api.AdminUsersUpdate,
 	}
 
 	//// Common
@@ -398,6 +427,11 @@ func main() {
 	clientLoginCmd.Flags().String("password", "", "Password for login")
 	clientLoginCmd.MarkFlagRequired("password")
 
+	clientCmd.AddCommand(clientUpdateMeCmd)
+	clientUpdateMeCmd.Flags().String("username", "", "New username")
+	clientUpdateMeCmd.Flags().String("password", "", "New password")
+	clientUpdateMeCmd.Flags().String("email", "", "New email")
+
 	clientCmd.AddCommand(adminCmd)
 	adminCmd.AddCommand(adminGroupsCmd)
 	adminGroupsCmd.AddCommand(adminGroupsAddCmd)
@@ -405,10 +439,32 @@ func main() {
 	adminGroupsCmd.AddCommand(adminGroupsGetCmd)
 	adminGroupsCmd.AddCommand(adminGroupsAddHostCmd)
 	adminGroupsCmd.AddCommand(adminGroupsRemoveHostCmd)
+	adminCmd.AddCommand(adminUsersCmd)
+	adminUsersCmd.AddCommand(adminUsersCreateCmd)
+	adminUsersCreateCmd.Flags().String("username", "", "Username")
+	adminUsersCreateCmd.MarkFlagRequired("username")
+	adminUsersCreateCmd.Flags().String("password", "", "Password")
+	adminUsersCreateCmd.MarkFlagRequired("password")
+	adminUsersCreateCmd.Flags().String("email", "", "Email")
+	adminUsersCreateCmd.MarkFlagRequired("email")
+	adminUsersCreateCmd.Flags().String("role", "", "Role")
+	adminUsersCreateCmd.MarkFlagRequired("role")
+	adminUsersCreateCmd.Flags().String("groups", "", "Groups")
+	adminUsersCreateCmd.MarkFlagRequired("groups")
+
+	adminUsersCmd.AddCommand(adminUsersDeleteCmd)
+	adminUsersCmd.AddCommand(adminUsersUpdateCmd)
+
 	adminGroupsAddHostCmd.Flags().String("group", "", "Group name")
 	adminGroupsAddHostCmd.MarkFlagRequired("group")
 	adminGroupsRemoveHostCmd.Flags().String("group", "", "Group name")
 	adminGroupsRemoveHostCmd.MarkFlagRequired("group")
+
+	adminUsersUpdateCmd.Flags().String("username", "", "New username")
+	adminUsersUpdateCmd.Flags().String("password", "", "New password")
+	adminUsersUpdateCmd.Flags().String("email", "", "New email")
+	adminUsersUpdateCmd.Flags().String("role", "", "New role")
+	adminUsersUpdateCmd.Flags().String("groups", "", "New groups")
 
 	RootCmd.AddCommand(clientCmd)
 

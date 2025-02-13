@@ -1,0 +1,860 @@
+basePath: /api/v1
+definitions:
+  common.CreateGroupRequest:
+    description: Group model
+    properties:
+      name:
+        example: developers
+        type: string
+    required:
+    - name
+    type: object
+  common.ErrorResponse:
+    description: Error response
+    properties:
+      error:
+        example: Admin access required
+        type: string
+    type: object
+  common.Group:
+    properties:
+      createdAt:
+        type: string
+      deletedAt:
+        $ref: '#/definitions/gorm.DeletedAt'
+      hosts:
+        items:
+          $ref: '#/definitions/common.Host'
+        type: array
+      id:
+        type: integer
+      name:
+        type: string
+      updatedAt:
+        type: string
+      users:
+        items:
+          $ref: '#/definitions/common.User'
+        type: array
+    type: object
+  common.Host:
+    properties:
+      CreatedAt:
+        type: string
+      UpdatedAt:
+        type: string
+      cpuCores:
+        type: integer
+      createdAt:
+        type: string
+      deletedAt:
+        $ref: '#/definitions/gorm.DeletedAt'
+      disabledComponents:
+        type: string
+      groups:
+        type: string
+      id:
+        type: integer
+      ipAddress:
+        type: string
+      monokitVersion:
+        type: string
+      name:
+        type: string
+      os:
+        type: string
+      ram:
+        type: string
+      status:
+        type: string
+      updatedAt:
+        type: string
+      wantsUpdateTo:
+        type: string
+    type: object
+  common.LoginRequest:
+    description: Login request
+    properties:
+      password:
+        example: secretpassword123
+        type: string
+      username:
+        example: johndoe
+        type: string
+    required:
+    - password
+    - username
+    type: object
+  common.LoginResponse:
+    description: Login response
+    properties:
+      token:
+        example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
+        type: string
+      user:
+        properties:
+          email:
+            example: john.doe@example.com
+            type: string
+          groups:
+            example: developers,admins
+            type: string
+          role:
+            example: admin
+            type: string
+          username:
+            example: johndoe
+            type: string
+        type: object
+    type: object
+  common.RegisterRequest:
+    description: Register request
+    properties:
+      email:
+        example: john.doe@example.com
+        type: string
+      groups:
+        example: developers
+        type: string
+      password:
+        example: secretpassword123
+        type: string
+      role:
+        example: user
+        type: string
+      username:
+        example: johndoe
+        type: string
+    required:
+    - email
+    - password
+    - role
+    - username
+    type: object
+  common.UpdateMeRequest:
+    description: Update own user details request
+    properties:
+      email:
+        example: john.doe@example.com
+        type: string
+      password:
+        example: newpassword123
+        type: string
+      username:
+        example: johndoe
+        type: string
+    type: object
+  common.UpdateUserGroupsRequest:
+    description: Update user groups request
+    properties:
+      groups:
+        example: developers,production
+        type: string
+    required:
+    - groups
+    type: object
+  common.UpdateUserRequest:
+    description: Update user request (admin)
+    properties:
+      email:
+        example: john.doe@example.com
+        type: string
+      groups:
+        example: developers,admins
+        type: string
+      password:
+        example: newpassword123
+        type: string
+      role:
+        example: admin
+        type: string
+      username:
+        example: johndoe
+        type: string
+    type: object
+  common.User:
+    properties:
+      createdAt:
+        type: string
+      deletedAt:
+        $ref: '#/definitions/gorm.DeletedAt'
+      email:
+        type: string
+      groups:
+        type: string
+      hashedPassword:
+        type: string
+      id:
+        type: integer
+      role:
+        type: string
+      updatedAt:
+        type: string
+      username:
+        type: string
+    type: object
+  gorm.DeletedAt:
+    properties:
+      time:
+        type: string
+      valid:
+        description: Valid is true if Time is not NULL
+        type: boolean
+    type: object
+host: localhost:9989
+info:
+  contact:
+    name: API Support
+    url: https://mono.tr
+  description: API Server for Monokit monitoring and management system
+  license:
+    name: GPLv3
+    url: https://www.gnu.org/licenses/gpl-3.0.en.html
+  termsOfService: http://swagger.io/terms/
+  title: Monokit API
+  version: "1.0"
+paths:
+  /admin/groups:
+    get:
+      consumes:
+      - application/json
+      description: Get list of all groups
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/common.Group'
+            type: array
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: List all groups
+      tags:
+      - admin
+    post:
+      consumes:
+      - application/json
+      description: Create a new group
+      parameters:
+      - description: Group information
+        in: body
+        name: group
+        required: true
+        schema:
+          $ref: '#/definitions/common.CreateGroupRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/common.Group'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Create new group
+      tags:
+      - admin
+  /admin/groups/{name}:
+    delete:
+      consumes:
+      - application/json
+      description: Delete an existing group
+      parameters:
+      - description: Group name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Delete a group
+      tags:
+      - admin
+  /admin/groups/{name}/hosts/{hostname}:
+    delete:
+      consumes:
+      - application/json
+      description: Remove a host from a group
+      parameters:
+      - description: Group name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: Host name
+        in: path
+        name: hostname
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Remove host from group
+      tags:
+      - admin
+    post:
+      consumes:
+      - application/json
+      description: Add a host to a group
+      parameters:
+      - description: Group name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: Host name
+        in: path
+        name: hostname
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Add host to group
+      tags:
+      - admin
+  /admin/users:
+    post:
+      consumes:
+      - application/json
+      description: Create a new user (admin only)
+      parameters:
+      - description: User registration info
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/common.RegisterRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Create new user
+      tags:
+      - admin
+  /admin/users/{username}:
+    delete:
+      consumes:
+      - application/json
+      description: Delete a user (cannot delete own account)
+      parameters:
+      - description: Username
+        in: path
+        name: username
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Delete user
+      tags:
+      - admin
+    put:
+      consumes:
+      - application/json
+      description: Update any user's details (admin only)
+      parameters:
+      - description: Username
+        in: path
+        name: username
+        required: true
+        type: string
+      - description: User details to update
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/common.UpdateUserRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Update user details
+      tags:
+      - admin
+  /admin/users/{username}/groups:
+    put:
+      consumes:
+      - application/json
+      description: Update user's group memberships
+      parameters:
+      - description: Username
+        in: path
+        name: username
+        required: true
+        type: string
+      - description: Groups to assign
+        in: body
+        name: groups
+        required: true
+        schema:
+          $ref: '#/definitions/common.UpdateUserGroupsRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Update user groups
+      tags:
+      - admin
+  /auth/login:
+    post:
+      consumes:
+      - application/json
+      description: Authenticate user and get token
+      parameters:
+      - description: Login credentials
+        in: body
+        name: credentials
+        required: true
+        schema:
+          $ref: '#/definitions/common.LoginRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/common.LoginResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+      summary: Login user
+      tags:
+      - auth
+  /auth/logout:
+    post:
+      consumes:
+      - application/json
+      description: Invalidate user token
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Logout user
+      tags:
+      - auth
+  /auth/me/update:
+    put:
+      consumes:
+      - application/json
+      description: Update your own username, password, or email
+      parameters:
+      - description: User details to update
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/common.UpdateMeRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Update own user details
+      tags:
+      - auth
+  /auth/register:
+    post:
+      consumes:
+      - application/json
+      description: Register a new user
+      parameters:
+      - description: User registration info
+        in: body
+        name: user
+        required: true
+        schema:
+          $ref: '#/definitions/common.RegisterRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+      summary: Register user
+      tags:
+      - auth
+  /hostsList:
+    get:
+      consumes:
+      - application/json
+      description: Get list of all monitored hosts
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/common.Host'
+            type: array
+      security:
+      - ApiKeyAuth: []
+      summary: Get all hosts
+      tags:
+      - hosts
+    post:
+      consumes:
+      - application/json
+      description: Register a new host or update existing host information
+      parameters:
+      - description: Host information
+        in: body
+        name: host
+        required: true
+        schema:
+          $ref: '#/definitions/common.Host'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/common.Host'
+            type: array
+      summary: Register host
+      tags:
+      - hosts
+  /hostsList/{name}:
+    delete:
+      consumes:
+      - application/json
+      description: Delete a host from the system
+      parameters:
+      - description: Host name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/common.Host'
+            type: array
+      security:
+      - ApiKeyAuth: []
+      summary: Delete host
+      tags:
+      - hosts
+    get:
+      consumes:
+      - application/json
+      description: Get specific host information
+      parameters:
+      - description: Host name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/common.Host'
+      security:
+      - ApiKeyAuth: []
+      summary: Get host by name
+      tags:
+      - hosts
+  /hostsList/{name}/{service}:
+    get:
+      consumes:
+      - application/json
+      description: Get the status of a component on a host
+      parameters:
+      - description: Host name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: Service name
+        in: path
+        name: service
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Get component status
+      tags:
+      - hosts
+  /hostsList/{name}/disable/{service}:
+    post:
+      consumes:
+      - application/json
+      description: Disable a component on a host
+      parameters:
+      - description: Host name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: Service name
+        in: path
+        name: service
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Disable component
+      tags:
+      - hosts
+  /hostsList/{name}/enable/{service}:
+    post:
+      consumes:
+      - application/json
+      description: Enable a component on a host
+      parameters:
+      - description: Host name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: Service name
+        in: path
+        name: service
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Enable component
+      tags:
+      - hosts
+  /hostsList/{name}/updateTo/{version}:
+    post:
+      consumes:
+      - application/json
+      description: Set the version that a host should update to
+      parameters:
+      - description: Host name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: Version to update to
+        in: path
+        name: version
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Update host version
+      tags:
+      - hosts
+securityDefinitions:
+  ApiKeyAuth:
+    in: header
+    name: Authorization
+    type: apiKey
+swagger: "2.0"
