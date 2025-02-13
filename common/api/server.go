@@ -153,7 +153,7 @@ func getAllHosts(db *gorm.DB) gin.HandlerFunc {
 // @Param name path string true "Host name"
 // @Success 200 {object} Host
 // @Router /hostsList/{name} [get]
-func getHostByName(db *gorm.DB) gin.HandlerFunc {
+func getHostByName() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		name := c.Param("name")
 
@@ -346,7 +346,7 @@ func disableComponent(db *gorm.DB) gin.HandlerFunc {
 // @Param service path string true "Service name"
 // @Success 200 {object} map[string]string
 // @Router /hostsList/{name}/{service} [get]
-func getComponentStatus(db *gorm.DB) gin.HandlerFunc {
+func getComponentStatus() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		name := c.Param("name")
 		service := c.Param("service")
@@ -415,12 +415,12 @@ func ServerMain(cmd *cobra.Command, args []string) {
 	api.Use(AuthMiddleware(db))
 	{
 		api.GET("/hostsList", getAllHosts(db))
-		api.GET("/hostsList/:name", getHostByName(db))
+		api.GET("/hostsList/:name", getHostByName())
 		api.DELETE("/hostsList/:name", deleteHost(db))
 		api.POST("/hostsList/:name/updateTo/:version", updateHostVersion(db))
 		api.POST("/hostsList/:name/enable/:service", enableComponent(db))
 		api.POST("/hostsList/:name/disable/:service", disableComponent(db))
-		api.GET("/hostsList/:name/:service", getComponentStatus(db))
+		api.GET("/hostsList/:name/:service", getComponentStatus())
 	}
 
 	r.Run(":" + ServerConfig.Port)
