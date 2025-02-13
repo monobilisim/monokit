@@ -214,6 +214,17 @@ func main() {
 		Run:   api.AdminUsersUpdate,
 	}
 
+	var adminHostsCmd = &cobra.Command{
+		Use:   "hosts",
+		Short: "Manage hosts",
+	}
+
+	var adminHostsDeleteCmd = &cobra.Command{
+		Use:   "delete [hostname]",
+		Short: "Schedule a host for deletion",
+		Run:   api.AdminHostsDelete,
+	}
+
 	//// Common
 	RootCmd.AddCommand(redmineCmd)
 	RootCmd.AddCommand(common.AlarmCmd)
@@ -465,6 +476,9 @@ func main() {
 	adminUsersUpdateCmd.Flags().String("email", "", "New email")
 	adminUsersUpdateCmd.Flags().String("role", "", "New role")
 	adminUsersUpdateCmd.Flags().String("groups", "", "New groups")
+
+	adminCmd.AddCommand(adminHostsCmd)
+	adminHostsCmd.AddCommand(adminHostsDeleteCmd)
 
 	RootCmd.AddCommand(clientCmd)
 

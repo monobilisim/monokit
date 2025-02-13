@@ -302,6 +302,7 @@ func SetupAuthRoutes(r *gin.Engine, db *gorm.DB) {
 		auth.POST("/login", loginUser(db))
 		auth.POST("/logout", logoutUser(db))
 		auth.PUT("/me/update", AuthMiddleware(db), updateMe(db))
+		auth.POST("/register", registerUser(db))
 	}
 
 	// Setup admin routes

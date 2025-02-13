@@ -224,6 +224,18 @@ func SendReq(apiVersion string) {
 	}
 
 	defer resp.Body.Close()
+
+	var response []Host
+	json.NewDecoder(resp.Body).Decode(&response)
+
+	// Check if this host is scheduled for deletion
+	for _, host := range response {
+		if host.Name == common.Config.Identifier && host.UpForDeletion {
+			fmt.Println("This host is scheduled for deletion. Running removal process...")
+			common.RemoveMonokit()
+			os.Exit(0)
+		}
+	}
 }
 
 func GetHosts(apiVersion string, hostName string) []Host {
@@ -1007,4 +1019,37 @@ func UpdateMe(cmd *cobra.Command, args []string) {
 	}
 
 	fmt.Println("User details updated successfully")
+}
+
+func AdminHostsDelete(cmd *cobra.Command, args []string) {
+	ClientInit()
+
+	if len(args) == 0 {
+		fmt.Println("error: hostname required")
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+
+	hostname := args[0]
+	resp, err := adminDelete("hosts/" + hostname)
+	if err != nil {
+		if err.Error() == "not admin" {
+			fmt.Println("error: admin access required")
+		} else {
+			fmt.Printf("error: %v\n", err)
+		}
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		var errorResp map[string]string
+		json.NewDecoder(resp.Body).Decode(&errorResp)
+		fmt.Printf("error: %s\n", errorResp["error"])
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+
+	fmt.Printf("Host '%s' scheduled for deletion\n", hostname)
 }

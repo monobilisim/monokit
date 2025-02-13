@@ -277,6 +277,58 @@ const docTemplate = `{
                 }
             }
         },
+        "/admin/hosts/{hostname}": {
+            "delete": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Mark a host for deletion (admin only)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Schedule host for deletion",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Host name",
+                        "name": "hostname",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/common.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/common.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/admin/users": {
             "post": {
                 "security": [
@@ -1125,6 +1177,9 @@ const docTemplate = `{
                 },
                 "status": {
                     "type": "string"
+                },
+                "upForDeletion": {
+                    "type": "boolean"
                 },
                 "updatedAt": {
                     "type": "string"

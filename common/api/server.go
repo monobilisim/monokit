@@ -62,6 +62,7 @@ type Host struct {
 	CreatedAt          time.Time `json:"CreatedAt"`
 	WantsUpdateTo      string    `json:"wantsUpdateTo"`
 	Groups             string    `json:"groups"`
+	UpForDeletion      bool      `json:"upForDeletion"`
 }
 
 var ServerConfig Server
@@ -127,12 +128,21 @@ func getAllHosts(db *gorm.DB) gin.HandlerFunc {
 			db.Save(&hostsList[i])
 		}
 
-		// Check UpdatedAt
-		for i := 0; i < len(hostsList); i++ {
-			if time.Since(hostsList[i].UpdatedAt).Minutes() > 5 {
-				hostsList[i].Status = "Offline"
+		// Check UpdatedAt and delete offline hosts that are scheduled for deletion
+		var hostsToKeep []Host
+		for _, host := range hostsList {
+			isOffline := time.Since(host.UpdatedAt).Minutes() > 5
+			if isOffline {
+				if host.UpForDeletion {
+					// Delete the host from database
+					db.Delete(&host)
+					continue // Skip adding to hostsToKeep
+				}
+				host.Status = "Offline"
 			}
+			hostsToKeep = append(hostsToKeep, host)
 		}
+		hostsList = hostsToKeep
 
 		// If user is not admin, use filtered hosts
 		if filteredHosts, exists := c.Get("filteredHosts"); exists {
@@ -374,6 +384,42 @@ func getComponentStatus() gin.HandlerFunc {
 	}
 }
 
+// @Summary Schedule host for deletion
+// @Description Mark a host for deletion (admin only)
+// @Tags admin
+// @Security ApiKeyAuth
+// @Accept json
+// @Produce json
+// @Param hostname path string true "Host name"
+// @Success 200 {object} map[string]string
+// @Failure 403 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Router /admin/hosts/{hostname} [delete]
+func scheduleHostDeletion(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		user, exists := c.Get("user")
+		if !exists || user.(User).Role != "admin" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+			return
+		}
+
+		hostname := c.Param("hostname")
+		var host Host
+		if err := db.Where("name = ?", hostname).First(&host).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Host not found"})
+			return
+		}
+
+		host.UpForDeletion = true
+		if err := db.Save(&host).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to schedule host for deletion"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "Host scheduled for deletion"})
+	}
+}
+
 func ServerMain(cmd *cobra.Command, args []string) {
 	version := "1.0.0"
 	apiVersion := strings.Split(version, ".")[0]
@@ -421,6 +467,12 @@ func ServerMain(cmd *cobra.Command, args []string) {
 		api.POST("/hostsList/:name/enable/:service", enableComponent(db))
 		api.POST("/hostsList/:name/disable/:service", disableComponent(db))
 		api.GET("/hostsList/:name/:service", getComponentStatus())
+	}
+
+	admin := r.Group("/api/v1/admin")
+	admin.Use(AuthMiddleware(db))
+	{
+		admin.DELETE("/hosts/:hostname", scheduleHostDeletion(db))
 	}
 
 	r.Run(":" + ServerConfig.Port)
