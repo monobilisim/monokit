@@ -198,8 +198,23 @@ func SendReq(apiVersion string) {
 		groups = "nil" // If there is no groups, set it to nil
 	}
 
+	// Get installed components directly
+	installedComponents := common.GetInstalledComponents()
+
 	// Marshal the response to Host struct
-	host := Host{Name: common.Config.Identifier, CpuCores: GetCPUCores(), Ram: GetRAM(), MonokitVersion: common.MonokitVersion, Os: GetOS(), DisabledComponents: disabledComponents, IpAddress: GetIP(), Status: "Online", WantsUpdateTo: "", Groups: groups}
+	host := Host{
+		Name:                common.Config.Identifier,
+		CpuCores:            GetCPUCores(),
+		Ram:                 GetRAM(),
+		MonokitVersion:      common.MonokitVersion,
+		Os:                  GetOS(),
+		DisabledComponents:  disabledComponents,
+		InstalledComponents: installedComponents,
+		IpAddress:           GetIP(),
+		Status:              "Online",
+		WantsUpdateTo:       "",
+		Groups:              groups,
+	}
 
 	// Marshal the response to JSON
 	hostJson, _ := json.Marshal(host)
@@ -311,6 +326,10 @@ func GetHostsPretty(hosts []Host) {
 			fmt.Println(common.Green + "\tGroups: " + common.Reset + host.Groups)
 		} else {
 			fmt.Println(common.Green + "\tGroups: " + common.Reset + "none")
+		}
+
+		if host.InstalledComponents != "" && host.InstalledComponents != "nil" {
+			fmt.Println(common.Green + "\tInstalled Components: " + common.Reset + host.InstalledComponents)
 		}
 
 		if host.DisabledComponents != "" && host.DisabledComponents != "nil" {
@@ -700,9 +719,20 @@ func AdminGroupsRm(cmd *cobra.Command, args []string) {
 	}
 
 	groupName := args[0]
-	resp, err := adminDelete("groups/" + groupName)
+	withHosts, _ := cmd.Flags().GetBool("withHosts")
+
+	url := "groups/" + groupName
+	if withHosts {
+		url += "?withHosts=true"
+	}
+
+	resp, err := adminDelete(url)
 	if err != nil {
-		fmt.Printf("error: %v\n", err)
+		if err.Error() == "not admin" {
+			fmt.Println("error: admin access required")
+		} else {
+			fmt.Printf("error: %v\n", err)
+		}
 		common.RemoveLockfile()
 		os.Exit(1)
 	}
@@ -716,7 +746,11 @@ func AdminGroupsRm(cmd *cobra.Command, args []string) {
 		os.Exit(1)
 	}
 
-	fmt.Printf("Group '%s' removed successfully\n", groupName)
+	if withHosts {
+		fmt.Printf("Group '%s' and its hosts deleted successfully\n", groupName)
+	} else {
+		fmt.Printf("Group '%s' deleted successfully\n", groupName)
+	}
 }
 
 func AdminGroupsAddHost(cmd *cobra.Command, args []string) {
@@ -1052,4 +1086,36 @@ func AdminHostsDelete(cmd *cobra.Command, args []string) {
 	}
 
 	fmt.Printf("Host '%s' scheduled for deletion\n", hostname)
+}
+
+func DeleteMe(cmd *cobra.Command, args []string) {
+	ClientInit()
+
+	resp, err := authDelete("me")
+	if err != nil {
+		fmt.Printf("error: %v\n", err)
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		var errorResp map[string]string
+		json.NewDecoder(resp.Body).Decode(&errorResp)
+		fmt.Printf("error: %s\n", errorResp["error"])
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+
+	fmt.Println("Account deleted successfully")
+}
+
+func authDelete(path string) (*http.Response, error) {
+	req, err := http.NewRequest("DELETE", ClientConf.URL+"/api/v1/auth/"+path, nil)
+	if err != nil {
+		return nil, fmt.Errorf("error creating request: %v", err)
+	}
+	addAuthHeader(req)
+	client := &http.Client{}
+	return client.Do(req)
 }

@@ -151,6 +151,12 @@ func main() {
 		Run:   api.UpdateMe,
 	}
 
+	var clientDeleteMeCmd = &cobra.Command{
+		Use:   "delete-me",
+		Short: "Delete your own account",
+		Run:   api.DeleteMe,
+	}
+
 	var adminCmd = &cobra.Command{
 		Use:   "admin",
 		Short: "Administrative commands",
@@ -373,7 +379,8 @@ func main() {
 	/// Daemon
 	RootCmd.AddCommand(daemon)
 
-	daemon.Flags().BoolP("once", "o", false, "Run once (Daemonless mode)")
+	daemon.Flags().Bool("once", false, "Run once and exit")
+	daemon.Flags().Bool("list-components", false, "List installed components")
 
 	/// OS Health
 	RootCmd.AddCommand(osHealthCmd)
@@ -439,9 +446,12 @@ func main() {
 	clientUpdateMeCmd.Flags().String("password", "", "New password")
 	clientUpdateMeCmd.Flags().String("email", "", "New email")
 
+	clientCmd.AddCommand(clientDeleteMeCmd)
+
 	clientCmd.AddCommand(adminCmd)
 	adminCmd.AddCommand(adminGroupsCmd)
 	adminGroupsCmd.AddCommand(adminGroupsAddCmd)
+	adminGroupsRmCmd.Flags().Bool("withHosts", false, "Also delete hosts in the group")
 	adminGroupsCmd.AddCommand(adminGroupsRmCmd)
 	adminGroupsCmd.AddCommand(adminGroupsGetCmd)
 	adminGroupsCmd.AddCommand(adminGroupsAddHostCmd)

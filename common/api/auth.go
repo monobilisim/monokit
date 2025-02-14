@@ -286,6 +286,48 @@ func updateMe(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
+// @Summary Delete own account
+// @Description Delete your own account (not allowed if last admin)
+// @Tags auth
+// @Security ApiKeyAuth
+// @Accept json
+// @Produce json
+// @Success 200 {object} map[string]string
+// @Failure 403 {object} ErrorResponse
+// @Router /auth/me [delete]
+func deleteMe(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		currentUser, exists := c.Get("user")
+		if !exists {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Authentication required"})
+			return
+		}
+
+		// If user is admin, check if they're the last admin
+		if currentUser.(User).Role == "admin" {
+			var adminCount int64
+			if err := db.Model(&User{}).Where("role = ?", "admin").Count(&adminCount).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check admin count"})
+				return
+			}
+
+			if adminCount <= 1 {
+				c.JSON(http.StatusForbidden, gin.H{"error": "Cannot delete the last admin account"})
+				return
+			}
+		}
+
+		// Delete the user
+		user := currentUser.(User)
+		if err := db.Delete(&user).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete account"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "Account deleted successfully"})
+	}
+}
+
 func SetupAuthRoutes(r *gin.Engine, db *gorm.DB) {
 	// Migrate auth-related schemas
 	db.AutoMigrate(&User{})
@@ -303,6 +345,7 @@ func SetupAuthRoutes(r *gin.Engine, db *gorm.DB) {
 		auth.POST("/logout", logoutUser(db))
 		auth.PUT("/me/update", AuthMiddleware(db), updateMe(db))
 		auth.POST("/register", registerUser(db))
+		auth.DELETE("/me", AuthMiddleware(db), deleteMe(db))
 	}
 
 	// Setup admin routes

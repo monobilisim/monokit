@@ -80,12 +80,13 @@ func createGroup(db *gorm.DB) gin.HandlerFunc {
 }
 
 // @Summary Delete a group
-// @Description Delete an existing group
+// @Description Delete an existing group and optionally its hosts
 // @Tags admin
 // @Security ApiKeyAuth
 // @Accept json
 // @Produce json
 // @Param name path string true "Group name"
+// @Param withHosts query boolean false "Delete associated hosts"
 // @Success 200 {object} map[string]string
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
@@ -99,18 +100,91 @@ func deleteGroup(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		groupName := c.Param("name")
+		withHosts := c.Query("withHosts") == "true"
+
 		var group Group
 		if result := db.Where("name = ?", groupName).First(&group); result.Error != nil {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Group not found"})
 			return
 		}
 
+		// Get hosts in this group
+		var hosts []Host
+		if err := db.Find(&hosts).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch hosts"})
+			return
+		}
+
+		for _, host := range hosts {
+			groups := strings.Split(host.Groups, ",")
+			hasGroup := false
+			var newGroups []string
+
+			for _, g := range groups {
+				g = strings.TrimSpace(g)
+				if g == groupName {
+					hasGroup = true
+				} else {
+					newGroups = append(newGroups, g)
+				}
+			}
+
+			if hasGroup {
+				if withHosts {
+					// Delete host if it belongs to this group
+					if err := db.Delete(&host).Error; err != nil {
+						c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete host"})
+						return
+					}
+				} else {
+					// Update host's groups
+					if len(newGroups) == 0 {
+						host.Groups = "nil"
+					} else {
+						host.Groups = strings.Join(newGroups, ",")
+					}
+					if err := db.Save(&host).Error; err != nil {
+						c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update host groups"})
+						return
+					}
+				}
+			}
+		}
+
+		// Update users that reference this group
+		var users []User
+		if err := db.Find(&users).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch users"})
+			return
+		}
+
+		for _, user := range users {
+			groups := strings.Split(user.Groups, ",")
+			var newGroups []string
+			for _, group := range groups {
+				group = strings.TrimSpace(group)
+				if group != groupName {
+					newGroups = append(newGroups, group)
+				}
+			}
+			if len(newGroups) == 0 {
+				user.Groups = "nil"
+			} else {
+				user.Groups = strings.Join(newGroups, ",")
+			}
+			if err := db.Save(&user).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user groups"})
+				return
+			}
+		}
+
+		// Finally delete the group
 		if err := db.Delete(&group).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete group"})
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{"message": "Group deleted successfully"})
+		c.JSON(http.StatusOK, gin.H{"message": "Group and associated resources deleted successfully"})
 	}
 }
 

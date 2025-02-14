@@ -116,7 +116,7 @@ const docTemplate = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Delete an existing group",
+                "description": "Delete an existing group and optionally its hosts",
                 "consumes": [
                     "application/json"
                 ],
@@ -134,6 +134,12 @@ const docTemplate = `{
                         "name": "name",
                         "in": "path",
                         "required": true
+                    },
+                    {
+                        "type": "boolean",
+                        "description": "Delete associated hosts",
+                        "name": "withHosts",
+                        "in": "query"
                     }
                 ],
                 "responses": {
@@ -637,6 +643,43 @@ const docTemplate = `{
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "$ref": "#/definitions/common.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/auth/me": {
+            "delete": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Delete your own account (not allowed if last admin)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Delete own account",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
                         "schema": {
                             "$ref": "#/definitions/common.ErrorResponse"
                         }
@@ -1159,6 +1202,9 @@ const docTemplate = `{
                 },
                 "id": {
                     "type": "integer"
+                },
+                "installedComponents": {
+                    "type": "string"
                 },
                 "ipAddress": {
                     "type": "string"

@@ -50,19 +50,20 @@ type Server struct {
 
 type Host struct {
 	gorm.Model
-	Name               string    `json:"name"`
-	CpuCores           int       `json:"cpuCores"`
-	Ram                string    `json:"ram"`
-	MonokitVersion     string    `json:"monokitVersion"`
-	Os                 string    `json:"os"`
-	DisabledComponents string    `json:"disabledComponents"`
-	IpAddress          string    `json:"ipAddress"`
-	Status             string    `json:"status"`
-	UpdatedAt          time.Time `json:"UpdatedAt"`
-	CreatedAt          time.Time `json:"CreatedAt"`
-	WantsUpdateTo      string    `json:"wantsUpdateTo"`
-	Groups             string    `json:"groups"`
-	UpForDeletion      bool      `json:"upForDeletion"`
+	Name                string    `json:"name"`
+	CpuCores            int       `json:"cpuCores"`
+	Ram                 string    `json:"ram"`
+	MonokitVersion      string    `json:"monokitVersion"`
+	Os                  string    `json:"os"`
+	DisabledComponents  string    `json:"disabledComponents"`
+	InstalledComponents string    `json:"installedComponents"`
+	IpAddress           string    `json:"ipAddress"`
+	Status              string    `json:"status"`
+	UpdatedAt           time.Time `json:"UpdatedAt"`
+	CreatedAt           time.Time `json:"CreatedAt"`
+	WantsUpdateTo       string    `json:"wantsUpdateTo"`
+	Groups              string    `json:"groups"`
+	UpForDeletion       bool      `json:"upForDeletion"`
 }
 
 var ServerConfig Server
