@@ -4,7 +4,9 @@ import (
 	"bufio"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"unicode"
 )
 
@@ -143,6 +145,36 @@ func FileExists(filePath string) bool {
 	return true
 }
 
+func RemoveMonokitCrontab() {
+	output, err := exec.Command("crontab", "-l").Output()
+	if err == nil {
+		var newCrontab []string
+		var skipNext bool
+		scanner := bufio.NewScanner(strings.NewReader(string(output)))
+		for scanner.Scan() {
+			line := scanner.Text()
+			if skipNext {
+				skipNext = false
+				continue
+			}
+			// If this is an Ansible comment and next line contains monokit, skip both
+			if strings.HasPrefix(line, "#Ansible:") && scanner.Scan() {
+				nextLine := scanner.Text()
+				if !strings.Contains(nextLine, "/usr/local/bin/monokit") {
+					newCrontab = append(newCrontab, line, nextLine)
+				}
+			} else if !strings.Contains(line, "/usr/local/bin/monokit") {
+				newCrontab = append(newCrontab, line)
+			}
+		}
+
+		// Write the filtered crontab back
+		cmd := exec.Command("crontab", "-")
+		cmd.Stdin = strings.NewReader(strings.Join(newCrontab, "\n") + "\n")
+		cmd.Run()
+	}
+}
+
 func RemoveMonokit() {
 	paths := []string{
 		"/etc/mono.sh",
@@ -165,6 +197,8 @@ func RemoveMonokit() {
 			os.Remove(match)
 		}
 	}
+
+	RemoveMonokitCrontab()
 
 	fmt.Println("Monokit has been removed from the system")
 }
