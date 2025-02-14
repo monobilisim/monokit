@@ -233,10 +233,6 @@ func main() {
 	common.UpdateCmd.Flags().BoolP("force", "f", false, "Force update")
 	RootCmd.AddCommand(common.UpdateCmd)
 
-	common.MigrateCmd.Flags().StringP("from", "f", "", "From version")
-	common.MigrateCmd.MarkFlagRequired("from")
-	RootCmd.AddCommand(common.MigrateCmd)
-
 	/// Alarm
 
 	// AlarmSend
