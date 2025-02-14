@@ -3,7 +3,6 @@ package daemon
 import (
 	"fmt"
 	"os"
-	"os/exec"
 	"strings"
 	"time"
 
@@ -15,63 +14,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
-type HealthCheck struct {
-	Name    string // Name of the health check, eg. mysqld
-	Enabled bool
-}
-
 type Daemon struct {
-	Frequency     int  // Frequency to run health checks
-	Debug         bool // Debug mode
-	Health_Checks []HealthCheck
+	Frequency int  // Frequency to run health checks
+	Debug     bool // Debug mode
 }
 
 var DaemonConfig Daemon
-
-type Component struct {
-	Name        string
-	Command     string
-	ConfigCheck bool
-}
-
-var components = []Component{
-	{"pritunl", "pritunl", false},
-	{"postal", "postal", false},
-	{"pmg", "pmgversion", false},
-	{"k8s", "k8s", true},
-	{"mysql", "mysqld", false}, // Special case handled in loop
-	{"redis", "redis-server", false},
-	{"rabbitmq", "rabbitmq-server", false},
-	{"traefik", "traefik", false},
-	{"wppconnect", "wppconnect", true},
-}
-
-func IsEnabled(name string) (bool, bool) {
-	for _, hc := range DaemonConfig.Health_Checks {
-		if hc.Name == name {
-			return true, hc.Enabled
-		}
-	}
-
-	return false, false
-}
-
-func CommExists(command string, confCheckOnly bool) bool {
-	path, _ := exec.LookPath(command)
-
-	existsOnConfig, enabled := IsEnabled(command)
-
-	if existsOnConfig {
-		return enabled
-	}
-
-	if path != "" && !confCheckOnly {
-		return true
-	}
-
-	return false
-
-}
 
 func Main(cmd *cobra.Command, args []string) {
 	version := "1.0.0"

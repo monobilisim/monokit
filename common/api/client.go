@@ -263,7 +263,7 @@ func GetHosts(apiVersion string, hostName string) []Host {
 			common.LogError(err.Error())
 			return nil
 		}
-
+		common.AddUserAgent(req)
 		addAuthHeader(req)
 
 		client := &http.Client{}

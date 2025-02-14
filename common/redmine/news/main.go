@@ -1,173 +1,176 @@
 package common
 
 import (
-    "bytes"
-    "net/http"
-    "time"
-    "encoding/json"
-    "strings"
-    "github.com/monobilisim/monokit/common"
-    "io/ioutil"
-    "fmt"
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io/ioutil"
+	"net/http"
+	"strings"
+	"time"
+
+	"github.com/monobilisim/monokit/common"
 )
 
 type News struct {
-    Title              string    `json:"title,omitempty"`
-    Description        string    `json:"description,omitempty"`
+	Title       string `json:"title,omitempty"`
+	Description string `json:"description,omitempty"`
 }
 
 type RedmineNews struct {
-    News News `json:"news"`
+	News News `json:"news"`
 }
 
 func Create(title string, description string, noDuplicate bool) string {
-    if common.Config.Redmine.Enabled == false {
-        return ""
-    }
+	if common.Config.Redmine.Enabled == false {
+		return ""
+	}
 
-    if noDuplicate {
-        duplicateId := Exists(title, description)
-        if duplicateId != "" {
-            return duplicateId
-        }
-    }
-   
-    var projectId string
+	if noDuplicate {
+		duplicateId := Exists(title, description)
+		if duplicateId != "" {
+			return duplicateId
+		}
+	}
 
-    if common.Config.Redmine.Project_id == "" {
-        projectId = strings.Split(common.Config.Identifier, "-")[0]
-    } else {
-        projectId = common.Config.Redmine.Project_id
-    }
+	var projectId string
 
-    body := RedmineNews{News: News{Title: title, Description: description}} 
+	if common.Config.Redmine.Project_id == "" {
+		projectId = strings.Split(common.Config.Identifier, "-")[0]
+	} else {
+		projectId = common.Config.Redmine.Project_id
+	}
 
-    jsonBody, err := json.Marshal(body)
+	body := RedmineNews{News: News{Title: title, Description: description}}
 
-    if err != nil {
-        common.LogError("json.Marshal error: " + err.Error())
-    }
+	jsonBody, err := json.Marshal(body)
 
-    req, err := http.NewRequest("POST", common.Config.Redmine.Url + "/projects/" + projectId + "/news.json", bytes.NewBuffer(jsonBody))
+	if err != nil {
+		common.LogError("json.Marshal error: " + err.Error())
+	}
 
-    if err != nil {
-        common.LogError("http.NewRequest error: " + err.Error())
-    }
+	req, err := http.NewRequest("POST", common.Config.Redmine.Url+"/projects/"+projectId+"/news.json", bytes.NewBuffer(jsonBody))
 
-    req.Header.Set("Content-Type", "application/json")
-    req.Header.Set("X-Redmine-API-Key", common.Config.Redmine.Api_key)
+	if err != nil {
+		common.LogError("http.NewRequest error: " + err.Error())
+	}
 
-    client := &http.Client{
-        Timeout: time.Second * 10,
-    }
+	common.AddUserAgent(req)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Redmine-API-Key", common.Config.Redmine.Api_key)
 
-    resp, err := client.Do(req)
+	client := &http.Client{
+		Timeout: time.Second * 10,
+	}
 
-    if err != nil {
-        common.LogError("client.Do error: " + err.Error() + "\n" + "Redmine URL: " + common.Config.Redmine.Url + "/issues.json" + "\n" + "Redmine JSON: " + string(jsonBody))
-        return ""
-    }
+	resp, err := client.Do(req)
 
-    defer resp.Body.Close()
+	if err != nil {
+		common.LogError("client.Do error: " + err.Error() + "\n" + "Redmine URL: " + common.Config.Redmine.Url + "/issues.json" + "\n" + "Redmine JSON: " + string(jsonBody))
+		return ""
+	}
 
-    
-    newsId := Exists(title, description)
+	defer resp.Body.Close()
 
-    if newsId == "" {
-        common.LogError("News couldn't be created, id returns empty")
-        return ""
-    } else {
-        return newsId
-    }
+	newsId := Exists(title, description)
+
+	if newsId == "" {
+		common.LogError("News couldn't be created, id returns empty")
+		return ""
+	} else {
+		return newsId
+	}
 
 }
 
 func Delete(id string) {
-    if common.Config.Redmine.Enabled == false {
-        return
-    }
+	if common.Config.Redmine.Enabled == false {
+		return
+	}
 
-    req, err := http.NewRequest("DELETE", common.Config.Redmine.Url + "/news/" + id + ".json", nil)
+	req, err := http.NewRequest("DELETE", common.Config.Redmine.Url+"/news/"+id+".json", nil)
 
-    if err != nil {
-        common.LogError("http.NewRequest error: " + err.Error())
-    }
+	if err != nil {
+		common.LogError("http.NewRequest error: " + err.Error())
+	}
 
-    req.Header.Set("Content-Type", "application/json")
-    req.Header.Set("X-Redmine-API-Key", common.Config.Redmine.Api_key)
+	common.AddUserAgent(req)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Redmine-API-Key", common.Config.Redmine.Api_key)
 
-    client := &http.Client{
-        Timeout: time.Second * 10,
-    }
+	client := &http.Client{
+		Timeout: time.Second * 10,
+	}
 
-    resp, err := client.Do(req)
+	resp, err := client.Do(req)
 
-    if err != nil {
-        common.LogError("client.Do error: " + err.Error() + "\n" + "Redmine URL: " + common.Config.Redmine.Url + "/issues.json")
-        return
-    }
+	if err != nil {
+		common.LogError("client.Do error: " + err.Error() + "\n" + "Redmine URL: " + common.Config.Redmine.Url + "/issues.json")
+		return
+	}
 
-    defer resp.Body.Close()
+	defer resp.Body.Close()
 }
 
 func Exists(title string, description string) string {
-    // Check if the news already exist with the same title and description, return id if exists
+	// Check if the news already exist with the same title and description, return id if exists
 
-    if common.Config.Redmine.Enabled == false {
-        return ""
-    }
+	if common.Config.Redmine.Enabled == false {
+		return ""
+	}
 
-    var projectId string
+	var projectId string
 
-    if common.Config.Redmine.Project_id == "" {
-        projectId = strings.Split(common.Config.Identifier, "-")[0]
-    } else {
-        projectId = common.Config.Redmine.Project_id
-    }
+	if common.Config.Redmine.Project_id == "" {
+		projectId = strings.Split(common.Config.Identifier, "-")[0]
+	} else {
+		projectId = common.Config.Redmine.Project_id
+	}
 
-    req, err := http.NewRequest("GET", common.Config.Redmine.Url + "/projects/" + projectId + "/news.json", nil)
+	req, err := http.NewRequest("GET", common.Config.Redmine.Url+"/projects/"+projectId+"/news.json", nil)
 
-    if err != nil {
-        common.LogError("http.NewRequest error: " + err.Error())
-    }
+	if err != nil {
+		common.LogError("http.NewRequest error: " + err.Error())
+	}
 
-    req.Header.Set("Content-Type", "application/json")
-    req.Header.Set("X-Redmine-API-Key", common.Config.Redmine.Api_key)
+	common.AddUserAgent(req)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Redmine-API-Key", common.Config.Redmine.Api_key)
 
-    client := &http.Client{
-        Timeout: time.Second * 10,
-    }
+	client := &http.Client{
+		Timeout: time.Second * 10,
+	}
 
-    resp, err := client.Do(req)
+	resp, err := client.Do(req)
 
-    if err != nil {
-        common.LogError("client.Do error: " + err.Error() + "\n" + "Redmine URL: " + common.Config.Redmine.Url + "/issues.json")
-        return ""
-    }
+	if err != nil {
+		common.LogError("client.Do error: " + err.Error() + "\n" + "Redmine URL: " + common.Config.Redmine.Url + "/issues.json")
+		return ""
+	}
 
-    defer resp.Body.Close()
+	defer resp.Body.Close()
 
-    body, err := ioutil.ReadAll(resp.Body)
+	body, err := ioutil.ReadAll(resp.Body)
 
-    if err != nil {
-        common.LogError("ioutil.ReadAll error: " + err.Error())
-        return ""
-    }
+	if err != nil {
+		common.LogError("ioutil.ReadAll error: " + err.Error())
+		return ""
+	}
 
-    var newsList map[string]interface{}
+	var newsList map[string]interface{}
 
-    err = json.Unmarshal(body, &newsList)
+	err = json.Unmarshal(body, &newsList)
 
-    if err != nil {
-        common.LogError("json.Unmarshal error: " + err.Error())
-        return ""
-    }
+	if err != nil {
+		common.LogError("json.Unmarshal error: " + err.Error())
+		return ""
+	}
 
-    for _, news := range newsList["news"].([]interface{}) {
-        if news.(map[string]interface{})["title"] == title && news.(map[string]interface{})["description"] == description {
-            return fmt.Sprintf("%v", news.(map[string]interface{})["id"])
-        }
-    }
+	for _, news := range newsList["news"].([]interface{}) {
+		if news.(map[string]interface{})["title"] == title && news.(map[string]interface{})["description"] == description {
+			return fmt.Sprintf("%v", news.(map[string]interface{})["id"])
+		}
+	}
 
-    return ""
+	return ""
 }
