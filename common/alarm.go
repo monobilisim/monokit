@@ -1,258 +1,264 @@
 package common
 
 import (
-    "io"
-    "os"
-    "time"
-    "bytes"
-    "strings"
-    "net/http"
-    "encoding/json"
-    "github.com/spf13/cobra"
+	"bytes"
+	"encoding/json"
+	"io"
+	"net/http"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/spf13/cobra"
 )
 
 var TmpDir = "/tmp/mono/"
 var ScriptName string
 
 var AlarmCmd = &cobra.Command{
-    Use: "alarm",
-    Short: "Alarm utilities",
+	Use:   "alarm",
+	Short: "Alarm utilities",
 }
 
 var AlarmCheckUpCmd = &cobra.Command{
-    Use:   "up",
-    Short: "Send alarm of service being up if it was down",
-    Run: func(cmd *cobra.Command, args []string) {
-        Init()
-        service, _ := cmd.Flags().GetString("service")
-        message, _ := cmd.Flags().GetString("message")
-        ScriptName, _ = cmd.Flags().GetString("scriptName")
-        noInterval, _ := cmd.Flags().GetBool("noInterval")
-        AlarmCheckUp(service, message, noInterval)
-    },
+	Use:   "up",
+	Short: "Send alarm of service being up if it was down",
+	Run: func(cmd *cobra.Command, args []string) {
+		Init()
+		service, _ := cmd.Flags().GetString("service")
+		message, _ := cmd.Flags().GetString("message")
+		ScriptName, _ = cmd.Flags().GetString("scriptName")
+		noInterval, _ := cmd.Flags().GetBool("noInterval")
+		AlarmCheckUp(service, message, noInterval)
+	},
 }
 
 var AlarmCheckDownCmd = &cobra.Command{
-    Use:   "down",
-    Short: "Send alarm of service being down if it was up",
-    Run: func(cmd *cobra.Command, args []string) {
-        Init()
-        service, _ := cmd.Flags().GetString("service")
-        message, _ := cmd.Flags().GetString("message")
-        ScriptName, _ = cmd.Flags().GetString("scriptName")
-        noInterval, _ := cmd.Flags().GetBool("noInterval")
-        AlarmCheckDown(service, message, noInterval, "", "")
-    },
+	Use:   "down",
+	Short: "Send alarm of service being down if it was up",
+	Run: func(cmd *cobra.Command, args []string) {
+		Init()
+		service, _ := cmd.Flags().GetString("service")
+		message, _ := cmd.Flags().GetString("message")
+		ScriptName, _ = cmd.Flags().GetString("scriptName")
+		noInterval, _ := cmd.Flags().GetBool("noInterval")
+		AlarmCheckDown(service, message, noInterval, "", "")
+	},
 }
 
 var AlarmSendCmd = &cobra.Command{
-    Use:   "send",
-    Short: "Send a plain alarm",
-    Run: func(cmd *cobra.Command, args []string) {
-        Init()
-        message, _ := cmd.Flags().GetString("message")
-        Alarm(message, "", "", false)
-    },
+	Use:   "send",
+	Short: "Send a plain alarm",
+	Run: func(cmd *cobra.Command, args []string) {
+		Init()
+		message, _ := cmd.Flags().GetString("message")
+		Alarm(message, "", "", false)
+	},
 }
 
 func AlarmCheckUp(service string, message string, noInterval bool) {
-    // Remove slashes from service and replace them with -
-    serviceReplaced := strings.Replace(service, "/", "-", -1)
-    file_path := TmpDir + "/" + serviceReplaced + ".log"
-    messageFinal := "[" + ScriptName + " - " + Config.Identifier + "] [:check:] " + message
-    
-    if _, err := os.Stat(file_path); os.IsNotExist(err) {
-        return
-    }
+	// Remove slashes from service and replace them with -
+	serviceReplaced := strings.Replace(service, "/", "-", -1)
+	file_path := TmpDir + "/" + serviceReplaced + ".log"
+	messageFinal := "[" + ScriptName + " - " + Config.Identifier + "] [:check:] " + message
 
-    // Open file and load the JSON
-    file, err := os.OpenFile(file_path, os.O_RDONLY, 0644)
-    defer file.Close()
+	if _, err := os.Stat(file_path); os.IsNotExist(err) {
+		return
+	}
 
-    if err != nil {
-        LogError("Error opening file for writing: \n" + err.Error())
-    }
+	// Open file and load the JSON
+	file, err := os.OpenFile(file_path, os.O_RDONLY, 0644)
+	if err != nil {
+		LogError("Error opening file for writing: \n" + err.Error())
+		return
+	}
+	defer file.Close()
 
-    var j ServiceFile
+	var j ServiceFile
 
-    fileRead, err := io.ReadAll(file)
+	fileRead, err := io.ReadAll(file)
 
-    if err != nil {
-        LogError("Error reading file: \n" + err.Error())
-        return
-    }
+	if err != nil {
+		LogError("Error reading file: \n" + err.Error())
+		return
+	}
 
-    err = json.Unmarshal(fileRead, &j)
+	err = json.Unmarshal(fileRead, &j)
 
-    if err != nil {
-        LogError("Error parsing JSON: \n" + err.Error())
-        return
-    }
+	if err != nil {
+		LogError("Error parsing JSON: \n" + err.Error())
+		return
+	}
 
-    if j.Locked == false && noInterval == false {
-        os.Remove(file_path)
-        return
-    } else {
-        os.Remove(file_path)
-        Alarm(messageFinal, "", "", false)
-    }
+	if !j.Locked && !noInterval {
+		os.Remove(file_path)
+		return
+	} else {
+		os.Remove(file_path)
+		Alarm(messageFinal, "", "", false)
+	}
 }
 
 type ServiceFile struct {
-    Date string `json:"date"`
-    Locked bool `json:"locked"`
+	Date   string `json:"date"`
+	Locked bool   `json:"locked"`
 }
 
-
 func AlarmCheckDown(service string, message string, noInterval bool, customStream string, customTopic string) {
-    // Remove slashes from service and replace them with -
-    serviceReplaced := strings.Replace(service, "/", "-", -1)
-    filePath := TmpDir + "/" + serviceReplaced + ".log"
-    currentDate := time.Now().Format("2006-01-02 15:04:05 -0700")
+	// Remove slashes from service and replace them with -
+	serviceReplaced := strings.Replace(service, "/", "-", -1)
+	filePath := TmpDir + "/" + serviceReplaced + ".log"
+	currentDate := time.Now().Format("2006-01-02 15:04:05 -0700")
 
-    messageFinal := "[" + ScriptName + " - " + Config.Identifier + "] [:red_circle:] " + message
-    
-    // Check if the file exists
-    if _, err := os.Stat(filePath); err == nil && noInterval == false {
-        // Open file and load the JSON
-        
-        file, err := os.OpenFile(filePath, os.O_RDONLY, 0644)
-        defer file.Close()
+	messageFinal := "[" + ScriptName + " - " + Config.Identifier + "] [:red_circle:] " + message
 
-        if err != nil {
-            LogError("Error opening file for writing: \n" + err.Error())
-        }
+	// Check if the file exists
+	if _, err := os.Stat(filePath); err == nil && !noInterval {
+		// Open file and load the JSON
 
-        var j ServiceFile
+		file, err := os.OpenFile(filePath, os.O_RDONLY, 0644)
+		if err != nil {
+			LogError("Error opening file for writing: \n" + err.Error())
+			return
+		}
+		defer file.Close()
 
-        fileRead, err := io.ReadAll(file)
+		var j ServiceFile
 
-        if err != nil {
-            LogError("Error reading file: \n" + err.Error())
-            return
-        }
+		fileRead, err := io.ReadAll(file)
 
-        err = json.Unmarshal(fileRead, &j)
+		if err != nil {
+			LogError("Error reading file: \n" + err.Error())
+			return
+		}
 
-        if err != nil {
-            LogError("Error parsing JSON: \n" + err.Error())
-            return
-        }
-    
-        // Return if locked == true 
-        if j.Locked == true {
-            return
-        }
-       
-        oldDate := j.Date
-        oldDateParsed, err := time.Parse("2006-01-02 15:04:05 -0700", oldDate)
+		err = json.Unmarshal(fileRead, &j)
 
-        if err != nil {
-            LogError("Error parsing date: \n" + err.Error())
-        }
+		if err != nil {
+			LogError("Error parsing JSON: \n" + err.Error())
+			return
+		}
 
-        finJson := &ServiceFile{
-                    Date: currentDate, 
-                    Locked: true,
-                 }
-        
-        if Config.Alarm.Interval == 0 {
-            if oldDateParsed.Format("2006-01-02") != time.Now().Format("2006-01-02") {
-                jsonData, err := json.Marshal(&ServiceFile{Date: currentDate, Locked: false})
+		// Return if locked == true
+		if j.Locked {
+			return
+		}
 
-                if err != nil {
-                    LogError("Error marshalling JSON: \n" + err.Error())
-                }
+		oldDate := j.Date
+		oldDateParsed, err := time.Parse("2006-01-02 15:04:05 -0700", oldDate)
 
-                err = os.WriteFile(filePath, jsonData, 0644)
+		if err != nil {
+			LogError("Error parsing date: \n" + err.Error())
+		}
 
-                Alarm(messageFinal, customStream, customTopic, false)
-            }
-            return
-        }
+		finJson := &ServiceFile{
+			Date:   currentDate,
+			Locked: true,
+		}
 
+		if Config.Alarm.Interval == 0 {
+			if oldDateParsed.Format("2006-01-02") != time.Now().Format("2006-01-02") {
+				jsonData, err := json.Marshal(&ServiceFile{Date: currentDate, Locked: false})
 
-        if (time.Now().Sub(oldDateParsed).Hours() > 24) {
-            jsonData, err := json.Marshal(finJson)
-            
-            if err != nil {
-                LogError("Error marshalling JSON: \n" + err.Error())
-            }
+				if err != nil {
+					LogError("Error marshalling JSON: \n" + err.Error())
+					return
+				}
 
-            err = os.WriteFile(filePath, jsonData, 0644)
+				err = os.WriteFile(filePath, jsonData, 0644)
 
-            if err != nil {
-                LogError("Error writing to file: \n" + err.Error())
-            }
-            
-            Alarm(messageFinal, customStream, customTopic, false)
-        } else {
-            if j.Locked == false {
-                // currentDate - oldDate in minutes
-                timeDiff := time.Now().Sub(oldDateParsed) //.Minutes()
+				if err != nil {
+					LogError("Error writing to file: \n" + err.Error())
+					return
+				}
 
-                if timeDiff.Minutes() >= Config.Alarm.Interval { 
-                    jsonData, err := json.Marshal(finJson)
-                    if err != nil {
-                        LogError("Error marshalling JSON: \n" + err.Error())
-                    }
+				Alarm(messageFinal, customStream, customTopic, false)
+			}
+			return
+		}
 
-                    err = os.WriteFile(filePath, jsonData, 0644)
+		if time.Since(oldDateParsed).Hours() > 24 {
+			jsonData, err := json.Marshal(finJson)
 
-                    if err != nil {
-                        LogError("Error writing to file: \n" + err.Error())
-                    }
+			if err != nil {
+				LogError("Error marshalling JSON: \n" + err.Error())
+				return
+			}
 
-                    Alarm(messageFinal, customStream, customTopic, false)
-                }
-            }
-        }
-    } else {
+			err = os.WriteFile(filePath, jsonData, 0644)
 
-        file, err := os.OpenFile(filePath, os.O_CREATE|os.O_RDWR, 0644)
-        defer file.Close() 
+			if err != nil {
+				LogError("Error writing to file: \n" + err.Error())
+				return
+			}
 
-        if err != nil {
-            LogError("Error opening file for writing: \n" + err.Error())
-            return
-        }
-        
-        jsonData, err := json.Marshal(&ServiceFile{Date: currentDate, Locked: false})
-        
-        if err != nil {
-            LogError("Error marshalling JSON: \n" + err.Error())
-        }
+			Alarm(messageFinal, customStream, customTopic, false)
+		} else {
+			if !j.Locked {
+				// currentDate - oldDate in minutes
+				timeDiff := time.Since(oldDateParsed) //.Minutes()
 
+				if timeDiff.Minutes() >= Config.Alarm.Interval {
+					jsonData, err := json.Marshal(finJson)
+					if err != nil {
+						LogError("Error marshalling JSON: \n" + err.Error())
+						return
+					}
 
-        err = os.WriteFile(filePath, jsonData, 0644)
+					err = os.WriteFile(filePath, jsonData, 0644)
 
-        if err != nil {
-            LogError("Error writing to file: \n" + err.Error())
-        }
+					if err != nil {
+						LogError("Error writing to file: \n" + err.Error())
+						return
+					}
 
+					Alarm(messageFinal, customStream, customTopic, false)
+				}
+			}
+		}
+	} else {
 
-        if Config.Alarm.Interval == 0 || noInterval == true {
-            Alarm(messageFinal, customStream, customTopic, false)
-        }
-    }        
+		file, err := os.OpenFile(filePath, os.O_CREATE|os.O_RDWR, 0644)
+		if err != nil {
+			LogError("Error opening file for writing: \n" + err.Error())
+			return
+		}
+		defer file.Close()
+
+		jsonData, err := json.Marshal(&ServiceFile{Date: currentDate, Locked: false})
+		if err != nil {
+			LogError("Error marshalling JSON: \n" + err.Error())
+			return
+		}
+
+		err = os.WriteFile(filePath, jsonData, 0644)
+		if err != nil {
+			LogError("Error writing to file: \n" + err.Error())
+			return
+		}
+
+		if Config.Alarm.Interval == 0 || noInterval {
+			Alarm(messageFinal, customStream, customTopic, false)
+		}
+	}
 }
 
 type ResponseData struct {
-    Result string `json:"result"`
-    Msg string `json:"msg"`
-    Code string `json:"code"`
+	Result string `json:"result"`
+	Msg    string `json:"msg"`
+	Code   string `json:"code"`
 }
 
 func Alarm(m string, customStream string, customTopic string, onlyFirstWebhook bool) {
-    if Config.Alarm.Enabled == false {
-        return
-    }
+	if !Config.Alarm.Enabled {
+		return
+	}
 
-    message := strings.Replace(m, "\n", `\n`, -1)
+	message := strings.Replace(m, "\n", `\n`, -1)
 
-    body:= []byte(`{"text":"` + message + `"}`)
+	body := []byte(`{"text":"` + message + `"}`)
 
-    for _, webhook_url := range Config.Alarm.Webhook_urls {
+	for _, webhook_url := range Config.Alarm.Webhook_urls {
 
 		if customStream != "" && customTopic != "" {
 			// Remove everything after &
@@ -260,42 +266,42 @@ func Alarm(m string, customStream string, customTopic string, onlyFirstWebhook b
 			webhook_url = webhook_url + "&stream=" + customStream + "&topic=" + customTopic
 		}
 
-        r, err := http.NewRequest("POST", webhook_url, bytes.NewBuffer(body))
-        r.Header.Set("Content-Type", "application/json")
+		r, err := http.NewRequest("POST", webhook_url, bytes.NewBuffer(body))
+		r.Header.Set("Content-Type", "application/json")
 
-        if err != nil {
-            LogError("Error creating request for the alarm: \n" + err.Error())
-        }
+		if err != nil {
+			LogError("Error creating request for the alarm: \n" + err.Error())
+		}
 
-        res, err := http.DefaultClient.Do(r)
-        
-        if err != nil {
-            LogError("Error sending request for the alarm: \n" + err.Error())
-        }
+		res, err := http.DefaultClient.Do(r)
 
-        responseBody, err := io.ReadAll(res.Body)
-        
-        if err != nil {
-            LogError("Error reading response for the alarm: \n" + err.Error())
-        }
+		if err != nil {
+			LogError("Error sending request for the alarm: \n" + err.Error())
+		}
 
-        var data ResponseData
+		responseBody, err := io.ReadAll(res.Body)
 
-        err = json.Unmarshal(responseBody, &data)
+		if err != nil {
+			LogError("Error reading response for the alarm: \n" + err.Error())
+		}
 
-        if err != nil {
-            LogError("Error parsing JSON for the alarm: \n" + err.Error())
-        }
+		var data ResponseData
 
-        if data.Result != "success" {
-            LogError("Error sending alarm (" + data.Code + "): \n" + data.Msg)
-            LogError("Request JSON: \n" + string(body))
-        }
+		err = json.Unmarshal(responseBody, &data)
 
-        defer res.Body.Close()
+		if err != nil {
+			LogError("Error parsing JSON for the alarm: \n" + err.Error())
+		}
 
-		if onlyFirstWebhook == true {
+		if data.Result != "success" {
+			LogError("Error sending alarm (" + data.Code + "): \n" + data.Msg)
+			LogError("Request JSON: \n" + string(body))
+		}
+
+		defer res.Body.Close()
+
+		if onlyFirstWebhook {
 			break
 		}
-    }
+	}
 }
