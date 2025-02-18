@@ -52,6 +52,9 @@ func VersionCheck(cmd *cobra.Command, args []string) {
 
     // OPNsense
     OPNsenseCheck()
+
+    // PostgreSQL
+    PostgresCheck()
 }
 
 

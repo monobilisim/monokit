@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/monobilisim/monokit/common"
+	versionCheck "github.com/monobilisim/monokit/common/versionCheck"
 	db "github.com/monobilisim/monokit/common/db"
 	"github.com/spf13/cobra"
 )
@@ -44,7 +45,7 @@ func Main(cmd *cobra.Command, args []string) {
 			return
 		}
 	}
-
+    
 	fmt.Println("PostgreSQL Health Check REWRITE - v" + version + " - " + time.Now().Format("2006-01-02 15:04:05"))
 
 	common.SplitSection("PostgreSQL Access:")
@@ -65,6 +66,9 @@ func Main(cmd *cobra.Command, args []string) {
 
 	common.SplitSection("Active Connections:")
 	activeConnections()
+
+    common.SplitSection("Version Check:")
+    versionCheck.PostgresCheck()
 
 	common.SplitSection("Running Queries:")
 	runningQueries()
