@@ -157,6 +157,15 @@ func main() {
 		Run:   api.DeleteMe,
 	}
 
+	var clientReqCmd = &cobra.Command{
+		Use:   "req [path]",
+		Short: "Send a request to the API",
+		Run:   api.RequestCmd,
+	}
+
+	clientReqCmd.Flags().StringP("X", "X", "", "HTTP method (GET, POST, PUT, DELETE)")
+	clientReqCmd.Flags().String("data", "", "Request body data (JSON)")
+
 	var adminCmd = &cobra.Command{
 		Use:   "admin",
 		Short: "Administrative commands",
@@ -229,6 +238,29 @@ func main() {
 		Use:   "delete [hostname]",
 		Short: "Schedule a host for deletion",
 		Run:   api.AdminHostsDelete,
+	}
+
+	var adminInventoryCmd = &cobra.Command{
+		Use:   "inventory",
+		Short: "Manage inventories",
+	}
+
+	var adminInventoryDeleteCmd = &cobra.Command{
+		Use:   "delete [inventory-name]",
+		Short: "Delete an inventory and all its hosts",
+		Run:   api.AdminInventoryDelete,
+	}
+
+	var adminInventoryListCmd = &cobra.Command{
+		Use:   "list",
+		Short: "List all inventories",
+		Run:   api.AdminInventoryList,
+	}
+
+	var adminInventoryCreateCmd = &cobra.Command{
+		Use:   "create [inventory-name]",
+		Short: "Create a new inventory",
+		Run:   api.AdminInventoryCreate,
 	}
 
 	//// Common
@@ -448,6 +480,8 @@ func main() {
 
 	clientCmd.AddCommand(clientDeleteMeCmd)
 
+	clientCmd.AddCommand(clientReqCmd)
+
 	clientCmd.AddCommand(adminCmd)
 	adminCmd.AddCommand(adminGroupsCmd)
 	adminGroupsCmd.AddCommand(adminGroupsAddCmd)
@@ -485,6 +519,11 @@ func main() {
 
 	adminCmd.AddCommand(adminHostsCmd)
 	adminHostsCmd.AddCommand(adminHostsDeleteCmd)
+
+	adminCmd.AddCommand(adminInventoryCmd)
+	adminInventoryCmd.AddCommand(adminInventoryDeleteCmd)
+	adminInventoryCmd.AddCommand(adminInventoryListCmd)
+	adminInventoryCmd.AddCommand(adminInventoryCreateCmd)
 
 	RootCmd.AddCommand(clientCmd)
 

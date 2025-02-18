@@ -64,6 +64,12 @@ type Host struct {
 	WantsUpdateTo       string    `json:"wantsUpdateTo"`
 	Groups              string    `json:"groups"`
 	UpForDeletion       bool      `json:"upForDeletion"`
+	Inventory           string    `json:"inventory"`
+}
+
+type Inventory struct {
+	gorm.Model
+	Name string `json:"name" gorm:"unique"`
 }
 
 var ServerConfig Server
@@ -83,6 +89,11 @@ func registerHost(db *gorm.DB) gin.HandlerFunc {
 		if err := c.ShouldBindJSON(&host); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
+		}
+
+		// Set default inventory if not specified
+		if host.Inventory == "" {
+			host.Inventory = "default"
 		}
 
 		update := false
@@ -421,6 +432,173 @@ func scheduleHostDeletion(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
+// @Summary Get all inventories
+// @Description Get list of all inventories with host counts (admin only)
+// @Tags inventory
+// @Security ApiKeyAuth
+// @Accept json
+// @Produce json
+// @Success 200 {array} InventoryResponse
+// @Failure 403 {object} ErrorResponse
+// @Router /inventory [get]
+func getAllInventories(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Check for admin access
+		user, exists := c.Get("user")
+		if !exists || user.(User).Role != "admin" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+			return
+		}
+
+		var inventories []Inventory
+		if err := db.Find(&inventories).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch inventories"})
+			return
+		}
+
+		response := make([]InventoryResponse, 0)
+		hasDefault := false
+
+		for _, inv := range inventories {
+			if inv.Name == "default" {
+				hasDefault = true
+			}
+			var count int64
+			if err := db.Model(&Host{}).Where("inventory = ?", inv.Name).Count(&count).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to count hosts"})
+				return
+			}
+
+			response = append(response, InventoryResponse{
+				Name:  inv.Name,
+				Hosts: int(count),
+			})
+		}
+
+		// Add default inventory if not present
+		if !hasDefault {
+			response = append(response, InventoryResponse{
+				Name:  "default",
+				Hosts: 0,
+			})
+		}
+
+		c.JSON(http.StatusOK, response)
+	}
+}
+
+// @Summary Create new inventory
+// @Description Create a new inventory (admin only)
+// @Tags inventory
+// @Security ApiKeyAuth
+// @Accept json
+// @Produce json
+// @Param inventory body CreateInventoryRequest true "Inventory information"
+// @Success 201 {object} map[string]string
+// @Failure 400 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 409 {object} ErrorResponse
+// @Router /inventory [post]
+func createInventory(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Check for admin access
+		user, exists := c.Get("user")
+		if !exists || user.(User).Role != "admin" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+			return
+		}
+
+		var req CreateInventoryRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		if req.Name == "default" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Cannot create inventory named 'default'"})
+			return
+		}
+
+		// Check if inventory already exists
+		var existingInventory Inventory
+		if err := db.Where("name = ?", req.Name).First(&existingInventory).Error; err == nil {
+			c.JSON(http.StatusConflict, gin.H{"error": "Inventory already exists"})
+			return
+		}
+
+		inventory := Inventory{Name: req.Name}
+		if err := db.Create(&inventory).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create inventory"})
+			return
+		}
+
+		c.JSON(http.StatusCreated, gin.H{"message": fmt.Sprintf("Inventory %s created successfully", req.Name)})
+	}
+}
+
+// @Summary Delete inventory
+// @Description Schedule deletion of an inventory and all its hosts (admin only)
+// @Tags inventory
+// @Security ApiKeyAuth
+// @Accept json
+// @Produce json
+// @Param name path string true "Inventory name"
+// @Success 200 {object} map[string]string
+// @Failure 400 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
+// @Router /inventory/{name} [delete]
+func deleteInventory(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Check for admin access
+		user, exists := c.Get("user")
+		if !exists || user.(User).Role != "admin" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+			return
+		}
+
+		inventoryName := c.Param("name")
+		if inventoryName == "default" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Cannot delete default inventory"})
+			return
+		}
+
+		// Find the inventory
+		var inventory Inventory
+		if err := db.Where("name = ?", inventoryName).First(&inventory).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Inventory not found"})
+			return
+		}
+
+		// Mark all hosts in the inventory for deletion
+		var hosts []Host
+		if err := db.Where("inventory = ?", inventoryName).Find(&hosts).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch hosts in inventory"})
+			return
+		}
+
+		for _, host := range hosts {
+			host.UpForDeletion = true
+			if err := db.Save(&host).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to schedule hosts for deletion"})
+				return
+			}
+		}
+
+		// Delete the inventory
+		if err := db.Delete(&inventory).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete inventory"})
+			return
+		}
+
+		// Update the hosts list
+		db.Find(&hostsList)
+
+		c.JSON(http.StatusOK, gin.H{
+			"message": fmt.Sprintf("Inventory %s and all its hosts (%d) have been scheduled for deletion", inventoryName, len(hosts)),
+		})
+	}
+}
+
 func ServerMain(cmd *cobra.Command, args []string) {
 	version := "1.0.0"
 	apiVersion := strings.Split(version, ".")[0]
@@ -440,7 +618,13 @@ func ServerMain(cmd *cobra.Command, args []string) {
 	}
 
 	// Migrate the schema
-	db.AutoMigrate(&Host{})
+	db.AutoMigrate(&Host{}, &Inventory{})
+
+	// Create default inventory if it doesn't exist
+	var defaultInventory Inventory
+	if db.Where("name = ?", "default").First(&defaultInventory).Error == gorm.ErrRecordNotFound {
+		db.Create(&Inventory{Name: "default"})
+	}
 
 	// Get the hosts list from the pgsql database
 	db.Find(&hostsList)
@@ -468,6 +652,9 @@ func ServerMain(cmd *cobra.Command, args []string) {
 		api.POST("/hostsList/:name/enable/:service", enableComponent(db))
 		api.POST("/hostsList/:name/disable/:service", disableComponent(db))
 		api.GET("/hostsList/:name/:service", getComponentStatus())
+		api.GET("/inventory", getAllInventories(db))
+		api.POST("/inventory", createInventory(db))
+		api.DELETE("/inventory/:name", deleteInventory(db))
 	}
 
 	admin := r.Group("/api/v1/admin")

@@ -87,3 +87,14 @@ type UpdateUserRequest struct {
 	Role     string `json:"role,omitempty" example:"admin"`
 	Groups   string `json:"groups,omitempty" example:"developers,admins"`
 }
+
+// @Description Inventory response model
+type InventoryResponse struct {
+	Name  string `json:"name" example:"production"`
+	Hosts int    `json:"hosts" example:"5"`
+}
+
+// @Description Create inventory request
+type CreateInventoryRequest struct {
+	Name string `json:"name" binding:"required" example:"production"`
+}

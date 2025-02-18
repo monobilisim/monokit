@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -1118,4 +1119,194 @@ func authDelete(path string) (*http.Response, error) {
 	addAuthHeader(req)
 	client := &http.Client{}
 	return client.Do(req)
+}
+
+// Add this new function to handle generic requests
+func SendGenericRequest(method, path string, data []byte) (*http.Response, error) {
+	fullURL := ClientConf.URL + path
+	req, err := http.NewRequest(method, fullURL, bytes.NewBuffer(data))
+	if err != nil {
+		return nil, fmt.Errorf("error creating request: %v", err)
+	}
+
+	addAuthHeader(req)
+	if len(data) > 0 {
+		req.Header.Set("Content-Type", "application/json")
+	}
+
+	client := &http.Client{}
+	return client.Do(req)
+}
+
+// Add this new command handler
+func RequestCmd(cmd *cobra.Command, args []string) {
+	ClientInit()
+
+	method, _ := cmd.Flags().GetString("X")
+	if method == "" {
+		method = "GET" // Default to GET if no method specified
+	}
+
+	if len(args) == 0 {
+		fmt.Println("error: path required")
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+
+	path := args[0]
+	data, _ := cmd.Flags().GetString("data")
+
+	var requestData []byte
+	if data != "" {
+		requestData = []byte(data)
+	}
+
+	resp, err := SendGenericRequest(method, path, requestData)
+	if err != nil {
+		fmt.Printf("error: %v\n", err)
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+
+	// Read the response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Printf("error reading response: %v\n", err)
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+
+	// Try to pretty print if it's JSON
+	var prettyJSON bytes.Buffer
+	if err := json.Indent(&prettyJSON, body, "", "  "); err == nil {
+		fmt.Println(prettyJSON.String())
+	} else {
+		// If it's not JSON, print as plain text
+		fmt.Println(string(body))
+	}
+
+	if resp.StatusCode >= 400 {
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+}
+
+func AdminInventoryDelete(cmd *cobra.Command, args []string) {
+	ClientInit()
+
+	if len(args) == 0 {
+		fmt.Println("error: inventory name required")
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+
+	inventoryName := args[0]
+	resp, err := SendGenericRequest("DELETE", "/api/v1/inventory/"+inventoryName, nil)
+	if err != nil {
+		if err.Error() == "not admin" {
+			fmt.Println("error: admin access required")
+		} else {
+			fmt.Printf("error: %v\n", err)
+		}
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+
+	var response map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+		fmt.Printf("error decoding response: %v\n", err)
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+
+	fmt.Println(response["message"])
+}
+
+func AdminInventoryList(cmd *cobra.Command, args []string) {
+	ClientInit()
+
+	resp, err := SendGenericRequest("GET", "/api/v1/inventory", nil)
+	if err != nil {
+		fmt.Printf("error: %v\n", err)
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Printf("error reading response: %v\n", err)
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		var errorResp map[string]string
+		if err := json.Unmarshal(body, &errorResp); err != nil {
+			fmt.Printf("error: %s\n", string(body))
+		} else {
+			fmt.Printf("error: %s\n", errorResp["error"])
+		}
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+
+	var inventories []InventoryResponse
+	if err := json.Unmarshal(body, &inventories); err != nil {
+		fmt.Printf("error decoding response: %v\nresponse body: %s\n", err, string(body))
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+
+	// Print inventories in a formatted way
+	for _, inv := range inventories {
+		fmt.Printf("Inventory: %s\n", inv.Name)
+		fmt.Printf("  Hosts: %d\n", inv.Hosts)
+	}
+}
+
+func AdminInventoryCreate(cmd *cobra.Command, args []string) {
+	ClientInit()
+
+	if len(args) == 0 {
+		fmt.Println("error: inventory name required")
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+
+	inventoryName := args[0]
+	data := map[string]string{
+		"name": inventoryName,
+	}
+
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		fmt.Printf("error: %v\n", err)
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+
+	resp, err := SendGenericRequest("POST", "/api/v1/inventory", jsonData)
+	if err != nil {
+		if err.Error() == "not admin" {
+			fmt.Println("error: admin access required")
+		} else {
+			fmt.Printf("error: %v\n", err)
+		}
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		var errorResp map[string]string
+		json.NewDecoder(resp.Body).Decode(&errorResp)
+		fmt.Printf("error: %s\n", errorResp["error"])
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+
+	fmt.Printf("Inventory '%s' created successfully\n", inventoryName)
 }

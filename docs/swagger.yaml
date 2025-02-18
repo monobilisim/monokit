@@ -9,6 +9,15 @@ definitions:
     required:
     - name
     type: object
+  common.CreateInventoryRequest:
+    description: Create inventory request
+    properties:
+      name:
+        example: production
+        type: string
+    required:
+    - name
+    type: object
   common.ErrorResponse:
     description: Error response
     properties:
@@ -57,6 +66,8 @@ definitions:
         type: integer
       installedComponents:
         type: string
+      inventory:
+        type: string
       ipAddress:
         type: string
       monokitVersion:
@@ -74,6 +85,16 @@ definitions:
       updatedAt:
         type: string
       wantsUpdateTo:
+        type: string
+    type: object
+  common.InventoryResponse:
+    description: Inventory response model
+    properties:
+      hosts:
+        example: 5
+        type: integer
+      name:
+        example: production
         type: string
     type: object
   common.LoginRequest:
@@ -190,6 +211,8 @@ definitions:
         type: string
       id:
         type: integer
+      inventory:
+        type: string
       role:
         type: string
       updatedAt:
@@ -916,6 +939,99 @@ paths:
       summary: Update host version
       tags:
       - hosts
+  /inventory:
+    get:
+      consumes:
+      - application/json
+      description: Get list of all inventories with host counts (admin only)
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/common.InventoryResponse'
+            type: array
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Get all inventories
+      tags:
+      - inventory
+    post:
+      consumes:
+      - application/json
+      description: Create a new inventory (admin only)
+      parameters:
+      - description: Inventory information
+        in: body
+        name: inventory
+        required: true
+        schema:
+          $ref: '#/definitions/common.CreateInventoryRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+        "409":
+          description: Conflict
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Create new inventory
+      tags:
+      - inventory
+  /inventory/{name}:
+    delete:
+      consumes:
+      - application/json
+      description: Schedule deletion of an inventory and all its hosts (admin only)
+      parameters:
+      - description: Inventory name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Delete inventory
+      tags:
+      - inventory
 securityDefinitions:
   ApiKeyAuth:
     in: header

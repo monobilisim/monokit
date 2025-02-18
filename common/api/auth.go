@@ -19,6 +19,7 @@ type User struct {
 	Email          string `json:"email"`
 	Role           string `json:"role"`
 	Groups         string `json:"groups"`
+	Inventory      string `json:"inventory"`
 }
 
 type Session struct {
@@ -382,16 +383,22 @@ func AuthMiddleware(db *gorm.DB) gin.HandlerFunc {
 
 		// Check role-based access for hosts
 		if session.User.Role != "admin" {
-			// For non-admin users, check if the requested host is in their groups
+			// For non-admin users, check inventory and group access
 			hostName := c.Param("name")
 
-			// For GET /hostsList, filter the response
+			// For GET /hostsList and GET /inventory, filter the response
 			if c.FullPath() == "/api/v1/hostsList" {
 				var filteredHosts []Host
 				db.Find(&hostsList)
 				userGroups := strings.Split(session.User.Groups, ",")
 
 				for _, host := range hostsList {
+					// First check inventory access
+					if session.User.Inventory != "" && host.Inventory != session.User.Inventory {
+						continue
+					}
+
+					// Then check group access
 					hostGroups := strings.Split(host.Groups, ",")
 					for _, ug := range userGroups {
 						ug = strings.TrimSpace(ug)
@@ -406,10 +413,44 @@ func AuthMiddleware(db *gorm.DB) gin.HandlerFunc {
 				}
 
 				c.Set("filteredHosts", filteredHosts)
+			} else if c.FullPath() == "/api/v1/inventory" {
+				// If user has specific inventory, only return that one
+				if session.User.Inventory != "" {
+					var results []struct {
+						Inventory string
+						Count     int
+					}
+					if err := db.Model(&Host{}).
+						Select("inventory, count(*) as count").
+						Where("inventory = ?", session.User.Inventory).
+						Group("inventory").
+						Find(&results).Error; err != nil {
+						c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch inventories"})
+						c.Abort()
+						return
+					}
+
+					inventories := make([]InventoryResponse, 0)
+					if len(results) > 0 {
+						inventories = append(inventories, InventoryResponse{
+							Name:  results[0].Inventory,
+							Hosts: results[0].Count,
+						})
+					}
+					c.Set("filteredInventories", inventories)
+				}
 			} else if hostName != "" {
 				// For endpoints with specific host
 				var host Host
 				if result := db.Where("name = ?", hostName).First(&host); result.Error == nil {
+					// Check inventory access first
+					if session.User.Inventory != "" && host.Inventory != session.User.Inventory {
+						c.JSON(http.StatusForbidden, gin.H{"error": "No access to this host"})
+						c.Abort()
+						return
+					}
+
+					// Then check group access
 					userGroups := strings.Split(session.User.Groups, ",")
 					hostGroups := strings.Split(host.Groups, ",")
 
