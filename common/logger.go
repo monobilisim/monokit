@@ -1,12 +1,12 @@
 package common
 
 import (
+	"io"
+    "os"
 	"fmt"
-	"os"
 	"path"
 	"runtime"
 	"strconv"
-
 	"github.com/sirupsen/logrus"
 )
 
@@ -42,14 +42,13 @@ func LogInit(userMode bool) {
 		panic(err)
 	}
 
-	logrus.SetOutput(logFile)
-
-	logrus.SetLevel(logrus.InfoLevel)
+	logrus.SetOutput(os.Stdout)
+    multiWriter := io.MultiWriter(os.Stdout, logFile)
+    logrus.SetOutput(multiWriter)
 
 }
 
 func LogError(err string) {
-	fmt.Println(Fail + err + Reset)
 	logrus.Error(err)
 }
 
