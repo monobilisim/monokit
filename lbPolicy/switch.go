@@ -501,8 +501,7 @@ func ChangeUpstreams(urlToFind string, switchTo string, identifier string, url s
 
     fmt.Println("Changing " + reqUrl + " to " + identifier)
 
-    switch switchTo {
-        case "first_dc1", "first_dc2":
+        if strings.Contains(switchTo, "first_") {
             second := strings.Split(switchTo, "_")[1]
             fmt.Println("Switching to " + second)
             common.LogDebug("Switching to " + second)
@@ -545,8 +544,8 @@ func ChangeUpstreams(urlToFind string, switchTo string, identifier string, url s
                     common.LogDebug(err.Error())
                     AlarmCustom("red_circle", "Failed to switch " + url + "'s upstream to " + switchTo + ": " + strings.ReplaceAll(err.Error(), "\"", "'"))
                 }
-
-        case "round_robin", "ip_hash":
+        
+        } else if switchTo == "round_robin" || switchTo == "ip_hash" {
             common.LogDebug("Switching to " + switchTo)
             common.LogDebug("req: " + fmt.Sprintf("%v", req))
             reqToSend := ParseChangeUpstreams(`
@@ -581,10 +580,10 @@ func ChangeUpstreams(urlToFind string, switchTo string, identifier string, url s
                 AlarmCustom("red_circle", "Failed to switch " + url + "'s upstream to " + switchTo + ": " + strings.ReplaceAll(err.Error(), "\"", "'"))
             }
 
-        default:
+        } else {
             common.LogError("Invalid load balancing policy")
             os.Exit(1)
-    }
+        }
 
     os.MkdirAll("/tmp/glb/" + urlToFind + "/" + identifier, os.ModePerm)
     common.WriteToFile("/tmp/glb/" + urlToFind + "/" + identifier + "/lb_policy", switchTo)
