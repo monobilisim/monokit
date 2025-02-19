@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"unicode"
+    "github.com/sirupsen/logrus"
 )
 
 var Config Common
@@ -108,6 +109,18 @@ func Init() {
 
 	// Create lockfile
 	os.Create(TmpDir + "/monokit.lock")
+
+    lvl, ok := os.LookupEnv("MONOKIT_LOGLEVEL")
+    if !ok {
+        os.Setenv("MONOKIT_LOGLEVEL", "info")
+    }
+
+    ll, err := logrus.ParseLevel(lvl)
+    if err != nil {
+        ll = logrus.InfoLevel
+    }
+    
+    logrus.SetLevel(ll)
 
 	// Check if env variable MONOKIT_NOCOLOR is set to true
 	if os.Getenv("MONOKIT_NOCOLOR") == "true" || os.Getenv("MONOKIT_NOCOLOR") == "1" {

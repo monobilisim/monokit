@@ -53,6 +53,19 @@ func LogError(err string) {
 	logrus.Error(err)
 }
 
+func LogDebug(msg string) {
+    logrus.Debug(msg)
+}
+
+func LogFunctionEntry(args ...interface{}) {
+	// Get the caller function name
+	pc, _, _, _ := runtime.Caller(2)
+	funcName := runtime.FuncForPC(pc).Name()
+
+	// Log the function entry and arguments
+	logrus.Debugf("%s run with arguments %v", funcName, args)
+}
+
 func PrettyPrintStr(name string, lessOrMore bool, value string) {
 	var color string
 	var not string

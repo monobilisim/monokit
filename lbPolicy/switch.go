@@ -20,6 +20,7 @@ import (
 var noChangesCounter int
 
 func AlarmCustom(msgType string, message string) {
+    common.LogFunctionEntry(msgType, message)
     customStream := false
 
     if Config.Alarm.Stream != "" && Config.Alarm.Topic != "" {
@@ -32,6 +33,7 @@ func AlarmCustom(msgType string, message string) {
 
 
 func hostnameToURL(hostname string) (string, error) {
+    common.LogFunctionEntry(hostname)
 	// Split the hostname into parts
 	parts := strings.Split(hostname, "-")
 
@@ -51,6 +53,7 @@ func hostnameToURL(hostname string) (string, error) {
 }
 
 func extractHostname(url string) (string, error) {
+    common.LogFunctionEntry(url)
     
     resp, err := http.Get(url)
 
@@ -102,6 +105,7 @@ func extractHostname(url string) (string, error) {
 }
 
 func removePassword(urls []string) []string {
+    common.LogFunctionEntry(urls)
 	var censoredCaddyAPIUrls []string
 
 	for _, url := range urls {
@@ -118,6 +122,7 @@ func removePassword(urls []string) []string {
 }
 
 func uniqueSorted(input []string) []string {
+    common.LogFunctionEntry(input)
 	// Sort the array
 	sort.Strings(input)
 
@@ -137,7 +142,9 @@ func AdjustApiUrls() {
     var caddyApiUrlsNew []string
 
     for _, lbUrl := range Config.Caddy.Lb_Urls {
+        common.LogDebug("Checking " + lbUrl)
         for _, server := range Config.Caddy.Api_Urls {
+            common.LogDebug("Checking " + server + " under " + lbUrl)
             if len(caddyApiUrlsNew) == len(Config.Caddy.Lb_Urls)-1 {
                 break
             }
@@ -167,15 +174,19 @@ func AdjustApiUrls() {
     }
 
     for _, urlUp := range Config.Caddy.Api_Urls {
+        common.LogDebug("Checking " + urlUp)
         caddyApiUrlsNew = append(caddyApiUrlsNew, urlUp)
     }
     
     // Remove duplicates
     Config.Caddy.Api_Urls = uniqueSorted(caddyApiUrlsNew)
+
+    common.LogDebug("Final caddyApiUrls: " + strings.Join(Config.Caddy.Api_Urls, ", "))
 }
 
 
 func SwitchMain(server string) {
+    common.LogFunctionEntry(server)
     var CensoredApiUrls []string
 
     if Config.Caddy.Loop_Order == "" {
@@ -204,6 +215,7 @@ func SwitchMain(server string) {
     }
 
     if Config.Caddy.Loop_Order == "SERVERS" {
+        common.LogDebug("Loop order is SERVERS")
         //var caddyServersWithoutBadUrls []string
         var badUrls []string
         for _, urlToFind := range Config.Caddy.Servers {
@@ -228,8 +240,11 @@ func SwitchMain(server string) {
         }
 
     } else if Config.Caddy.Loop_Order == "API_URLS" {
+        common.LogDebug("Loop order is API_URLS")
         for urlUp := range Config.Caddy.Api_Urls {
+            common.LogDebug("Checking " + Config.Caddy.Api_Urls[urlUp])
             for _, urlToFind := range Config.Caddy.Servers {
+                common.LogDebug("Checking " + urlToFind + " on " + Config.Caddy.Api_Urls[urlUp])
                 url := strings.Split(Config.Caddy.Api_Urls[urlUp], "@")[1]
                 usernamePassword := strings.Split(Config.Caddy.Api_Urls[urlUp], "@")[0]
                 fmt.Println("Checking " + urlToFind + " on " + url)
@@ -248,6 +263,7 @@ func SwitchMain(server string) {
 }
 
 func ParseQuick[T int | map[string]interface{}](query string, json map[string]interface{}, server string, urlToFind string) (T, error) {
+    common.LogFunctionEntry(query, json, server, urlToFind)
     var res T
     code, err := gojq.Parse(query)
     if err != nil {
@@ -282,6 +298,7 @@ func ParseQuick[T int | map[string]interface{}](query string, json map[string]in
 
 
 func ParseChangeUpstreams(query string, json map[string]interface{}, variable []string) map[string]interface{} {
+    common.LogFunctionEntry(query, json, variable)
     var res map[string]interface{}
     code, err := gojq.Parse(query)
     if err != nil {
@@ -314,13 +331,16 @@ func ParseChangeUpstreams(query string, json map[string]interface{}, variable []
 
 
 func IdentifyRequest(srvArg string, url string, usernamePassword string, urlToFind string) (error) {
+    common.LogFunctionEntry(srvArg, url, usernamePassword, urlToFind)
     identifier := strings.Split(url, ";")[1]
     actualUrl := strings.Split(url, ";")[0]
     fmt.Println("Checking " + actualUrl + " for " + identifier)
+    common.LogDebug("GET " + actualUrl + "/config/apps/http/servers")
 
     req, err := http.NewRequest("GET", actualUrl + "/config/apps/http/servers", nil)
 
     if err != nil {
+        common.LogDebug("Failed to create request: " + err.Error())
         return err
     }
 
@@ -416,6 +436,7 @@ func IdentifyRequest(srvArg string, url string, usernamePassword string, urlToFi
 }
 
 func SendRequest(jsonPayload map[string]interface{}, url string, usernamePassword string) error {
+    common.LogFunctionEntry(jsonPayload, url, usernamePassword)
 	// Convert the JSON payload to a byte array
 	payloadBytes, err := json.Marshal(jsonPayload)
 	if err != nil {
@@ -470,11 +491,12 @@ func SendRequest(jsonPayload map[string]interface{}, url string, usernamePasswor
 }
 
 func ChangeUpstreams(urlToFind string, switchTo string, identifier string, url string, actualUrl string, server string, routeId int, req map[string]interface{}, UsernamePassword string) {
+    common.LogFunctionEntry(urlToFind, switchTo, identifier, url, actualUrl, server, routeId, req, UsernamePassword)
     if noChangesCounter > Config.Caddy.Nochange_Exit_Threshold {
         fmt.Println("No changes were made for " + strconv.Itoa(noChangesCounter) + " times.")
         os.Exit(0)
     }
-
+    
     reqUrl := actualUrl + "/config/apps/http/servers/" + server + "/routes/" + strconv.Itoa(routeId)
 
     fmt.Println("Changing " + reqUrl + " to " + identifier)
@@ -483,6 +505,8 @@ func ChangeUpstreams(urlToFind string, switchTo string, identifier string, url s
         case "first_dc1", "first_dc2":
             second := strings.Split(switchTo, "_")[1]
             fmt.Println("Switching to " + second)
+            common.LogDebug("Switching to " + second)
+            common.LogDebug("req: " + fmt.Sprintf("%v", req))
             reqToSend := ParseChangeUpstreams(`
                 .handle[] |= (
                   .routes[] |= (
@@ -500,6 +524,8 @@ func ChangeUpstreams(urlToFind string, switchTo string, identifier string, url s
                     )
                   )
                 )`, req, []string{"$SRVNAME", second})
+
+                common.LogDebug("reqToSend: " + fmt.Sprintf("%v", reqToSend))
                 
                 if reflect.DeepEqual(reqToSend, req) && !Config.Caddy.Override_Config {
                     fmt.Println("No changes were made as the upstreams are already in " + second + " order")
@@ -516,10 +542,13 @@ func ChangeUpstreams(urlToFind string, switchTo string, identifier string, url s
                     fmt.Println(url + "'s upstream has been switched to " + switchTo)
                 } else {
                     fmt.Println("Failed to switch " + url + "'s upstream to " + switchTo)
+                    common.LogDebug(err.Error())
                     AlarmCustom("red_circle", "Failed to switch " + url + "'s upstream to " + switchTo + ": " + strings.ReplaceAll(err.Error(), "\"", "'"))
                 }
 
         case "round_robin", "ip_hash":
+            common.LogDebug("Switching to " + switchTo)
+            common.LogDebug("req: " + fmt.Sprintf("%v", req))
             reqToSend := ParseChangeUpstreams(`
                 .handle[] |= (
                   .routes[] |= (
@@ -531,6 +560,8 @@ func ChangeUpstreams(urlToFind string, switchTo string, identifier string, url s
                     )
                   )
                 )`, req, []string{"$LB_POLICY", switchTo})
+
+            common.LogDebug("reqToSend: " + fmt.Sprintf("%v", reqToSend))
 
             if reflect.DeepEqual(reqToSend, req) && !Config.Caddy.Override_Config {
                 fmt.Println("No changes were made as the upstreams are already in " + switchTo + " order")
@@ -546,6 +577,7 @@ func ChangeUpstreams(urlToFind string, switchTo string, identifier string, url s
                 fmt.Println(url + "'s upstream has been switched to " + switchTo)
             } else {
                 fmt.Println("Failed to switch " + url + "'s upstream to " + switchTo)
+                common.LogDebug(err.Error())
                 AlarmCustom("red_circle", "Failed to switch " + url + "'s upstream to " + switchTo + ": " + strings.ReplaceAll(err.Error(), "\"", "'"))
             }
 
