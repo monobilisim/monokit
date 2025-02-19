@@ -163,6 +163,12 @@ func main() {
 		Run:   api.RequestCmd,
 	}
 
+	var clientTUICmd = &cobra.Command{
+		Use:   "tui",
+		Short: "Start the terminal user interface",
+		Run:   api.StartTUI,
+	}
+
 	clientReqCmd.Flags().StringP("X", "X", "", "HTTP method (GET, POST, PUT, DELETE)")
 	clientReqCmd.Flags().String("data", "", "Request body data (JSON)")
 
@@ -481,6 +487,8 @@ func main() {
 	clientCmd.AddCommand(clientDeleteMeCmd)
 
 	clientCmd.AddCommand(clientReqCmd)
+
+	clientCmd.AddCommand(clientTUICmd)
 
 	clientCmd.AddCommand(adminCmd)
 	adminCmd.AddCommand(adminGroupsCmd)

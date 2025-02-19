@@ -512,6 +512,86 @@ func updateUser(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
+// @Summary Get all users
+// @Description Get list of all users (admin only)
+// @Tags admin
+// @Security ApiKeyAuth
+// @Accept json
+// @Produce json
+// @Success 200 {array} UserResponse
+// @Failure 403 {object} ErrorResponse
+// @Router /admin/users [get]
+func getAllUsers(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Check for admin access
+		user, exists := c.Get("user")
+		if !exists || user.(User).Role != "admin" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+			return
+		}
+
+		var users []User
+		if err := db.Find(&users).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch users"})
+			return
+		}
+
+		// Convert to response objects without sensitive data
+		response := make([]UserResponse, len(users))
+		for i, user := range users {
+			response[i] = UserResponse{
+				Username: user.Username,
+				Email:    user.Email,
+				Role:     user.Role,
+				Groups:   user.Groups,
+			}
+		}
+
+		c.JSON(http.StatusOK, response)
+	}
+}
+
+// @Summary Schedule host for deletion
+// @Description Mark a host for deletion (admin only)
+// @Tags admin
+// @Security ApiKeyAuth
+// @Accept json
+// @Produce json
+// @Param hostname path string true "Host name"
+// @Success 200 {object} map[string]string
+// @Failure 403 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Router /admin/hosts/{hostname} [delete]
+func scheduleHostDeletion(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Check for admin access
+		user, exists := c.Get("user")
+		if !exists || user.(User).Role != "admin" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+			return
+		}
+
+		hostname := c.Param("hostname")
+		var host Host
+		if err := db.Where("name = ?", hostname).First(&host).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Host not found"})
+			return
+		}
+
+		// Update the upForDeletion flag
+		host.UpForDeletion = true
+		if err := db.Save(&host).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to schedule host for deletion"})
+			return
+		}
+
+		// Update cache
+		db.Find(&hostsList)
+
+		c.JSON(http.StatusOK, gin.H{"message": "Host scheduled for deletion"})
+	}
+}
+
 func SetupAdminRoutes(r *gin.Engine, db *gorm.DB) {
 	admin := r.Group("/api/v1/admin")
 	admin.Use(AuthMiddleware(db))
@@ -525,5 +605,7 @@ func SetupAdminRoutes(r *gin.Engine, db *gorm.DB) {
 		admin.POST("/users", createUser(db))
 		admin.DELETE("/users/:username", deleteUser(db))
 		admin.PUT("/users/:username", updateUser(db))
+		admin.GET("/users", getAllUsers(db))
+		admin.DELETE("/hosts/:hostname", scheduleHostDeletion(db))
 	}
 }

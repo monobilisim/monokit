@@ -329,6 +329,31 @@ func deleteMe(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
+// @Summary Get current user info
+// @Description Get information about the currently logged in user
+// @Tags auth
+// @Security ApiKeyAuth
+// @Accept json
+// @Produce json
+// @Success 200 {object} UserResponse
+// @Failure 401 {object} ErrorResponse
+// @Router /auth/me [get]
+func getCurrentUser(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		user, exists := c.Get("user")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
+			return
+		}
+
+		currentUser := user.(User)
+		c.JSON(http.StatusOK, gin.H{
+			"username": currentUser.Username,
+			"role":     currentUser.Role,
+		})
+	}
+}
+
 func SetupAuthRoutes(r *gin.Engine, db *gorm.DB) {
 	// Migrate auth-related schemas
 	db.AutoMigrate(&User{})
@@ -347,6 +372,7 @@ func SetupAuthRoutes(r *gin.Engine, db *gorm.DB) {
 		auth.PUT("/me/update", AuthMiddleware(db), updateMe(db))
 		auth.POST("/register", registerUser(db))
 		auth.DELETE("/me", AuthMiddleware(db), deleteMe(db))
+		auth.GET("/me", AuthMiddleware(db), getCurrentUser(db))
 	}
 
 	// Setup admin routes

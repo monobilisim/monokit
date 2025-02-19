@@ -63,7 +63,7 @@ type Host struct {
 	CreatedAt           time.Time `json:"CreatedAt"`
 	WantsUpdateTo       string    `json:"wantsUpdateTo"`
 	Groups              string    `json:"groups"`
-	UpForDeletion       bool      `json:"upForDeletion"`
+	UpForDeletion       bool      `json:"upForDeletion" gorm:"default:false"`
 	Inventory           string    `json:"inventory"`
 }
 
@@ -87,6 +87,7 @@ func registerHost(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var host Host
 		if err := c.ShouldBindJSON(&host); err != nil {
+			fmt.Printf("Error binding JSON: %v\n", err)
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
@@ -96,31 +97,31 @@ func registerHost(db *gorm.DB) gin.HandlerFunc {
 			host.Inventory = "default"
 		}
 
-		update := false
-		for i := 0; i < len(hostsList); i++ {
-			if hostsList[i].Name == host.Name {
-				update = true
-				break
-			}
-		}
-
-		if update {
-			// Sync groups before updating
-			if err := syncHostGroups(db, &host); err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to sync host groups"})
+		var existingHost Host
+		result := db.Where("name = ?", host.Name).First(&existingHost)
+		if result.Error == nil {
+			// Update existing host
+			host.ID = existingHost.ID
+			host.UpForDeletion = existingHost.UpForDeletion
+			if err := db.Model(&existingHost).Updates(&host).Error; err != nil {
+				fmt.Printf("Error updating host: %v\n", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update host"})
 				return
 			}
-			db.Model(&Host{}).Where("name = ?", host.Name).Updates(&host)
 		} else {
-			// For new hosts, start with nil groups if none specified
-			if host.Groups == "" {
-				host.Groups = "nil"
+			// Create new host
+			if err := db.Create(&host).Error; err != nil {
+				fmt.Printf("Error creating host: %v\n", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create host"})
+				return
 			}
-			db.Create(&host)
 		}
 
+		// Update the hosts list
 		db.Find(&hostsList)
-		c.JSON(http.StatusOK, hostsList)
+
+		// Return just the updated/created host
+		c.JSON(http.StatusOK, host)
 	}
 }
 
@@ -144,12 +145,14 @@ func getAllHosts(db *gorm.DB) gin.HandlerFunc {
 		var hostsToKeep []Host
 		for _, host := range hostsList {
 			isOffline := time.Since(host.UpdatedAt).Minutes() > 5
-			if isOffline {
-				if host.UpForDeletion {
+			if host.UpForDeletion {
+				if isOffline {
 					// Delete the host from database
-					db.Delete(&host)
+					db.Unscoped().Delete(&host)
 					continue // Skip adding to hostsToKeep
 				}
+				host.Status = "Scheduled for deletion"
+			} else if isOffline {
 				host.Status = "Offline"
 			}
 			hostsToKeep = append(hostsToKeep, host)
@@ -396,42 +399,6 @@ func getComponentStatus() gin.HandlerFunc {
 	}
 }
 
-// @Summary Schedule host for deletion
-// @Description Mark a host for deletion (admin only)
-// @Tags admin
-// @Security ApiKeyAuth
-// @Accept json
-// @Produce json
-// @Param hostname path string true "Host name"
-// @Success 200 {object} map[string]string
-// @Failure 403 {object} ErrorResponse
-// @Failure 404 {object} ErrorResponse
-// @Router /admin/hosts/{hostname} [delete]
-func scheduleHostDeletion(db *gorm.DB) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		user, exists := c.Get("user")
-		if !exists || user.(User).Role != "admin" {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
-			return
-		}
-
-		hostname := c.Param("hostname")
-		var host Host
-		if err := db.Where("name = ?", hostname).First(&host).Error; err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Host not found"})
-			return
-		}
-
-		host.UpForDeletion = true
-		if err := db.Save(&host).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to schedule host for deletion"})
-			return
-		}
-
-		c.JSON(http.StatusOK, gin.H{"message": "Host scheduled for deletion"})
-	}
-}
-
 // @Summary Get all inventories
 // @Description Get list of all inventories with host counts (admin only)
 // @Tags inventory
@@ -655,12 +622,6 @@ func ServerMain(cmd *cobra.Command, args []string) {
 		api.GET("/inventory", getAllInventories(db))
 		api.POST("/inventory", createInventory(db))
 		api.DELETE("/inventory/:name", deleteInventory(db))
-	}
-
-	admin := r.Group("/api/v1/admin")
-	admin.Use(AuthMiddleware(db))
-	{
-		admin.DELETE("/hosts/:hostname", scheduleHostDeletion(db))
 	}
 
 	r.Run(":" + ServerConfig.Port)

@@ -241,16 +241,18 @@ func SendReq(apiVersion string) {
 
 	defer resp.Body.Close()
 
-	var response []Host
-	json.NewDecoder(resp.Body).Decode(&response)
+	// Change to decode a single Host object first
+	var hostResponse Host
+	if err := json.NewDecoder(resp.Body).Decode(&hostResponse); err != nil {
+		fmt.Printf("Error decoding response: %v\n", err)
+		return
+	}
 
 	// Check if this host is scheduled for deletion
-	for _, host := range response {
-		if host.Name == common.Config.Identifier && host.UpForDeletion {
-			fmt.Println("This host is scheduled for deletion. Running removal process...")
-			common.RemoveMonokit()
-			os.Exit(0)
-		}
+	if hostResponse.Name == common.Config.Identifier && hostResponse.UpForDeletion {
+		fmt.Println("This host is scheduled for deletion. Running removal process...")
+		common.RemoveMonokit()
+		os.Exit(0)
 	}
 }
 

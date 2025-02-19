@@ -1,0 +1,853 @@
+package common
+
+import (
+	"bytes"
+	"encoding/json"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"strings"
+
+	"github.com/charmbracelet/bubbles/list"
+	"github.com/charmbracelet/bubbles/spinner"
+	"github.com/charmbracelet/bubbles/textinput"
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
+	"github.com/spf13/cobra"
+)
+
+var docStyle = lipgloss.NewStyle().Margin(1, 2)
+
+type item struct {
+	title, desc string
+}
+
+func (i item) Title() string       { return i.title }
+func (i item) Description() string { return i.desc }
+func (i item) FilterValue() string { return i.title }
+
+type mainMenuItem struct {
+	title string
+	desc  string
+	items []list.Item
+}
+
+type createUserMsg struct {
+	username string
+	password string
+	email    string
+	role     string
+	groups   string
+}
+
+type model struct {
+	list             list.Model
+	spinner          spinner.Model
+	textInput        textinput.Model
+	loading          bool
+	err              error
+	selectedMenu     string
+	inventories      []InventoryResponse
+	currentScreen    string
+	menus            map[string][]list.Item
+	parentScreen     string
+	userForm         []textinput.Model
+	formFields       []string
+	activeInput      int
+	selectedHost     *Host
+	hosts            []Host
+	showHostDetails  bool
+	loginForm        []textinput.Model
+	loginFields      []string
+	isLoggedIn       bool
+	loggedInUser     string
+	loggedInUserRole string
+	deleteMode       bool
+}
+
+func initialModel() model {
+	sp := spinner.New()
+	sp.Spinner = spinner.Dot
+	sp.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
+
+	ti := textinput.New()
+	ti.Placeholder = "Enter inventory name..."
+	ti.Focus()
+
+	// Get terminal dimensions
+	w, h := 80, 20 // default values
+
+	// Initialize user form inputs
+	fields := []string{"username", "password", "email", "role", "groups", "inventory"}
+	userForm := make([]textinput.Model, len(fields))
+	for i := range fields {
+		ti := textinput.New()
+		ti.Placeholder = fields[i]
+		if fields[i] == "password" {
+			ti.EchoMode = textinput.EchoPassword
+			ti.EchoCharacter = '•'
+		}
+		userForm[i] = ti
+	}
+
+	// Initialize login form
+	loginFields := []string{"username", "password"}
+	loginForm := make([]textinput.Model, len(loginFields))
+	for i := range loginFields {
+		ti := textinput.New()
+		ti.Placeholder = loginFields[i]
+		if loginFields[i] == "password" {
+			ti.EchoMode = textinput.EchoPassword
+			ti.EchoCharacter = '•'
+		}
+		loginForm[i] = ti
+	}
+	loginForm[0].Focus()
+
+	return model{
+		spinner:       sp,
+		textInput:     ti,
+		currentScreen: "main",
+		list:          list.New(nil, list.NewDefaultDelegate(), w, h), // Set dimensions
+		userForm:      userForm,
+		formFields:    fields,
+		activeInput:   0,
+		loginForm:     loginForm,
+		loginFields:   loginFields,
+		isLoggedIn:    false,
+	}
+}
+
+func (m model) Init() tea.Cmd {
+	return tea.Batch(m.spinner.Tick)
+}
+
+func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "ctrl+c", "q":
+			return m, tea.Quit
+		case "enter":
+			if !m.isLoggedIn {
+				m.loading = true
+				return m, m.attemptLogin()
+			}
+			if m.currentScreen == "create-user" {
+				m.loading = true
+				return m, m.createUser()
+			}
+			if m.currentScreen == "create" {
+				m.loading = true
+				name := strings.TrimSpace(m.textInput.Value())
+				if name != "" {
+					// Create inventory request
+					data := map[string]string{"name": name}
+					jsonData, err := json.Marshal(data)
+					if err != nil {
+						return m, nil
+					}
+					return m, func() tea.Msg {
+						resp, err := SendGenericRequest("POST", "/api/v1/inventory", jsonData)
+						if err != nil {
+							return errorMsg(err)
+						}
+						defer resp.Body.Close()
+
+						if resp.StatusCode != http.StatusCreated {
+							var errorResp map[string]string
+							json.NewDecoder(resp.Body).Decode(&errorResp)
+							return errorMsg(fmt.Errorf(errorResp["error"]))
+						}
+
+						// After successful creation, return to inventory list
+						m.currentScreen = "inventory"
+						return m.fetchInventories()
+					}
+				}
+			}
+			if i, ok := m.list.SelectedItem().(item); ok {
+				switch m.currentScreen {
+				case "main":
+					switch i.title {
+					case "Inventories":
+						m.parentScreen = "main"
+						m.currentScreen = "inventory"
+						m.list.SetItems(m.menus["inventory"])
+						m.list.Title = "Inventory Management"
+					case "Hosts":
+						m.parentScreen = "main"
+						m.currentScreen = "hosts"
+						m.list.SetItems(m.menus["hosts"])
+						m.list.Title = "Host Management"
+						m.showHostDetails = false
+						m.selectedHost = nil
+					case "Users":
+						m.parentScreen = "main"
+						m.currentScreen = "users"
+						m.list.SetItems(m.menus["users"])
+						m.list.Title = "User Management"
+					}
+					return m, nil
+				case "hosts":
+					if i.title == "List Hosts" {
+						m.loading = true
+						m.deleteMode = false
+						return m, m.fetchHosts
+					}
+					if i.title == "Delete Host" {
+						m.loading = true
+						m.deleteMode = true
+						m.list.Title = "Hosts"
+						return m, m.fetchHosts
+					}
+					if m.deleteMode && i.title != "List Hosts" && i.title != "Delete Host" {
+						m.loading = true
+						return m, func() tea.Msg {
+							resp, err := SendGenericRequest("DELETE", "/api/v1/admin/hosts/"+i.title, nil)
+							if err != nil {
+								return errorMsg(err)
+							}
+							defer resp.Body.Close()
+
+							body, _ := io.ReadAll(resp.Body)
+							fmt.Printf("Delete response: %s\n", string(body))
+
+							if resp.StatusCode != http.StatusOK {
+								var errorResp map[string]string
+								json.NewDecoder(bytes.NewReader(body)).Decode(&errorResp)
+								return errorMsg(fmt.Errorf(errorResp["error"]))
+							}
+
+							m.deleteMode = false
+							return m.fetchHosts()
+						}
+					}
+					if !m.deleteMode {
+						if m.showHostDetails {
+							m.showHostDetails = false
+						} else {
+							for _, host := range m.hosts {
+								if host.Name == i.title {
+									m.selectedHost = &host
+									m.showHostDetails = true
+									break
+								}
+							}
+						}
+					}
+					return m, nil
+				case "inventory":
+					if i.title == "Delete Inventory" {
+						m.loading = true
+						m.deleteMode = true
+						m.list.Title = "Inventories"
+						return m, m.fetchInventories
+					}
+					if i.title == "List Inventories" {
+						m.loading = true
+						m.deleteMode = false
+						return m, m.fetchInventories
+					}
+					// Only attempt deletion if we're in delete mode and not clicking a menu item
+					if m.deleteMode && i.title != "List Inventories" &&
+						i.title != "Create Inventory" &&
+						i.title != "Delete Inventory" {
+						m.loading = true
+						return m, m.deleteInventory(i.title)
+					}
+					return m.handleSubMenu(i.title)
+				case "users":
+					if i.title == "Delete User" {
+						m.loading = true
+						m.deleteMode = true
+						m.list.Title = "Users"
+						return m, m.fetchUsers
+					}
+					if i.title == "List Users" {
+						m.loading = true
+						m.deleteMode = false
+						return m, m.fetchUsers
+					}
+					// Only attempt deletion if we're in delete mode and not clicking a menu item
+					if m.deleteMode && i.title != "List Users" &&
+						i.title != "Create User" &&
+						i.title != "Delete User" {
+						m.loading = true
+						return m, m.deleteUser(i.title)
+					}
+					return m.handleSubMenu(i.title)
+				}
+			}
+		case "esc":
+			if m.currentScreen != "main" {
+				m.currentScreen = m.parentScreen
+				m.list.SetItems(m.menus[m.currentScreen])
+				if m.currentScreen == "main" {
+					m.list.Title = "Monokit Client"
+				}
+				// Reset host details when leaving hosts view
+				if m.currentScreen != "hosts" {
+					m.showHostDetails = false
+					m.selectedHost = nil
+				}
+				return m, nil
+			}
+		case "tab":
+			if !m.isLoggedIn {
+				m.activeInput = (m.activeInput + 1) % len(m.loginForm)
+				for i := range m.loginForm {
+					if i == m.activeInput {
+						m.loginForm[i].Focus()
+					} else {
+						m.loginForm[i].Blur()
+					}
+				}
+				return m, nil
+			} else if m.currentScreen == "create-user" {
+				m.activeInput = (m.activeInput + 1) % len(m.userForm)
+				for i := range m.userForm {
+					if i == m.activeInput {
+						m.userForm[i].Focus()
+					} else {
+						m.userForm[i].Blur()
+					}
+				}
+				return m, nil
+			}
+		}
+	case inventoriesMsg:
+		m.loading = false
+		m.inventories = msg
+		items := make([]list.Item, len(msg))
+		for i, inv := range msg {
+			items[i] = item{
+				title: inv.Name,
+				desc:  fmt.Sprintf("Hosts: %d", inv.Hosts),
+			}
+		}
+
+		w, h := 80, 20 // Use same dimensions as initial model
+		m.list = list.New(items, list.NewDefaultDelegate(), w, h)
+		m.list.Title = "Inventories"
+		return m, nil
+	case errorMsg:
+		m.loading = false
+		m.err = msg
+		// If the error is about authentication, reset login state
+		if strings.Contains(msg.Error(), "unauthorized") ||
+			strings.Contains(msg.Error(), "forbidden") ||
+			strings.Contains(msg.Error(), "login failed") {
+			m.isLoggedIn = false
+			// Clear password field
+			m.loginForm[1].SetValue("")
+		}
+		return m, nil
+	case spinner.TickMsg:
+		var cmd tea.Cmd
+		m.spinner, cmd = m.spinner.Update(msg)
+		return m, cmd
+	case hostsMsg:
+		m.loading = false
+		m.hosts = msg
+		items := make([]list.Item, len(msg))
+		for i, host := range msg {
+			status := host.Status
+			if host.UpForDeletion {
+				status = "Scheduled for deletion"
+			}
+			items[i] = item{
+				title: host.Name,
+				desc:  fmt.Sprintf("Inventory: %s, Status: %s", host.Inventory, status),
+			}
+		}
+
+		w, h := 80, 20
+		m.list = list.New(items, list.NewDefaultDelegate(), w, h)
+		m.list.Title = "Hosts"
+		return m, nil
+	case usersMsg:
+		m.loading = false
+		items := make([]list.Item, len(msg))
+		for i, user := range msg {
+			items[i] = item{
+				title: user.Username,
+				desc:  fmt.Sprintf("Role: %s, Email: %s", user.Role, user.Email),
+			}
+		}
+
+		w, h := 80, 20
+		m.list = list.New(items, list.NewDefaultDelegate(), w, h)
+		m.list.Title = "Users"
+		return m, nil
+	case deleteMsg:
+		m.loading = false
+		if msg.err != nil {
+			m.err = msg.err
+			return m, nil
+		}
+		// Show success message
+		m.err = nil
+		// Reset deleteMode after successful deletion
+		m.deleteMode = false
+		// After successful deletion, refresh the list
+		switch m.currentScreen {
+		case "inventory":
+			return m, m.fetchInventories
+		case "hosts":
+			return m, m.fetchHosts
+		case "users":
+			return m, m.fetchUsers
+		}
+	case loginSuccessMsg:
+		m.loading = false
+		m.isLoggedIn = true
+		m.loggedInUser = msg.username
+		m.loggedInUserRole = msg.role
+		return m, nil
+	}
+
+	// Handle login form updates
+	if !m.isLoggedIn {
+		var cmd tea.Cmd
+		for i := range m.loginForm {
+			m.loginForm[i], cmd = m.loginForm[i].Update(msg)
+		}
+		return m, cmd
+	}
+
+	var cmd tea.Cmd
+	switch m.currentScreen {
+	case "main", "inventory", "hosts", "users":
+		m.list, cmd = m.list.Update(msg)
+		// Update selected host when list selection changes
+		if m.currentScreen == "hosts" {
+			if i, ok := m.list.SelectedItem().(item); ok {
+				for _, host := range m.hosts {
+					if host.Name == i.title {
+						m.selectedHost = &host
+						break
+					}
+				}
+			}
+		}
+	case "create":
+		m.textInput, cmd = m.textInput.Update(msg)
+	case "create-user":
+		var cmd tea.Cmd
+		for i := range m.userForm {
+			m.userForm[i], cmd = m.userForm[i].Update(msg)
+		}
+		return m, cmd
+	}
+	return m, cmd
+}
+
+func (m model) View() string {
+	if m.loading {
+		return fmt.Sprintf("\n\n   %s Loading...\n\n", m.spinner.View())
+	}
+
+	if m.err != nil {
+		return fmt.Sprintf("\n\n   Error: %v\n\n", m.err)
+	}
+
+	if !m.isLoggedIn {
+		var b strings.Builder
+		b.WriteString("\n\n   Login to Monokit\n\n")
+		for i, input := range m.loginForm {
+			b.WriteString(fmt.Sprintf("   %s: %s\n", m.loginFields[i], input.View()))
+		}
+		b.WriteString("\n   (tab to switch fields, enter to login)\n")
+		return b.String()
+	}
+
+	var view string
+	switch m.currentScreen {
+	case "main", "inventory", "users":
+		view = docStyle.Render(m.list.View())
+	case "create":
+		view = fmt.Sprintf(
+			"\n\n   Create New Inventory\n\n   %s\n\n   (press enter to submit, esc to go back)\n",
+			m.textInput.View(),
+		)
+	case "create-user":
+		var b strings.Builder
+		b.WriteString("\n\n   Create New User\n\n")
+		for i, input := range m.userForm {
+			b.WriteString(fmt.Sprintf("   %s: %s\n", m.formFields[i], input.View()))
+		}
+		b.WriteString("\n   (tab to switch fields, enter to submit, esc to go back)\n")
+		view = b.String()
+	case "hosts":
+		if m.showHostDetails && m.selectedHost != nil {
+			status := m.selectedHost.Status
+			if m.selectedHost.UpForDeletion {
+				status = "Scheduled for deletion"
+			}
+			view = docStyle.Render(fmt.Sprintf(`
+   Host Details:
+   Name: %s
+   Inventory: %s
+   Status: %s
+   CPU Cores: %d
+   RAM: %s
+   OS: %s
+   IP Address: %s
+   Monokit Version: %s
+   Groups: %s
+   Disabled Components: %s
+   Installed Components: %s
+   Created: %s
+   Last Updated: %s
+
+   Press enter to return to list
+`,
+				m.selectedHost.Name,
+				m.selectedHost.Inventory,
+				status,
+				m.selectedHost.CpuCores,
+				m.selectedHost.Ram,
+				m.selectedHost.Os,
+				m.selectedHost.IpAddress,
+				m.selectedHost.MonokitVersion,
+				m.selectedHost.Groups,
+				m.selectedHost.DisabledComponents,
+				m.selectedHost.InstalledComponents,
+				m.selectedHost.CreatedAt.Format("2006-01-02 15:04:05"),
+				m.selectedHost.UpdatedAt.Format("2006-01-02 15:04:05")))
+		} else {
+			view = docStyle.Render(m.list.View())
+		}
+	}
+
+	// Add user info at the bottom
+	if m.isLoggedIn {
+		if view == "" {
+			view = docStyle.Render(m.list.View())
+		}
+		return fmt.Sprintf("%s\n   Logged in as %s (%s)", view, m.loggedInUser, m.loggedInUserRole)
+	}
+
+	return view
+}
+
+type inventoriesMsg []InventoryResponse
+type errorMsg error
+type hostsMsg []Host
+type usersMsg []UserResponse
+type deleteMsg struct {
+	message string
+	err     error
+}
+
+func (m model) fetchInventories() tea.Msg {
+	resp, err := SendGenericRequest("GET", "/api/v1/inventory", nil)
+	if err != nil {
+		return errorMsg(err)
+	}
+	defer resp.Body.Close()
+
+	var inventories []InventoryResponse
+	if err := json.NewDecoder(resp.Body).Decode(&inventories); err != nil {
+		return errorMsg(err)
+	}
+
+	return inventoriesMsg(inventories)
+}
+
+func (m model) createInventory(name string) tea.Cmd {
+	return func() tea.Msg {
+		// Create a dummy cobra command to use with AdminInventoryCreate
+		cmd := &cobra.Command{}
+		errC := make(chan error, 1)
+
+		go func() {
+			oldStdout := os.Stdout
+			_, w, _ := os.Pipe()
+			os.Stdout = w
+
+			AdminInventoryCreate(cmd, []string{name})
+
+			w.Close()
+			os.Stdout = oldStdout
+		}()
+
+		select {
+		case err := <-errC:
+			return errorMsg(err)
+		default:
+			return m.fetchInventories()
+		}
+	}
+}
+
+func (m model) handleSubMenu(title string) (tea.Model, tea.Cmd) {
+	switch title {
+	case "List Inventories":
+		m.loading = true
+		m.deleteMode = false
+		return m, m.fetchInventories
+	case "Create Inventory":
+		m.currentScreen = "create"
+		return m, nil
+	case "Delete Inventory":
+		m.loading = true
+		m.deleteMode = true
+		m.list.Title = "Inventories"
+		return m, m.fetchInventories
+	case "List Hosts":
+		m.loading = true
+		return m, m.fetchHosts
+	case "Delete Host":
+		if i, ok := m.list.SelectedItem().(item); ok {
+			m.loading = true
+			return m, m.deleteHost(i.title)
+		}
+	case "List Users":
+		m.loading = true
+		return m, m.fetchUsers
+	case "Create User":
+		m.currentScreen = "create-user"
+		return m, nil
+	case "Delete User":
+		if i, ok := m.list.SelectedItem().(item); ok {
+			m.loading = true
+			return m, m.deleteUser(i.title)
+		}
+	}
+	return m, nil
+}
+
+func (m model) fetchHosts() tea.Msg {
+	resp, err := SendGenericRequest("GET", "/api/v1/hostsList", nil)
+	if err != nil {
+		return errorMsg(err)
+	}
+	defer resp.Body.Close()
+
+	var hosts []Host
+	if err := json.NewDecoder(resp.Body).Decode(&hosts); err != nil {
+		return errorMsg(err)
+	}
+
+	return hostsMsg(hosts)
+}
+
+func (m model) fetchUsers() tea.Msg {
+	resp, err := SendGenericRequest("GET", "/api/v1/admin/users", nil)
+	if err != nil {
+		return errorMsg(err)
+	}
+	defer resp.Body.Close()
+
+	var users []UserResponse
+	if err := json.NewDecoder(resp.Body).Decode(&users); err != nil {
+		return errorMsg(err)
+	}
+
+	return usersMsg(users)
+}
+
+func (m model) deleteInventory(name string) tea.Cmd {
+	return func() tea.Msg {
+		resp, err := SendGenericRequest("DELETE", "/api/v1/inventory/"+name, nil)
+		if err != nil {
+			return deleteMsg{err: err}
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			var errorResp map[string]string
+			json.NewDecoder(resp.Body).Decode(&errorResp)
+			return deleteMsg{err: fmt.Errorf(errorResp["error"])}
+		}
+
+		return deleteMsg{message: fmt.Sprintf("Inventory %s deleted successfully", name)}
+	}
+}
+
+func (m model) deleteHost(hostname string) tea.Cmd {
+	return func() tea.Msg {
+		resp, err := SendGenericRequest("DELETE", "/api/v1/admin/hosts/"+hostname, nil)
+		if err != nil {
+			return errorMsg(err)
+		}
+		defer resp.Body.Close()
+
+		var response map[string]string
+		if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+			return errorMsg(err)
+		}
+
+		if resp.StatusCode != http.StatusOK {
+			return deleteMsg{err: fmt.Errorf(response["error"])}
+		}
+
+		// Return success message and refresh the list
+		return deleteMsg{message: response["message"]}
+	}
+}
+
+func (m model) deleteUser(username string) tea.Cmd {
+	return func() tea.Msg {
+		// Only try to delete if we have a valid username (not a menu item)
+		if username == "List Users" || username == "Create User" || username == "Delete User" {
+			return nil
+		}
+
+		resp, err := SendGenericRequest("DELETE", "/api/v1/admin/users/"+username, nil)
+		if err != nil {
+			return deleteMsg{err: err}
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			var errorResp map[string]string
+			if err := json.NewDecoder(resp.Body).Decode(&errorResp); err != nil {
+				return deleteMsg{err: fmt.Errorf("failed to delete user")}
+			}
+			return deleteMsg{err: fmt.Errorf(errorResp["error"])}
+		}
+
+		// After successful deletion, refresh the users list
+		return m.fetchUsers()
+	}
+}
+
+func (m model) createUser() tea.Cmd {
+	return func() tea.Msg {
+		data := map[string]string{
+			"username":  m.userForm[0].Value(),
+			"password":  m.userForm[1].Value(),
+			"email":     m.userForm[2].Value(),
+			"role":      m.userForm[3].Value(),
+			"groups":    m.userForm[4].Value(),
+			"inventory": m.userForm[5].Value(),
+		}
+
+		jsonData, err := json.Marshal(data)
+		if err != nil {
+			return errorMsg(err)
+		}
+
+		resp, err := SendGenericRequest("POST", "/api/v1/admin/users", jsonData)
+		if err != nil {
+			return errorMsg(err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusCreated {
+			var errorResp map[string]string
+			json.NewDecoder(resp.Body).Decode(&errorResp)
+			return errorMsg(fmt.Errorf(errorResp["error"]))
+		}
+
+		return m.fetchUsers()
+	}
+}
+
+func (m model) attemptLogin() tea.Cmd {
+	return func() tea.Msg {
+		username := m.loginForm[0].Value()
+		password := m.loginForm[1].Value()
+
+		if err := Login(username, password); err != nil {
+			return errorMsg(err)
+		}
+
+		// Get user info after login
+		resp, err := SendGenericRequest("GET", "/api/v1/auth/me", nil)
+		if err != nil {
+			return errorMsg(err)
+		}
+		defer resp.Body.Close()
+
+		var response struct {
+			Username string `json:"username"`
+			Role     string `json:"role"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
+			return errorMsg(err)
+		}
+
+		return loginSuccessMsg{username: response.Username, role: response.Role}
+	}
+}
+
+// Update loginSuccessMsg type
+type loginSuccessMsg struct {
+	username string
+	role     string
+}
+
+func StartTUI(cmd *cobra.Command, args []string) {
+	ClientInit()
+
+	// Test token validity and get user info
+	resp, err := SendGenericRequest("GET", "/api/v1/auth/me", nil)
+	isValidToken := true
+	var username, role string
+	if err != nil || resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+		isValidToken = false
+	} else {
+		var response struct {
+			Username string `json:"username"`
+			Role     string `json:"role"`
+		}
+		if err := json.NewDecoder(resp.Body).Decode(&response); err == nil {
+			username = response.Username
+			role = response.Role
+		} else {
+			isValidToken = false
+		}
+	}
+	if resp != nil {
+		resp.Body.Close()
+	}
+
+	mainMenuItems := []list.Item{
+		item{title: "Inventories", desc: "Manage inventories"},
+		item{title: "Hosts", desc: "Manage hosts"},
+		item{title: "Users", desc: "Manage users"},
+	}
+
+	inventoryItems := []list.Item{
+		item{title: "List Inventories", desc: "Show all inventories"},
+		item{title: "Create Inventory", desc: "Create a new inventory"},
+		item{title: "Delete Inventory", desc: "Delete an inventory"},
+	}
+
+	hostItems := []list.Item{
+		item{title: "List Hosts", desc: "Show all hosts"},
+		item{title: "Delete Host", desc: "Schedule a host for deletion"},
+	}
+
+	userItems := []list.Item{
+		item{title: "List Users", desc: "Show all users"},
+		item{title: "Create User", desc: "Create a new user"},
+		item{title: "Delete User", desc: "Delete a user"},
+	}
+
+	m := initialModel()
+	m.isLoggedIn = isValidToken
+	if isValidToken {
+		m.loggedInUser = username
+		m.loggedInUserRole = role
+	}
+	m.list.SetItems(mainMenuItems)
+	m.list.Title = "Monokit Client"
+	m.menus = map[string][]list.Item{
+		"main":      mainMenuItems,
+		"inventory": inventoryItems,
+		"hosts":     hostItems,
+		"users":     userItems,
+	}
+
+	p := tea.NewProgram(m, tea.WithAltScreen())
+	if _, err := p.Run(); err != nil {
+		fmt.Printf("Error running program: %v", err)
+		os.Exit(1)
+	}
+}
