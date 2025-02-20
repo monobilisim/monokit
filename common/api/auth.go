@@ -80,17 +80,26 @@ func GenerateRandomString(length int) string {
 }
 
 // @Summary Register user
-// @Description Register a new user
+// @Description Register a new user (admin only)
 // @Tags auth
+// @Security ApiKeyAuth
 // @Accept json
 // @Produce json
 // @Param user body RegisterRequest true "User registration info"
 // @Success 201 {object} map[string]string
 // @Failure 400 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
 // @Failure 409 {object} ErrorResponse
 // @Router /auth/register [post]
 func registerUser(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// Check for admin access
+		user, exists := c.Get("user")
+		if !exists || user.(User).Role != "admin" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+			return
+		}
+
 		var req RegisterRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -379,7 +388,7 @@ func SetupAuthRoutes(r *gin.Engine, db *gorm.DB) {
 		auth.POST("/login", loginUser(db))
 		auth.POST("/logout", logoutUser(db))
 		auth.PUT("/me/update", AuthMiddleware(db), updateMe(db))
-		auth.POST("/register", registerUser(db))
+		auth.POST("/register", AuthMiddleware(db), registerUser(db))
 		auth.DELETE("/me", AuthMiddleware(db), deleteMe(db))
 		auth.GET("/me", AuthMiddleware(db), getCurrentUser(db))
 	}
