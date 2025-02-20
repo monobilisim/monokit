@@ -356,7 +356,7 @@ func deleteMe(db *gorm.DB) gin.HandlerFunc {
 // @Success 200 {object} UserResponse
 // @Failure 401 {object} ErrorResponse
 // @Router /auth/me [get]
-func getCurrentUser(db *gorm.DB) gin.HandlerFunc {
+func getCurrentUser() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user, exists := c.Get("user")
 		if !exists {
@@ -390,7 +390,7 @@ func SetupAuthRoutes(r *gin.Engine, db *gorm.DB) {
 		auth.PUT("/me/update", AuthMiddleware(db), updateMe(db))
 		auth.POST("/register", AuthMiddleware(db), registerUser(db))
 		auth.DELETE("/me", AuthMiddleware(db), deleteMe(db))
-		auth.GET("/me", AuthMiddleware(db), getCurrentUser(db))
+		auth.GET("/me", AuthMiddleware(db), getCurrentUser())
 	}
 
 	// Setup admin routes

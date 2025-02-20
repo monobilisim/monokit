@@ -1,10 +1,8 @@
 package common
 
 import (
-	"bytes"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"os"
 	"strings"
@@ -27,27 +25,12 @@ func (i item) Title() string       { return i.title }
 func (i item) Description() string { return i.desc }
 func (i item) FilterValue() string { return i.title }
 
-type mainMenuItem struct {
-	title string
-	desc  string
-	items []list.Item
-}
-
-type createUserMsg struct {
-	username string
-	password string
-	email    string
-	role     string
-	groups   string
-}
-
 type model struct {
 	list             list.Model
 	spinner          spinner.Model
 	textInput        textinput.Model
 	loading          bool
 	err              error
-	selectedMenu     string
 	inventories      []InventoryResponse
 	currentScreen    string
 	menus            map[string][]list.Item
@@ -158,7 +141,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						if resp.StatusCode != http.StatusCreated {
 							var errorResp map[string]string
 							json.NewDecoder(resp.Body).Decode(&errorResp)
-							return errorMsg(fmt.Errorf(errorResp["error"]))
+							return errorMsg(fmt.Errorf("%s", errorResp["error"]))
 						}
 
 						// After successful creation, return to inventory list
@@ -204,25 +187,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 					if m.deleteMode && i.title != "List Hosts" && i.title != "Delete Host" {
 						m.loading = true
-						return m, func() tea.Msg {
-							resp, err := SendGenericRequest("DELETE", "/api/v1/admin/hosts/"+i.title, nil)
-							if err != nil {
-								return errorMsg(err)
-							}
-							defer resp.Body.Close()
-
-							body, _ := io.ReadAll(resp.Body)
-							fmt.Printf("Delete response: %s\n", string(body))
-
-							if resp.StatusCode != http.StatusOK {
-								var errorResp map[string]string
-								json.NewDecoder(bytes.NewReader(body)).Decode(&errorResp)
-								return errorMsg(fmt.Errorf(errorResp["error"]))
-							}
-
-							m.deleteMode = false
-							return m.fetchHosts()
-						}
+						return m, m.deleteHost(i.title)
 					}
 					if !m.deleteMode {
 						if m.showHostDetails {
@@ -588,32 +553,6 @@ func (m model) fetchInventories() tea.Msg {
 	return inventoriesMsg(inventories)
 }
 
-func (m model) createInventory(name string) tea.Cmd {
-	return func() tea.Msg {
-		// Create a dummy cobra command to use with AdminInventoryCreate
-		cmd := &cobra.Command{}
-		errC := make(chan error, 1)
-
-		go func() {
-			oldStdout := os.Stdout
-			_, w, _ := os.Pipe()
-			os.Stdout = w
-
-			AdminInventoryCreate(cmd, []string{name})
-
-			w.Close()
-			os.Stdout = oldStdout
-		}()
-
-		select {
-		case err := <-errC:
-			return errorMsg(err)
-		default:
-			return m.fetchInventories()
-		}
-	}
-}
-
 func (m model) handleSubMenu(title string) (tea.Model, tea.Cmd) {
 	switch title {
 	case "Inventories", "Hosts", "Users":
@@ -704,7 +643,7 @@ func (m model) deleteInventory(name string) tea.Cmd {
 		if resp.StatusCode != http.StatusOK {
 			var errorResp map[string]string
 			json.NewDecoder(resp.Body).Decode(&errorResp)
-			return deleteMsg{err: fmt.Errorf(errorResp["error"])}
+			return deleteMsg{err: fmt.Errorf("%s", errorResp["error"])}
 		}
 
 		return deleteMsg{message: fmt.Sprintf("Inventory %s deleted successfully", name)}
@@ -713,23 +652,19 @@ func (m model) deleteInventory(name string) tea.Cmd {
 
 func (m model) deleteHost(hostname string) tea.Cmd {
 	return func() tea.Msg {
-		resp, err := SendGenericRequest("DELETE", "/api/v1/admin/hosts/"+hostname, nil)
+		resp, err := SendGenericRequest("DELETE", "/api/v1/hosts/"+hostname, nil)
 		if err != nil {
 			return errorMsg(err)
 		}
 		defer resp.Body.Close()
 
-		var response map[string]string
-		if err := json.NewDecoder(resp.Body).Decode(&response); err != nil {
-			return errorMsg(err)
-		}
-
 		if resp.StatusCode != http.StatusOK {
-			return deleteMsg{err: fmt.Errorf(response["error"])}
+			var errorResp map[string]string
+			json.NewDecoder(resp.Body).Decode(&errorResp)
+			return deleteMsg{err: fmt.Errorf("%s", errorResp["error"])}
 		}
 
-		// Return success message and refresh the list
-		return deleteMsg{message: response["message"]}
+		return m.fetchHosts()
 	}
 }
 
@@ -751,7 +686,7 @@ func (m model) deleteUser(username string) tea.Cmd {
 			if err := json.NewDecoder(resp.Body).Decode(&errorResp); err != nil {
 				return deleteMsg{err: fmt.Errorf("failed to delete user")}
 			}
-			return deleteMsg{err: fmt.Errorf(errorResp["error"])}
+			return deleteMsg{err: fmt.Errorf("%s", errorResp["error"])}
 		}
 
 		// After successful deletion, refresh the users list
@@ -784,7 +719,7 @@ func (m model) createUser() tea.Cmd {
 		if resp.StatusCode != http.StatusCreated {
 			var errorResp map[string]string
 			json.NewDecoder(resp.Body).Decode(&errorResp)
-			return errorMsg(fmt.Errorf(errorResp["error"]))
+			return errorMsg(fmt.Errorf("%s", errorResp["error"]))
 		}
 
 		return m.fetchUsers()
