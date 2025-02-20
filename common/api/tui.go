@@ -284,6 +284,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.currentScreen != "main" {
 				m.currentScreen = m.parentScreen
 				m.list.SetItems(m.menus[m.currentScreen])
+				m.deleteMode = false // Reset delete mode when going back
 				if m.currentScreen == "main" {
 					m.list.Title = "Monokit Client"
 				}
@@ -315,6 +316,40 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					}
 				}
 				return m, nil
+			}
+		case "right", "l":
+			if i, ok := m.list.SelectedItem().(item); ok {
+				if m.currentScreen == "hosts" && !m.showHostDetails {
+					// Show host details when pressing right in hosts view
+					for _, host := range m.hosts {
+						if host.Name == i.title {
+							m.selectedHost = &host
+							m.showHostDetails = true
+							return m, nil
+						}
+					}
+				}
+				// Otherwise handle submenu navigation
+				return m.handleSubMenu(i.title)
+			}
+		case "left", "h":
+			if m.showHostDetails {
+				// Hide host details when pressing left in details view
+				m.showHostDetails = false
+				return m, nil
+			}
+			if m.currentScreen != "main" {
+				m.currentScreen = m.parentScreen
+				m.list.SetItems(m.menus[m.currentScreen])
+				m.deleteMode = false // Reset delete mode when going back
+				if m.currentScreen == "main" {
+					m.list.Title = "Monokit Client"
+				}
+				// Reset host details when leaving hosts view
+				if m.currentScreen != "hosts" {
+					m.showHostDetails = false
+					m.selectedHost = nil
+				}
 			}
 		}
 	case inventoriesMsg:
@@ -445,14 +480,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
-	if m.loading {
-		return fmt.Sprintf("\n\n   %s Loading...\n\n", m.spinner.View())
-	}
-
 	if m.err != nil {
-		return fmt.Sprintf("\n\n   Error: %v\n\n", m.err)
+		return fmt.Sprintf("Error: %v\nPress any key to continue", m.err)
 	}
 
+	if m.loading {
+		return fmt.Sprintf("\n\n   %s Loading...", m.spinner.View())
+	}
+
+	var view string
 	if !m.isLoggedIn {
 		var b strings.Builder
 		b.WriteString("\n\n   Login to Monokit\n\n")
@@ -461,18 +497,12 @@ func (m model) View() string {
 		}
 		b.WriteString("\n   (tab to switch fields, enter to login)\n")
 		return b.String()
-	}
-
-	var view string
-	switch m.currentScreen {
-	case "main", "inventory", "users":
-		view = docStyle.Render(m.list.View())
-	case "create":
+	} else if m.currentScreen == "create" {
 		view = fmt.Sprintf(
 			"\n\n   Create New Inventory\n\n   %s\n\n   (press enter to submit, esc to go back)\n",
 			m.textInput.View(),
 		)
-	case "create-user":
+	} else if m.currentScreen == "create-user" {
 		var b strings.Builder
 		b.WriteString("\n\n   Create New User\n\n")
 		for i, input := range m.userForm {
@@ -480,7 +510,11 @@ func (m model) View() string {
 		}
 		b.WriteString("\n   (tab to switch fields, enter to submit, esc to go back)\n")
 		view = b.String()
-	case "hosts":
+	} else {
+		baseView := m.list.View()
+		if m.deleteMode {
+			baseView += "\n\nPress enter to confirm deletion"
+		}
 		if m.showHostDetails && m.selectedHost != nil {
 			status := m.selectedHost.Status
 			if m.selectedHost.UpForDeletion {
@@ -518,16 +552,13 @@ func (m model) View() string {
 				m.selectedHost.CreatedAt.Format("2006-01-02 15:04:05"),
 				m.selectedHost.UpdatedAt.Format("2006-01-02 15:04:05")))
 		} else {
-			view = docStyle.Render(m.list.View())
+			view = docStyle.Render(baseView)
 		}
 	}
 
-	// Add user info at the bottom
+	// Add user info at the bottom for all views when logged in
 	if m.isLoggedIn {
-		if view == "" {
-			view = docStyle.Render(m.list.View())
-		}
-		return fmt.Sprintf("%s\n   Logged in as %s (%s)", view, m.loggedInUser, m.loggedInUserRole)
+		view += fmt.Sprintf("\n\n   Logged in as %s (%s)", m.loggedInUser, m.loggedInUserRole)
 	}
 
 	return view
@@ -585,6 +616,14 @@ func (m model) createInventory(name string) tea.Cmd {
 
 func (m model) handleSubMenu(title string) (tea.Model, tea.Cmd) {
 	switch title {
+	case "Inventories", "Hosts", "Users":
+		// Main menu items
+		m.parentScreen = "main"
+		m.currentScreen = strings.ToLower(title)
+		m.list.SetItems(m.menus[m.currentScreen])
+		m.list.Title = title + " Management"
+		return m, nil
+
 	case "List Inventories":
 		m.loading = true
 		m.deleteMode = false
@@ -597,31 +636,35 @@ func (m model) handleSubMenu(title string) (tea.Model, tea.Cmd) {
 		m.deleteMode = true
 		m.list.Title = "Inventories"
 		return m, m.fetchInventories
+
 	case "List Hosts":
 		m.loading = true
+		m.deleteMode = false
 		return m, m.fetchHosts
 	case "Delete Host":
-		if i, ok := m.list.SelectedItem().(item); ok {
-			m.loading = true
-			return m, m.deleteHost(i.title)
-		}
+		m.loading = true
+		m.deleteMode = true
+		m.list.Title = "Hosts"
+		return m, m.fetchHosts
+
 	case "List Users":
 		m.loading = true
+		m.deleteMode = false
 		return m, m.fetchUsers
 	case "Create User":
 		m.currentScreen = "create-user"
 		return m, nil
 	case "Delete User":
-		if i, ok := m.list.SelectedItem().(item); ok {
-			m.loading = true
-			return m, m.deleteUser(i.title)
-		}
+		m.loading = true
+		m.deleteMode = true
+		m.list.Title = "Users"
+		return m, m.fetchUsers
 	}
 	return m, nil
 }
 
 func (m model) fetchHosts() tea.Msg {
-	resp, err := SendGenericRequest("GET", "/api/v1/hostsList", nil)
+	resp, err := SendGenericRequest("GET", "/api/v1/hosts", nil)
 	if err != nil {
 		return errorMsg(err)
 	}

@@ -490,6 +490,53 @@ const docTemplate = `{
             }
         },
         "/admin/users/{username}": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Get specific user information (admin only)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Get user by username",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Username",
+                        "name": "username",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/common.UserResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/common.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/common.ErrorResponse"
+                        }
+                    }
+                }
+            },
             "put": {
                 "security": [
                     {
@@ -916,7 +963,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/hostsList": {
+        "/hosts": {
             "get": {
                 "security": [
                     {
@@ -973,16 +1020,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/common.Host"
-                            }
+                            "$ref": "#/definitions/common.Host"
                         }
                     }
                 }
             }
         },
-        "/hostsList/{name}": {
+        "/hosts/{name}": {
             "get": {
                 "security": [
                     {
@@ -1057,7 +1101,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/hostsList/{name}/disable/{service}": {
+        "/hosts/{name}/disable/{service}": {
             "post": {
                 "security": [
                     {
@@ -1104,7 +1148,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/hostsList/{name}/enable/{service}": {
+        "/hosts/{name}/enable/{service}": {
             "post": {
                 "security": [
                     {
@@ -1151,7 +1195,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/hostsList/{name}/updateTo/{version}": {
+        "/hosts/{name}/updateTo/{version}": {
             "post": {
                 "security": [
                     {
@@ -1198,7 +1242,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/hostsList/{name}/{service}": {
+        "/hosts/{name}/{service}": {
             "get": {
                 "security": [
                     {
@@ -1604,6 +1648,10 @@ const docTemplate = `{
                 "groups": {
                     "type": "string",
                     "example": "developers"
+                },
+                "inventory": {
+                    "type": "string",
+                    "example": "production"
                 },
                 "password": {
                     "type": "string",

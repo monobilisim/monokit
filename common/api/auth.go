@@ -421,8 +421,8 @@ func AuthMiddleware(db *gorm.DB) gin.HandlerFunc {
 			// For non-admin users, check inventory and group access
 			hostName := c.Param("name")
 
-			// For GET /hostsList and GET /inventory, filter the response
-			if c.FullPath() == "/api/v1/hostsList" {
+			// For GET hosts and GET /inventory, filter the response
+			if c.FullPath() == "/api/v1hosts" {
 				var filteredHosts []Host
 				db.Find(&hostsList)
 				userGroups := strings.Split(session.User.Groups, ",")

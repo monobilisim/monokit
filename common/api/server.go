@@ -81,8 +81,8 @@ var hostsList []Host
 // @Accept json
 // @Produce json
 // @Param host body Host true "Host information"
-// @Success 200 {array} Host
-// @Router /hostsList [post]
+// @Success 200 {object} Host
+// @Router /hosts [post]
 func registerHost(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var host Host
@@ -132,7 +132,7 @@ func registerHost(db *gorm.DB) gin.HandlerFunc {
 // @Accept json
 // @Produce json
 // @Success 200 {array} Host
-// @Router /hostsList [get]
+// @Router /hosts [get]
 func getAllHosts(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Sync all hosts' groups before returning
@@ -192,7 +192,7 @@ func getAllHosts(db *gorm.DB) gin.HandlerFunc {
 // @Produce json
 // @Param name path string true "Host name"
 // @Success 200 {object} Host
-// @Router /hostsList/{name} [get]
+// @Router /hosts/{name} [get]
 func getHostByName() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		name := c.Param("name")
@@ -218,7 +218,7 @@ func getHostByName() gin.HandlerFunc {
 // @Produce json
 // @Param name path string true "Host name"
 // @Success 200 {array} Host
-// @Router /hostsList/{name} [delete]
+// @Router /hosts/{name} [delete]
 func deleteHost(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		name := c.Param("name")
@@ -242,7 +242,7 @@ func deleteHost(db *gorm.DB) gin.HandlerFunc {
 // @Param name path string true "Host name"
 // @Param version path string true "Version to update to"
 // @Success 200 {object} map[string]string
-// @Router /hostsList/{name}/updateTo/{version} [post]
+// @Router /hosts/{name}/updateTo/{version} [post]
 func updateHostVersion(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		name := c.Param("name")
@@ -275,7 +275,7 @@ func updateHostVersion(db *gorm.DB) gin.HandlerFunc {
 // @Param name path string true "Host name"
 // @Param service path string true "Service name"
 // @Success 200 {object} map[string]string
-// @Router /hostsList/{name}/enable/{service} [post]
+// @Router /hosts/{name}/enable/{service} [post]
 func enableComponent(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		name := c.Param("name")
@@ -334,7 +334,7 @@ func enableComponent(db *gorm.DB) gin.HandlerFunc {
 // @Param name path string true "Host name"
 // @Param service path string true "Service name"
 // @Success 200 {object} map[string]string
-// @Router /hostsList/{name}/disable/{service} [post]
+// @Router /hosts/{name}/disable/{service} [post]
 func disableComponent(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		name := c.Param("name")
@@ -385,7 +385,7 @@ func disableComponent(db *gorm.DB) gin.HandlerFunc {
 // @Param name path string true "Host name"
 // @Param service path string true "Service name"
 // @Success 200 {object} map[string]string
-// @Router /hostsList/{name}/{service} [get]
+// @Router /hosts/{name}/{service} [get]
 func getComponentStatus() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		name := c.Param("name")
@@ -439,11 +439,19 @@ func getAllInventories(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		response := make([]InventoryResponse, 0)
-		hasDefault := false
 
+		// First add default inventory
+		var defaultCount int64
+		db.Model(&Host{}).Where("inventory = ? OR inventory = ''", "default").Count(&defaultCount)
+		response = append(response, InventoryResponse{
+			Name:  "default",
+			Hosts: int(defaultCount),
+		})
+
+		// Then add other inventories
 		for _, inv := range inventories {
 			if inv.Name == "default" {
-				hasDefault = true
+				continue // Skip default as we already added it
 			}
 			var count int64
 			if err := db.Model(&Host{}).Where("inventory = ?", inv.Name).Count(&count).Error; err != nil {
@@ -454,14 +462,6 @@ func getAllInventories(db *gorm.DB) gin.HandlerFunc {
 			response = append(response, InventoryResponse{
 				Name:  inv.Name,
 				Hosts: int(count),
-			})
-		}
-
-		// Add default inventory if not present
-		if !hasDefault {
-			response = append(response, InventoryResponse{
-				Name:  "default",
-				Hosts: 0,
 			})
 		}
 
@@ -622,18 +622,18 @@ func ServerMain(cmd *cobra.Command, args []string) {
 	SetupAuthRoutes(r, db)
 
 	// Use the handler functions
-	r.POST("/api/v"+apiVersion+"/hostsList", registerHost(db))
+	r.POST("/api/v"+apiVersion+"/hosts", registerHost(db))
 
 	api := r.Group("/api/v" + apiVersion)
 	api.Use(AuthMiddleware(db))
 	{
-		api.GET("/hostsList", getAllHosts(db))
-		api.GET("/hostsList/:name", getHostByName())
-		api.DELETE("/hostsList/:name", deleteHost(db))
-		api.POST("/hostsList/:name/updateTo/:version", updateHostVersion(db))
-		api.POST("/hostsList/:name/enable/:service", enableComponent(db))
-		api.POST("/hostsList/:name/disable/:service", disableComponent(db))
-		api.GET("/hostsList/:name/:service", getComponentStatus())
+		api.GET("/hosts", getAllHosts(db))
+		api.GET("/hosts/:name", getHostByName())
+		api.DELETE("/hosts/:name", deleteHost(db))
+		api.POST("/hosts/:name/updateTo/:version", updateHostVersion(db))
+		api.POST("/hosts/:name/enable/:service", enableComponent(db))
+		api.POST("/hosts/:name/disable/:service", disableComponent(db))
+		api.GET("/hosts/:name/:service", getComponentStatus())
 		api.GET("/inventory", getAllInventories(db))
 		api.POST("/inventory", createInventory(db))
 		api.DELETE("/inventory/:name", deleteInventory(db))

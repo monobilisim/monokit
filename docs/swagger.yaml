@@ -141,6 +141,9 @@ definitions:
       groups:
         example: developers
         type: string
+      inventory:
+        example: production
+        type: string
       password:
         example: secretpassword123
         type: string
@@ -593,6 +596,36 @@ paths:
       summary: Delete user
       tags:
       - admin
+    get:
+      consumes:
+      - application/json
+      description: Get specific user information (admin only)
+      parameters:
+      - description: Username
+        in: path
+        name: username
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/common.UserResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Get user by username
+      tags:
+      - admin
     put:
       consumes:
       - application/json
@@ -832,7 +865,7 @@ paths:
       summary: Register user
       tags:
       - auth
-  /hostsList:
+  /hosts:
     get:
       consumes:
       - application/json
@@ -868,13 +901,11 @@ paths:
         "200":
           description: OK
           schema:
-            items:
-              $ref: '#/definitions/common.Host'
-            type: array
+            $ref: '#/definitions/common.Host'
       summary: Register host
       tags:
       - hosts
-  /hostsList/{name}:
+  /hosts/{name}:
     delete:
       consumes:
       - application/json
@@ -921,7 +952,7 @@ paths:
       summary: Get host by name
       tags:
       - hosts
-  /hostsList/{name}/{service}:
+  /hosts/{name}/{service}:
     get:
       consumes:
       - application/json
@@ -951,7 +982,7 @@ paths:
       summary: Get component status
       tags:
       - hosts
-  /hostsList/{name}/disable/{service}:
+  /hosts/{name}/disable/{service}:
     post:
       consumes:
       - application/json
@@ -981,7 +1012,7 @@ paths:
       summary: Disable component
       tags:
       - hosts
-  /hostsList/{name}/enable/{service}:
+  /hosts/{name}/enable/{service}:
     post:
       consumes:
       - application/json
@@ -1011,7 +1042,7 @@ paths:
       summary: Enable component
       tags:
       - hosts
-  /hostsList/{name}/updateTo/{version}:
+  /hosts/{name}/updateTo/{version}:
     post:
       consumes:
       - application/json
