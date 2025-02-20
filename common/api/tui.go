@@ -88,11 +88,46 @@ func initialModel() model {
 	}
 	loginForm[0].Focus()
 
+	// Initialize menus
+	menus := make(map[string][]list.Item)
+
+	// Main menu
+	menus["main"] = []list.Item{
+		item{title: "Inventories", desc: "Manage inventories"},
+		item{title: "Hosts", desc: "Manage hosts"},
+		item{title: "Users", desc: "Manage users"},
+	}
+
+	// Inventory menu
+	menus["inventories"] = []list.Item{
+		item{title: "List Inventories", desc: "Show all inventories"},
+		item{title: "Create Inventory", desc: "Create a new inventory"},
+		item{title: "Delete Inventory", desc: "Delete an inventory"},
+	}
+
+	// Hosts menu
+	menus["hosts"] = []list.Item{
+		item{title: "List Hosts", desc: "Show all hosts"},
+		item{title: "Delete Host", desc: "Delete a host"},
+	}
+
+	// Users menu
+	menus["users"] = []list.Item{
+		item{title: "List Users", desc: "Show all users"},
+		item{title: "Create User", desc: "Create a new user"},
+		item{title: "Delete User", desc: "Delete a user"},
+	}
+
+	// Set initial list items to main menu
+	list := list.New(menus["main"], list.NewDefaultDelegate(), w, h)
+	list.Title = "Monokit Client"
+
 	return model{
 		spinner:       sp,
 		textInput:     ti,
 		currentScreen: "main",
-		list:          list.New(nil, list.NewDefaultDelegate(), w, h), // Set dimensions
+		list:          list,
+		menus:         menus, // Add menus to model
 		userForm:      userForm,
 		formFields:    fields,
 		activeInput:   0,
@@ -157,7 +192,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					case "Inventories":
 						m.parentScreen = "main"
 						m.currentScreen = "inventory"
-						m.list.SetItems(m.menus["inventory"])
+						m.list.SetItems(m.menus["inventories"])
 						m.list.Title = "Inventory Management"
 					case "Hosts":
 						m.parentScreen = "main"
@@ -203,7 +238,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						}
 					}
 					return m, nil
-				case "inventory":
+				case "inventories":
 					if i.title == "Delete Inventory" {
 						m.loading = true
 						m.deleteMode = true
@@ -393,7 +428,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.deleteMode = false
 		// After successful deletion, refresh the list
 		switch m.currentScreen {
-		case "inventory":
+		case "inventories":
 			return m, m.fetchInventories
 		case "hosts":
 			return m, m.fetchHosts
@@ -419,7 +454,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	var cmd tea.Cmd
 	switch m.currentScreen {
-	case "main", "inventory", "hosts", "users":
+	case "main", "inventories", "hosts", "users":
 		m.list, cmd = m.list.Update(msg)
 		// Update selected host when list selection changes
 		if m.currentScreen == "hosts" {
@@ -561,7 +596,7 @@ func (m model) handleSubMenu(title string) (tea.Model, tea.Cmd) {
 		m.currentScreen = strings.ToLower(title)
 		m.list.SetItems(m.menus[m.currentScreen])
 		m.list.Title = title + " Management"
-		return m, nil
+		return m, nil // Just show the menu options first
 
 	case "List Inventories":
 		m.loading = true
@@ -817,10 +852,10 @@ func StartTUI(cmd *cobra.Command, args []string) {
 	m.list.SetItems(mainMenuItems)
 	m.list.Title = "Monokit Client"
 	m.menus = map[string][]list.Item{
-		"main":      mainMenuItems,
-		"inventory": inventoryItems,
-		"hosts":     hostItems,
-		"users":     userItems,
+		"main":        mainMenuItems,
+		"inventories": inventoryItems,
+		"hosts":       hostItems,
+		"users":       userItems,
 	}
 
 	p := tea.NewProgram(m, tea.WithAltScreen())
