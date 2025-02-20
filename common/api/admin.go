@@ -1,6 +1,7 @@
 package common
 
 import (
+	"fmt"
 	"net/http"
 	"slices"
 	"strings"
@@ -386,8 +387,8 @@ func createUser(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Create new user
-		err := CreateUser(req.Username, req.Password, req.Email, req.Role, req.Groups, db)
+		// Create new user with inventory
+		err := CreateUser(req.Username, req.Password, req.Email, req.Role, req.Groups, req.Inventory, db)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
 			return
@@ -540,10 +541,11 @@ func getAllUsers(db *gorm.DB) gin.HandlerFunc {
 		response := make([]UserResponse, len(users))
 		for i, user := range users {
 			response[i] = UserResponse{
-				Username: user.Username,
-				Email:    user.Email,
-				Role:     user.Role,
-				Groups:   user.Groups,
+				Username:  user.Username,
+				Email:     user.Email,
+				Role:      user.Role,
+				Groups:    user.Groups,
+				Inventory: user.Inventory,
 			}
 		}
 
@@ -592,6 +594,92 @@ func scheduleHostDeletion(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
+// @Summary Move host to inventory
+// @Description Move a host to a different inventory (admin only)
+// @Tags admin
+// @Security ApiKeyAuth
+// @Accept json
+// @Produce json
+// @Param hostname path string true "Host name"
+// @Param inventory path string true "Target inventory name"
+// @Success 200 {object} map[string]string
+// @Failure 403 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Router /admin/hosts/{hostname}/move/{inventory} [post]
+func moveHostToInventory(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Check for admin access
+		user, exists := c.Get("user")
+		if !exists || user.(User).Role != "admin" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+			return
+		}
+
+		hostname := c.Param("hostname")
+		targetInventory := c.Param("inventory")
+
+		// Check if target inventory exists
+		var inventory Inventory
+		if err := db.Where("name = ?", targetInventory).First(&inventory).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Target inventory not found"})
+			return
+		}
+
+		// Find and update the host
+		var host Host
+		if err := db.Where("name = ?", hostname).First(&host).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Host not found"})
+			return
+		}
+
+		host.Inventory = targetInventory
+		if err := db.Save(&host).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to move host"})
+			return
+		}
+
+		// Update the hosts list
+		db.Find(&hostsList)
+
+		c.JSON(http.StatusOK, gin.H{"message": fmt.Sprintf("Host %s moved to inventory %s", hostname, targetInventory)})
+	}
+}
+
+// @Summary Get user by username
+// @Description Get specific user information (admin only)
+// @Tags admin
+// @Security ApiKeyAuth
+// @Accept json
+// @Produce json
+// @Param username path string true "Username"
+// @Success 200 {object} UserResponse
+// @Failure 403 {object} ErrorResponse
+// @Failure 404 {object} ErrorResponse
+// @Router /admin/users/{username} [get]
+func getUser(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if user, exists := c.Get("user"); !exists || user.(User).Role != "admin" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+			return
+		}
+
+		username := c.Param("username")
+		var user User
+		if err := db.Where("username = ?", username).First(&user).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "User not found"})
+			return
+		}
+
+		c.JSON(http.StatusOK, UserResponse{
+			Username:  user.Username,
+			Email:     user.Email,
+			Role:      user.Role,
+			Groups:    user.Groups,
+			Inventory: user.Inventory,
+		})
+	}
+}
+
 func SetupAdminRoutes(r *gin.Engine, db *gorm.DB) {
 	admin := r.Group("/api/v1/admin")
 	admin.Use(AuthMiddleware(db))
@@ -607,5 +695,7 @@ func SetupAdminRoutes(r *gin.Engine, db *gorm.DB) {
 		admin.PUT("/users/:username", updateUser(db))
 		admin.GET("/users", getAllUsers(db))
 		admin.DELETE("/hosts/:hostname", scheduleHostDeletion(db))
+		admin.POST("/hosts/:hostname/move/:inventory", moveHostToInventory(db))
+		admin.GET("/users/:username", getUser(db))
 	}
 }

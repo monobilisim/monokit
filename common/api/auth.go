@@ -42,12 +42,21 @@ func HashPassword(password string) (string, error) {
 	return string(bytes), err
 }
 
-func CreateUser(username string, password string, email string, role string, groups string, db *gorm.DB) error {
+func CreateUser(username, password, email, role, groups, inventory string, db *gorm.DB) error {
 	hashedPassword, err := HashPassword(password)
 	if err != nil {
 		return err
 	}
-	user := User{Username: username, HashedPassword: hashedPassword, Email: email, Role: role, Groups: groups}
+
+	user := User{
+		Username:       username,
+		HashedPassword: hashedPassword,
+		Email:          email,
+		Role:           role,
+		Groups:         groups,
+		Inventory:      inventory,
+	}
+
 	return db.Create(&user).Error
 }
 
@@ -96,7 +105,7 @@ func registerUser(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// Create new user
-		err := CreateUser(req.Username, req.Password, req.Email, req.Role, req.Groups, db)
+		err := CreateUser(req.Username, req.Password, req.Email, req.Role, req.Groups, req.Inventory, db)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
 			return

@@ -220,6 +220,28 @@ definitions:
       username:
         type: string
     type: object
+  common.UserResponse:
+    description: User response model
+    properties:
+      email:
+        example: john.doe@example.com
+        type: string
+      groups:
+        example: developers,admins
+        type: string
+      id:
+        example: 1
+        type: integer
+      inventory:
+        example: production
+        type: string
+      role:
+        example: admin
+        type: string
+      username:
+        example: johndoe
+        type: string
+    type: object
   gorm.DeletedAt:
     properties:
       time:
@@ -440,7 +462,67 @@ paths:
       summary: Schedule host for deletion
       tags:
       - admin
+  /admin/hosts/{hostname}/move/{inventory}:
+    post:
+      consumes:
+      - application/json
+      description: Move a host to a different inventory (admin only)
+      parameters:
+      - description: Host name
+        in: path
+        name: hostname
+        required: true
+        type: string
+      - description: Target inventory name
+        in: path
+        name: inventory
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+        "404":
+          description: Not Found
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Move host to inventory
+      tags:
+      - admin
   /admin/users:
+    get:
+      consumes:
+      - application/json
+      description: Get list of all users (admin only)
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/common.UserResponse'
+            type: array
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Get all users
+      tags:
+      - admin
     post:
       consumes:
       - application/json
@@ -664,6 +746,26 @@ paths:
       summary: Delete own account
       tags:
       - auth
+    get:
+      consumes:
+      - application/json
+      description: Get information about the currently logged in user
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/common.UserResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Get current user info
+      tags:
+      - auth
   /auth/me/update:
     put:
       consumes:
@@ -734,7 +836,7 @@ paths:
     get:
       consumes:
       - application/json
-      description: Get list of all monitored hosts
+      description: Get list of all monitored hosts (filtered by user's inventory access)
       produces:
       - application/json
       responses:

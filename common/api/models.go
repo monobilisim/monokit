@@ -34,11 +34,12 @@ type GroupResponse struct {
 
 // @Description User response model
 type UserResponse struct {
-	ID       uint   `json:"id" example:"1"`
-	Username string `json:"username" example:"johndoe"`
-	Email    string `json:"email" example:"john.doe@example.com"`
-	Role     string `json:"role" example:"admin"`
-	Groups   string `json:"groups" example:"developers,admins"`
+	ID        uint   `json:"id" example:"1"`
+	Username  string `json:"username" example:"johndoe"`
+	Email     string `json:"email" example:"john.doe@example.com"`
+	Role      string `json:"role" example:"admin"`
+	Groups    string `json:"groups" example:"developers,admins"`
+	Inventory string `json:"inventory" example:"production"`
 }
 
 // @Description Login request
@@ -60,11 +61,12 @@ type LoginResponse struct {
 
 // @Description Register request
 type RegisterRequest struct {
-	Username string `json:"username" binding:"required" example:"johndoe"`
-	Password string `json:"password" binding:"required" example:"secretpassword123"`
-	Email    string `json:"email" binding:"required" example:"john.doe@example.com"`
-	Role     string `json:"role" binding:"required" example:"user"`
-	Groups   string `json:"groups" example:"developers"`
+	Username  string `json:"username" binding:"required" example:"johndoe"`
+	Password  string `json:"password" binding:"required" example:"secretpassword123"`
+	Email     string `json:"email" binding:"required" example:"john.doe@example.com"`
+	Role      string `json:"role" binding:"required" example:"user"`
+	Groups    string `json:"groups" example:"developers"`
+	Inventory string `json:"inventory" example:"production"`
 }
 
 // @Description Update user groups request

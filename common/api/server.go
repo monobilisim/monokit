@@ -126,7 +126,7 @@ func registerHost(db *gorm.DB) gin.HandlerFunc {
 }
 
 // @Summary Get all hosts
-// @Description Get list of all monitored hosts
+// @Description Get list of all monitored hosts (filtered by user's inventory access)
 // @Tags hosts
 // @Security ApiKeyAuth
 // @Accept json
@@ -141,31 +141,46 @@ func getAllHosts(db *gorm.DB) gin.HandlerFunc {
 			db.Save(&hostsList[i])
 		}
 
-		// Check UpdatedAt and delete offline hosts that are scheduled for deletion
-		var hostsToKeep []Host
-		for _, host := range hostsList {
-			isOffline := time.Since(host.UpdatedAt).Minutes() > 5
-			if host.UpForDeletion {
-				if isOffline {
-					// Delete the host from database
-					db.Unscoped().Delete(&host)
-					continue // Skip adding to hostsToKeep
-				}
-				host.Status = "Scheduled for deletion"
-			} else if isOffline {
-				host.Status = "Offline"
-			}
-			hostsToKeep = append(hostsToKeep, host)
-		}
-		hostsList = hostsToKeep
-
-		// If user is not admin, use filtered hosts
-		if filteredHosts, exists := c.Get("filteredHosts"); exists {
-			c.JSON(http.StatusOK, filteredHosts)
+		// Get the user from context
+		user, exists := c.Get("user")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
 			return
 		}
 
-		c.JSON(http.StatusOK, hostsList)
+		currentUser := user.(User)
+		var filteredHosts []Host
+
+		// Admin can see all hosts
+		if currentUser.Role == "admin" {
+			filteredHosts = hostsList
+		} else {
+			// Regular users can only see hosts in their inventory
+			for _, host := range hostsList {
+				if host.Inventory == currentUser.Inventory {
+					filteredHosts = append(filteredHosts, host)
+				}
+			}
+		}
+
+		// Check UpdatedAt and update status
+		for i := range filteredHosts {
+			isOffline := time.Since(filteredHosts[i].UpdatedAt).Minutes() > 5
+			if filteredHosts[i].UpForDeletion {
+				if isOffline {
+					// Only admins can actually delete hosts
+					if currentUser.Role == "admin" {
+						db.Unscoped().Delete(&filteredHosts[i])
+						continue
+					}
+				}
+				filteredHosts[i].Status = "Scheduled for deletion"
+			} else if isOffline {
+				filteredHosts[i].Status = "Offline"
+			}
+		}
+
+		c.JSON(http.StatusOK, filteredHosts)
 	}
 }
 
