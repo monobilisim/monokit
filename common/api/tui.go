@@ -55,14 +55,14 @@ func initialModel() model {
 	sp.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
 
 	ti := textinput.New()
-	ti.Placeholder = "Enter inventory name..."
+	ti.Placeholder = "comma-separated list of inventories"
 	ti.Focus()
 
 	// Get terminal dimensions
 	w, h := 80, 20 // default values
 
 	// Initialize user form inputs
-	fields := []string{"username", "password", "email", "role", "groups", "inventory"}
+	fields := []string{"username", "password", "email", "role", "groups", "inventories"}
 	userForm := make([]textinput.Model, len(fields))
 	for i := range fields {
 		ti := textinput.New()
@@ -96,6 +96,7 @@ func initialModel() model {
 		item{title: "Inventories", desc: "Manage inventories"},
 		item{title: "Hosts", desc: "Manage hosts"},
 		item{title: "Users", desc: "Manage users"},
+		item{title: "Change Password", desc: "Update your password"},
 	}
 
 	// Inventory menu
@@ -180,10 +181,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						}
 
 						// After successful creation, return to inventory list
-						m.currentScreen = "inventory"
+						m.currentScreen = "inventories"
 						return m.fetchInventories()
 					}
 				}
+			}
+			if m.currentScreen == "change-password" {
+				m.loading = true
+				return m, m.changePassword()
 			}
 			if i, ok := m.list.SelectedItem().(item); ok {
 				switch m.currentScreen {
@@ -191,7 +196,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					switch i.title {
 					case "Inventories":
 						m.parentScreen = "main"
-						m.currentScreen = "inventory"
+						m.currentScreen = "inventories"
 						m.list.SetItems(m.menus["inventories"])
 						m.list.Title = "Inventory Management"
 					case "Hosts":
@@ -263,12 +268,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.loading = true
 						m.deleteMode = true
 						m.list.Title = "Users"
-						return m, m.fetchUsers
+						return m, m.fetchUsers()
 					}
 					if i.title == "List Users" {
 						m.loading = true
 						m.deleteMode = false
-						return m, m.fetchUsers
+						return m, m.fetchUsers()
 					}
 					// Only attempt deletion if we're in delete mode and not clicking a menu item
 					if m.deleteMode && i.title != "List Users" &&
@@ -426,6 +431,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.err = nil
 		// Reset deleteMode after successful deletion
 		m.deleteMode = false
+		// Return to main menu after password change
+		if m.currentScreen == "change-password" {
+			m.currentScreen = "main"
+			m.list.SetItems(m.menus["main"])
+			m.list.Title = "Monokit Client"
+			return m, nil
+		}
 		// After successful deletion, refresh the list
 		switch m.currentScreen {
 		case "inventories":
@@ -433,8 +445,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "hosts":
 			return m, m.fetchHosts
 		case "users":
-			return m, m.fetchUsers
+			return m, m.fetchUsers()
 		}
+		return m, nil
 	case loginSuccessMsg:
 		m.loading = false
 		m.isLoggedIn = true
@@ -475,6 +488,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.userForm[i], cmd = m.userForm[i].Update(msg)
 		}
 		return m, cmd
+	case "change-password":
+		m.textInput, cmd = m.textInput.Update(msg)
 	}
 	return m, cmd
 }
@@ -500,6 +515,11 @@ func (m model) View() string {
 	} else if m.currentScreen == "create" {
 		view = fmt.Sprintf(
 			"\n\n   Create New Inventory\n\n   %s\n\n   (press enter to submit, esc to go back)\n",
+			m.textInput.View(),
+		)
+	} else if m.currentScreen == "change-password" {
+		view = fmt.Sprintf(
+			"\n\n   Change Password\n\n   %s\n\n   (press enter to submit, esc to go back)\n",
 			m.textInput.View(),
 		)
 	} else if m.currentScreen == "create-user" {
@@ -572,6 +592,7 @@ type deleteMsg struct {
 	message string
 	err     error
 }
+type successMsg string
 
 func (m model) fetchInventories() tea.Msg {
 	resp, err := SendGenericRequest("GET", "/api/v1/inventory", nil)
@@ -596,15 +617,19 @@ func (m model) handleSubMenu(title string) (tea.Model, tea.Cmd) {
 		m.currentScreen = strings.ToLower(title)
 		m.list.SetItems(m.menus[m.currentScreen])
 		m.list.Title = title + " Management"
-		return m, nil // Just show the menu options first
+		return m, nil
+
+	case "Create Inventory":
+		m.currentScreen = "create"
+		m.textInput.SetValue("")
+		m.textInput.Focus()
+		return m, nil
 
 	case "List Inventories":
 		m.loading = true
 		m.deleteMode = false
 		return m, m.fetchInventories
-	case "Create Inventory":
-		m.currentScreen = "create"
-		return m, nil
+
 	case "Delete Inventory":
 		m.loading = true
 		m.deleteMode = true
@@ -624,7 +649,7 @@ func (m model) handleSubMenu(title string) (tea.Model, tea.Cmd) {
 	case "List Users":
 		m.loading = true
 		m.deleteMode = false
-		return m, m.fetchUsers
+		return m, m.fetchUsers()
 	case "Create User":
 		m.currentScreen = "create-user"
 		return m, nil
@@ -632,7 +657,13 @@ func (m model) handleSubMenu(title string) (tea.Model, tea.Cmd) {
 		m.loading = true
 		m.deleteMode = true
 		m.list.Title = "Users"
-		return m, m.fetchUsers
+		return m, m.fetchUsers()
+	case "Change Password":
+		m.currentScreen = "change-password"
+		m.textInput.SetValue("")
+		m.textInput.Focus()
+		m.textInput.Placeholder = "Enter new password"
+		return m, nil
 	}
 	return m, nil
 }
@@ -644,27 +675,51 @@ func (m model) fetchHosts() tea.Msg {
 	}
 	defer resp.Body.Close()
 
-	var hosts []Host
-	if err := json.NewDecoder(resp.Body).Decode(&hosts); err != nil {
+	var apiHosts []APIHost
+	if err := json.NewDecoder(resp.Body).Decode(&apiHosts); err != nil {
 		return errorMsg(err)
+	}
+
+	// Convert API responses to Host objects
+	hosts := make([]Host, len(apiHosts))
+	for i, ah := range apiHosts {
+		hosts[i] = Host{
+			Name:                ah.Name,
+			CpuCores:            ah.CpuCores,
+			Ram:                 ah.Ram,
+			MonokitVersion:      ah.MonokitVersion,
+			Os:                  ah.Os,
+			DisabledComponents:  ah.DisabledComponents,
+			InstalledComponents: ah.InstalledComponents,
+			IpAddress:           ah.IpAddress,
+			Status:              ah.Status,
+			UpdatedAt:           ah.UpdatedAt,
+			CreatedAt:           ah.CreatedAt,
+			WantsUpdateTo:       ah.WantsUpdateTo,
+			Groups:              ah.Groups,
+			UpForDeletion:       ah.UpForDeletion,
+			Inventory:           ah.Inventory,
+		}
 	}
 
 	return hostsMsg(hosts)
 }
 
-func (m model) fetchUsers() tea.Msg {
-	resp, err := SendGenericRequest("GET", "/api/v1/admin/users", nil)
-	if err != nil {
-		return errorMsg(err)
-	}
-	defer resp.Body.Close()
+func (m model) fetchUsers() tea.Cmd {
+	return func() tea.Msg {
+		resp, err := SendGenericRequest("GET", "/api/v1/admin/users", nil)
+		if err != nil {
+			return errorMsg(err)
+		}
+		defer resp.Body.Close()
 
-	var users []UserResponse
-	if err := json.NewDecoder(resp.Body).Decode(&users); err != nil {
-		return errorMsg(err)
-	}
+		var users []UserResponse
+		if err := json.NewDecoder(resp.Body).Decode(&users); err != nil {
+			return errorMsg(err)
+		}
 
-	return usersMsg(users)
+		return usersMsg(users)
+	}
 }
 
 func (m model) deleteInventory(name string) tea.Cmd {
@@ -724,20 +779,20 @@ func (m model) deleteUser(username string) tea.Cmd {
 			return deleteMsg{err: fmt.Errorf("%s", errorResp["error"])}
 		}
 
-		// After successful deletion, refresh the users list
-		return m.fetchUsers()
+		// Return a command instead of directly calling fetchUsers
+		return m.fetchUsers()() // Add () to execute the command
 	}
 }
 
 func (m model) createUser() tea.Cmd {
 	return func() tea.Msg {
 		data := map[string]string{
-			"username":  m.userForm[0].Value(),
-			"password":  m.userForm[1].Value(),
-			"email":     m.userForm[2].Value(),
-			"role":      m.userForm[3].Value(),
-			"groups":    m.userForm[4].Value(),
-			"inventory": m.userForm[5].Value(),
+			"username":    m.userForm[0].Value(),
+			"password":    m.userForm[1].Value(),
+			"email":       m.userForm[2].Value(),
+			"role":        m.userForm[3].Value(),
+			"groups":      m.userForm[4].Value(),
+			"inventories": m.userForm[5].Value(),
 		}
 
 		jsonData, err := json.Marshal(data)
@@ -795,6 +850,39 @@ type loginSuccessMsg struct {
 	role     string
 }
 
+func (m model) changePassword() tea.Cmd {
+	return func() tea.Msg {
+		if m.textInput.Value() == "" {
+			return errorMsg(fmt.Errorf("password cannot be empty"))
+		}
+
+		data := map[string]string{
+			"password": m.textInput.Value(),
+		}
+
+		jsonData, err := json.Marshal(data)
+		if err != nil {
+			return errorMsg(err)
+		}
+
+		resp, err := SendGenericRequest("PUT", "/api/v1/auth/me", jsonData)
+		if err != nil {
+			return errorMsg(err)
+		}
+		defer resp.Body.Close()
+
+		if resp.StatusCode != http.StatusOK {
+			var errorResp map[string]string
+			json.NewDecoder(resp.Body).Decode(&errorResp)
+			return errorMsg(fmt.Errorf("failed to update password: %s", errorResp["error"]))
+		}
+
+		// Return to main menu with success message
+		m.currentScreen = "main"
+		return deleteMsg{message: "Password updated successfully", err: nil}
+	}
+}
+
 func StartTUI(cmd *cobra.Command, args []string) {
 	ClientInit()
 
@@ -824,6 +912,7 @@ func StartTUI(cmd *cobra.Command, args []string) {
 		item{title: "Inventories", desc: "Manage inventories"},
 		item{title: "Hosts", desc: "Manage hosts"},
 		item{title: "Users", desc: "Manage users"},
+		item{title: "Change Password", desc: "Update your password"},
 	}
 
 	inventoryItems := []list.Item{

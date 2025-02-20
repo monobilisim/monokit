@@ -59,11 +59,11 @@ type Host struct {
 	InstalledComponents string    `json:"installedComponents"`
 	IpAddress           string    `json:"ipAddress"`
 	Status              string    `json:"status"`
-	UpdatedAt           time.Time `json:"UpdatedAt"`
-	CreatedAt           time.Time `json:"CreatedAt"`
+	UpdatedAt           time.Time `json:"updatedAt"`
+	CreatedAt           time.Time `json:"createdAt"`
 	WantsUpdateTo       string    `json:"wantsUpdateTo"`
 	Groups              string    `json:"groups"`
-	UpForDeletion       bool      `json:"upForDeletion" gorm:"default:false"`
+	UpForDeletion       bool      `json:"upForDeletion"`
 	Inventory           string    `json:"inventory"`
 }
 
@@ -155,10 +155,14 @@ func getAllHosts(db *gorm.DB) gin.HandlerFunc {
 		if currentUser.Role == "admin" {
 			filteredHosts = hostsList
 		} else {
-			// Regular users can only see hosts in their inventory
+			// Regular users can only see hosts in their inventories
 			for _, host := range hostsList {
-				if host.Inventory == currentUser.Inventory {
-					filteredHosts = append(filteredHosts, host)
+				userInventories := strings.Split(currentUser.Inventories, ",")
+				for _, inv := range userInventories {
+					if host.Inventory == strings.TrimSpace(inv) {
+						filteredHosts = append(filteredHosts, host)
+						break
+					}
 				}
 			}
 		}

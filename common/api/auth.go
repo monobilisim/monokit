@@ -19,7 +19,7 @@ type User struct {
 	Email          string `json:"email"`
 	Role           string `json:"role"`
 	Groups         string `json:"groups"`
-	Inventory      string `json:"inventory"`
+	Inventories    string `json:"inventories"`
 }
 
 type Session struct {
@@ -54,7 +54,7 @@ func CreateUser(username, password, email, role, groups, inventory string, db *g
 		Email:          email,
 		Role:           role,
 		Groups:         groups,
-		Inventory:      inventory,
+		Inventories:    inventory,
 	}
 
 	return db.Create(&user).Error
@@ -431,14 +431,23 @@ func AuthMiddleware(db *gorm.DB) gin.HandlerFunc {
 			hostName := c.Param("name")
 
 			// For GET hosts and GET /inventory, filter the response
-			if c.FullPath() == "/api/v1hosts" {
+			if c.FullPath() == "/api/v1/hosts" {
 				var filteredHosts []Host
 				db.Find(&hostsList)
 				userGroups := strings.Split(session.User.Groups, ",")
+				userInventories := strings.Split(session.User.Inventories, ",")
 
 				for _, host := range hostsList {
-					// First check inventory access
-					if session.User.Inventory != "" && host.Inventory != session.User.Inventory {
+					// Check if user has access to host's inventory
+					hasInventoryAccess := false
+					for _, inv := range userInventories {
+						inv = strings.TrimSpace(inv)
+						if inv == host.Inventory {
+							hasInventoryAccess = true
+							break
+						}
+					}
+					if !hasInventoryAccess {
 						continue
 					}
 
@@ -459,14 +468,14 @@ func AuthMiddleware(db *gorm.DB) gin.HandlerFunc {
 				c.Set("filteredHosts", filteredHosts)
 			} else if c.FullPath() == "/api/v1/inventory" {
 				// If user has specific inventory, only return that one
-				if session.User.Inventory != "" {
+				if session.User.Inventories != "" {
 					var results []struct {
 						Inventory string
 						Count     int
 					}
 					if err := db.Model(&Host{}).
 						Select("inventory, count(*) as count").
-						Where("inventory = ?", session.User.Inventory).
+						Where("inventory = ?", session.User.Inventories).
 						Group("inventory").
 						Find(&results).Error; err != nil {
 						c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch inventories"})
@@ -488,7 +497,7 @@ func AuthMiddleware(db *gorm.DB) gin.HandlerFunc {
 				var host Host
 				if result := db.Where("name = ?", hostName).First(&host); result.Error == nil {
 					// Check inventory access first
-					if session.User.Inventory != "" && host.Inventory != session.User.Inventory {
+					if session.User.Inventories != "" && host.Inventory != session.User.Inventories {
 						c.JSON(http.StatusForbidden, gin.H{"error": "No access to this host"})
 						c.Abort()
 						return

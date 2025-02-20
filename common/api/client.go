@@ -148,7 +148,7 @@ func GetOS() string {
 }
 
 func GetReq(apiVersion string) (map[string]interface{}, error) {
-	req, err := http.NewRequest("GET", ClientConf.URL+"/api/v"+apiVersion+"hosts/"+common.Config.Identifier, nil)
+	req, err := http.NewRequest("GET", ClientConf.URL+"/api/v"+apiVersion+"/hosts/"+common.Config.Identifier, nil)
 
 	if err != nil {
 		common.LogError(err.Error())
@@ -221,7 +221,7 @@ func SendReq(apiVersion string) {
 	hostJson, _ := json.Marshal(host)
 
 	// Send the response to the API
-	req, err := http.NewRequest("POST", ClientConf.URL+"/api/v"+apiVersion+"hosts", bytes.NewBuffer(hostJson))
+	req, err := http.NewRequest("POST", ClientConf.URL+"/api/v"+apiVersion+"/hosts", bytes.NewBuffer(hostJson))
 
 	if err != nil {
 		common.LogError(err.Error())
@@ -260,7 +260,7 @@ func GetHosts(apiVersion string, hostName string) []Host {
 	// if hostName is empty, use /api/v1hosts
 	// if hostName is not empty, use /api/v1hosts/{hostName}
 	if hostName != "" {
-		req, err := http.NewRequest("GET", ClientConf.URL+"/api/v"+apiVersion+"hosts/"+hostName, nil)
+		req, err := http.NewRequest("GET", ClientConf.URL+"/api/v"+apiVersion+"/hosts/"+hostName, nil)
 
 		if err != nil {
 			common.LogError(err.Error())
@@ -286,7 +286,7 @@ func GetHosts(apiVersion string, hostName string) []Host {
 
 		return []Host{host}
 	} else {
-		req, err := http.NewRequest("GET", ClientConf.URL+"/api/v"+apiVersion+"hosts", nil)
+		req, err := http.NewRequest("GET", ClientConf.URL+"/api/v"+apiVersion+"/hosts", nil)
 
 		if err != nil {
 			common.LogError(err.Error())
@@ -351,7 +351,7 @@ func GetHostsPretty(hosts []Host) {
 
 func SendUpdateTo(apiVersion string, hostName string, versionTo string) {
 	// POST /api/v1hosts/{hostName}/updateTo/{versionTo}
-	req, err := http.NewRequest("POST", ClientConf.URL+"/api/v"+apiVersion+"hosts/"+hostName+"/updateTo/"+versionTo, nil)
+	req, err := http.NewRequest("POST", ClientConf.URL+"/api/v"+apiVersion+"/hosts/"+hostName+"/updateTo/"+versionTo, nil)
 
 	if err != nil {
 		common.LogError(err.Error())
@@ -377,7 +377,7 @@ func SendUpdateTo(apiVersion string, hostName string, versionTo string) {
 func SendDisable(apiVersion string, hostName string, component string) {
 	// POST /api/v1hosts/{hostName}/disable/{component}
 
-	req, err := http.NewRequest("POST", ClientConf.URL+"/api/v"+apiVersion+"hosts/"+hostName+"/disable/"+component, nil)
+	req, err := http.NewRequest("POST", ClientConf.URL+"/api/v"+apiVersion+"/hosts/"+hostName+"/disable/"+component, nil)
 
 	if err != nil {
 		common.LogError(err.Error())
@@ -412,7 +412,7 @@ func SendDisable(apiVersion string, hostName string, component string) {
 
 func SendEnable(apiVersion string, hostName string, component string) {
 	// POST /api/v1hosts/{hostName}/enable/{component}
-	req, err := http.NewRequest("POST", ClientConf.URL+"/api/v"+apiVersion+"hosts/"+hostName+"/enable/"+component, nil)
+	req, err := http.NewRequest("POST", ClientConf.URL+"/api/v"+apiVersion+"/hosts/"+hostName+"/enable/"+component, nil)
 
 	if err != nil {
 		common.LogError(err.Error())

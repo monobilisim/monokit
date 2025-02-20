@@ -541,11 +541,11 @@ func getAllUsers(db *gorm.DB) gin.HandlerFunc {
 		response := make([]UserResponse, len(users))
 		for i, user := range users {
 			response[i] = UserResponse{
-				Username:  user.Username,
-				Email:     user.Email,
-				Role:      user.Role,
-				Groups:    user.Groups,
-				Inventory: user.Inventory,
+				Username:    user.Username,
+				Email:       user.Email,
+				Role:        user.Role,
+				Groups:      user.Groups,
+				Inventories: user.Inventories,
 			}
 		}
 
@@ -671,11 +671,11 @@ func getUser(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		c.JSON(http.StatusOK, UserResponse{
-			Username:  user.Username,
-			Email:     user.Email,
-			Role:      user.Role,
-			Groups:    user.Groups,
-			Inventory: user.Inventory,
+			Username:    user.Username,
+			Email:       user.Email,
+			Role:        user.Role,
+			Groups:      user.Groups,
+			Inventories: user.Inventories,
 		})
 	}
 }
