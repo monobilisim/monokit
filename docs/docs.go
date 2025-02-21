@@ -335,7 +335,101 @@ const docTemplate = `{
                 }
             }
         },
+        "/admin/hosts/{hostname}/move/{inventory}": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Move a host to a different inventory (admin only)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Move host to inventory",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Host name",
+                        "name": "hostname",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Target inventory name",
+                        "name": "inventory",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/common.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/common.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
         "/admin/users": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Get list of all users (admin only)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Get all users",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/common.UserResponse"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/common.ErrorResponse"
+                        }
+                    }
+                }
+            },
             "post": {
                 "security": [
                     {
@@ -396,6 +490,53 @@ const docTemplate = `{
             }
         },
         "/admin/users/{username}": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Get specific user information (admin only)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "admin"
+                ],
+                "summary": "Get user by username",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Username",
+                        "name": "username",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/common.UserResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/common.ErrorResponse"
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "$ref": "#/definitions/common.ErrorResponse"
+                        }
+                    }
+                }
+            },
             "put": {
                 "security": [
                     {
@@ -651,6 +792,38 @@ const docTemplate = `{
             }
         },
         "/auth/me": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Get information about the currently logged in user",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Get current user info",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/common.UserResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/common.ErrorResponse"
+                        }
+                    }
+                }
+            },
             "delete": {
                 "security": [
                     {
@@ -790,14 +963,14 @@ const docTemplate = `{
                 }
             }
         },
-        "/hostsList": {
+        "/hosts": {
             "get": {
                 "security": [
                     {
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Get list of all monitored hosts",
+                "description": "Get list of all monitored hosts (filtered by user's inventory access)",
                 "consumes": [
                     "application/json"
                 ],
@@ -847,16 +1020,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/common.Host"
-                            }
+                            "$ref": "#/definitions/common.Host"
                         }
                     }
                 }
             }
         },
-        "/hostsList/{name}": {
+        "/hosts/{name}": {
             "get": {
                 "security": [
                     {
@@ -931,7 +1101,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/hostsList/{name}/disable/{service}": {
+        "/hosts/{name}/disable/{service}": {
             "post": {
                 "security": [
                     {
@@ -978,7 +1148,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/hostsList/{name}/enable/{service}": {
+        "/hosts/{name}/enable/{service}": {
             "post": {
                 "security": [
                     {
@@ -1025,7 +1195,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/hostsList/{name}/updateTo/{version}": {
+        "/hosts/{name}/updateTo/{version}": {
             "post": {
                 "security": [
                     {
@@ -1072,7 +1242,7 @@ const docTemplate = `{
                 }
             }
         },
-        "/hostsList/{name}/{service}": {
+        "/hosts/{name}/{service}": {
             "get": {
                 "security": [
                     {
@@ -1479,6 +1649,10 @@ const docTemplate = `{
                     "type": "string",
                     "example": "developers"
                 },
+                "inventory": {
+                    "type": "string",
+                    "example": "production"
+                },
                 "password": {
                     "type": "string",
                     "example": "secretpassword123"
@@ -1582,6 +1756,36 @@ const docTemplate = `{
                 },
                 "username": {
                     "type": "string"
+                }
+            }
+        },
+        "common.UserResponse": {
+            "description": "User response model",
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string",
+                    "example": "john.doe@example.com"
+                },
+                "groups": {
+                    "type": "string",
+                    "example": "developers,admins"
+                },
+                "id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "inventory": {
+                    "type": "string",
+                    "example": "production"
+                },
+                "role": {
+                    "type": "string",
+                    "example": "admin"
+                },
+                "username": {
+                    "type": "string",
+                    "example": "johndoe"
                 }
             }
         },

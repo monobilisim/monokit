@@ -1,5 +1,9 @@
 package common
 
+import (
+	"time"
+)
+
 // @Description Error response
 type ErrorResponse struct {
 	Error string `json:"error" example:"Admin access required"`
@@ -12,17 +16,22 @@ type CreateGroupRequest struct {
 
 // @Description Host response model
 type HostResponse struct {
-	ID                 uint   `json:"id" example:"1"`
-	Name               string `json:"name" example:"webserver01"`
-	CpuCores           int    `json:"cpuCores" example:"8"`
-	Ram                string `json:"ram" example:"32GB"`
-	MonokitVersion     string `json:"monokitVersion" example:"1.0.0"`
-	Os                 string `json:"os" example:"Ubuntu 22.04 LTS"`
-	DisabledComponents string `json:"disabledComponents" example:"nginx::mysql"`
-	IpAddress          string `json:"ipAddress" example:"192.168.1.100"`
-	Status             string `json:"status" example:"Online"`
-	WantsUpdateTo      string `json:"wantsUpdateTo" example:"1.1.0"`
-	Groups             string `json:"groups" example:"developers,production"`
+	ID                  uint      `json:"id"`
+	Name                string    `json:"name"`
+	CpuCores            int       `json:"cpuCores"`
+	Ram                 string    `json:"ram"`
+	MonokitVersion      string    `json:"monokitVersion"`
+	Os                  string    `json:"os"`
+	DisabledComponents  string    `json:"disabledComponents"`
+	InstalledComponents string    `json:"installedComponents"`
+	IpAddress           string    `json:"ipAddress"`
+	Status              string    `json:"status"`
+	UpdatedAt           time.Time `json:"updatedAt"`
+	CreatedAt           time.Time `json:"createdAt"`
+	WantsUpdateTo       string    `json:"wantsUpdateTo"`
+	Groups              string    `json:"groups"`
+	UpForDeletion       bool      `json:"upForDeletion"`
+	Inventory           string    `json:"inventory"`
 }
 
 // @Description Group response model
@@ -34,11 +43,12 @@ type GroupResponse struct {
 
 // @Description User response model
 type UserResponse struct {
-	ID       uint   `json:"id" example:"1"`
-	Username string `json:"username" example:"johndoe"`
-	Email    string `json:"email" example:"john.doe@example.com"`
-	Role     string `json:"role" example:"admin"`
-	Groups   string `json:"groups" example:"developers,admins"`
+	ID          uint   `json:"id" example:"1"`
+	Username    string `json:"username" example:"johndoe"`
+	Email       string `json:"email" example:"john.doe@example.com"`
+	Role        string `json:"role" example:"admin"`
+	Groups      string `json:"groups" example:"developers,admins"`
+	Inventories string `json:"inventories" example:"production"`
 }
 
 // @Description Login request
@@ -60,11 +70,12 @@ type LoginResponse struct {
 
 // @Description Register request
 type RegisterRequest struct {
-	Username string `json:"username" binding:"required" example:"johndoe"`
-	Password string `json:"password" binding:"required" example:"secretpassword123"`
-	Email    string `json:"email" binding:"required" example:"john.doe@example.com"`
-	Role     string `json:"role" binding:"required" example:"user"`
-	Groups   string `json:"groups" example:"developers"`
+	Username  string `json:"username" binding:"required" example:"johndoe"`
+	Password  string `json:"password" binding:"required" example:"secretpassword123"`
+	Email     string `json:"email" binding:"required" example:"john.doe@example.com"`
+	Role      string `json:"role" binding:"required" example:"user"`
+	Groups    string `json:"groups" example:"developers"`
+	Inventory string `json:"inventory" example:"production"`
 }
 
 // @Description Update user groups request
@@ -97,4 +108,24 @@ type InventoryResponse struct {
 // @Description Create inventory request
 type CreateInventoryRequest struct {
 	Name string `json:"name" binding:"required" example:"production"`
+}
+
+// APIHost represents the host data received from the API
+type APIHost struct {
+	ID                  int       `json:"id"`
+	Name                string    `json:"name"`
+	CpuCores            int       `json:"cpuCores"`
+	Ram                 string    `json:"ram"`
+	MonokitVersion      string    `json:"monokitVersion"`
+	Os                  string    `json:"os"`
+	DisabledComponents  string    `json:"disabledComponents"`
+	InstalledComponents string    `json:"installedComponents"`
+	IpAddress           string    `json:"ipAddress"`
+	Status              string    `json:"status"`
+	UpdatedAt           time.Time `json:"updatedAt"`
+	CreatedAt           time.Time `json:"createdAt"`
+	WantsUpdateTo       string    `json:"wantsUpdateTo"`
+	Groups              string    `json:"groups"`
+	UpForDeletion       bool      `json:"upForDeletion"`
+	Inventory           string    `json:"inventory"`
 }

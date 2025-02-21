@@ -58,8 +58,10 @@ var AlarmSendCmd = &cobra.Command{
 
 func AlarmCheckUp(service string, message string, noInterval bool) {
 	// Remove slashes from service and replace them with -
+    LogFunctionEntry(service, message, noInterval)
 	serviceReplaced := strings.Replace(service, "/", "-", -1)
 	file_path := TmpDir + "/" + serviceReplaced + ".log"
+    LogDebug("file_path: " + file_path)
 	messageFinal := "[" + ScriptName + " - " + Config.Identifier + "] [:check:] " + message
 
 	if _, err := os.Stat(file_path); os.IsNotExist(err) {
@@ -106,8 +108,10 @@ type ServiceFile struct {
 
 func AlarmCheckDown(service string, message string, noInterval bool, customStream string, customTopic string) {
 	// Remove slashes from service and replace them with -
+    LogFunctionEntry(service, message, noInterval, customStream, customTopic)
 	serviceReplaced := strings.Replace(service, "/", "-", -1)
 	filePath := TmpDir + "/" + serviceReplaced + ".log"
+    LogDebug("filePath: " + filePath)
 	currentDate := time.Now().Format("2006-01-02 15:04:05 -0700")
 
 	messageFinal := "[" + ScriptName + " - " + Config.Identifier + "] [:red_circle:] " + message

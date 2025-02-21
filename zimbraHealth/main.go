@@ -337,6 +337,8 @@ func RestartZimbraService(service string) {
 }
 
 func CheckZimbraServices() {
+    var servicesThatDisappearForSomeReason []string
+
     var zimbraServices []string
     
     status, _ := ExecZimbraCommand("zmcontrol status", false, false)
@@ -364,16 +366,44 @@ func CheckZimbraServices() {
 
         if serviceStatus == "Running" {
             common.PrettyPrintStr(serviceName, true, "Running")
-            common.AlarmCheckUp(serviceName, serviceName + " is now running", false)
+            common.AlarmCheckUp("service_" + serviceName, serviceName + " is now running", false)
         } else {
             common.PrettyPrintStr(serviceName, false, "Running")
             common.WriteToFile(common.TmpDir + "/" + "zmcontrol_status_" + time.Now().Format("2006-01-02_15:04:05"), status)
-            common.AlarmCheckDown(serviceName, serviceName + " is not running", false, "", "")
+            common.AlarmCheckDown("service_" + serviceName, serviceName + " is not running", false, "", "")
             if MailHealthConfig.Zimbra.Restart {
                 RestartZimbraService(serviceName)
             }
         }
     }
+
+    // For loop on common.TmpDir
+    files, err := ioutil.ReadDir(common.TmpDir)
+    if err != nil {
+        common.LogError("Error reading directory: " + err.Error())
+    }
+
+    for _, file := range files {
+        // Get all files that start with service_
+        if strings.HasPrefix(file.Name(), "service_") {
+            // Get the service name
+            serviceName := strings.Split(file.Name(), "_")[1]
+            serviceName = strings.ReplaceAll(serviceName, ".log", "")
+            common.LogDebug("Service name: " + serviceName)
+            // Add to servicesThatDisappearForSomeReason if not in zimbraServices
+            if !common.IsInArray(serviceName, zimbraServices) {
+                common.LogDebug("Service " + serviceName + " is not in zimbraServices")
+                servicesThatDisappearForSomeReason = append(servicesThatDisappearForSomeReason, serviceName)
+            }
+        }
+    }
+
+    for _, service := range servicesThatDisappearForSomeReason {
+        common.LogDebug("Service " + service + " is in servicesThatDisappearForSomeReason")
+        common.PrettyPrintStr(service, true, "Running")
+        common.AlarmCheckUp("service_" + service, service + " is now running", false)
+    }
+
 }
 
 func changeImmutable(filePath string, add bool) {

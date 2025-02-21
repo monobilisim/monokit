@@ -19,7 +19,7 @@ type User struct {
 	Email          string `json:"email"`
 	Role           string `json:"role"`
 	Groups         string `json:"groups"`
-	Inventory      string `json:"inventory"`
+	Inventories    string `json:"inventories"`
 }
 
 type Session struct {
@@ -42,12 +42,21 @@ func HashPassword(password string) (string, error) {
 	return string(bytes), err
 }
 
-func CreateUser(username string, password string, email string, role string, groups string, db *gorm.DB) error {
+func CreateUser(username, password, email, role, groups, inventory string, db *gorm.DB) error {
 	hashedPassword, err := HashPassword(password)
 	if err != nil {
 		return err
 	}
-	user := User{Username: username, HashedPassword: hashedPassword, Email: email, Role: role, Groups: groups}
+
+	user := User{
+		Username:       username,
+		HashedPassword: hashedPassword,
+		Email:          email,
+		Role:           role,
+		Groups:         groups,
+		Inventories:    inventory,
+	}
+
 	return db.Create(&user).Error
 }
 
@@ -71,17 +80,26 @@ func GenerateRandomString(length int) string {
 }
 
 // @Summary Register user
-// @Description Register a new user
+// @Description Register a new user (admin only)
 // @Tags auth
+// @Security ApiKeyAuth
 // @Accept json
 // @Produce json
 // @Param user body RegisterRequest true "User registration info"
 // @Success 201 {object} map[string]string
 // @Failure 400 {object} ErrorResponse
+// @Failure 403 {object} ErrorResponse
 // @Failure 409 {object} ErrorResponse
 // @Router /auth/register [post]
 func registerUser(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// Check for admin access
+		user, exists := c.Get("user")
+		if !exists || user.(User).Role != "admin" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+			return
+		}
+
 		var req RegisterRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -96,7 +114,7 @@ func registerUser(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// Create new user
-		err := CreateUser(req.Username, req.Password, req.Email, req.Role, req.Groups, db)
+		err := CreateUser(req.Username, req.Password, req.Email, req.Role, req.Groups, req.Inventory, db)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
 			return
@@ -338,7 +356,7 @@ func deleteMe(db *gorm.DB) gin.HandlerFunc {
 // @Success 200 {object} UserResponse
 // @Failure 401 {object} ErrorResponse
 // @Router /auth/me [get]
-func getCurrentUser(db *gorm.DB) gin.HandlerFunc {
+func getCurrentUser() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user, exists := c.Get("user")
 		if !exists {
@@ -370,9 +388,9 @@ func SetupAuthRoutes(r *gin.Engine, db *gorm.DB) {
 		auth.POST("/login", loginUser(db))
 		auth.POST("/logout", logoutUser(db))
 		auth.PUT("/me/update", AuthMiddleware(db), updateMe(db))
-		auth.POST("/register", registerUser(db))
+		auth.POST("/register", AuthMiddleware(db), registerUser(db))
 		auth.DELETE("/me", AuthMiddleware(db), deleteMe(db))
-		auth.GET("/me", AuthMiddleware(db), getCurrentUser(db))
+		auth.GET("/me", AuthMiddleware(db), getCurrentUser())
 	}
 
 	// Setup admin routes
@@ -412,15 +430,24 @@ func AuthMiddleware(db *gorm.DB) gin.HandlerFunc {
 			// For non-admin users, check inventory and group access
 			hostName := c.Param("name")
 
-			// For GET /hostsList and GET /inventory, filter the response
-			if c.FullPath() == "/api/v1/hostsList" {
+			// For GET hosts and GET /inventory, filter the response
+			if c.FullPath() == "/api/v1/hosts" {
 				var filteredHosts []Host
 				db.Find(&hostsList)
 				userGroups := strings.Split(session.User.Groups, ",")
+				userInventories := strings.Split(session.User.Inventories, ",")
 
 				for _, host := range hostsList {
-					// First check inventory access
-					if session.User.Inventory != "" && host.Inventory != session.User.Inventory {
+					// Check if user has access to host's inventory
+					hasInventoryAccess := false
+					for _, inv := range userInventories {
+						inv = strings.TrimSpace(inv)
+						if inv == host.Inventory {
+							hasInventoryAccess = true
+							break
+						}
+					}
+					if !hasInventoryAccess {
 						continue
 					}
 
@@ -441,14 +468,14 @@ func AuthMiddleware(db *gorm.DB) gin.HandlerFunc {
 				c.Set("filteredHosts", filteredHosts)
 			} else if c.FullPath() == "/api/v1/inventory" {
 				// If user has specific inventory, only return that one
-				if session.User.Inventory != "" {
+				if session.User.Inventories != "" {
 					var results []struct {
 						Inventory string
 						Count     int
 					}
 					if err := db.Model(&Host{}).
 						Select("inventory, count(*) as count").
-						Where("inventory = ?", session.User.Inventory).
+						Where("inventory = ?", session.User.Inventories).
 						Group("inventory").
 						Find(&results).Error; err != nil {
 						c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch inventories"})
@@ -470,7 +497,7 @@ func AuthMiddleware(db *gorm.DB) gin.HandlerFunc {
 				var host Host
 				if result := db.Where("name = ?", hostName).First(&host); result.Error == nil {
 					// Check inventory access first
-					if session.User.Inventory != "" && host.Inventory != session.User.Inventory {
+					if session.User.Inventories != "" && host.Inventory != session.User.Inventories {
 						c.JSON(http.StatusForbidden, gin.H{"error": "No access to this host"})
 						c.Abort()
 						return
