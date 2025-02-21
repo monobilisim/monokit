@@ -211,6 +211,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 						m.currentScreen = "users"
 						m.list.SetItems(m.menus["users"])
 						m.list.Title = "User Management"
+					case "Change Password":
+						m.currentScreen = "change-password"
+						m.textInput.SetValue("")
+						m.textInput.Focus()
+						m.textInput.Placeholder = "Enter new password"
 					}
 					return m, nil
 				case "hosts":
@@ -865,7 +870,7 @@ func (m model) changePassword() tea.Cmd {
 			return errorMsg(err)
 		}
 
-		resp, err := SendGenericRequest("PUT", "/api/v1/auth/me", jsonData)
+		resp, err := SendGenericRequest("PUT", "/api/v1/auth/me/update", jsonData)
 		if err != nil {
 			return errorMsg(err)
 		}
@@ -874,12 +879,11 @@ func (m model) changePassword() tea.Cmd {
 		if resp.StatusCode != http.StatusOK {
 			var errorResp map[string]string
 			json.NewDecoder(resp.Body).Decode(&errorResp)
-			return errorMsg(fmt.Errorf("failed to update password: %s", errorResp["error"]))
+			return errorMsg(fmt.Errorf("%s", errorResp["error"]))
 		}
 
 		// Return to main menu with success message
-		m.currentScreen = "main"
-		return deleteMsg{message: "Password updated successfully", err: nil}
+		return deleteMsg{message: "Password updated successfully"}
 	}
 }
 
