@@ -22,11 +22,10 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
 	"github.com/monobilisim/monokit/common"
 	issues "github.com/monobilisim/monokit/common/redmine/issues"
 )
-
-
 
 // clusterStatus performs the following steps:
 // 1. Checks if the Patroni service is running
@@ -37,7 +36,7 @@ import (
 // 6. Saves the current cluster status to a JSON file for future comparison
 func clusterStatus() {
 	checkPatroniService()
-	
+
 	result, oldResult := getClusterStatus()
 	if result == nil {
 		return
@@ -46,7 +45,7 @@ func clusterStatus() {
 	checkThisNodeRole(result)
 	checkClusterRoleChanges(result, oldResult)
 	checkClusterStates(result)
-	
+
 	// Save current state for future comparison
 	saveOutputJSON(result)
 }
@@ -68,7 +67,7 @@ func checkPatroniService() {
 func getClusterStatus() (*Response, *Response) {
 	client := &http.Client{Timeout: time.Second * 10}
 	clusterURL := "http://" + patroniApiUrl + "/cluster"
-	
+
 	resp, err := client.Get(clusterURL)
 	if err != nil {
 		common.LogError(fmt.Sprintf("Error executing query: %s - Error: %v\n", clusterURL, err))
@@ -196,18 +195,18 @@ func checkClusterRoleChanges(result, oldResult *Response) {
 // and logs the results
 func checkClusterStates(result *Response) {
 	oldOutputFile := common.TmpDir + "/old_raw_output.json"
-	
+
 	common.SplitSection("Cluster States:")
 	var runningClusters []Member
 	var stoppedClusters []Member
 	for _, member := range result.Members {
 		if member.State == "running" || member.State == "streaming" {
 			common.PrettyPrintStr(member.Name, true, member.State)
-			common.AlarmCheckUp("patroni_size", "Node "+member.Name+" state: "+member.State, true)
+			common.AlarmCheckUp("patroni_size", "Node "+member.Name+" state: "+member.State, false)
 			runningClusters = append(runningClusters, member)
 		} else {
 			fmt.Println(common.Blue + member.Name + common.Reset + " is " + common.Fail + member.State + common.Reset)
-			common.AlarmCheckDown("patroni_size", "Node "+member.Name+" state: "+member.State, true, "", "")
+			common.AlarmCheckDown("patroni_size", "Node "+member.Name+" state: "+member.State, false, "", "")
 			stoppedClusters = append(stoppedClusters, member)
 		}
 	}
@@ -252,7 +251,7 @@ func checkClusterStates(result *Response) {
 	} else {
 		var rslt Response
 		if result != nil {
-			rslt = *result  // Properly dereference the pointer
+			rslt = *result // Properly dereference the pointer
 		}
 		if len(stoppedClusters) > 0 {
 			f, err := os.Create(oldOutputFile)

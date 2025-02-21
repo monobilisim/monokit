@@ -18,7 +18,7 @@ import (
 func handleWalCheck(checkType, status string) {
 	checkID := "wal_g_" + checkType + "_check"
 	displayName := "WAL-G " + checkType + " check"
-	
+
 	if status != "OK" {
 		common.PrettyPrintStr(displayName, false, "OK")
 		common.AlarmCheckDown(checkID, displayName+" failed, "+checkType+" check status: "+status, false, "", "")
@@ -57,4 +57,4 @@ func WalgVerify() {
 
 	handleWalCheck("integrity", integrityCheck)
 	handleWalCheck("timeline", timelineCheck)
-} 
+}

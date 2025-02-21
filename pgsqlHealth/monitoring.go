@@ -14,9 +14,10 @@ package pgsqlHealth
 import (
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 	"time"
-	"strconv"
+
 	"github.com/monobilisim/monokit/common"
 )
 
@@ -90,7 +91,7 @@ func activeConnections() {
 		common.AlarmCheckDown("postgres_active_conn", "An error occurred while checking active connections: "+err.Error(), false, "", "")
 		return
 	} else {
-		common.AlarmCheckUp("postgres_active_conn", "Active connections are now accessible", true)
+		common.AlarmCheckUp("postgres_active_conn", "Active connections are now accessible", false)
 	}
 
 	usedPercent := (used * 100) / maxConn
@@ -127,7 +128,7 @@ func activeConnections() {
 		}
 	} else {
 		common.PrettyPrintStr("Number of active connections", true, fmt.Sprintf("%d/%d", used, maxConn))
-		common.AlarmCheckUp("postgres_num_active_conn", fmt.Sprintf("Number of active connections is now: %d/%d", used, maxConn), true)
+		common.AlarmCheckUp("postgres_num_active_conn", fmt.Sprintf("Number of active connections is now: %d/%d", used, maxConn), false)
 		if _, err := os.Stat(aboveLimitFile); err == nil {
 			err := os.Remove(aboveLimitFile)
 			if err != nil {
@@ -150,7 +151,7 @@ func runningQueries() {
 		common.AlarmCheckDown("postgres_running_queries", "An error occurred while checking running queries: "+err.Error(), false, "", "")
 		return
 	} else {
-		common.AlarmCheckUp("postgres_running_queries", "Running queries are now accessible", true)
+		common.AlarmCheckUp("postgres_running_queries", "Running queries are now accessible", false)
 	}
 
 	if activeQueriesCount > DbHealthConfig.Postgres.Limits.Query {
