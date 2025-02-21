@@ -14,6 +14,7 @@ package pgsqlHealth
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -24,6 +25,8 @@ import (
 	"github.com/monobilisim/monokit/common"
 	issues "github.com/monobilisim/monokit/common/redmine/issues"
 )
+
+
 
 // clusterStatus performs the following steps:
 // 1. Checks if the Patroni service is running
@@ -192,6 +195,8 @@ func checkClusterRoleChanges(result, oldResult *Response) {
 // checkClusterStates checks the state of each cluster member
 // and logs the results
 func checkClusterStates(result *Response) {
+	oldOutputFile := common.TmpDir + "/old_raw_output.json"
+	
 	common.SplitSection("Cluster States:")
 	var runningClusters []Member
 	var stoppedClusters []Member
@@ -246,10 +251,8 @@ func checkClusterStates(result *Response) {
 
 	} else {
 		var rslt Response
-		if len(oldResult.Members) > 0 {
-			rslt = oldResult
-		} else {
-			rslt = result
+		if result != nil {
+			rslt = *result  // Properly dereference the pointer
 		}
 		if len(stoppedClusters) > 0 {
 			f, err := os.Create(oldOutputFile)

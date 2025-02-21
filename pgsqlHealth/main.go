@@ -37,7 +37,7 @@ func Main(cmd *cobra.Command, args []string) {
 
 	// Get the Patroni API URL
 	// connection.go
-	if _, err := os.Stat("/etc/patroni/patroni.yml"); !errors.Is(err, os.ErrNotExist) {*
+	if _, err := os.Stat("/etc/patroni/patroni.yml"); !errors.Is(err, os.ErrNotExist) {
 		patroniApiUrl, err = getPatroniUrl()
 		if err != nil {
 			common.LogError(fmt.Sprintf("Error getting patroni url: %v\n", err))

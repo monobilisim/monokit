@@ -14,6 +14,7 @@ package pgsqlHealth
 import (
 	"fmt"
 	"os"
+	"strings"
 	"time"
 	"strconv"
 	"github.com/monobilisim/monokit/common"
