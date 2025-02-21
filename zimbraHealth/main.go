@@ -337,6 +337,8 @@ func RestartZimbraService(service string) {
 }
 
 func CheckZimbraServices() {
+    servicesThatDisappearForSomeReason := []string{"mysql.server", "zmmailboxdctl", "zmlogswatchctl", "zmswatch"}
+
     var zimbraServices []string
     
     status, _ := ExecZimbraCommand("zmcontrol status", false, false)
@@ -374,6 +376,14 @@ func CheckZimbraServices() {
             }
         }
     }
+
+    for _, service := range servicesThatDisappearForSomeReason {
+        if !common.IsInArray(service, zimbraServices) {
+            common.PrettyPrintStr(service, true, "Running")
+            common.AlarmCheckUp(service, service + " is now running", false)
+        }
+    }
+
 }
 
 func changeImmutable(filePath string, add bool) {
