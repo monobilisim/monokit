@@ -35,10 +35,9 @@ func Main(cmd *cobra.Command, args []string) {
 	common.Init()
 	common.ConfInit("db", &DbHealthConfig)
 
-	//var isCluster bool
-
-	if _, err := os.Stat("/etc/patroni/patroni.yml"); !errors.Is(err, os.ErrNotExist) {
-		//isCluster = true
+	// Get the Patroni API URL
+	// connection.go
+	if _, err := os.Stat("/etc/patroni/patroni.yml"); !errors.Is(err, os.ErrNotExist) {*
 		patroniApiUrl, err = getPatroniUrl()
 		if err != nil {
 			common.LogError(fmt.Sprintf("Error getting patroni url: %v\n", err))
@@ -50,6 +49,8 @@ func Main(cmd *cobra.Command, args []string) {
 
 	common.SplitSection("PostgreSQL Access:")
 
+	// Connect to PostgreSQL
+	// connection.go
 	err := Connect()
 	if err != nil {
 		common.LogError(fmt.Sprintf("Error connecting to PostgreSQL: %v\n", err))
@@ -62,8 +63,11 @@ func Main(cmd *cobra.Command, args []string) {
 	}
 
 	defer Connection.Close()
+	// uptime.go
 	uptime()
 
+	// Check active connections
+	// monitoring.go
 	common.SplitSection("Active Connections:")
 	activeConnections()
 
@@ -114,10 +118,13 @@ func Main(cmd *cobra.Command, args []string) {
 		role = patroniRoleJson["role"].(string)
 	}
 
+	// Check if the current role is master or undefined and if the hour is the same as the configured hour
+	// wal-g.go
 	if (role == "master" || role == "undefined") && lookPath != "" && hour == DbHealthConfig.Postgres.Wal_g_verify_hour {
-		walgVerify()
+		WalgVerify()
 	}
 
+	// Check if PMM is installed and if the service is running
 	if common.DpkgPackageExists("pmm2-client") {
 		common.SplitSection("PMM Status:")
 		if common.SystemdUnitActive("pmm-agent.service") {
