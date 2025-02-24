@@ -129,7 +129,7 @@ func handleLeaderSwitch(member Member, client *http.Client) {
 		return
 	}
 
-	req, err := http.NewRequest("GET", member.APIURL, nil)
+	/*req, err := http.NewRequest("GET", member.APIURL, nil)
 	if err != nil {
 		common.LogError(fmt.Sprintf("Error creating request: %v\n", err))
 		return
@@ -150,7 +150,9 @@ func handleLeaderSwitch(member Member, client *http.Client) {
 
 	if role["role"] == "leader" {
 		runLeaderSwitchHook()
-	}
+	}*/
+
+	runLeaderSwitchHook()
 }
 
 // runLeaderSwitchHook runs the leader switch hook
