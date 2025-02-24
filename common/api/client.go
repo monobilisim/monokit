@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/monobilisim/monokit/common"
@@ -43,6 +44,13 @@ func GetServiceStatus(serviceName string) (bool, string) {
 
 	if err != nil {
 		common.LogError(err.Error())
+		return true, ""
+	}
+
+	// Add host key if available
+	keyPath := filepath.Join("/var/lib/mono/api/hostkey", common.Config.Identifier)
+	if hostKey, err := os.ReadFile(keyPath); err == nil {
+		req.Header.Set("Authorization", string(hostKey))
 	}
 
 	client := &http.Client{}
@@ -228,6 +236,12 @@ func SendReq(apiVersion string) {
 		return
 	}
 
+	// Try to read the host key
+	keyPath := filepath.Join("/var/lib/mono/api/hostkey", common.Config.Identifier)
+	if hostKey, err := os.ReadFile(keyPath); err == nil {
+		req.Header.Set("Authorization", string(hostKey))
+	}
+
 	req.Header.Set("Content-Type", "application/json")
 
 	client := &http.Client{}
@@ -241,15 +255,45 @@ func SendReq(apiVersion string) {
 
 	defer resp.Body.Close()
 
-	// Change to decode a single Host object first
-	var hostResponse Host
-	if err := json.NewDecoder(resp.Body).Decode(&hostResponse); err != nil {
-		fmt.Printf("Error decoding response: %v\n", err)
+	// Handle the response
+	var response struct {
+		Host   *Host  `json:"host"`
+		ApiKey string `json:"apiKey,omitempty"`
+		Error  string `json:"error,omitempty"`
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Printf("Error reading response: %v\n", err)
 		return
 	}
 
+	if err := json.Unmarshal(body, &response); err != nil {
+		fmt.Printf("Error decoding response: %v\nBody: %s\n", err, string(body))
+		return
+	}
+
+	if response.Error != "" {
+		fmt.Printf("Server error: %s\n", response.Error)
+		return
+	}
+
+	// If we received an API key, save it
+	if response.ApiKey != "" {
+		keyPath := "/var/lib/mono/api/hostkey"
+		if err := os.MkdirAll(keyPath, 0755); err != nil {
+			fmt.Printf("Error creating directory: %v\n", err)
+			return
+		}
+
+		if err := os.WriteFile(filepath.Join(keyPath, host.Name), []byte(response.ApiKey), 0600); err != nil {
+			fmt.Printf("Error writing key file: %v\n", err)
+			return
+		}
+	}
+
 	// Check if this host is scheduled for deletion
-	if hostResponse.Name == common.Config.Identifier && hostResponse.UpForDeletion {
+	if response.Host != nil && response.Host.UpForDeletion {
 		fmt.Println("This host is scheduled for deletion. Running removal process...")
 		common.RemoveMonokit()
 		os.Exit(0)

@@ -377,6 +377,7 @@ func SetupAuthRoutes(r *gin.Engine, db *gorm.DB) {
 	db.AutoMigrate(&User{})
 	db.AutoMigrate(&Session{})
 	db.AutoMigrate(&Group{})
+	db.AutoMigrate(&HostKey{})
 
 	// Create initial admin user if no users exist
 	if err := createInitialAdmin(db); err != nil {
@@ -404,6 +405,26 @@ func AuthMiddleware(db *gorm.DB) gin.HandlerFunc {
 		if token == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "No token provided"})
 			c.Abort()
+			return
+		}
+
+		// First check if it's a host key
+		var hostKey HostKey
+		if result := db.Where("token = ?", token).First(&hostKey); result.Error == nil {
+			// Host key is valid, check if the request is for this host
+			hostName := c.Param("name")
+			if hostName != hostKey.HostName {
+				c.JSON(http.StatusForbidden, gin.H{"error": "Invalid host access"})
+				c.Abort()
+				return
+			}
+			// Allow only PUT/POST operations on the host's own endpoint
+			if c.Request.Method != "PUT" && c.Request.Method != "POST" {
+				c.JSON(http.StatusForbidden, gin.H{"error": "Operation not allowed"})
+				c.Abort()
+				return
+			}
+			c.Next()
 			return
 		}
 

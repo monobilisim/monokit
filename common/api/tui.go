@@ -597,7 +597,6 @@ type deleteMsg struct {
 	message string
 	err     error
 }
-type successMsg string
 
 func (m model) fetchInventories() tea.Msg {
 	resp, err := SendGenericRequest("GET", "/api/v1/inventory", nil)

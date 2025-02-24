@@ -1,7 +1,9 @@
-package common
+	package common
 
 import (
 	"time"
+
+	"gorm.io/gorm"
 )
 
 // @Description Error response
@@ -128,4 +130,16 @@ type APIHost struct {
 	Groups              string    `json:"groups"`
 	UpForDeletion       bool      `json:"upForDeletion"`
 	Inventory           string    `json:"inventory"`
+}
+
+// Add this with the other model definitions
+type HostKey struct {
+	gorm.Model
+	Token    string `json:"token"`
+	HostName string `json:"hostName" gorm:"unique"`
+}
+
+// Add this helper function
+func generateToken() string {
+	return GenerateRandomString(32)
 }

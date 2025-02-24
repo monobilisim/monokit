@@ -87,7 +87,6 @@ func registerHost(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var host Host
 		if err := c.ShouldBindJSON(&host); err != nil {
-			fmt.Printf("Error binding JSON: %v\n", err)
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
@@ -97,31 +96,64 @@ func registerHost(db *gorm.DB) gin.HandlerFunc {
 			host.Inventory = "default"
 		}
 
+		// Check if host exists
 		var existingHost Host
 		result := db.Where("name = ?", host.Name).First(&existingHost)
 		if result.Error == nil {
+			// Host exists, require authentication
+			token := c.GetHeader("Authorization")
+			if token == "" {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required for existing host"})
+				return
+			}
+
+			// Verify host key
+			var hostKey HostKey
+			if err := db.Where("host_name = ? AND token = ?", host.Name, token).First(&hostKey).Error; err != nil {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid host key"})
+				return
+			}
+
+			// Preserve existing inventory if not specified in update
+			if host.Inventory == "" {
+				host.Inventory = existingHost.Inventory
+			}
+
 			// Update existing host
 			host.ID = existingHost.ID
 			host.UpForDeletion = existingHost.UpForDeletion
 			if err := db.Model(&existingHost).Updates(&host).Error; err != nil {
-				fmt.Printf("Error updating host: %v\n", err)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update host"})
 				return
 			}
-		} else {
-			// Create new host
-			if err := db.Create(&host).Error; err != nil {
-				fmt.Printf("Error creating host: %v\n", err)
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create host"})
-				return
-			}
+			db.Find(&hostsList)
+			c.JSON(http.StatusOK, gin.H{"host": host})
+			return
 		}
 
-		// Update the hosts list
-		db.Find(&hostsList)
+		// New host registration continues as before...
+		if err := db.Create(&host).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create host"})
+			return
+		}
 
-		// Return just the updated/created host
-		c.JSON(http.StatusOK, host)
+		// Generate and store host key
+		token := generateToken()
+		hostKey := HostKey{
+			Token:    token,
+			HostName: host.Name,
+		}
+
+		if err := db.Create(&hostKey).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create host key"})
+			return
+		}
+
+		db.Find(&hostsList)
+		c.JSON(http.StatusCreated, gin.H{
+			"host":   host,
+			"apiKey": token,
+		})
 	}
 }
 
@@ -604,7 +636,7 @@ func ServerMain(cmd *cobra.Command, args []string) {
 	}
 
 	// Migrate the schema
-	db.AutoMigrate(&Host{}, &Inventory{})
+	db.AutoMigrate(&Host{}, &Inventory{}, &HostKey{})
 
 	// Create default inventory if it doesn't exist
 	var defaultInventory Inventory
