@@ -20,6 +20,7 @@ import (
 
 var Connection *sql.DB
 
+// mariadbOrMysql returns "mariadb" if mysql is not found, otherwise it returns "mysql"
 func mariadbOrMysql() string {
 	_, err := exec.LookPath("/usr/bin/mysql")
 	if err != nil {
@@ -28,6 +29,7 @@ func mariadbOrMysql() string {
 	return "mysql"
 }
 
+// FindMyCnf returns the path to the my.cnf file
 func FindMyCnf() []string {
 	cmd := exec.Command("/usr/sbin/"+mariadbOrMysql()+"d", "--verbose", "--help")
 	output, err := cmd.CombinedOutput()
@@ -53,86 +55,87 @@ func FindMyCnf() []string {
 	return nil
 }
 
+// checkConnection attempts to connect and ping the database, returns true if successful
+func checkConnection(s *ini.Section, finalConn string, path string) bool {
+	err := Connect(finalConn)
+	if err == nil {
+		err = Connection.Ping()
+		if err == nil {
+			if os.Getenv("MONOKIT_DEBUG") == "1" || os.Getenv("MONOKIT_DEBUG") == "true" {
+				fmt.Println("Connected to MySQL with profile: " + s.Name())
+				fmt.Println("Connection string: " + finalConn)
+				fmt.Println("MyCnf path: " + path)
+			}
+			return true
+		} else {
+			if os.Getenv("MONOKIT_DEBUG") == "1" || os.Getenv("MONOKIT_DEBUG") == "true" {
+				fmt.Println("Error pinging MySQL with profile: " + s.Name())
+				fmt.Println("Connection string: " + finalConn)
+				fmt.Println("MyCnf path: " + path)
+				fmt.Println("Error: " + err.Error())
+			}
+		}
+	}
+	return false
+}
+
+// ParseMyCnfAndConnect parses the my.cnf file and connects to the database
 func ParseMyCnfAndConnect(profile string) (string, error) {
-	var host, port, dbname, user, password, socket string
+	// Set default values
+	host := ""
+	port := "3306"
+	dbname := ""
+	user := "root"
+	password := ""
+	socket := ""
 	var found bool
 
-    var finalConn string
+	var finalConn string
 
 	for _, path := range FindMyCnf() {
 		if _, err := os.Stat(path); err == nil {
+			// Load the config file
 			cfg, err := ini.LoadSources(ini.LoadOptions{AllowBooleanKeys: true}, path)
 			if err != nil {
 				return "", fmt.Errorf("error loading config file %s: %w", path, err)
 			}
 
 			for _, s := range cfg.Sections() {
-                if profile != "" && !strings.Contains(s.Name(), profile) {
+				// If profile is set and the section name does not contain the profile name, skip it
+				if profile != "" && !strings.Contains(s.Name(), profile) {
 					continue
 				}
 
-                if host == "" {
-				    host = s.Key("host").String()
-                }
+				// Override default values if they exist in config
+				params := map[string]*string{
+					"host":     &host,
+					"port":     &port,
+					"dbname":   &dbname,
+					"user":     &user,
+					"password": &password,
+					"socket":   &socket,
+				}
 
-                if port == "" {
-				    port = s.Key("port").String()
-                }
+				for key, ptr := range params {
+					if val := s.Key(key).String(); val != "" {
+						*ptr = val
+					}
+				}
 
-                if dbname == "" {
-				    dbname = s.Key("dbname").String()
-                }
+				// Create final connection string based on socket and password
+				if password == "" && socket != "" {
+					finalConn = fmt.Sprintf("%s@unix(%s)/%s", user, socket, dbname)
+				} else if socket != "" {
+					finalConn = fmt.Sprintf("%s:%s@unix(%s)/%s", user, password, socket, dbname)
+				} else {
+					finalConn = fmt.Sprintf("%s:%s@tcp(%s:%s)/%s", user, password, host, port, dbname)
+				}
 
-                if user == "" {
-				    user = s.Key("user").String()
-                }
-
-                if password == "" {
-				    password = s.Key("password").String()
-                }
-
-                if socket == "" {
-				    socket = s.Key("socket").String()
-                }
-                
-                if socket != "" {
-
-                    if user == "" {
-                        user = "root"
-                    }
-                    if password == "" {
-                        finalConn = fmt.Sprintf("%s@unix(%s)/%s", user, socket, dbname)
-                    } else {
-                        finalConn = fmt.Sprintf("%s:%s@unix(%s)/%s", user, password, socket, dbname)
-                    }
-                } else {
-                    if port == "" {
-                        port = "3306"
-                    }
-                    finalConn = fmt.Sprintf("%s:%s@tcp(%s:%s)/%s", user, password, host, port, dbname)
-                }
-                
-                err = Connect(finalConn)
-
-                if err == nil {
-                    err = Connection.Ping()
-                    if err == nil {
-                        if os.Getenv("MONOKIT_DEBUG") == "1" || os.Getenv("MONOKIT_DEBUG") == "true" { 
-                            fmt.Println("Connected to MySQL with profile: " + s.Name())
-                            fmt.Println("Connection string: " + finalConn)
-                            fmt.Println("MyCnf path: " + path)
-                        }
-				        found = true
-                        break
-                    } else {
-                        if os.Getenv("MONOKIT_DEBUG") == "1" || os.Getenv("MONOKIT_DEBUG") == "true" {
-                            fmt.Println("Error pinging MySQL with profile: " + s.Name())
-                            fmt.Println("Connection string: " + finalConn)
-                            fmt.Println("MyCnf path: " + path)
-                            fmt.Println("Error: " + err.Error())
-                        }
-                    }
-                }
+				// Check if the connection is successful if it is stop searching
+				if checkConnection(s, finalConn, path) {
+					found = true
+					break
+				}
 			}
 		}
 	}
@@ -141,9 +144,10 @@ func ParseMyCnfAndConnect(profile string) (string, error) {
 		return "", fmt.Errorf("no matching entry found for profile %s", profile)
 	}
 
-    return finalConn, nil
+	return finalConn, nil
 }
 
+// Connect connects to the database
 func Connect(connStr string) error {
 	db, err := sql.Open("mysql", connStr)
 	if err != nil {
@@ -151,9 +155,10 @@ func Connect(connStr string) error {
 	}
 
 	Connection = db
-    return nil
+	return nil
 }
 
+// SelectNow checks if the connection is working
 func SelectNow() {
 	// Simple query to check if the connection is working
 	rows, err := Connection.Query("SELECT NOW()")
@@ -169,6 +174,7 @@ func SelectNow() {
 
 }
 
+// CheckProcessCount checks the number of processes running on the database
 func CheckProcessCount() {
 	rows, err := Connection.Query("SHOW PROCESSLIST")
 	if err != nil {
@@ -181,7 +187,6 @@ func CheckProcessCount() {
 	common.AlarmCheckUp("processlist", "Can run 'SHOW PROCESSLIST' statements again", false)
 
 	// Count the number of processes
-
 	var count int
 
 	for rows.Next() {
@@ -197,6 +202,7 @@ func CheckProcessCount() {
 	}
 }
 
+// InaccessibleClusters checks if the database is accessible from other nodes in the cluster
 func InaccessibleClusters() {
 	rows := Connection.QueryRow("SHOW STATUS WHERE Variable_name = 'wsrep_incoming_addresses'")
 
@@ -250,6 +256,36 @@ func InaccessibleClusters() {
 
 }
 
+// GetClusterSize returns the current cluster size from MySQL
+func GetClusterSize() (int, string, error) {
+	var varname string
+	var cluster_size int
+
+	rows := Connection.QueryRow("SHOW STATUS WHERE Variable_name = 'wsrep_cluster_size'")
+
+	if err := rows.Scan(&varname, &cluster_size); err != nil {
+		return 0, "", fmt.Errorf("error querying database for cluster size: %w", err)
+	}
+
+	return cluster_size, varname, nil
+}
+
+func createClusterSizeIssue(cluster_size int, identifierRedmine string, varname string) {
+	if cluster_size == 1 || cluster_size > DbHealthConfig.Mysql.Cluster.Size {
+		issueIdIfExists := issues.Exists("MySQL Cluster boyutu: "+strconv.Itoa(cluster_size)+" - "+identifierRedmine, "", false)
+
+		if _, err := os.Stat(common.TmpDir + "/mysql-cluster-size-redmine.log"); err == nil && issueIdIfExists == "" {
+			common.WriteToFile(common.TmpDir+"/mysql-cluster-size-redmine.log", issueIdIfExists)
+		}
+
+		issues.CheckDown("cluster-size", "MySQL Cluster boyutu: "+strconv.Itoa(cluster_size)+" - "+identifierRedmine,
+			"MySQL Cluster boyutu: "+strconv.Itoa(cluster_size)+" - "+common.Config.Identifier+"\n`"+varname+": "+strconv.Itoa(cluster_size)+"`",
+			false, 0)
+	}
+}
+
+// CheckClusterStatus checks the cluster status
+// and updates the redmine issue if the cluster size is not accurate
 func CheckClusterStatus() {
 	var identifierRedmine string
 
@@ -267,13 +303,9 @@ func CheckClusterStatus() {
 
 	}
 
-	var varname string
-	var cluster_size int
-
-    rows := Connection.QueryRow("SHOW STATUS WHERE Variable_name = 'wsrep_cluster_size'")
-
-	if err := rows.Scan(&varname, &cluster_size); err != nil {
-		common.LogError("Error querying database for cluster size: " + err.Error())
+	cluster_size, varname, err := GetClusterSize()
+	if err != nil {
+		common.LogError(err.Error())
 		return
 	}
 
@@ -291,18 +323,11 @@ func CheckClusterStatus() {
 		common.PrettyPrint("Cluster Size", "", float64(cluster_size), false, false, true, float64(DbHealthConfig.Mysql.Cluster.Size))
 	}
 
-	if cluster_size == 1 || cluster_size > DbHealthConfig.Mysql.Cluster.Size {
-
-		issueIdIfExists := issues.Exists("MySQL Cluster boyutu: "+strconv.Itoa(cluster_size)+" - "+identifierRedmine, "", false)
-
-		if _, err := os.Stat(common.TmpDir + "/mysql-cluster-size-redmine.log"); err == nil && issueIdIfExists == "" {
-			common.WriteToFile(common.TmpDir+"/mysql-cluster-size-redmine.log", issueIdIfExists)
-		}
-
-		issues.CheckDown("cluster-size", "MySQL Cluster boyutu: "+strconv.Itoa(cluster_size)+" - "+identifierRedmine, "MySQL Cluster boyutu: "+strconv.Itoa(cluster_size)+" - "+common.Config.Identifier+"\n`"+varname+": "+strconv.Itoa(cluster_size)+"`", false, 0)
-	}
+	createClusterSizeIssue(cluster_size, identifierRedmine, varname)
 }
 
+// CheckNodeStatus checks the node status
+// and creates alarm if the node is not ready
 func CheckNodeStatus() {
 	rows := Connection.QueryRow("SHOW STATUS WHERE Variable_name = 'wsrep_ready'")
 
@@ -326,6 +351,8 @@ func CheckNodeStatus() {
 	}
 }
 
+// CheckClusterSynced checks if the cluster is synced
+// and creates alarm if it is not synced
 func CheckClusterSynced() {
 	rows := Connection.QueryRow("SHOW STATUS WHERE Variable_name = 'wsrep_local_state_comment'")
 
@@ -349,6 +376,8 @@ func CheckClusterSynced() {
 	}
 }
 
+// CheckDB checks if the database is healthy
+// and creates alarm if it is not healthy
 func CheckDB() {
 	cmd := exec.Command("/usr/bin/"+mariadbOrMysql(), "--auto-repair", "--all-databases")
 	output, err := cmd.CombinedOutput()
@@ -379,6 +408,8 @@ func CheckDB() {
 	}
 }
 
+// checkPMM checks if the PMM is installed
+// and creates alarm if it is not healthy
 func checkPMM() {
 	notInstalled := `
 dpkg-query: package 'pmm2-client' is not installed and no information is available
@@ -391,6 +422,8 @@ Use dpkg --info (= dpkg-deb --info) to examine archive files.
 	cmd.Stdout = &out
 	cmd.Stderr = &stderr
 	err := cmd.Run()
+	// If the dpkg command fails, check if the error is because the package is not installed
+	// or because the dpkg command is not found
 	if err != nil {
 		if strings.TrimSpace(stderr.String()) == strings.TrimSpace(notInstalled) || strings.TrimSpace(err.Error()) == strings.TrimSpace(dpkgNotFound) {
 			return
@@ -401,20 +434,28 @@ Use dpkg --info (= dpkg-deb --info) to examine archive files.
 
 	output := out.String()
 	lines := strings.Split(output, "\n")
+	var isInstalled bool
+	// Check if the PMM is installed
 	for _, line := range lines {
 		if strings.Contains(line, "Status:") {
 			status := strings.TrimSpace(strings.Split(line, ":")[1])
 			if strings.HasPrefix(status, "install ok installed") {
-				common.SplitSection("PMM Status:")
-				if common.SystemdUnitActive("pmm-agent.service") {
-					common.PrettyPrintStr("Service pmm-agent", true, "active")
-					common.AlarmCheckDown("mysql-pmm-agent", "Service pmm-agent", false, "", "")
-				} else {
-					common.PrettyPrintStr("Service pmm-agent", false, "active")
-					common.AlarmCheckUp("mysql-pmm-agent", "Service pmm-agent", false)
-				}
+				isInstalled = true
 			}
 			break
+		}
+	}
+
+	// If the PMM is installed, check if the service is active
+	// and create alarm if it is not active
+	if isInstalled {
+		common.SplitSection("PMM Status:")
+		if common.SystemdUnitActive("pmm-agent.service") {
+			common.PrettyPrintStr("Service pmm-agent", true, "active")
+			common.AlarmCheckDown("mysql-pmm-agent", "Service pmm-agent", false, "", "")
+		} else {
+			common.PrettyPrintStr("Service pmm-agent", false, "active")
+			common.AlarmCheckUp("mysql-pmm-agent", "Service pmm-agent", false)
 		}
 	}
 }
