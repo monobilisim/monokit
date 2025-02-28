@@ -16,7 +16,7 @@ jobs:
         with:
           go-version: stable
       
-      - run: ./build.sh
+      - run: make with-api
 
       - name: Create required instances
         env:
