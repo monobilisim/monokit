@@ -1,5 +1,6 @@
 version: 2
 
+# Define builds first
 builds:
   - id: default
     goos:
@@ -28,6 +29,10 @@ builds:
     tags:
       - with_api
     binary: monokit
+    # Add a hook specific to the withapi build
+    hooks:
+      pre: 
+        - sh -c "rm -rf frontend/build common/api/frontend/build && cd frontend && npm install && npm run build && mkdir -p ../common/api/frontend/build && cp -r build/* ../common/api/frontend/build/"
 
 archives:
   - id: default
