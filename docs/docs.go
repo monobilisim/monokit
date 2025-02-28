@@ -798,7 +798,7 @@ const docTemplate = `{
                         "ApiKeyAuth": []
                     }
                 ],
-                "description": "Get information about the currently logged in user",
+                "description": "Get details of the currently authenticated user",
                 "consumes": [
                     "application/json"
                 ],
@@ -808,7 +808,7 @@ const docTemplate = `{
                 "tags": [
                     "auth"
                 ],
-                "summary": "Get current user info",
+                "summary": "Get current user",
                 "responses": {
                     "200": {
                         "description": "OK",
@@ -824,43 +824,6 @@ const docTemplate = `{
                     }
                 }
             },
-            "delete": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "Delete your own account (not allowed if last admin)",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "auth"
-                ],
-                "summary": "Delete own account",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/auth/me/update": {
             "put": {
                 "security": [
                     {
@@ -912,11 +875,51 @@ const docTemplate = `{
                         }
                     }
                 }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Delete your own user account",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "auth"
+                ],
+                "summary": "Delete own account",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/common.ErrorResponse"
+                        }
+                    }
+                }
             }
         },
         "/auth/register": {
             "post": {
-                "description": "Register a new user",
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Register a new user (admin only)",
                 "consumes": [
                     "application/json"
                 ],
@@ -954,148 +957,16 @@ const docTemplate = `{
                             "$ref": "#/definitions/common.ErrorResponse"
                         }
                     },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "$ref": "#/definitions/common.ErrorResponse"
+                        }
+                    },
                     "409": {
                         "description": "Conflict",
                         "schema": {
                             "$ref": "#/definitions/common.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/hosts": {
-            "get": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "Get list of all monitored hosts (filtered by user's inventory access)",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "hosts"
-                ],
-                "summary": "Get all hosts",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/common.Host"
-                            }
-                        }
-                    }
-                }
-            },
-            "post": {
-                "description": "Register a new host or update existing host information",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "hosts"
-                ],
-                "summary": "Register host",
-                "parameters": [
-                    {
-                        "description": "Host information",
-                        "name": "host",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/common.Host"
-                        }
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/common.Host"
-                        }
-                    }
-                }
-            }
-        },
-        "/hosts/{name}": {
-            "get": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "Get specific host information",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "hosts"
-                ],
-                "summary": "Get host by name",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Host name",
-                        "name": "name",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "$ref": "#/definitions/common.Host"
-                        }
-                    }
-                }
-            },
-            "delete": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "Delete a host from the system",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "hosts"
-                ],
-                "summary": "Delete host",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Host name",
-                        "name": "name",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/common.Host"
-                            }
                         }
                     }
                 }
@@ -1288,201 +1159,31 @@ const docTemplate = `{
                     }
                 }
             }
-        },
-        "/inventory": {
-            "get": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "Get list of all inventories with host counts (admin only)",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "inventory"
-                ],
-                "summary": "Get all inventories",
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "array",
-                            "items": {
-                                "$ref": "#/definitions/common.InventoryResponse"
-                            }
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
-                        }
-                    }
-                }
-            },
-            "post": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "Create a new inventory (admin only)",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "inventory"
-                ],
-                "summary": "Create new inventory",
-                "parameters": [
-                    {
-                        "description": "Inventory information",
-                        "name": "inventory",
-                        "in": "body",
-                        "required": true,
-                        "schema": {
-                            "$ref": "#/definitions/common.CreateInventoryRequest"
-                        }
-                    }
-                ],
-                "responses": {
-                    "201": {
-                        "description": "Created",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
-                        }
-                    },
-                    "409": {
-                        "description": "Conflict",
-                        "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
-        "/inventory/{name}": {
-            "delete": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "Schedule deletion of an inventory and all its hosts (admin only)",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "inventory"
-                ],
-                "summary": "Delete inventory",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Inventory name",
-                        "name": "name",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "400": {
-                        "description": "Bad Request",
-                        "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
-                        }
-                    }
-                }
-            }
         }
     },
     "definitions": {
         "common.CreateGroupRequest": {
-            "description": "Group model",
             "type": "object",
             "required": [
                 "name"
             ],
             "properties": {
                 "name": {
-                    "type": "string",
-                    "example": "developers"
-                }
-            }
-        },
-        "common.CreateInventoryRequest": {
-            "description": "Create inventory request",
-            "type": "object",
-            "required": [
-                "name"
-            ],
-            "properties": {
-                "name": {
-                    "type": "string",
-                    "example": "production"
+                    "type": "string"
                 }
             }
         },
         "common.ErrorResponse": {
-            "description": "Error response",
             "type": "object",
             "properties": {
                 "error": {
-                    "type": "string",
-                    "example": "Admin access required"
+                    "type": "string"
                 }
             }
         },
         "common.Group": {
             "type": "object",
             "properties": {
-                "createdAt": {
-                    "type": "string"
-                },
-                "deletedAt": {
-                    "$ref": "#/definitions/gorm.DeletedAt"
-                },
                 "hosts": {
                     "type": "array",
                     "items": {
@@ -1493,9 +1194,6 @@ const docTemplate = `{
                     "type": "integer"
                 },
                 "name": {
-                    "type": "string"
-                },
-                "updatedAt": {
                     "type": "string"
                 },
                 "users": {
@@ -1509,22 +1207,13 @@ const docTemplate = `{
         "common.Host": {
             "type": "object",
             "properties": {
-                "CreatedAt": {
-                    "type": "string"
-                },
-                "UpdatedAt": {
-                    "type": "string"
-                },
-                "cpuCores": {
+                "cpu_cores": {
                     "type": "integer"
                 },
-                "createdAt": {
+                "created_at": {
                     "type": "string"
                 },
-                "deletedAt": {
-                    "$ref": "#/definitions/gorm.DeletedAt"
-                },
-                "disabledComponents": {
+                "disabled_components": {
                     "type": "string"
                 },
                 "groups": {
@@ -1533,16 +1222,16 @@ const docTemplate = `{
                 "id": {
                     "type": "integer"
                 },
-                "installedComponents": {
+                "installed_components": {
                     "type": "string"
                 },
                 "inventory": {
                     "type": "string"
                 },
-                "ipAddress": {
+                "ip_address": {
                     "type": "string"
                 },
-                "monokitVersion": {
+                "monokit_version": {
                     "type": "string"
                 },
                 "name": {
@@ -1557,33 +1246,21 @@ const docTemplate = `{
                 "status": {
                     "type": "string"
                 },
-                "upForDeletion": {
+                "up_for_deletion": {
                     "type": "boolean"
                 },
-                "updatedAt": {
+                "updated_at": {
                     "type": "string"
                 },
-                "wantsUpdateTo": {
+                "version": {
                     "type": "string"
-                }
-            }
-        },
-        "common.InventoryResponse": {
-            "description": "Inventory response model",
-            "type": "object",
-            "properties": {
-                "hosts": {
-                    "type": "integer",
-                    "example": 5
                 },
-                "name": {
-                    "type": "string",
-                    "example": "production"
+                "wants_update_to": {
+                    "type": "string"
                 }
             }
         },
         "common.LoginRequest": {
-            "description": "Login request",
             "type": "object",
             "required": [
                 "password",
@@ -1591,48 +1268,39 @@ const docTemplate = `{
             ],
             "properties": {
                 "password": {
-                    "type": "string",
-                    "example": "secretpassword123"
+                    "type": "string"
                 },
                 "username": {
-                    "type": "string",
-                    "example": "johndoe"
+                    "type": "string"
                 }
             }
         },
         "common.LoginResponse": {
-            "description": "Login response",
             "type": "object",
             "properties": {
                 "token": {
-                    "type": "string",
-                    "example": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                    "type": "string"
                 },
                 "user": {
                     "type": "object",
                     "properties": {
                         "email": {
-                            "type": "string",
-                            "example": "john.doe@example.com"
+                            "type": "string"
                         },
                         "groups": {
-                            "type": "string",
-                            "example": "developers,admins"
+                            "type": "string"
                         },
                         "role": {
-                            "type": "string",
-                            "example": "admin"
+                            "type": "string"
                         },
                         "username": {
-                            "type": "string",
-                            "example": "johndoe"
+                            "type": "string"
                         }
                     }
                 }
             }
         },
         "common.RegisterRequest": {
-            "description": "Register request",
             "type": "object",
             "required": [
                 "email",
@@ -1642,116 +1310,86 @@ const docTemplate = `{
             ],
             "properties": {
                 "email": {
-                    "type": "string",
-                    "example": "john.doe@example.com"
+                    "type": "string"
                 },
                 "groups": {
-                    "type": "string",
-                    "example": "developers"
+                    "type": "string"
                 },
                 "inventory": {
-                    "type": "string",
-                    "example": "production"
+                    "type": "string"
                 },
                 "password": {
-                    "type": "string",
-                    "example": "secretpassword123"
+                    "type": "string"
                 },
                 "role": {
-                    "type": "string",
-                    "example": "user"
+                    "type": "string"
                 },
                 "username": {
-                    "type": "string",
-                    "example": "johndoe"
+                    "type": "string"
                 }
             }
         },
         "common.UpdateMeRequest": {
-            "description": "Update own user details request",
             "type": "object",
             "properties": {
                 "email": {
-                    "type": "string",
-                    "example": "john.doe@example.com"
+                    "type": "string"
                 },
                 "password": {
-                    "type": "string",
-                    "example": "newpassword123"
+                    "type": "string"
                 },
                 "username": {
-                    "type": "string",
-                    "example": "johndoe"
+                    "type": "string"
                 }
             }
         },
         "common.UpdateUserGroupsRequest": {
-            "description": "Update user groups request",
             "type": "object",
             "required": [
                 "groups"
             ],
             "properties": {
                 "groups": {
-                    "type": "string",
-                    "example": "developers,production"
+                    "type": "string"
                 }
             }
         },
         "common.UpdateUserRequest": {
-            "description": "Update user request (admin)",
             "type": "object",
             "properties": {
                 "email": {
-                    "type": "string",
-                    "example": "john.doe@example.com"
+                    "type": "string"
                 },
                 "groups": {
-                    "type": "string",
-                    "example": "developers,admins"
+                    "type": "string"
                 },
                 "password": {
-                    "type": "string",
-                    "example": "newpassword123"
+                    "type": "string"
                 },
                 "role": {
-                    "type": "string",
-                    "example": "admin"
+                    "type": "string"
                 },
                 "username": {
-                    "type": "string",
-                    "example": "johndoe"
+                    "type": "string"
                 }
             }
         },
         "common.User": {
             "type": "object",
             "properties": {
-                "createdAt": {
-                    "type": "string"
-                },
-                "deletedAt": {
-                    "$ref": "#/definitions/gorm.DeletedAt"
-                },
                 "email": {
                     "type": "string"
                 },
                 "groups": {
                     "type": "string"
                 },
-                "hashedPassword": {
-                    "type": "string"
-                },
                 "id": {
                     "type": "integer"
                 },
-                "inventory": {
+                "inventories": {
                     "type": "string"
                 },
                 "role": {
-                    "type": "string"
-                },
-                "updatedAt": {
                     "type": "string"
                 },
                 "username": {
@@ -1760,44 +1398,22 @@ const docTemplate = `{
             }
         },
         "common.UserResponse": {
-            "description": "User response model",
             "type": "object",
             "properties": {
                 "email": {
-                    "type": "string",
-                    "example": "john.doe@example.com"
-                },
-                "groups": {
-                    "type": "string",
-                    "example": "developers,admins"
-                },
-                "id": {
-                    "type": "integer",
-                    "example": 1
-                },
-                "inventory": {
-                    "type": "string",
-                    "example": "production"
-                },
-                "role": {
-                    "type": "string",
-                    "example": "admin"
-                },
-                "username": {
-                    "type": "string",
-                    "example": "johndoe"
-                }
-            }
-        },
-        "gorm.DeletedAt": {
-            "type": "object",
-            "properties": {
-                "time": {
                     "type": "string"
                 },
-                "valid": {
-                    "description": "Valid is true if Time is not NULL",
-                    "type": "boolean"
+                "groups": {
+                    "type": "string"
+                },
+                "inventories": {
+                    "type": "string"
+                },
+                "role": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
                 }
             }
         }

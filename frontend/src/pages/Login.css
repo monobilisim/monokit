@@ -1,0 +1,49 @@
+.rounded-pill {
+  border-radius: 50rem !important;
+}
+
+.rounded-pill input {
+  border-radius: 50rem !important;
+}
+
+/* Reset all form controls */
+.pf-v5-c-form-control,
+.pf-v5-c-form-control:hover,
+.pf-v5-c-form-control:focus,
+.pf-v5-c-form-control:active,
+.pf-v5-c-form-control:focus-within {
+  background: rgba(0, 0, 0, 0.1) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  border-radius: 50rem !important;
+  box-shadow: none !important;
+  outline: none !important;
+}
+
+/* Reset all input elements */
+.pf-v5-c-form-control > input,
+.pf-v5-c-form-control > input:hover,
+.pf-v5-c-form-control > input:focus,
+.pf-v5-c-form-control > input:active {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+  border-radius: 50rem !important;
+}
+
+/* Remove validation styles */
+.pf-v5-c-form-control.pf-m-success,
+.pf-v5-c-form-control.pf-m-warning,
+.pf-v5-c-form-control.pf-m-error {
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  box-shadow: none !important;
+}
+
+/* Remove any additional borders */
+.pf-v5-c-form-control::before,
+.pf-v5-c-form-control::after {
+  display: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  outline: none !important;
+} 

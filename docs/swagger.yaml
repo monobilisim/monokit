@@ -1,36 +1,19 @@
 basePath: /api/v1
 definitions:
   common.CreateGroupRequest:
-    description: Group model
     properties:
       name:
-        example: developers
-        type: string
-    required:
-    - name
-    type: object
-  common.CreateInventoryRequest:
-    description: Create inventory request
-    properties:
-      name:
-        example: production
         type: string
     required:
     - name
     type: object
   common.ErrorResponse:
-    description: Error response
     properties:
       error:
-        example: Admin access required
         type: string
     type: object
   common.Group:
     properties:
-      createdAt:
-        type: string
-      deletedAt:
-        $ref: '#/definitions/gorm.DeletedAt'
       hosts:
         items:
           $ref: '#/definitions/common.Host'
@@ -39,8 +22,6 @@ definitions:
         type: integer
       name:
         type: string
-      updatedAt:
-        type: string
       users:
         items:
           $ref: '#/definitions/common.User'
@@ -48,29 +29,23 @@ definitions:
     type: object
   common.Host:
     properties:
-      CreatedAt:
-        type: string
-      UpdatedAt:
-        type: string
-      cpuCores:
+      cpu_cores:
         type: integer
-      createdAt:
+      created_at:
         type: string
-      deletedAt:
-        $ref: '#/definitions/gorm.DeletedAt'
-      disabledComponents:
+      disabled_components:
         type: string
       groups:
         type: string
       id:
         type: integer
-      installedComponents:
+      installed_components:
         type: string
       inventory:
         type: string
-      ipAddress:
+      ip_address:
         type: string
-      monokitVersion:
+      monokit_version:
         type: string
       name:
         type: string
@@ -80,78 +55,54 @@ definitions:
         type: string
       status:
         type: string
-      upForDeletion:
+      up_for_deletion:
         type: boolean
-      updatedAt:
+      updated_at:
         type: string
-      wantsUpdateTo:
+      version:
         type: string
-    type: object
-  common.InventoryResponse:
-    description: Inventory response model
-    properties:
-      hosts:
-        example: 5
-        type: integer
-      name:
-        example: production
+      wants_update_to:
         type: string
     type: object
   common.LoginRequest:
-    description: Login request
     properties:
       password:
-        example: secretpassword123
         type: string
       username:
-        example: johndoe
         type: string
     required:
     - password
     - username
     type: object
   common.LoginResponse:
-    description: Login response
     properties:
       token:
-        example: eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...
         type: string
       user:
         properties:
           email:
-            example: john.doe@example.com
             type: string
           groups:
-            example: developers,admins
             type: string
           role:
-            example: admin
             type: string
           username:
-            example: johndoe
             type: string
         type: object
     type: object
   common.RegisterRequest:
-    description: Register request
     properties:
       email:
-        example: john.doe@example.com
         type: string
       groups:
-        example: developers
         type: string
       inventory:
-        example: production
         type: string
       password:
-        example: secretpassword123
         type: string
       role:
-        example: user
         type: string
       username:
-        example: johndoe
         type: string
     required:
     - email
@@ -160,98 +111,61 @@ definitions:
     - username
     type: object
   common.UpdateMeRequest:
-    description: Update own user details request
     properties:
       email:
-        example: john.doe@example.com
         type: string
       password:
-        example: newpassword123
         type: string
       username:
-        example: johndoe
         type: string
     type: object
   common.UpdateUserGroupsRequest:
-    description: Update user groups request
     properties:
       groups:
-        example: developers,production
         type: string
     required:
     - groups
     type: object
   common.UpdateUserRequest:
-    description: Update user request (admin)
     properties:
       email:
-        example: john.doe@example.com
         type: string
       groups:
-        example: developers,admins
         type: string
       password:
-        example: newpassword123
         type: string
       role:
-        example: admin
         type: string
       username:
-        example: johndoe
         type: string
     type: object
   common.User:
     properties:
-      createdAt:
-        type: string
-      deletedAt:
-        $ref: '#/definitions/gorm.DeletedAt'
       email:
         type: string
       groups:
         type: string
-      hashedPassword:
-        type: string
       id:
         type: integer
-      inventory:
+      inventories:
         type: string
       role:
-        type: string
-      updatedAt:
         type: string
       username:
         type: string
     type: object
   common.UserResponse:
-    description: User response model
     properties:
       email:
-        example: john.doe@example.com
         type: string
       groups:
-        example: developers,admins
         type: string
-      id:
-        example: 1
-        type: integer
-      inventory:
-        example: production
+      inventories:
         type: string
       role:
-        example: admin
         type: string
       username:
-        example: johndoe
         type: string
-    type: object
-  gorm.DeletedAt:
-    properties:
-      time:
-        type: string
-      valid:
-        description: Valid is true if Time is not NULL
-        type: boolean
     type: object
 host: localhost:9989
 info:
@@ -760,7 +674,7 @@ paths:
     delete:
       consumes:
       - application/json
-      description: Delete your own account (not allowed if last admin)
+      description: Delete your own user account
       produces:
       - application/json
       responses:
@@ -770,8 +684,8 @@ paths:
             additionalProperties:
               type: string
             type: object
-        "403":
-          description: Forbidden
+        "401":
+          description: Unauthorized
           schema:
             $ref: '#/definitions/common.ErrorResponse'
       security:
@@ -782,7 +696,7 @@ paths:
     get:
       consumes:
       - application/json
-      description: Get information about the currently logged in user
+      description: Get details of the currently authenticated user
       produces:
       - application/json
       responses:
@@ -796,10 +710,9 @@ paths:
             $ref: '#/definitions/common.ErrorResponse'
       security:
       - ApiKeyAuth: []
-      summary: Get current user info
+      summary: Get current user
       tags:
       - auth
-  /auth/me/update:
     put:
       consumes:
       - application/json
@@ -837,7 +750,7 @@ paths:
     post:
       consumes:
       - application/json
-      description: Register a new user
+      description: Register a new user (admin only)
       parameters:
       - description: User registration info
         in: body
@@ -858,100 +771,19 @@ paths:
           description: Bad Request
           schema:
             $ref: '#/definitions/common.ErrorResponse'
+        "403":
+          description: Forbidden
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
         "409":
           description: Conflict
           schema:
             $ref: '#/definitions/common.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
       summary: Register user
       tags:
       - auth
-  /hosts:
-    get:
-      consumes:
-      - application/json
-      description: Get list of all monitored hosts (filtered by user's inventory access)
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            items:
-              $ref: '#/definitions/common.Host'
-            type: array
-      security:
-      - ApiKeyAuth: []
-      summary: Get all hosts
-      tags:
-      - hosts
-    post:
-      consumes:
-      - application/json
-      description: Register a new host or update existing host information
-      parameters:
-      - description: Host information
-        in: body
-        name: host
-        required: true
-        schema:
-          $ref: '#/definitions/common.Host'
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/common.Host'
-      summary: Register host
-      tags:
-      - hosts
-  /hosts/{name}:
-    delete:
-      consumes:
-      - application/json
-      description: Delete a host from the system
-      parameters:
-      - description: Host name
-        in: path
-        name: name
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            items:
-              $ref: '#/definitions/common.Host'
-            type: array
-      security:
-      - ApiKeyAuth: []
-      summary: Delete host
-      tags:
-      - hosts
-    get:
-      consumes:
-      - application/json
-      description: Get specific host information
-      parameters:
-      - description: Host name
-        in: path
-        name: name
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            $ref: '#/definitions/common.Host'
-      security:
-      - ApiKeyAuth: []
-      summary: Get host by name
-      tags:
-      - hosts
   /hosts/{name}/{service}:
     get:
       consumes:
@@ -1072,99 +904,6 @@ paths:
       summary: Update host version
       tags:
       - hosts
-  /inventory:
-    get:
-      consumes:
-      - application/json
-      description: Get list of all inventories with host counts (admin only)
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            items:
-              $ref: '#/definitions/common.InventoryResponse'
-            type: array
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/common.ErrorResponse'
-      security:
-      - ApiKeyAuth: []
-      summary: Get all inventories
-      tags:
-      - inventory
-    post:
-      consumes:
-      - application/json
-      description: Create a new inventory (admin only)
-      parameters:
-      - description: Inventory information
-        in: body
-        name: inventory
-        required: true
-        schema:
-          $ref: '#/definitions/common.CreateInventoryRequest'
-      produces:
-      - application/json
-      responses:
-        "201":
-          description: Created
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/common.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/common.ErrorResponse'
-        "409":
-          description: Conflict
-          schema:
-            $ref: '#/definitions/common.ErrorResponse'
-      security:
-      - ApiKeyAuth: []
-      summary: Create new inventory
-      tags:
-      - inventory
-  /inventory/{name}:
-    delete:
-      consumes:
-      - application/json
-      description: Schedule deletion of an inventory and all its hosts (admin only)
-      parameters:
-      - description: Inventory name
-        in: path
-        name: name
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "400":
-          description: Bad Request
-          schema:
-            $ref: '#/definitions/common.ErrorResponse'
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/common.ErrorResponse'
-      security:
-      - ApiKeyAuth: []
-      summary: Delete inventory
-      tags:
-      - inventory
 securityDefinitions:
   ApiKeyAuth:
     in: header

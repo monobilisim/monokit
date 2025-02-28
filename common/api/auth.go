@@ -4,38 +4,12 @@ import (
 	"fmt"
 	"math/rand"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
-
-type User struct {
-	gorm.Model
-	Username       string `json:"username"`
-	HashedPassword string `json:"hashedPassword"`
-	Email          string `json:"email"`
-	Role           string `json:"role"`
-	Groups         string `json:"groups"`
-	Inventories    string `json:"inventories"`
-}
-
-type Session struct {
-	gorm.Model
-	Token   string    `json:"token"`
-	Timeout time.Time `json:"timeout"`
-	UserID  uint      `json:"userId"`
-	User    User      `json:"user"`
-}
-
-type Group struct {
-	gorm.Model
-	Name  string `json:"name"`
-	Hosts []Host `json:"hosts" gorm:"many2many:group_hosts;"`
-	Users []User `json:"users" gorm:"many2many:group_users;"`
-}
 
 func HashPassword(password string) (string, error) {
 	bytes, err := bcrypt.GenerateFromPassword([]byte(password), 14)
@@ -49,12 +23,12 @@ func CreateUser(username, password, email, role, groups, inventory string, db *g
 	}
 
 	user := User{
-		Username:       username,
-		HashedPassword: hashedPassword,
-		Email:          email,
-		Role:           role,
-		Groups:         groups,
-		Inventories:    inventory,
+		Username:    username,
+		Password:    hashedPassword,
+		Email:       email,
+		Role:        role,
+		Groups:      groups,
+		Inventories: inventory,
 	}
 
 	return db.Create(&user).Error
@@ -74,7 +48,13 @@ func GenerateRandomString(length int) string {
 	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
 	b := make([]byte, length)
 	for i := range b {
-		b[i] = charset[rand.Intn(len(charset))]
+		// Use crypto/rand instead of math/rand
+		randomBytes := make([]byte, 1)
+		if _, err := rand.Read(randomBytes); err != nil {
+			// Fallback to less secure method if crypto/rand fails
+			randomBytes[0] = byte(time.Now().UnixNano() % int64(len(charset)))
+		}
+		b[i] = charset[int(randomBytes[0])%len(charset)]
 	}
 	return string(b)
 }
@@ -137,29 +117,44 @@ func loginUser(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var req LoginRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
+			fmt.Printf("Login error: Invalid request format - %v\n", err)
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
 
+		fmt.Printf("Login attempt for user: %s\n", req.Username)
+
 		// Find user
 		var user User
 		if result := db.Where("username = ?", req.Username).First(&user); result.Error != nil {
+			fmt.Printf("Login error: User not found - %v\n", result.Error)
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
 			return
 		}
 
+		fmt.Printf("User found: %s (role: %s)\n", user.Username, user.Role)
+
 		// Verify password
-		if !VerifyPassword(req.Password, user.HashedPassword) {
+		if !VerifyPassword(req.Password, user.Password) {
+			fmt.Printf("Login error: Password verification failed for user %s\n", user.Username)
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
 			return
 		}
+
+		fmt.Printf("Password verified for user: %s\n", user.Username)
 
 		// Generate session token
 		token := GenerateRandomString(32)
 		timeout := time.Now().Add(24 * time.Hour)
 
 		// Create session
-		CreateSession(token, timeout, user, db)
+		if err := CreateSession(token, timeout, user, db); err != nil {
+			fmt.Printf("Login error: Failed to create session - %v\n", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create session"})
+			return
+		}
+
+		fmt.Printf("Login successful for user: %s\n", user.Username)
 
 		c.JSON(http.StatusOK, gin.H{
 			"token": token,
@@ -202,37 +197,48 @@ func createInitialAdmin(db *gorm.DB) error {
 	// Check if any users exist
 	var count int64
 	if err := db.Model(&User{}).Count(&count).Error; err != nil {
+		fmt.Printf("Error counting users: %v\n", err)
 		return fmt.Errorf("failed to count users: %v", err)
 	}
 
+	fmt.Printf("Current user count: %d\n", count)
+
 	// If users exist, don't create initial admin
 	if count > 0 {
+		fmt.Println("Users already exist, skipping initial admin creation")
 		return nil
 	}
 
+	fmt.Println("No users found, creating initial admin user")
+
 	// Create initial admin user
 	initialAdmin := User{
-		Username: "admin",
-		Email:    "admin@localhost",
-		Role:     "admin",
-		Groups:   "admins",
+		Username:    "admin",
+		Email:       "admin@localhost",
+		Role:        "admin",
+		Groups:      "admins",
+		Inventories: "default",
 	}
 
 	// Hash the default password "admin"
 	hashedPassword, err := HashPassword("admin")
 	if err != nil {
+		fmt.Printf("Error hashing password: %v\n", err)
 		return fmt.Errorf("failed to hash password: %v", err)
 	}
-	initialAdmin.HashedPassword = hashedPassword
+	initialAdmin.Password = hashedPassword
 
 	// Create the user
 	if err := db.Create(&initialAdmin).Error; err != nil {
+		fmt.Printf("Error creating initial admin: %v\n", err)
 		return fmt.Errorf("failed to create initial admin: %v", err)
 	}
 
 	fmt.Println("Created initial admin user:")
 	fmt.Println("  Username: admin")
 	fmt.Println("  Password: admin")
+	fmt.Println("  Role: admin")
+	fmt.Println("  Email: admin@localhost")
 	fmt.Println("Please change the password immediately!")
 
 	return nil
@@ -248,12 +254,13 @@ func createInitialAdmin(db *gorm.DB) error {
 // @Success 200 {object} map[string]string
 // @Failure 400 {object} ErrorResponse
 // @Failure 409 {object} ErrorResponse
-// @Router /auth/me/update [put]
+// @Router /auth/me [put]
 func updateMe(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// Get current user
 		currentUser, exists := c.Get("user")
 		if !exists {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
 			return
 		}
 
@@ -263,34 +270,28 @@ func updateMe(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Get current user from database to ensure we have latest data
-		var user User
-		if err := db.First(&user, currentUser.(User).ID).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch user data"})
-			return
-		}
+		user := currentUser.(User)
 
-		// Check if username is being changed and is available
-		if req.Username != "" && req.Username != user.Username {
+		// Update fields if provided
+		if req.Username != "" {
+			// Check if username is already taken
 			var existingUser User
-			if result := db.Where("username = ?", req.Username).First(&existingUser); result.Error == nil {
+			if result := db.Where("username = ? AND id != ?", req.Username, user.ID).First(&existingUser); result.Error == nil {
 				c.JSON(http.StatusConflict, gin.H{"error": "Username already exists"})
 				return
 			}
 			user.Username = req.Username
 		}
 
-		// Update password if provided
 		if req.Password != "" {
 			hashedPassword, err := HashPassword(req.Password)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
 				return
 			}
-			user.HashedPassword = hashedPassword
+			user.Password = hashedPassword
 		}
 
-		// Update email if provided
 		if req.Email != "" {
 			user.Email = req.Email
 		}
@@ -301,29 +302,32 @@ func updateMe(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{"message": "User details updated successfully"})
+		c.JSON(http.StatusOK, gin.H{"message": "User updated successfully"})
 	}
 }
 
 // @Summary Delete own account
-// @Description Delete your own account (not allowed if last admin)
+// @Description Delete your own user account
 // @Tags auth
 // @Security ApiKeyAuth
 // @Accept json
 // @Produce json
 // @Success 200 {object} map[string]string
-// @Failure 403 {object} ErrorResponse
+// @Failure 401 {object} ErrorResponse
 // @Router /auth/me [delete]
 func deleteMe(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// Get current user
 		currentUser, exists := c.Get("user")
 		if !exists {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Authentication required"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
 			return
 		}
 
-		// If user is admin, check if they're the last admin
-		if currentUser.(User).Role == "admin" {
+		user := currentUser.(User)
+
+		// Don't allow deleting the last admin
+		if user.Role == "admin" {
 			var adminCount int64
 			if err := db.Model(&User{}).Where("role = ?", "admin").Count(&adminCount).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to check admin count"})
@@ -331,24 +335,26 @@ func deleteMe(db *gorm.DB) gin.HandlerFunc {
 			}
 
 			if adminCount <= 1 {
-				c.JSON(http.StatusForbidden, gin.H{"error": "Cannot delete the last admin account"})
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Cannot delete the last admin account"})
 				return
 			}
 		}
 
-		// Delete the user
-		user := currentUser.(User)
+		// Delete user
 		if err := db.Delete(&user).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete account"})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete user"})
 			return
 		}
 
-		c.JSON(http.StatusOK, gin.H{"message": "Account deleted successfully"})
+		// Delete associated sessions
+		db.Where("user_id = ?", user.ID).Delete(&Session{})
+
+		c.JSON(http.StatusOK, gin.H{"message": "User deleted successfully"})
 	}
 }
 
-// @Summary Get current user info
-// @Description Get information about the currently logged in user
+// @Summary Get current user
+// @Description Get details of the currently authenticated user
 // @Tags auth
 // @Security ApiKeyAuth
 // @Accept json
@@ -360,76 +366,51 @@ func getCurrentUser() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user, exists := c.Get("user")
 		if !exists {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
 			return
 		}
 
 		currentUser := user.(User)
 		c.JSON(http.StatusOK, gin.H{
 			"username": currentUser.Username,
+			"email":    currentUser.Email,
 			"role":     currentUser.Role,
+			"groups":   currentUser.Groups,
 		})
 	}
 }
 
+// SetupAuthRoutes sets up all authentication-related routes
 func SetupAuthRoutes(r *gin.Engine, db *gorm.DB) {
-	// Migrate auth-related schemas
-	db.AutoMigrate(&User{})
-	db.AutoMigrate(&Session{})
-	db.AutoMigrate(&Group{})
-	db.AutoMigrate(&HostKey{})
-
-	// Create initial admin user if no users exist
-	if err := createInitialAdmin(db); err != nil {
-		panic(err)
-	}
-
 	auth := r.Group("/api/v1/auth")
 	{
+		auth.POST("/register", registerUser(db))
 		auth.POST("/login", loginUser(db))
 		auth.POST("/logout", logoutUser(db))
-		auth.PUT("/me/update", AuthMiddleware(db), updateMe(db))
-		auth.POST("/register", AuthMiddleware(db), registerUser(db))
-		auth.DELETE("/me", AuthMiddleware(db), deleteMe(db))
-		auth.GET("/me", AuthMiddleware(db), getCurrentUser())
-	}
 
-	// Setup admin routes
-	SetupAdminRoutes(r, db)
+		// Protected routes
+		me := auth.Group("/me")
+		me.Use(AuthMiddleware(db))
+		{
+			me.GET("", getCurrentUser())
+			me.PUT("", updateMe(db))
+			me.DELETE("", deleteMe(db))
+		}
+	}
 }
 
-// Add this middleware function for protected routes
+// AuthMiddleware handles authentication for protected routes
 func AuthMiddleware(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		token := c.GetHeader("Authorization")
 		if token == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "No token provided"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header required"})
 			c.Abort()
 			return
 		}
 
-		// First check if it's a host key
-		var hostKey HostKey
-		if result := db.Where("token = ?", token).First(&hostKey); result.Error == nil {
-			// Host key is valid, check if the request is for this host
-			hostName := c.Param("name")
-			if hostName != hostKey.HostName {
-				c.JSON(http.StatusForbidden, gin.H{"error": "Invalid host access"})
-				c.Abort()
-				return
-			}
-			// Allow only PUT/POST operations on the host's own endpoint
-			if c.Request.Method != "PUT" && c.Request.Method != "POST" {
-				c.JSON(http.StatusForbidden, gin.H{"error": "Operation not allowed"})
-				c.Abort()
-				return
-			}
-			c.Next()
-			return
-		}
-
 		var session Session
-		if result := db.Preload("User").Where("token = ?", token).First(&session); result.Error != nil {
+		if err := db.Preload("User").Where("token = ?", token).First(&session).Error; err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
 			c.Abort()
 			return
@@ -442,114 +423,6 @@ func AuthMiddleware(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Update session timeout
-		session.Timeout = time.Now().Add(20 * time.Minute)
-		db.Save(&session)
-
-		// Check role-based access for hosts
-		if session.User.Role != "admin" {
-			// For non-admin users, check inventory and group access
-			hostName := c.Param("name")
-
-			// For GET hosts and GET /inventory, filter the response
-			if c.FullPath() == "/api/v1/hosts" {
-				var filteredHosts []Host
-				db.Find(&hostsList)
-				userGroups := strings.Split(session.User.Groups, ",")
-				userInventories := strings.Split(session.User.Inventories, ",")
-
-				for _, host := range hostsList {
-					// Check if user has access to host's inventory
-					hasInventoryAccess := false
-					for _, inv := range userInventories {
-						inv = strings.TrimSpace(inv)
-						if inv == host.Inventory {
-							hasInventoryAccess = true
-							break
-						}
-					}
-					if !hasInventoryAccess {
-						continue
-					}
-
-					// Then check group access
-					hostGroups := strings.Split(host.Groups, ",")
-					for _, ug := range userGroups {
-						ug = strings.TrimSpace(ug)
-						for _, hg := range hostGroups {
-							hg = strings.TrimSpace(hg)
-							if ug == hg || (ug == "nil" && hg == "") {
-								filteredHosts = append(filteredHosts, host)
-								break
-							}
-						}
-					}
-				}
-
-				c.Set("filteredHosts", filteredHosts)
-			} else if c.FullPath() == "/api/v1/inventory" {
-				// If user has specific inventory, only return that one
-				if session.User.Inventories != "" {
-					var results []struct {
-						Inventory string
-						Count     int
-					}
-					if err := db.Model(&Host{}).
-						Select("inventory, count(*) as count").
-						Where("inventory = ?", session.User.Inventories).
-						Group("inventory").
-						Find(&results).Error; err != nil {
-						c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch inventories"})
-						c.Abort()
-						return
-					}
-
-					inventories := make([]InventoryResponse, 0)
-					if len(results) > 0 {
-						inventories = append(inventories, InventoryResponse{
-							Name:  results[0].Inventory,
-							Hosts: results[0].Count,
-						})
-					}
-					c.Set("filteredInventories", inventories)
-				}
-			} else if hostName != "" {
-				// For endpoints with specific host
-				var host Host
-				if result := db.Where("name = ?", hostName).First(&host); result.Error == nil {
-					// Check inventory access first
-					if session.User.Inventories != "" && host.Inventory != session.User.Inventories {
-						c.JSON(http.StatusForbidden, gin.H{"error": "No access to this host"})
-						c.Abort()
-						return
-					}
-
-					// Then check group access
-					userGroups := strings.Split(session.User.Groups, ",")
-					hostGroups := strings.Split(host.Groups, ",")
-
-					hasAccess := false
-					for _, ug := range userGroups {
-						ug = strings.TrimSpace(ug)
-						for _, hg := range hostGroups {
-							hg = strings.TrimSpace(hg)
-							if ug == hg || (ug == "nil" && hg == "") {
-								hasAccess = true
-								break
-							}
-						}
-					}
-
-					if !hasAccess {
-						c.JSON(http.StatusForbidden, gin.H{"error": "No access to this host"})
-						c.Abort()
-						return
-					}
-				}
-			}
-		}
-
-		// Add user to context
 		c.Set("user", session.User)
 		c.Next()
 	}

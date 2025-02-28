@@ -1,2 +1,5 @@
 monokit
 bin
+common/api/frontend
+**/node_modules
+**/build

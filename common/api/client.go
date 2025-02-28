@@ -1309,7 +1309,7 @@ func AdminInventoryList(cmd *cobra.Command, args []string) {
 	// Print inventories in a formatted way
 	for _, inv := range inventories {
 		fmt.Printf("Inventory: %s\n", inv.Name)
-		fmt.Printf("  Hosts: %d\n", inv.Hosts)
+		fmt.Printf("  Hosts: %d\n", len(inv.Hosts))
 	}
 }
 

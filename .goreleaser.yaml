@@ -1,12 +1,41 @@
 version: 2
 
 builds:
-  - goos:
-    - linux
-    - darwin
-    - windows
-    - freebsd
+  - id: default
+    goos:
+      - linux
+      - darwin
+      - windows
+      - freebsd
     env:
       - CGO_ENABLED=0
     ldflags:
       - -X github.com/monobilisim/monokit/common.MonokitVersion={{ .Version }}
+    tags:
+      - ""
+    binary: monokit
+
+  - id: withapi
+    goos:
+      - linux
+      - darwin
+      - windows
+      - freebsd
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -X github.com/monobilisim/monokit/common.MonokitVersion={{ .Version }}
+    tags:
+      - with_api
+    binary: monokit
+
+archives:
+  - id: default
+    builds:
+      - default
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    
+  - id: withapi
+    builds:
+      - withapi
+    name_template: "{{ .ProjectName }}_withapi_{{ .Version }}_{{ .Os }}_{{ .Arch }}"

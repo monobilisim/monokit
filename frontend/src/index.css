@@ -1,0 +1,793 @@
+/* Base styles */
+body {
+  margin: 0;
+  padding: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  transition: background-color 0.3s ease, color 0.3s ease;
+  background-color: var(--gruvbox-bg) !important;
+  color: var(--gruvbox-fg) !important;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New',
+    monospace;
+}
+
+/* Gruvbox Light Theme Variables */
+:root {
+  /* Gruvbox Light Colors */
+  --gruvbox-bg: #fbf1c7;
+  --gruvbox-bg0: #f9f5d7;
+  --gruvbox-bg1: #ebdbb2;
+  --gruvbox-bg2: #d5c4a1;
+  --gruvbox-bg3: #bdae93;
+  --gruvbox-bg4: #a89984;
+  --gruvbox-fg: #3c3836;
+  --gruvbox-fg0: #282828;
+  --gruvbox-fg1: #3c3836;
+  --gruvbox-fg2: #504945;
+  --gruvbox-fg3: #665c54;
+  --gruvbox-fg4: #7c6f64;
+  --gruvbox-red: #9d0006;
+  --gruvbox-green: #79740e;
+  --gruvbox-yellow: #b57614;
+  --gruvbox-blue: #076678;
+  --gruvbox-purple: #8f3f71;
+  --gruvbox-aqua: #427b58;
+  --gruvbox-orange: #af3a03;
+  --gruvbox-gray: #7c6f64;
+  
+  /* Theme variables */
+  --primary-color: var(--gruvbox-blue);
+  --primary-color-dark: var(--gruvbox-blue);
+  --primary-color-light: var(--gruvbox-aqua);
+  --background-color: var(--gruvbox-bg);
+  --card-background: var(--gruvbox-bg0);
+  --text-color: var(--gruvbox-fg);
+  --text-color-secondary: var(--gruvbox-fg3);
+  --border-color: var(--gruvbox-bg3);
+  --hover-color: var(--gruvbox-bg1);
+  --active-color: var(--gruvbox-bg2);
+  --shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  
+  /* PatternFly CSS Variable Overrides - Light Theme */
+  --pf-v6-global--BackgroundColor--100: var(--gruvbox-bg);
+  --pf-v6-global--BackgroundColor--200: var(--gruvbox-bg0);
+  --pf-v6-global--Color--100: var(--gruvbox-fg0);
+  --pf-v6-global--Color--200: var(--gruvbox-fg1);
+  --pf-v6-global--BorderColor--100: var(--gruvbox-bg3);
+  --pf-v6-global--BorderColor--200: var(--gruvbox-bg4);
+  --pf-v6-global--BorderColor--300: var(--gruvbox-bg2);
+  --pf-v6-global--BorderColor--dark-100: var(--gruvbox-bg3);
+  --pf-v6-global--BorderColor--light-100: var(--gruvbox-bg2);
+  --pf-v6-global--primary-color--100: var(--gruvbox-blue);
+  --pf-v6-global--primary-color--200: var(--gruvbox-aqua);
+  --pf-v6-global--primary-color--light-100: var(--gruvbox-blue);
+  --pf-v6-global--primary-color--dark-100: var(--gruvbox-blue);
+  --pf-v6-global--secondary-color--100: var(--gruvbox-aqua);
+  --pf-v6-global--success-color--100: var(--gruvbox-green);
+  --pf-v6-global--success-color--200: var(--gruvbox-green);
+  --pf-v6-global--info-color--100: var(--gruvbox-blue);
+  --pf-v6-global--info-color--200: var(--gruvbox-blue);
+  --pf-v6-global--warning-color--100: var(--gruvbox-yellow);
+  --pf-v6-global--warning-color--200: var(--gruvbox-yellow);
+  --pf-v6-global--danger-color--100: var(--gruvbox-red);
+  --pf-v6-global--danger-color--200: var(--gruvbox-red);
+  --pf-v6-global--danger-color--300: var(--gruvbox-red);
+  --pf-v6-global--active-color--100: var(--gruvbox-blue);
+  --pf-v6-global--active-color--200: var(--gruvbox-blue);
+  --pf-v6-global--active-color--300: var(--gruvbox-blue);
+  --pf-v6-global--active-color--400: var(--gruvbox-blue);
+  --pf-v6-global--disabled-color--100: var(--gruvbox-bg4);
+  --pf-v6-global--disabled-color--200: var(--gruvbox-bg3);
+  --pf-v6-global--disabled-color--300: var(--gruvbox-bg2);
+  --pf-v6-global--link--Color: var(--gruvbox-blue);
+  --pf-v6-global--link--Color--hover: var(--gruvbox-orange);
+  --pf-v6-global--link--Color--visited: var(--gruvbox-purple);
+  --pf-v6-global--icon--Color--light: var(--gruvbox-fg3);
+  --pf-v6-global--icon--Color--dark: var(--gruvbox-fg1);
+  
+  /* Component specific overrides - Light */
+  --pf-v6-c-page__sidebar--BackgroundColor: var(--gruvbox-bg0);
+  --pf-v6-c-page__main--BackgroundColor: var(--gruvbox-bg);
+  --pf-v6-c-card--BackgroundColor: var(--gruvbox-bg0);
+  --pf-v6-c-button--m-primary--BackgroundColor: var(--gruvbox-blue);
+  --pf-v6-c-button--m-primary--Color: var(--gruvbox-bg0);
+  --pf-v6-c-button--m-secondary--BackgroundColor: var(--gruvbox-bg2);
+  --pf-v6-c-button--m-secondary--Color: var(--gruvbox-fg0);
+  --pf-v6-c-button--m-danger--BackgroundColor: var(--gruvbox-red);
+  --pf-v6-c-button--m-danger--Color: var(--gruvbox-bg0);
+  --pf-v6-c-button--m-link--Color: var(--gruvbox-blue);
+  --pf-v6-c-nav__link--m-current--BackgroundColor: var(--gruvbox-bg2);
+  --pf-v6-c-nav__link--hover--BackgroundColor: var(--gruvbox-bg1);
+  --pf-v6-c-nav__link--m-current--Color: var(--gruvbox-fg0);
+  --pf-v6-c-nav__link--Color: var(--gruvbox-fg2);
+  --pf-v6-c-form-control--BorderBottomColor: var(--gruvbox-bg3);
+  --pf-v6-c-form-control--BackgroundColor: var(--gruvbox-bg0);
+  --pf-v6-c-form-control--Color: var(--gruvbox-fg);
+  --pf-v6-c-table--BackgroundColor: var(--gruvbox-bg0);
+  --pf-v6-c-table--BorderColor: var(--gruvbox-bg3);
+  --pf-v6-c-table--cell--Color: var(--gruvbox-fg);
+  --pf-v6-c-table__tr--m-hoverable--hover--BackgroundColor: var(--gruvbox-bg1);
+  --pf-v6-c-table__tr--m-selected--BackgroundColor: var(--gruvbox-bg2);
+  --pf-v6-c-modal-box--BackgroundColor: var(--gruvbox-bg0);
+  --pf-v6-c-modal-box--BorderColor: var(--gruvbox-bg3);
+  --pf-v6-c-modal-box--Color: var(--gruvbox-fg);
+  --pf-v6-c-dropdown__menu--BackgroundColor: var(--gruvbox-bg0);
+  --pf-v6-c-dropdown__menu--BorderColor: var(--gruvbox-bg3);
+  --pf-v6-c-dropdown__menu-item--Color: var(--gruvbox-fg);
+  --pf-v6-c-dropdown__menu-item--hover--BackgroundColor: var(--gruvbox-bg1);
+  --pf-v6-c-alert--m-success--BorderColor: var(--gruvbox-green);
+  --pf-v6-c-alert--m-danger--BorderColor: var(--gruvbox-red);
+  --pf-v6-c-alert--m-warning--BorderColor: var(--gruvbox-yellow);
+  --pf-v6-c-alert--m-info--BorderColor: var(--gruvbox-blue);
+  
+  /* Toolbar variables - Light */
+  --pf-v6-c-toolbar--BackgroundColor: var(--gruvbox-bg0);
+  --pf-v6-c-toolbar--BorderColor: var(--gruvbox-bg3);
+  --pf-v6-c-toolbar__content--BackgroundColor: var(--gruvbox-bg0);
+  --pf-v6-c-toolbar__content-section--BackgroundColor: var(--gruvbox-bg0);
+  --pf-v6-c-toolbar__group--BackgroundColor: var(--gruvbox-bg0);
+  --pf-v6-c-toolbar__item--BackgroundColor: var(--gruvbox-bg0);
+  --pf-v6-c-toolbar__expandable-content--BackgroundColor: var(--gruvbox-bg0);
+  --pf-v6-c-toolbar__expandable-content--BorderColor: var(--gruvbox-bg3);
+}
+
+/* Gruvbox Dark Theme Variables */
+[data-theme='dark'], .pf-v6-theme-dark {
+  /* Gruvbox Dark Colors */
+  --gruvbox-bg: #282828;
+  --gruvbox-bg0: #1d2021;
+  --gruvbox-bg1: #3c3836;
+  --gruvbox-bg2: #504945;
+  --gruvbox-bg3: #665c54;
+  --gruvbox-bg4: #7c6f64;
+  --gruvbox-fg: #ebdbb2;
+  --gruvbox-fg0: #fbf1c7;
+  --gruvbox-fg1: #ebdbb2;
+  --gruvbox-fg2: #d5c4a1;
+  --gruvbox-fg3: #bdae93;
+  --gruvbox-fg4: #a89984;
+  --gruvbox-red: #fb4934;
+  --gruvbox-green: #b8bb26;
+  --gruvbox-yellow: #fabd2f;
+  --gruvbox-blue: #83a598;
+  --gruvbox-purple: #d3869b;
+  --gruvbox-aqua: #8ec07c;
+  --gruvbox-orange: #fe8019;
+  --gruvbox-gray: #928374;
+  
+  /* Theme variables */
+  --primary-color: var(--gruvbox-blue);
+  --primary-color-dark: var(--gruvbox-blue);
+  --primary-color-light: var(--gruvbox-aqua);
+  --background-color: var(--gruvbox-bg);
+  --card-background: var(--gruvbox-bg0);
+  --text-color: var(--gruvbox-fg);
+  --text-color-secondary: var(--gruvbox-fg3);
+  --border-color: var(--gruvbox-bg3);
+  --hover-color: var(--gruvbox-bg1);
+  --active-color: var(--gruvbox-bg2);
+  --shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  
+  /* PatternFly CSS Variable Overrides - Dark Theme */
+  --pf-v6-global--BackgroundColor--100: var(--gruvbox-bg);
+  --pf-v6-global--BackgroundColor--200: var(--gruvbox-bg0);
+  --pf-v6-global--Color--100: var(--gruvbox-fg0);
+  --pf-v6-global--Color--200: var(--gruvbox-fg1);
+  --pf-v6-global--BorderColor--100: var(--gruvbox-bg3);
+  --pf-v6-global--BorderColor--200: var(--gruvbox-bg4);
+  --pf-v6-global--BorderColor--300: var(--gruvbox-bg2);
+  --pf-v6-global--BorderColor--dark-100: var(--gruvbox-bg3);
+  --pf-v6-global--BorderColor--light-100: var(--gruvbox-bg2);
+  --pf-v6-global--primary-color--100: var(--gruvbox-blue);
+  --pf-v6-global--primary-color--200: var(--gruvbox-aqua);
+  --pf-v6-global--primary-color--light-100: var(--gruvbox-blue);
+  --pf-v6-global--primary-color--dark-100: var(--gruvbox-blue);
+  --pf-v6-global--secondary-color--100: var(--gruvbox-aqua);
+  --pf-v6-global--success-color--100: var(--gruvbox-green);
+  --pf-v6-global--success-color--200: var(--gruvbox-green);
+  --pf-v6-global--info-color--100: var(--gruvbox-blue);
+  --pf-v6-global--info-color--200: var(--gruvbox-blue);
+  --pf-v6-global--warning-color--100: var(--gruvbox-yellow);
+  --pf-v6-global--warning-color--200: var(--gruvbox-yellow);
+  --pf-v6-global--danger-color--100: var(--gruvbox-red);
+  --pf-v6-global--danger-color--200: var(--gruvbox-red);
+  --pf-v6-global--danger-color--300: var(--gruvbox-red);
+  --pf-v6-global--active-color--100: var(--gruvbox-blue);
+  --pf-v6-global--active-color--200: var(--gruvbox-blue);
+  --pf-v6-global--active-color--300: var(--gruvbox-blue);
+  --pf-v6-global--active-color--400: var(--gruvbox-blue);
+  --pf-v6-global--disabled-color--100: var(--gruvbox-bg4);
+  --pf-v6-global--disabled-color--200: var(--gruvbox-bg3);
+  --pf-v6-global--disabled-color--300: var(--gruvbox-bg2);
+  --pf-v6-global--link--Color: var(--gruvbox-blue);
+  --pf-v6-global--link--Color--hover: var(--gruvbox-orange);
+  --pf-v6-global--link--Color--visited: var(--gruvbox-purple);
+  --pf-v6-global--icon--Color--light: var(--gruvbox-fg3);
+  --pf-v6-global--icon--Color--dark: var(--gruvbox-fg1);
+  
+  /* Component specific overrides - Dark */
+  --pf-v6-c-page__sidebar--BackgroundColor: var(--gruvbox-bg0);
+  --pf-v6-c-page__main--BackgroundColor: var(--gruvbox-bg);
+  --pf-v6-c-card--BackgroundColor: var(--gruvbox-bg0);
+  --pf-v6-c-button--m-primary--BackgroundColor: var(--gruvbox-blue);
+  --pf-v6-c-button--m-primary--Color: var(--gruvbox-bg0);
+  --pf-v6-c-button--m-secondary--BackgroundColor: var(--gruvbox-bg2);
+  --pf-v6-c-button--m-secondary--Color: var(--gruvbox-fg0);
+  --pf-v6-c-button--m-danger--BackgroundColor: var(--gruvbox-red);
+  --pf-v6-c-button--m-danger--Color: var(--gruvbox-bg0);
+  --pf-v6-c-button--m-link--Color: var(--gruvbox-blue);
+  --pf-v6-c-nav__link--m-current--BackgroundColor: var(--gruvbox-bg2);
+  --pf-v6-c-nav__link--hover--BackgroundColor: var(--gruvbox-bg1);
+  --pf-v6-c-nav__link--m-current--Color: var(--gruvbox-fg0);
+  --pf-v6-c-nav__link--Color: var(--gruvbox-fg2);
+  --pf-v6-c-form-control--BorderBottomColor: var(--gruvbox-bg3);
+  --pf-v6-c-form-control--BackgroundColor: var(--gruvbox-bg0);
+  --pf-v6-c-form-control--Color: var(--gruvbox-fg);
+  --pf-v6-c-table--BackgroundColor: var(--gruvbox-bg0);
+  --pf-v6-c-table--BorderColor: var(--gruvbox-bg3);
+  --pf-v6-c-table--cell--Color: var(--gruvbox-fg);
+  --pf-v6-c-table__tr--m-hoverable--hover--BackgroundColor: var(--gruvbox-bg1);
+  --pf-v6-c-table__tr--m-selected--BackgroundColor: var(--gruvbox-bg2);
+  --pf-v6-c-modal-box--BackgroundColor: var(--gruvbox-bg0);
+  --pf-v6-c-modal-box--BorderColor: var(--gruvbox-bg3);
+  --pf-v6-c-modal-box--Color: var(--gruvbox-fg);
+  --pf-v6-c-dropdown__menu--BackgroundColor: var(--gruvbox-bg0);
+  --pf-v6-c-dropdown__menu--BorderColor: var(--gruvbox-bg3);
+  --pf-v6-c-dropdown__menu-item--Color: var(--gruvbox-fg);
+  --pf-v6-c-dropdown__menu-item--hover--BackgroundColor: var(--gruvbox-bg1);
+  --pf-v6-c-alert--m-success--BorderColor: var(--gruvbox-green);
+  --pf-v6-c-alert--m-danger--BorderColor: var(--gruvbox-red);
+  --pf-v6-c-alert--m-warning--BorderColor: var(--gruvbox-yellow);
+  --pf-v6-c-alert--m-info--BorderColor: var(--gruvbox-blue);
+  
+  /* Toolbar variables - Dark */
+  --pf-v6-c-toolbar--BackgroundColor: var(--gruvbox-bg0);
+  --pf-v6-c-toolbar--BorderColor: var(--gruvbox-bg3);
+  --pf-v6-c-toolbar__content--BackgroundColor: var(--gruvbox-bg0);
+  --pf-v6-c-toolbar__content-section--BackgroundColor: var(--gruvbox-bg0);
+  --pf-v6-c-toolbar__group--BackgroundColor: var(--gruvbox-bg0);
+  --pf-v6-c-toolbar__item--BackgroundColor: var(--gruvbox-bg0);
+  --pf-v6-c-toolbar__expandable-content--BackgroundColor: var(--gruvbox-bg0);
+  --pf-v6-c-toolbar__expandable-content--BorderColor: var(--gruvbox-bg3);
+}
+
+/* Apply background color to body */
+[data-theme='dark'] body, .pf-v6-theme-dark body {
+  background-color: var(--gruvbox-bg);
+  color: var(--gruvbox-fg);
+}
+
+body {
+  background-color: var(--gruvbox-bg);
+  color: var(--gruvbox-fg);
+}
+
+/* Global styles */
+* {
+  box-sizing: border-box;
+}
+
+a {
+  color: var(--primary-color);
+  text-decoration: none;
+}
+
+a:hover {
+  text-decoration: underline;
+  color: var(--gruvbox-orange);
+}
+
+/* Utility classes */
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
+/* Smooth transitions for theme changes */
+.theme-transition {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+/* Additional PatternFly component overrides */
+.pf-v6-c-page {
+  background-color: var(--gruvbox-bg) !important;
+}
+
+.pf-v6-c-page__sidebar {
+  background-color: var(--gruvbox-bg0) !important;
+  border-right: 1px solid var(--gruvbox-bg3) !important;
+}
+
+.pf-v6-c-page__main {
+  background-color: var(--gruvbox-bg) !important;
+}
+
+.pf-v6-c-page__main-section {
+  background-color: var(--gruvbox-bg) !important;
+}
+
+/* Override the white background in the main content area */
+.pf-v6-c-page__main-section > div {
+  background-color: var(--gruvbox-bg) !important;
+}
+
+/* Override any flex container within main section */
+.pf-v6-c-page__main-section > div[style*="background-color: rgb(255, 255, 255)"] {
+  background-color: var(--gruvbox-bg) !important;
+}
+
+/* Ensure all direct children of main section use theme colors */
+.pf-v6-c-page__main-section > * {
+  background-color: var(--gruvbox-bg) !important;
+}
+
+/* Override any PatternFly content sections */
+.pf-v6-c-content {
+  background-color: var(--gruvbox-bg) !important;
+}
+
+/* Toolbar overrides for Gruvbox theme */
+.pf-v6-c-toolbar {
+  background-color: var(--gruvbox-bg0) !important;
+  border-color: var(--gruvbox-bg3) !important;
+}
+
+.pf-v6-c-toolbar__content {
+  background-color: var(--gruvbox-bg0) !important;
+}
+
+.pf-v6-c-toolbar__group {
+  background-color: var(--gruvbox-bg0) !important;
+}
+
+.pf-v6-c-toolbar__item {
+  background-color: var(--gruvbox-bg0) !important;
+}
+
+/* Toolbar content section overrides */
+.pf-v6-c-toolbar__content-section {
+  background-color: var(--gruvbox-bg0) !important;
+  color: var(--gruvbox-fg) !important;
+}
+
+/* Toolbar expandable content */
+.pf-v6-c-toolbar__expandable-content {
+  background-color: var(--gruvbox-bg0) !important;
+  border-color: var(--gruvbox-bg3) !important;
+}
+
+/* Toolbar toggle button */
+.pf-v6-c-toolbar__toggle {
+  background-color: var(--gruvbox-bg0) !important;
+  color: var(--gruvbox-fg) !important;
+}
+
+/* Additional toolbar selectors to ensure complete coverage */
+.pf-v6-c-toolbar__filter {
+  background-color: var(--gruvbox-bg0) !important;
+}
+
+.pf-v6-c-toolbar__filter-toggle {
+  background-color: var(--gruvbox-bg0) !important;
+  color: var(--gruvbox-fg) !important;
+}
+
+.pf-v6-c-toolbar__filter-list {
+  background-color: var(--gruvbox-bg0) !important;
+}
+
+.pf-v6-c-toolbar__filter-list-item {
+  background-color: var(--gruvbox-bg0) !important;
+}
+
+/* Ensure toolbar inputs match theme */
+.pf-v6-c-toolbar .pf-v6-c-form-control {
+  background-color: var(--gruvbox-bg0) !important;
+  color: var(--gruvbox-fg) !important;
+  border-color: var(--gruvbox-bg3) !important;
+}
+
+/* Ensure toolbar buttons match theme */
+.pf-v6-c-toolbar .pf-v6-c-button {
+  background-color: var(--gruvbox-bg0) !important;
+  color: var(--gruvbox-fg) !important;
+}
+
+/* Ensure toolbar pagination matches theme */
+.pf-v6-c-toolbar .pf-v6-c-pagination {
+  background-color: var(--gruvbox-bg0) !important;
+}
+
+/* Legacy class names for backward compatibility */
+.pf-c-toolbar {
+  background-color: var(--gruvbox-bg0) !important;
+  border-color: var(--gruvbox-bg3) !important;
+}
+
+.pf-c-toolbar__content,
+.pf-c-toolbar__group,
+.pf-c-toolbar__item,
+.pf-c-toolbar__content-section,
+.pf-c-toolbar__expandable-content,
+.pf-c-toolbar__toggle {
+  background-color: var(--gruvbox-bg0) !important;
+  color: var(--gruvbox-fg) !important;
+}
+
+.pf-v6-c-card {
+  background-color: var(--gruvbox-bg0) !important;
+  color: var(--gruvbox-fg) !important;
+  border: 1px solid var(--gruvbox-bg3) !important;
+}
+
+.pf-v6-c-card__title {
+  color: var(--gruvbox-fg0) !important;
+}
+
+.pf-v6-c-form-control {
+  background-color: var(--gruvbox-bg0) !important;
+  color: var(--gruvbox-fg) !important;
+  border-color: var(--gruvbox-bg3) !important;
+}
+
+.pf-v6-c-form-control:focus {
+  border-color: var(--gruvbox-blue) !important;
+}
+
+.pf-v6-c-button {
+  transition: all 0.2s ease-in-out !important;
+}
+
+.pf-v6-c-button.pf-m-primary {
+  background-color: var(--gruvbox-blue) !important;
+  color: var(--gruvbox-bg0) !important;
+}
+
+.pf-v6-c-button.pf-m-primary:hover {
+  background-color: var(--gruvbox-aqua) !important;
+}
+
+.pf-v6-c-button.pf-m-secondary {
+  background-color: var(--gruvbox-bg2) !important;
+  color: var(--gruvbox-fg0) !important;
+}
+
+.pf-v6-c-button.pf-m-danger {
+  background-color: var(--gruvbox-red) !important;
+  color: var(--gruvbox-bg0) !important;
+}
+
+.pf-v6-c-button.pf-m-link {
+  color: var(--gruvbox-blue) !important;
+}
+
+.pf-v6-c-button.pf-m-link:hover {
+  color: var(--gruvbox-orange) !important;
+}
+
+.pf-v6-c-table {
+  background-color: var(--gruvbox-bg0) !important;
+  color: var(--gruvbox-fg) !important;
+}
+
+.pf-v6-c-table__tr {
+  border-bottom: 1px solid var(--gruvbox-bg3) !important;
+}
+
+.pf-v6-c-table__tr:hover {
+  background-color: var(--gruvbox-bg1) !important;
+}
+
+.pf-v6-c-table__td {
+  color: var(--gruvbox-fg) !important;
+}
+
+.pf-v6-c-table__th {
+  color: var(--gruvbox-fg0) !important;
+  background-color: var(--gruvbox-bg1) !important;
+}
+
+.pf-v6-c-dropdown__menu {
+  background-color: var(--gruvbox-bg0) !important;
+  border: 1px solid var(--gruvbox-bg3) !important;
+}
+
+.pf-v6-c-dropdown__menu-item {
+  color: var(--gruvbox-fg) !important;
+}
+
+.pf-v6-c-dropdown__menu-item:hover {
+  background-color: var(--gruvbox-bg1) !important;
+}
+
+.pf-v6-c-alert.pf-m-success {
+  background-color: var(--gruvbox-bg0) !important;
+  border-color: var(--gruvbox-green) !important;
+}
+
+.pf-v6-c-alert.pf-m-danger {
+  background-color: var(--gruvbox-bg0) !important;
+  border-color: var(--gruvbox-red) !important;
+}
+
+.pf-v6-c-alert.pf-m-warning {
+  background-color: var(--gruvbox-bg0) !important;
+  border-color: var(--gruvbox-yellow) !important;
+}
+
+.pf-v6-c-alert.pf-m-info {
+  background-color: var(--gruvbox-bg0) !important;
+  border-color: var(--gruvbox-blue) !important;
+}
+
+.pf-v6-c-alert__title {
+  color: var(--gruvbox-fg0) !important;
+}
+
+/* Ensure form inputs in modals have proper width */
+.pf-c-modal-box .pf-c-form-control,
+.pf-c-modal-box .pf-c-form__group-control {
+  width: 100% !important;
+}
+
+.pf-c-modal-box .pf-c-form__group {
+  margin-bottom: 16px;
+}
+
+/* Ensure modal content has adequate spacing */
+.pf-c-modal-box__body {
+  padding: 16px 24px !important;
+}
+
+/* Add bottom margin to form groups */
+.pf-c-form__group:not(:last-child) {
+  margin-bottom: 24px;
+}
+
+/* Ensure form inputs have proper height */
+.pf-c-form-control {
+  min-height: 36px;
+}
+
+/* Modal Form Styles - More specific and forceful */
+.modal-form-component {
+  min-width: 500px !important;
+}
+
+/* Override PatternFly's modal sizing for all variants */
+.pf-c-modal-box.pf-m-sm {
+  width: 500px !important;
+  max-width: 90vw !important;
+}
+
+.pf-c-modal-box.pf-m-md {
+  width: 700px !important;
+  max-width: 90vw !important;
+}
+
+.pf-c-modal-box.pf-m-lg {
+  width: 1120px !important;
+  max-width: 90vw !important;
+}
+
+/* Ensure input fields take full width */
+.pf-c-modal-box .pf-c-form-control {
+  width: 100% !important;
+  min-width: 100% !important;
+}
+
+/* Ensure modal content has adequate spacing */
+.pf-c-modal-box__body {
+  padding: 24px !important;
+  width: 100% !important;
+}
+
+/* Ensure form inputs have proper height */
+.pf-c-form-control {
+  min-height: 36px !important;
+}
+
+/* Ensure form elements have proper spacing */
+.pf-c-form__group {
+  margin-bottom: 24px !important;
+  width: 100% !important;
+}
+
+/* Ensure form group label and control are properly sized */
+.pf-c-form__group-label,
+.pf-c-form__group-control {
+  width: 100% !important;
+}
+
+/* Ensure all form elements inside modals get proper width */
+.pf-c-modal-box .pf-c-form,
+.pf-c-modal-box .pf-c-form__group,
+.pf-c-modal-box .pf-c-form-control,
+.pf-c-modal-box input,
+.pf-c-modal-box select,
+.pf-c-modal-box textarea {
+  width: 100% !important;
+  min-width: unset !important;
+  max-width: unset !important;
+}
+
+/* Modal fixes */
+.pf-c-modal-box {
+  min-width: 600px !important;
+  max-width: 90% !important;
+  width: auto !important;
+}
+
+.pf-c-modal-box__body {
+  padding: 24px !important;
+  margin-bottom: 16px !important;
+}
+
+.pf-c-modal-box__footer {
+  padding: 24px !important;
+  display: flex !important;
+  justify-content: flex-end !important;
+  gap: 16px !important;
+}
+
+.pf-c-modal-box__footer .pf-c-button {
+  padding: 10px 24px !important;
+  font-size: 16px !important;
+}
+
+.pf-c-modal-box__title {
+  font-size: 20px !important;
+  font-weight: bold !important;
+}
+
+/* Ensure the modal dialog is placed at the correct z-index */
+.pf-c-backdrop {
+  z-index: 1000 !important;
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+}
+
+.pf-c-bullseye {
+  z-index: 1001 !important;
+}
+
+/* 
+ * Custom dark mode styles that add to PatternFly's theme
+ * These are for elements that might not be fully covered by PatternFly's theme
+ */
+
+/* Custom components requiring specific styles */
+.pf-v6-theme-dark .custom-component {
+  background-color: #1e1e1e;
+  color: #ffffff;
+}
+
+/* Any app-specific custom styling that isn't covered by PatternFly */
+.pf-v6-theme-dark .app-custom-card {
+  background-color: #1e1e1e;
+  border: 1px solid #444;
+  color: #ffffff;
+}
+
+/* Additional root-level overrides */
+#root {
+  background-color: var(--gruvbox-bg) !important;
+}
+
+#root > div {
+  background-color: var(--gruvbox-bg) !important;
+}
+
+/* Login screen background */
+#root > div > div:nth-child(1) {
+  background-color: rgba(40, 40, 40, 0.7) !important;
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+}
+
+/* Force background color on all page sections and their children */
+.pf-v6-c-page,
+.pf-v6-c-page__main,
+.pf-v6-c-page__main-section,
+.pf-v6-c-page__main-section > *,
+.pf-v6-c-page__main-group,
+.pf-v6-c-page__main-body,
+.pf-v6-c-page__drawer,
+.pf-v6-c-page__header,
+.pf-v6-c-page__header-tools,
+.pf-v6-c-page__sidebar,
+.pf-v6-c-page__sidebar-body {
+  background-color: var(--gruvbox-bg) !important;
+}
+
+/* Override any inline styles that might set white background */
+[style*="background-color: rgb(255, 255, 255)"],
+[style*="background-color: white"],
+[style*="background-color: #fff"],
+[style*="background-color: #ffffff"] {
+  background-color: var(--gruvbox-bg) !important;
+}
+
+/* Override any PatternFly content sections */
+.pf-v6-c-content {
+  background-color: var(--gruvbox-bg) !important;
+}
+
+/* Main content area override */
+#root > div > div:nth-child(2) > main,
+#root > div > div:nth-child(2) > main > section,
+#root > div > div:nth-child(2) > main > section > div,
+#root > div > div:nth-child(2) > main > section > div > div {
+  background-color: var(--gruvbox-bg0) !important;
+}
+
+/* Popover override */
+.pf-v6-c-popover__content {
+  background-color: var(--gruvbox-bg2) !important;
+  border-color: var(--gruvbox-bg3) !important;
+  color: var(--gruvbox-fg) !important;
+}
+
+/* Modal overrides */
+.pf-v6-c-modal-box,
+.pf-v6-c-modal-box__body,
+.pf-v6-c-modal-box__footer,
+.pf-v6-c-modal-box__header,
+[id^="pf-modal-part-"] {
+  background-color: var(--gruvbox-bg0) !important;
+  color: var(--gruvbox-fg) !important;
+  border-color: var(--gruvbox-bg3) !important;
+}
+
+.pf-v6-c-modal-box__title {
+  color: var(--gruvbox-fg0) !important;
+}
+
+/* Legacy modal classes */
+.pf-c-modal-box,
+.pf-c-modal-box__body,
+.pf-c-modal-box__footer,
+.pf-c-modal-box__header {
+  background-color: var(--gruvbox-bg0) !important;
+  color: var(--gruvbox-fg) !important;
+  border-color: var(--gruvbox-bg3) !important;
+}
+
+/* Modal backdrop override */
+.pf-v6-c-backdrop,
+.pf-c-backdrop,
+body > div:nth-child(2) > div:nth-child(2) {
+  background-color: rgba(40, 40, 40, 0.7) !important;
+  backdrop-filter: blur(2px) !important;
+}
+
+/* Dropdown/Menu overrides */
+.pf-v6-c-menu,
+.pf-v6-c-options-menu__menu,
+#options-menu-bottom-pagination,
+[id^="options-menu-"] {
+  background-color: var(--gruvbox-bg0) !important;
+  color: var(--gruvbox-fg) !important;
+  border-color: var(--gruvbox-bg3) !important;
+}
+
+.pf-v6-c-menu__item,
+.pf-v6-c-options-menu__menu-item {
+  background-color: var(--gruvbox-bg0) !important;
+  color: var(--gruvbox-fg) !important;
+}
+
+.pf-v6-c-menu__item:hover,
+.pf-v6-c-options-menu__menu-item:hover {
+  background-color: var(--gruvbox-bg1) !important;
+} 

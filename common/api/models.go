@@ -1,4 +1,6 @@
-	package common
+//go:build with_api
+
+package common
 
 import (
 	"time"
@@ -6,140 +8,91 @@ import (
 	"gorm.io/gorm"
 )
 
-// @Description Error response
-type ErrorResponse struct {
-	Error string `json:"error" example:"Admin access required"`
+// Server represents the server configuration
+type Server struct {
+	Port     string
+	Postgres struct {
+		Host     string
+		Port     string
+		User     string
+		Password string
+		Dbname   string
+	}
 }
 
-// @Description Group model
-type CreateGroupRequest struct {
-	Name string `json:"name" binding:"required" example:"developers"`
-}
-
-// @Description Host response model
-type HostResponse struct {
-	ID                  uint      `json:"id"`
-	Name                string    `json:"name"`
-	CpuCores            int       `json:"cpuCores"`
-	Ram                 string    `json:"ram"`
-	MonokitVersion      string    `json:"monokitVersion"`
-	Os                  string    `json:"os"`
-	DisabledComponents  string    `json:"disabledComponents"`
-	InstalledComponents string    `json:"installedComponents"`
-	IpAddress           string    `json:"ipAddress"`
-	Status              string    `json:"status"`
-	UpdatedAt           time.Time `json:"updatedAt"`
-	CreatedAt           time.Time `json:"createdAt"`
-	WantsUpdateTo       string    `json:"wantsUpdateTo"`
-	Groups              string    `json:"groups"`
-	UpForDeletion       bool      `json:"upForDeletion"`
-	Inventory           string    `json:"inventory"`
-}
-
-// @Description Group response model
-type GroupResponse struct {
-	ID    uint           `json:"id" example:"1"`
-	Name  string         `json:"name" example:"developers"`
-	Hosts []HostResponse `json:"hosts,omitempty"`
-}
-
-// @Description User response model
-type UserResponse struct {
-	ID          uint   `json:"id" example:"1"`
-	Username    string `json:"username" example:"johndoe"`
-	Email       string `json:"email" example:"john.doe@example.com"`
-	Role        string `json:"role" example:"admin"`
-	Groups      string `json:"groups" example:"developers,admins"`
-	Inventories string `json:"inventories" example:"production"`
-}
-
-// @Description Login request
-type LoginRequest struct {
-	Username string `json:"username" binding:"required" example:"johndoe"`
-	Password string `json:"password" binding:"required" example:"secretpassword123"`
-}
-
-// @Description Login response
-type LoginResponse struct {
-	Token string `json:"token" example:"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."`
-	User  struct {
-		Username string `json:"username" example:"johndoe"`
-		Email    string `json:"email" example:"john.doe@example.com"`
-		Role     string `json:"role" example:"admin"`
-		Groups   string `json:"groups" example:"developers,admins"`
-	} `json:"user"`
-}
-
-// @Description Register request
-type RegisterRequest struct {
-	Username  string `json:"username" binding:"required" example:"johndoe"`
-	Password  string `json:"password" binding:"required" example:"secretpassword123"`
-	Email     string `json:"email" binding:"required" example:"john.doe@example.com"`
-	Role      string `json:"role" binding:"required" example:"user"`
-	Groups    string `json:"groups" example:"developers"`
-	Inventory string `json:"inventory" example:"production"`
-}
-
-// @Description Update user groups request
-type UpdateUserGroupsRequest struct {
-	Groups string `json:"groups" binding:"required" example:"developers,production"`
-}
-
-// @Description Update own user details request
-type UpdateMeRequest struct {
-	Username string `json:"username,omitempty" example:"johndoe"`
-	Password string `json:"password,omitempty" example:"newpassword123"`
-	Email    string `json:"email,omitempty" example:"john.doe@example.com"`
-}
-
-// @Description Update user request (admin)
-type UpdateUserRequest struct {
-	Username string `json:"username,omitempty" example:"johndoe"`
-	Password string `json:"password,omitempty" example:"newpassword123"`
-	Email    string `json:"email,omitempty" example:"john.doe@example.com"`
-	Role     string `json:"role,omitempty" example:"admin"`
-	Groups   string `json:"groups,omitempty" example:"developers,admins"`
-}
-
-// @Description Inventory response model
-type InventoryResponse struct {
-	Name  string `json:"name" example:"production"`
-	Hosts int    `json:"hosts" example:"5"`
-}
-
-// @Description Create inventory request
-type CreateInventoryRequest struct {
-	Name string `json:"name" binding:"required" example:"production"`
-}
-
-// APIHost represents the host data received from the API
-type APIHost struct {
-	ID                  int       `json:"id"`
-	Name                string    `json:"name"`
-	CpuCores            int       `json:"cpuCores"`
-	Ram                 string    `json:"ram"`
-	MonokitVersion      string    `json:"monokitVersion"`
-	Os                  string    `json:"os"`
-	DisabledComponents  string    `json:"disabledComponents"`
-	InstalledComponents string    `json:"installedComponents"`
-	IpAddress           string    `json:"ipAddress"`
-	Status              string    `json:"status"`
-	UpdatedAt           time.Time `json:"updatedAt"`
-	CreatedAt           time.Time `json:"createdAt"`
-	WantsUpdateTo       string    `json:"wantsUpdateTo"`
-	Groups              string    `json:"groups"`
-	UpForDeletion       bool      `json:"upForDeletion"`
-	Inventory           string    `json:"inventory"`
-}
-
-// Add this with the other model definitions
-type HostKey struct {
+// Host represents a monitored host
+type Host struct {
 	gorm.Model
-	Token    string `json:"token"`
-	HostName string `json:"hostName" gorm:"unique"`
+	Name                string    `json:"name"`
+	CpuCores            int       `json:"cpuCores"`
+	Ram                 string    `json:"ram"`
+	MonokitVersion      string    `json:"monokitVersion"`
+	Os                  string    `json:"os"`
+	DisabledComponents  string    `json:"disabledComponents"`
+	InstalledComponents string    `json:"installedComponents"`
+	IpAddress           string    `json:"ipAddress"`
+	Status              string    `json:"status"`
+	UpdatedAt           time.Time `json:"updatedAt"`
+	CreatedAt           time.Time `json:"createdAt"`
+	WantsUpdateTo       string    `json:"wantsUpdateTo"`
+	Groups              string    `json:"groups"`
+	UpForDeletion       bool      `json:"upForDeletion"`
+	Inventory           string    `json:"inventory"`
 }
 
-// Add this helper function
-func generateToken() string {
-	return GenerateRandomString(32)
+// Inventory represents a collection of hosts
+type Inventory struct {
+	ID    uint   `json:"id" gorm:"primarykey"`
+	Name  string `json:"name" gorm:"unique"`
+	Hosts []Host `json:"hosts" gorm:"foreignKey:Inventory;references:Name"`
 }
+
+// User represents a system user
+type User struct {
+	gorm.Model
+	Username    string `json:"username" gorm:"unique"`
+	Password    string `json:"-"`
+	Email       string `json:"email"`
+	Role        string `json:"role"`
+	Groups      string `json:"groups"`
+	Inventories string `json:"inventories"`
+}
+
+// HostKey represents an API key for a host
+type HostKey struct {
+	ID       uint   `json:"id" gorm:"primarykey"`
+	Token    string `json:"token"`
+	HostName string `json:"host_name"`
+}
+
+// Session represents a user session
+type Session struct {
+	ID        uint      `json:"id" gorm:"primarykey"`
+	Token     string    `json:"token"`
+	UserID    uint      `json:"user_id"`
+	ExpiresAt time.Time `json:"expires_at"`
+	Timeout   time.Time `json:"timeout"`
+	User      User      `json:"user"`
+}
+
+// Group represents a group in the system
+type Group struct {
+	ID    uint   `json:"id" gorm:"primarykey"`
+	Name  string `json:"name" gorm:"unique"`
+	Hosts []Host `json:"hosts" gorm:"many2many:group_hosts;"`
+	Users []User `json:"users" gorm:"many2many:group_users;"`
+}
+
+// Global variables
+var ServerConfig struct {
+	Port     string `mapstructure:"port"`
+	Postgres struct {
+		Host     string `mapstructure:"host"`
+		Port     string `mapstructure:"port"`
+		User     string `mapstructure:"user"`
+		Password string `mapstructure:"password"`
+		Dbname   string `mapstructure:"dbname"`
+	} `mapstructure:"postgres"`
+}
+
+var HostsList []Host

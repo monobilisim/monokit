@@ -1,3 +1,5 @@
+//go:build with_api
+
 package common
 
 import (
@@ -70,13 +72,16 @@ func createGroup(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		group := Group{Name: req.Name}
+		group := Group{
+			Name:  req.Name,
+			Users: []User{}, // Initialize with empty slice instead of "nil" string
+		}
 		if err := db.Create(&group).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create group"})
 			return
 		}
 
-		c.JSON(http.StatusOK, group)
+		c.JSON(http.StatusCreated, group)
 	}
 }
 
@@ -492,7 +497,7 @@ func updateUser(db *gorm.DB) gin.HandlerFunc {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
 				return
 			}
-			user.HashedPassword = hashedPassword
+			user.Password = hashedPassword
 		}
 		if req.Email != "" {
 			user.Email = req.Email
@@ -588,7 +593,7 @@ func scheduleHostDeletion(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// Update cache
-		db.Find(&hostsList)
+		db.Find(&HostsList)
 
 		c.JSON(http.StatusOK, gin.H{"message": "Host scheduled for deletion"})
 	}
@@ -639,7 +644,7 @@ func moveHostToInventory(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// Update the hosts list
-		db.Find(&hostsList)
+		db.Find(&HostsList)
 
 		c.JSON(http.StatusOK, gin.H{"message": fmt.Sprintf("Host %s moved to inventory %s", hostname, targetInventory)})
 	}

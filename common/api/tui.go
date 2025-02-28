@@ -369,7 +369,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		for i, inv := range msg {
 			items[i] = item{
 				title: inv.Name,
-				desc:  fmt.Sprintf("Hosts: %d", inv.Hosts),
+				desc:  fmt.Sprintf("Hosts: %d", len(inv.Hosts)),
 			}
 		}
 

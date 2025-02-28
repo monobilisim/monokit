@@ -165,13 +165,25 @@ If you use Monokit on a place where there is no proper color support, you can di
 To build monokit:
 
 ```
-./build.sh
+make
 ```
 
 You can also build the documentation by running:
 
 ```
-./build.sh docs
+make docs
+```
+
+To build a binary with the API server:
+
+```
+make with-api
+```
+
+To see other options run:
+
+```
+make help
 ```
 
 The resulting binaries will be in the `bin` folder.
