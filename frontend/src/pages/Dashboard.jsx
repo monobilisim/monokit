@@ -27,6 +27,7 @@ import {
 import axios from 'axios';
 import { useTheme } from '../ThemeContext.jsx';
 import { GruvboxColors } from '../ThemeContext.jsx';
+import api from '../utils/api';
 
 const Dashboard = () => {
   const [loading, setIsLoading] = useState(true);
@@ -41,6 +42,14 @@ const Dashboard = () => {
   });
   const [userInfo, setUserInfo] = useState(null);
   const [isChartHovered, setIsChartHovered] = useState(false);
+  const [isLogChartHovered, setIsLogChartHovered] = useState(false);
+  const [errorCount, setErrorCount] = useState(0);
+  const [logStats, setLogStats] = useState({
+    info: 0,
+    warning: 0,
+    error: 0,
+    critical: 0
+  });
   const { theme } = useTheme();
   
   // Get the appropriate color palette based on the current theme
@@ -106,7 +115,71 @@ const Dashboard = () => {
 
   useEffect(() => {
     fetchUserInfo();
-  }, []);
+    if (userRole === 'admin') {
+      fetchErrorCount();
+      fetchLogStats();
+    }
+  }, [userRole]);
+
+  const fetchLogStats = async () => {
+    try {
+      const now = new Date();
+      const lastWeek = new Date(now.getTime() - (7 * 24 * 60 * 60 * 1000));
+      
+      // Fetch counts for each log level
+      const logLevels = ['info', 'warning', 'error', 'critical'];
+      const counts = {};
+      
+      for (const level of logLevels) {
+        const searchParams = {
+          page: 1,
+          page_size: 1,
+          level: level,
+          start_time: lastWeek.toISOString(),
+          end_time: now.toISOString()
+        };
+
+        try {
+          const response = await api.post('/logs/search', searchParams);
+          if (response.data && typeof response.data === 'object') {
+            const pagination = response.data.pagination || { total: 0 };
+            counts[level] = pagination.total;
+          }
+        } catch (err) {
+          console.error(`Failed to fetch ${level} logs:`, err);
+          counts[level] = 0;
+        }
+      }
+      
+      setLogStats(counts);
+    } catch (err) {
+      console.error('Failed to fetch log statistics:', err);
+    }
+  };
+
+  const fetchErrorCount = async () => {
+    try {
+      const now = new Date();
+      const yesterday = new Date(now.getTime() - (24 * 60 * 60 * 1000));
+      
+      const searchParams = {
+        page: 1,
+        page_size: 1,
+        level: 'error',
+        start_time: yesterday.toISOString(),
+        end_time: now.toISOString()
+      };
+
+      const response = await api.post('/logs/search', searchParams);
+      
+      if (response.data && typeof response.data === 'object') {
+        const pagination = response.data.pagination || { total: 0 };
+        setErrorCount(pagination.total);
+      }
+    } catch (err) {
+      console.error('Failed to fetch error count:', err);
+    }
+  };
 
   const fetchUserInfo = async () => {
     try {
@@ -386,6 +459,171 @@ const Dashboard = () => {
     );
   };
 
+  // Render the donut chart for log severity
+  const renderLogSeverityChart = () => {
+    const radius = 85;
+    const strokeWidth = 25;
+    const center = 100;
+    
+    // Calculate total logs
+    const totalLogs = Object.values(logStats).reduce((sum, count) => sum + count, 0) || 1;
+    
+    // Calculate the circumference
+    const circumference = 2 * Math.PI * radius;
+    
+    // Define colors for each log level
+    const levelColors = {
+      info: '#0066CC',     // Blue
+      warning: '#F0AB00',  // Yellow/Orange
+      error: '#C9190B',    // Red
+      critical: '#A30000'  // Dark Red
+    };
+    
+    // Calculate stroke-dasharray and stroke-dashoffset for each segment
+    let currentOffset = 0;
+    const segments = [];
+    
+    // Create segments for each log level that has data
+    Object.entries(logStats).forEach(([level, count]) => {
+      if (count > 0) {
+        const percentage = count / totalLogs;
+        segments.push({
+          color: levelColors[level],
+          dashArray: `${circumference * percentage} ${circumference * (1 - percentage)}`,
+          dashOffset: -currentOffset * circumference,
+          count,
+          label: level.charAt(0).toUpperCase() + level.slice(1)
+        });
+        currentOffset += percentage;
+      }
+    });
+
+    // Create log summary for popover content
+    const logSummary = (
+      <div style={{ 
+        padding: '12px', 
+        backgroundColor: colors.bg1,
+        color: colors.fg,
+        borderRadius: '4px',
+        border: `1px solid ${colors.bg3}`,
+      }}>
+        <div style={{ 
+          marginBottom: '12px', 
+          fontWeight: 'bold', 
+          fontSize: '16px',
+          borderBottom: `1px solid ${colors.bg3}`,
+          paddingBottom: '8px',
+          color: colors.fg0
+        }}>
+          Log Severity Summary (7 days)
+        </div>
+        {segments.map((segment, index) => (
+          <div key={index} style={{ display: 'flex', alignItems: 'center', marginBottom: index < segments.length - 1 ? '8px' : 0 }}>
+            <span style={{ 
+              display: 'inline-block', 
+              width: '12px', 
+              height: '12px', 
+              borderRadius: '50%', 
+              backgroundColor: segment.color, 
+              marginRight: '8px',
+              boxShadow: theme === 'dark' ? `0 0 4px ${segment.color}` : 'none'
+            }}></span>
+            <span style={{ fontWeight: '500' }}>{segment.label}: {segment.count}</span>
+          </div>
+        ))}
+      </div>
+    );
+
+    return (
+      <div 
+        style={{ 
+          width: '200px', 
+          height: '200px', 
+          margin: '0 auto',
+          position: 'relative',
+          cursor: 'pointer',
+        }}
+      >
+        <Popover
+          position="top"
+          bodyContent={logSummary}
+          aria-label="Log severity popover"
+          showClose={false}
+          distance={16}
+          appendTo={() => document.body}
+          isVisible={isLogChartHovered}
+        >
+          <div
+            style={{
+              width: '200px',
+              height: '200px',
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              transition: 'transform 0.2s ease-in-out',
+              transform: isLogChartHovered ? 'scale(1.03)' : 'scale(1)',
+            }}
+            onMouseEnter={() => setIsLogChartHovered(true)}
+            onMouseLeave={() => setIsLogChartHovered(false)}
+          >
+            <svg width="170" height="170" viewBox="0 0 200 200" style={{ backgroundColor: colors.bg0 }}>
+              {segments.map((segment, index) => (
+                <circle
+                  key={index}
+                  cx={center}
+                  cy={center}
+                  r={radius}
+                  fill="none"
+                  stroke={segment.color}
+                  strokeWidth={strokeWidth}
+                  strokeDasharray={segment.dashArray}
+                  strokeDashoffset={segment.dashOffset}
+                  transform="rotate(-90 100 100)"
+                  style={{
+                    transition: 'stroke-width 0.2s ease-in-out',
+                    strokeWidth: isLogChartHovered ? strokeWidth + 2 : strokeWidth
+                  }}
+                />
+              ))}
+              <circle
+                cx={center}
+                cy={center}
+                r={radius - strokeWidth / 2}
+                fill={colors.bg0}
+              />
+              <text
+                x={center}
+                y={center - 5}
+                textAnchor="middle"
+                dominantBaseline="central"
+                style={{
+                  fill: colors.fg0,
+                  fontSize: '38px',
+                  fontWeight: 'bold',
+                  fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
+                }}
+              >
+                {totalLogs}
+              </text>
+              <text
+                x={center}
+                y={center + 25}
+                textAnchor="middle"
+                style={{
+                  fill: colors.fg1,
+                  fontSize: '16px',
+                  fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif'
+                }}
+              >
+                logs
+              </text>
+            </svg>
+          </div>
+        </Popover>
+      </div>
+    );
+  };
+
   return (
     <PageSection style={{ 
       minHeight: '100%',
@@ -448,7 +686,22 @@ const Dashboard = () => {
               </Card>
             </GridItem>
 
-            <GridItem span={4}>
+            {userRole === 'admin' && (
+              <GridItem span={4}>
+                <Card style={cardStyles}>
+                  <CardTitle>
+                    <Title headingLevel="h2" size="xl" style={titleStyles}>Log Severity Overview</Title>
+                  </CardTitle>
+                  <CardBody>
+                    <div style={{ height: '250px', width: '100%', display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center' }}>
+                      {renderLogSeverityChart()}
+                    </div>
+                  </CardBody>
+                </Card>
+              </GridItem>
+            )}
+
+            <GridItem span={userRole === 'admin' ? 4 : 8}>
               <Card style={cardStyles}>
                 <CardTitle>
                   <Title headingLevel="h2" size="xl" style={titleStyles}>Host Statistics</Title>
@@ -486,6 +739,9 @@ const Dashboard = () => {
                     <Stack hasGutter>
                       <Label style={statusLabelStyles('green')}>API Server: Running</Label>
                       <Label style={statusLabelStyles('green')}>Database: Connected</Label>
+                      <Label style={statusLabelStyles('red')}>
+                        Errors (24h): {errorCount}
+                      </Label>
                       <Label style={labelStyles}>
                         Last Update: {new Date().toLocaleString()}
                       </Label>
@@ -501,4 +757,4 @@ const Dashboard = () => {
   );
 };
 
-export default Dashboard; 
+export default Dashboard;

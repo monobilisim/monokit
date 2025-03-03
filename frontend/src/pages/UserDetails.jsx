@@ -65,7 +65,7 @@ const UserDetails = () => {
   if (error) {
     return (
       <PageSection>
-        <Alert variant="danger" title={error} />
+        <Alert variant="danger" isInline title={error} style={{ marginBottom: '1rem' }} />
       </PageSection>
     );
   }
@@ -193,4 +193,4 @@ const UserDetails = () => {
   );
 };
 
-export default UserDetails; 
+export default UserDetails;

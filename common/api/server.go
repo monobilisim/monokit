@@ -19,6 +19,18 @@
 // @in header
 // @name Authorization
 
+// @tag.name hosts
+// @tag.description Host management operations
+
+// @tag.name auth
+// @tag.description Authentication operations
+
+// @tag.name admin
+// @tag.description Admin operations
+
+// @tag.name logs
+// @tag.description Log management operations
+
 package common
 
 import (
@@ -63,6 +75,7 @@ func ServerMain(cmd *cobra.Command, args []string) {
 	db.AutoMigrate(&Group{})
 	db.AutoMigrate(&User{})
 	db.AutoMigrate(&Session{})
+	db.AutoMigrate(&HostLog{})   // Add migration for HostLog table
 
 	// Create default inventory if it doesn't exist
 	var defaultInventory Inventory

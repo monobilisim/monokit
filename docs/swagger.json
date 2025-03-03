@@ -728,7 +728,7 @@
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/common.LoginRequest"
+                            "$ref": "#/definitions/github_com_monobilisim_monokit_common_api.LoginRequest"
                         }
                     }
                 ],
@@ -736,7 +736,7 @@
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/common.LoginResponse"
+                            "$ref": "#/definitions/github_com_monobilisim_monokit_common_api.LoginResponse"
                         }
                     },
                     "401": {
@@ -966,6 +966,73 @@
                 }
             }
         },
+        "/host/logs": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Submit a log entry from a host",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "logs"
+                ],
+                "summary": "Submit host log",
+                "parameters": [
+                    {
+                        "description": "Log entry",
+                        "name": "log",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/common.APILogRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Log entry saved response",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": true
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/hosts/{name}/disable/{service}": {
             "post": {
                 "security": [
@@ -1153,9 +1220,348 @@
                     }
                 }
             }
+        },
+        "/logs": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Retrieve all logs with pagination",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Logs"
+                ],
+                "summary": "Get all logs",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Page number (default: 1)",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page size (default: 100, max: 1000)",
+                        "name": "page_size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Paginated logs response",
+                        "schema": {
+                            "$ref": "#/definitions/common.APILogsResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/common.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/common.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/logs/search": {
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Search logs with various filters",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Logs"
+                ],
+                "summary": "Search logs",
+                "parameters": [
+                    {
+                        "description": "Search parameters",
+                        "name": "search",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/common.APILogSearchRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Paginated logs response",
+                        "schema": {
+                            "$ref": "#/definitions/common.APILogsResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad request",
+                        "schema": {
+                            "$ref": "#/definitions/common.ErrorResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/common.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/common.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/logs/{hostname}": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Retrieve logs for a specific host with pagination",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Logs"
+                ],
+                "summary": "Get logs for a specific host",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Hostname",
+                        "name": "hostname",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page number (default: 1)",
+                        "name": "page",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Page size (default: 100, max: 1000)",
+                        "name": "page_size",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "Paginated host logs response",
+                        "schema": {
+                            "$ref": "#/definitions/common.APIHostLogsResponse"
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/common.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/common.ErrorResponse"
+                        }
+                    }
+                }
+            }
         }
     },
     "definitions": {
+        "common.APIHostLogsResponse": {
+            "type": "object",
+            "properties": {
+                "hostname": {
+                    "type": "string",
+                    "example": "server1"
+                },
+                "logs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/common.APILogEntry"
+                    }
+                },
+                "pagination": {
+                    "$ref": "#/definitions/common.APILogPagination"
+                }
+            }
+        },
+        "common.APILogEntry": {
+            "type": "object",
+            "properties": {
+                "component": {
+                    "type": "string",
+                    "example": "system"
+                },
+                "created_at": {
+                    "type": "string",
+                    "example": "2023-01-01T12:00:01Z"
+                },
+                "host_name": {
+                    "type": "string",
+                    "example": "server1"
+                },
+                "id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "level": {
+                    "type": "string",
+                    "example": "info"
+                },
+                "message": {
+                    "type": "string",
+                    "example": "System started successfully"
+                },
+                "metadata": {
+                    "type": "string",
+                    "example": "{\"version\":\"1.2.3\"}"
+                },
+                "timestamp": {
+                    "type": "string",
+                    "example": "2023-01-01T12:00:00Z"
+                },
+                "updated_at": {
+                    "type": "string",
+                    "example": "2023-01-01T12:00:01Z"
+                }
+            }
+        },
+        "common.APILogPagination": {
+            "type": "object",
+            "properties": {
+                "page": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "page_size": {
+                    "type": "integer",
+                    "example": 100
+                },
+                "pages": {
+                    "type": "integer",
+                    "example": 2
+                },
+                "total": {
+                    "type": "integer",
+                    "example": 150
+                }
+            }
+        },
+        "common.APILogRequest": {
+            "type": "object",
+            "required": [
+                "component",
+                "level",
+                "message"
+            ],
+            "properties": {
+                "component": {
+                    "type": "string",
+                    "example": "system"
+                },
+                "level": {
+                    "type": "string",
+                    "enum": [
+                        "info",
+                        "warning",
+                        "error",
+                        "critical"
+                    ],
+                    "example": "info"
+                },
+                "message": {
+                    "type": "string",
+                    "example": "System started successfully"
+                },
+                "metadata": {
+                    "type": "string",
+                    "example": "{\"version\":\"1.2.3\"}"
+                },
+                "timestamp": {
+                    "type": "string",
+                    "example": "2023-01-01T12:00:00Z"
+                }
+            }
+        },
+        "common.APILogSearchRequest": {
+            "type": "object",
+            "properties": {
+                "component": {
+                    "type": "string",
+                    "example": "database"
+                },
+                "end_time": {
+                    "type": "string",
+                    "example": "2023-01-31T23:59:59Z"
+                },
+                "host_name": {
+                    "type": "string",
+                    "example": "server1"
+                },
+                "level": {
+                    "type": "string",
+                    "example": "error"
+                },
+                "message_text": {
+                    "type": "string",
+                    "example": "connection"
+                },
+                "page": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "page_size": {
+                    "type": "integer",
+                    "example": 100
+                },
+                "start_time": {
+                    "type": "string",
+                    "example": "2023-01-01T00:00:00Z"
+                }
+            }
+        },
+        "common.APILogsResponse": {
+            "type": "object",
+            "properties": {
+                "logs": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/common.APILogEntry"
+                    }
+                },
+                "pagination": {
+                    "$ref": "#/definitions/common.APILogPagination"
+                }
+            }
+        },
         "common.CreateGroupRequest": {
             "type": "object",
             "required": [
@@ -1181,7 +1587,7 @@
                 "hosts": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/common.Host"
+                        "$ref": "#/definitions/github_com_monobilisim_monokit_common_api.Host"
                     }
                 },
                 "id": {
@@ -1194,102 +1600,6 @@
                     "type": "array",
                     "items": {
                         "$ref": "#/definitions/common.User"
-                    }
-                }
-            }
-        },
-        "common.Host": {
-            "type": "object",
-            "properties": {
-                "cpu_cores": {
-                    "type": "integer"
-                },
-                "created_at": {
-                    "type": "string"
-                },
-                "disabled_components": {
-                    "type": "string"
-                },
-                "groups": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "installed_components": {
-                    "type": "string"
-                },
-                "inventory": {
-                    "type": "string"
-                },
-                "ip_address": {
-                    "type": "string"
-                },
-                "monokit_version": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "os": {
-                    "type": "string"
-                },
-                "ram": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                },
-                "up_for_deletion": {
-                    "type": "boolean"
-                },
-                "updated_at": {
-                    "type": "string"
-                },
-                "version": {
-                    "type": "string"
-                },
-                "wants_update_to": {
-                    "type": "string"
-                }
-            }
-        },
-        "common.LoginRequest": {
-            "type": "object",
-            "required": [
-                "password",
-                "username"
-            ],
-            "properties": {
-                "password": {
-                    "type": "string"
-                },
-                "username": {
-                    "type": "string"
-                }
-            }
-        },
-        "common.LoginResponse": {
-            "type": "object",
-            "properties": {
-                "token": {
-                    "type": "string"
-                },
-                "user": {
-                    "type": "object",
-                    "properties": {
-                        "email": {
-                            "type": "string"
-                        },
-                        "groups": {
-                            "type": "string"
-                        },
-                        "role": {
-                            "type": "string"
-                        },
-                        "username": {
-                            "type": "string"
-                        }
                     }
                 }
             }
@@ -1410,6 +1720,99 @@
                     "type": "string"
                 }
             }
+        },
+        "github_com_monobilisim_monokit_common_api.Host": {
+            "type": "object",
+            "properties": {
+                "cpuCores": {
+                    "type": "integer"
+                },
+                "createdAt": {
+                    "type": "string"
+                },
+                "disabledComponents": {
+                    "type": "string"
+                },
+                "groups": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "installedComponents": {
+                    "type": "string"
+                },
+                "inventory": {
+                    "type": "string"
+                },
+                "ipAddress": {
+                    "type": "string"
+                },
+                "monokitVersion": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "os": {
+                    "type": "string"
+                },
+                "ram": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "upForDeletion": {
+                    "type": "boolean"
+                },
+                "updatedAt": {
+                    "type": "string"
+                },
+                "wantsUpdateTo": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_monobilisim_monokit_common_api.LoginRequest": {
+            "type": "object",
+            "required": [
+                "password",
+                "username"
+            ],
+            "properties": {
+                "password": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "github_com_monobilisim_monokit_common_api.LoginResponse": {
+            "type": "object",
+            "properties": {
+                "token": {
+                    "type": "string"
+                },
+                "user": {
+                    "type": "object",
+                    "properties": {
+                        "email": {
+                            "type": "string"
+                        },
+                        "groups": {
+                            "type": "string"
+                        },
+                        "role": {
+                            "type": "string"
+                        },
+                        "username": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
         }
     },
     "securityDefinitions": {
@@ -1418,5 +1821,23 @@
             "name": "Authorization",
             "in": "header"
         }
-    }
+    },
+    "tags": [
+        {
+            "description": "Host management operations",
+            "name": "hosts"
+        },
+        {
+            "description": "Authentication operations",
+            "name": "auth"
+        },
+        {
+            "description": "Admin operations",
+            "name": "admin"
+        },
+        {
+            "description": "Log management operations",
+            "name": "logs"
+        }
+    ]
 }

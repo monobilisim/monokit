@@ -1356,3 +1356,80 @@ func AdminInventoryCreate(cmd *cobra.Command, args []string) {
 
 	fmt.Printf("Inventory '%s' created successfully\n", inventoryName)
 }
+
+// LogsCmd handles the logs command and its subcommands
+func LogsCmd(cmd *cobra.Command, args []string) {
+	ClientInit()
+
+	host, _ := cmd.Flags().GetString("host")
+	level, _ := cmd.Flags().GetString("level")
+	component, _ := cmd.Flags().GetString("component")
+	message, _ := cmd.Flags().GetString("message")
+	startTime, _ := cmd.Flags().GetString("startTime")
+	endTime, _ := cmd.Flags().GetString("endTime")
+	page, _ := cmd.Flags().GetInt("page")
+	pageSize, _ := cmd.Flags().GetInt("pageSize")
+
+	// Construct query string
+	query := "/api/v1/logs?"
+	if host != "" {
+		query += "host=" + host + "&"
+	}
+	if level != "" {
+		query += "level=" + level + "&"
+	}
+	if component != "" {
+		query += "component=" + component + "&"
+	}
+	if message != "" {
+		query += "message=" + message + "&"
+	}
+	if startTime != "" {
+		query += "startTime=" + startTime + "&"
+	}
+	if endTime != "" {
+		query += "endTime=" + endTime + "&"
+	}
+	query += fmt.Sprintf("page=%d&pageSize=%d", page, pageSize)
+
+	// Send request to API
+	resp, err := SendGenericRequest("GET", query, nil)
+	if err != nil {
+		common.LogError("Failed to fetch logs: " + err.Error())
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+	defer resp.Body.Close()
+
+	// Read response body
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		common.LogError("Failed to read response: " + err.Error())
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+
+	// Check if response is successful
+	if resp.StatusCode != http.StatusOK {
+		// Try to parse error as JSON
+		var errorResp map[string]string
+		if err := json.Unmarshal(body, &errorResp); err == nil && errorResp["error"] != "" {
+			common.LogError("API error: " + errorResp["error"])
+		} else {
+			// If not JSON, print as plain text
+			common.LogError("API error: " + string(body))
+		}
+		common.RemoveLockfile()
+		os.Exit(1)
+	}
+
+	// Try to parse as JSON and pretty print
+	var prettyJSON bytes.Buffer
+	if err := json.Indent(&prettyJSON, body, "", "  "); err != nil {
+		// If not valid JSON, print as plain text
+		fmt.Println(string(body))
+		return
+	}
+
+	fmt.Println(prettyJSON.String())
+}

@@ -25,6 +25,7 @@ import HostDetails from './pages/HostDetails.jsx';
 import UserForm from './pages/UserForm.jsx';
 import UserDetails from './pages/UserDetails.jsx';
 import Groups from './pages/Groups.jsx';
+import Logs from './pages/Logs.jsx';
 import { useTheme } from './ThemeContext.jsx';
 import api from './utils/api';
 
@@ -191,6 +192,7 @@ function App() {
                 <Route path="/users/:username" element={<UserDetails onAuthError={handleAuthError} />} />
                 <Route path="/inventories" element={<Inventories onAuthError={handleAuthError} />} />
                 <Route path="/groups" element={<Groups onAuthError={handleAuthError} />} />
+                <Route path="/logs" element={<Logs onAuthError={handleAuthError} />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
               </Routes>
             </main>
@@ -201,4 +203,4 @@ function App() {
   );
 }
 
-export default App; 
+export default App;

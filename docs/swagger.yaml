@@ -1,5 +1,125 @@
 basePath: /api/v1
 definitions:
+  common.APIHostLogsResponse:
+    properties:
+      hostname:
+        example: server1
+        type: string
+      logs:
+        items:
+          $ref: '#/definitions/common.APILogEntry'
+        type: array
+      pagination:
+        $ref: '#/definitions/common.APILogPagination'
+    type: object
+  common.APILogEntry:
+    properties:
+      component:
+        example: system
+        type: string
+      created_at:
+        example: "2023-01-01T12:00:01Z"
+        type: string
+      host_name:
+        example: server1
+        type: string
+      id:
+        example: 1
+        type: integer
+      level:
+        example: info
+        type: string
+      message:
+        example: System started successfully
+        type: string
+      metadata:
+        example: '{"version":"1.2.3"}'
+        type: string
+      timestamp:
+        example: "2023-01-01T12:00:00Z"
+        type: string
+      updated_at:
+        example: "2023-01-01T12:00:01Z"
+        type: string
+    type: object
+  common.APILogPagination:
+    properties:
+      page:
+        example: 1
+        type: integer
+      page_size:
+        example: 100
+        type: integer
+      pages:
+        example: 2
+        type: integer
+      total:
+        example: 150
+        type: integer
+    type: object
+  common.APILogRequest:
+    properties:
+      component:
+        example: system
+        type: string
+      level:
+        enum:
+        - info
+        - warning
+        - error
+        - critical
+        example: info
+        type: string
+      message:
+        example: System started successfully
+        type: string
+      metadata:
+        example: '{"version":"1.2.3"}'
+        type: string
+      timestamp:
+        example: "2023-01-01T12:00:00Z"
+        type: string
+    required:
+    - component
+    - level
+    - message
+    type: object
+  common.APILogSearchRequest:
+    properties:
+      component:
+        example: database
+        type: string
+      end_time:
+        example: "2023-01-31T23:59:59Z"
+        type: string
+      host_name:
+        example: server1
+        type: string
+      level:
+        example: error
+        type: string
+      message_text:
+        example: connection
+        type: string
+      page:
+        example: 1
+        type: integer
+      page_size:
+        example: 100
+        type: integer
+      start_time:
+        example: "2023-01-01T00:00:00Z"
+        type: string
+    type: object
+  common.APILogsResponse:
+    properties:
+      logs:
+        items:
+          $ref: '#/definitions/common.APILogEntry'
+        type: array
+      pagination:
+        $ref: '#/definitions/common.APILogPagination'
+    type: object
   common.CreateGroupRequest:
     properties:
       name:
@@ -16,7 +136,7 @@ definitions:
     properties:
       hosts:
         items:
-          $ref: '#/definitions/common.Host'
+          $ref: '#/definitions/github_com_monobilisim_monokit_common_api.Host'
         type: array
       id:
         type: integer
@@ -26,69 +146,6 @@ definitions:
         items:
           $ref: '#/definitions/common.User'
         type: array
-    type: object
-  common.Host:
-    properties:
-      cpu_cores:
-        type: integer
-      created_at:
-        type: string
-      disabled_components:
-        type: string
-      groups:
-        type: string
-      id:
-        type: integer
-      installed_components:
-        type: string
-      inventory:
-        type: string
-      ip_address:
-        type: string
-      monokit_version:
-        type: string
-      name:
-        type: string
-      os:
-        type: string
-      ram:
-        type: string
-      status:
-        type: string
-      up_for_deletion:
-        type: boolean
-      updated_at:
-        type: string
-      version:
-        type: string
-      wants_update_to:
-        type: string
-    type: object
-  common.LoginRequest:
-    properties:
-      password:
-        type: string
-      username:
-        type: string
-    required:
-    - password
-    - username
-    type: object
-  common.LoginResponse:
-    properties:
-      token:
-        type: string
-      user:
-        properties:
-          email:
-            type: string
-          groups:
-            type: string
-          role:
-            type: string
-          username:
-            type: string
-        type: object
     type: object
   common.RegisterRequest:
     properties:
@@ -166,6 +223,67 @@ definitions:
         type: string
       username:
         type: string
+    type: object
+  github_com_monobilisim_monokit_common_api.Host:
+    properties:
+      cpuCores:
+        type: integer
+      createdAt:
+        type: string
+      disabledComponents:
+        type: string
+      groups:
+        type: string
+      id:
+        type: integer
+      installedComponents:
+        type: string
+      inventory:
+        type: string
+      ipAddress:
+        type: string
+      monokitVersion:
+        type: string
+      name:
+        type: string
+      os:
+        type: string
+      ram:
+        type: string
+      status:
+        type: string
+      upForDeletion:
+        type: boolean
+      updatedAt:
+        type: string
+      wantsUpdateTo:
+        type: string
+    type: object
+  github_com_monobilisim_monokit_common_api.LoginRequest:
+    properties:
+      password:
+        type: string
+      username:
+        type: string
+    required:
+    - password
+    - username
+    type: object
+  github_com_monobilisim_monokit_common_api.LoginResponse:
+    properties:
+      token:
+        type: string
+      user:
+        properties:
+          email:
+            type: string
+          groups:
+            type: string
+          role:
+            type: string
+          username:
+            type: string
+        type: object
     type: object
 host: localhost:9989
 info:
@@ -632,14 +750,14 @@ paths:
         name: credentials
         required: true
         schema:
-          $ref: '#/definitions/common.LoginRequest'
+          $ref: '#/definitions/github_com_monobilisim_monokit_common_api.LoginRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/common.LoginResponse'
+            $ref: '#/definitions/github_com_monobilisim_monokit_common_api.LoginResponse'
         "401":
           description: Unauthorized
           schema:
@@ -784,6 +902,49 @@ paths:
       summary: Register user
       tags:
       - auth
+  /host/logs:
+    post:
+      consumes:
+      - application/json
+      description: Submit a log entry from a host
+      parameters:
+      - description: Log entry
+        in: body
+        name: log
+        required: true
+        schema:
+          $ref: '#/definitions/common.APILogRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Log entry saved response
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad request error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Submit host log
+      tags:
+      - logs
   /hosts/{name}/{service}:
     get:
       consumes:
@@ -904,9 +1065,127 @@ paths:
       summary: Update host version
       tags:
       - hosts
+  /logs:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve all logs with pagination
+      parameters:
+      - description: 'Page number (default: 1)'
+        in: query
+        name: page
+        type: integer
+      - description: 'Page size (default: 100, max: 1000)'
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Paginated logs response
+          schema:
+            $ref: '#/definitions/common.APILogsResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Get all logs
+      tags:
+      - Logs
+  /logs/{hostname}:
+    get:
+      consumes:
+      - application/json
+      description: Retrieve logs for a specific host with pagination
+      parameters:
+      - description: Hostname
+        in: path
+        name: hostname
+        required: true
+        type: string
+      - description: 'Page number (default: 1)'
+        in: query
+        name: page
+        type: integer
+      - description: 'Page size (default: 100, max: 1000)'
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Paginated host logs response
+          schema:
+            $ref: '#/definitions/common.APIHostLogsResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Get logs for a specific host
+      tags:
+      - Logs
+  /logs/search:
+    post:
+      consumes:
+      - application/json
+      description: Search logs with various filters
+      parameters:
+      - description: Search parameters
+        in: body
+        name: search
+        required: true
+        schema:
+          $ref: '#/definitions/common.APILogSearchRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Paginated logs response
+          schema:
+            $ref: '#/definitions/common.APILogsResponse'
+        "400":
+          description: Bad request
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Search logs
+      tags:
+      - Logs
 securityDefinitions:
   ApiKeyAuth:
     in: header
     name: Authorization
     type: apiKey
 swagger: "2.0"
+tags:
+- description: Host management operations
+  name: hosts
+- description: Authentication operations
+  name: auth
+- description: Admin operations
+  name: admin
+- description: Log management operations
+  name: logs

@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -17,6 +18,84 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
+
+// @title Monokit API
+// @version 1.0
+// @description Monokit API Server
+// @termsOfService http://swagger.io/terms/
+
+// @contact.name API Support
+// @contact.url http://www.monobilisim.com.tr
+// @contact.email info@monobilisim.com.tr
+
+// @license.name Apache 2.0
+// @license.url http://www.apache.org/licenses/LICENSE-2.0.html
+
+// @host localhost:9989
+// @BasePath /api/v1
+// @schemes http https
+
+// @securityDefinitions.apikey ApiKeyAuth
+// @in header
+// @name Authorization
+
+// @tag.name Logs
+// @tag.description Operations related to logs
+
+// APILogRequest represents a log entry submission request
+type APILogRequest struct {
+	Level     string `json:"level" binding:"required" example:"info" enums:"info,warning,error,critical"`
+	Component string `json:"component" binding:"required" example:"system"`
+	Message   string `json:"message" binding:"required" example:"System started successfully"`
+	Timestamp string `json:"timestamp" example:"2023-01-01T12:00:00Z"`
+	Metadata  string `json:"metadata" example:"{\"version\":\"1.2.3\"}"`
+}
+
+// APILogEntry represents a log entry in the database and response
+type APILogEntry struct {
+	ID        uint   `json:"id" example:"1"`
+	HostName  string `json:"host_name" example:"server1"`
+	Level     string `json:"level" example:"info"`
+	Component string `json:"component" example:"system"`
+	Message   string `json:"message" example:"System started successfully"`
+	Timestamp string `json:"timestamp" example:"2023-01-01T12:00:00Z"`
+	Metadata  string `json:"metadata" example:"{\"version\":\"1.2.3\"}"`
+	CreatedAt string `json:"created_at" example:"2023-01-01T12:00:01Z"`
+	UpdatedAt string `json:"updated_at" example:"2023-01-01T12:00:01Z"`
+}
+
+// APILogSearchRequest represents a log search request
+type APILogSearchRequest struct {
+	HostName    string `json:"host_name" example:"server1"`
+	Level       string `json:"level" example:"error"`
+	Component   string `json:"component" example:"database"`
+	MessageText string `json:"message_text" example:"connection"`
+	StartTime   string `json:"start_time" example:"2023-01-01T00:00:00Z"`
+	EndTime     string `json:"end_time" example:"2023-01-31T23:59:59Z"`
+	Page        int    `json:"page" example:"1"`
+	PageSize    int    `json:"page_size" example:"100"`
+}
+
+// APILogPagination represents pagination information for log responses
+type APILogPagination struct {
+	Total    int64 `json:"total" example:"150"`
+	Page     int   `json:"page" example:"1"`
+	PageSize int   `json:"page_size" example:"100"`
+	Pages    int64 `json:"pages" example:"2"`
+}
+
+// APILogsResponse represents a paginated list of logs
+type APILogsResponse struct {
+	Logs       []APILogEntry    `json:"logs"`
+	Pagination APILogPagination `json:"pagination"`
+}
+
+// APIHostLogsResponse represents a paginated list of logs for a specific host
+type APIHostLogsResponse struct {
+	HostName   string           `json:"hostname" example:"server1"`
+	Logs       []APILogEntry    `json:"logs"`
+	Pagination APILogPagination `json:"pagination"`
+}
 
 // StartAPIServer starts the API server
 func StartAPIServer(cmd *cobra.Command, args []string) error {
@@ -48,6 +127,7 @@ func setupDatabase() *gorm.DB {
 	db.AutoMigrate(&HostKey{})
 	db.AutoMigrate(&Session{})
 	db.AutoMigrate(&Group{})
+	db.AutoMigrate(&HostLog{})
 
 	// Create default inventory if it doesn't exist
 	var defaultInventory Inventory
@@ -77,11 +157,11 @@ func setupRoutes(r *gin.Engine, db *gorm.DB) {
 	api.Use(authMiddleware(db))
 	{
 		// Host management
+		api.GET("/hosts/assigned", getAssignedHosts(db))
 		api.GET("/hosts", getAllHosts(db))
 		api.GET("/hosts/:name", getHostByName())
 		api.DELETE("/hosts/:name", deleteHost(db))
 		api.PUT("/hosts/:name", updateHost(db))
-		api.GET("/hosts/assigned", getAssignedHosts(db))
 		api.POST("/hosts/:name/updateTo/:version", updateHostVersion(db))
 		api.POST("/hosts/:name/enable/:service", enableComponent(db))
 		api.POST("/hosts/:name/disable/:service", disableComponent(db))
@@ -94,6 +174,19 @@ func setupRoutes(r *gin.Engine, db *gorm.DB) {
 		api.GET("/inventory", getAllInventories(db))
 		api.POST("/inventory", createInventory(db))
 		api.DELETE("/inventory/:name", deleteInventory(db))
+
+		// Log management
+		api.GET("/logs", getAllLogs(db))
+		api.GET("/logs/:hostname", getHostLogs(db))
+		api.POST("/logs/search", searchLogs(db))
+	}
+
+	// Host-specific API that uses host token authentication
+	hostApi := r.Group("/api/v1/host")
+	hostApi.Use(hostAuthMiddleware(db))
+	{
+		// Allow hosts to submit their logs
+		hostApi.POST("/logs", submitHostLog(db))
 	}
 }
 
@@ -132,6 +225,29 @@ func authMiddleware(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		c.Set("user", session.User)
+		c.Next()
+	}
+}
+
+// Host authentication middleware
+func hostAuthMiddleware(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		token := c.GetHeader("Authorization")
+		if token == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header required"})
+			c.Abort()
+			return
+		}
+
+		var hostKey HostKey
+		if err := db.Where("token = ?", token).First(&hostKey).Error; err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid host token"})
+			c.Abort()
+			return
+		}
+
+		// Set the host name in the context for use in handlers
+		c.Set("hostname", hostKey.HostName)
 		c.Next()
 	}
 }
@@ -609,26 +725,358 @@ func getComponentStatus() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		name := c.Param("name")
 		service := c.Param("service")
-		idx := slices.IndexFunc(HostsList, func(h Host) bool {
-			return h.Name == name
-		})
 
-		if idx == -1 {
-			c.JSON(http.StatusOK, gin.H{"status": "not found"})
-			return
-		}
-
-		host := HostsList[idx]
-
-		wantsUpdateTo := host.WantsUpdateTo
-		disabledComponents := strings.Split(host.DisabledComponents, "::")
-		for j := 0; j < len(disabledComponents); j++ {
-			if disabledComponents[j] == service {
-				c.JSON(http.StatusOK, gin.H{"status": "disabled", "wantsUpdateTo": wantsUpdateTo})
+		for _, host := range HostsList {
+			if host.Name == name {
+				components := strings.Split(host.DisabledComponents, "::")
+				isDisabled := slices.Contains(components, service)
+				c.JSON(http.StatusOK, gin.H{
+					"name":     name,
+					"service":  service,
+					"disabled": isDisabled,
+				})
 				return
 			}
 		}
 
-		c.JSON(http.StatusOK, gin.H{"status": "enabled", "wantsUpdateTo": wantsUpdateTo})
+		c.JSON(http.StatusNotFound, gin.H{"error": "Host not found"})
+	}
+}
+
+// @Summary Submit host log
+// @Description Submit a log entry from a host
+// @Tags logs
+// @Security ApiKeyAuth
+// @Accept json
+// @Produce json
+// @Param log body APILogRequest true "Log entry"
+// @Success 201 {object} map[string]interface{} "Log entry saved response"
+// @Failure 400 {object} map[string]string "Bad request error"
+// @Failure 401 {object} map[string]string "Unauthorized error"
+// @Failure 500 {object} map[string]string "Internal server error"
+// @Router /host/logs [post]
+func submitHostLog(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Get hostname from context
+		hostname, exists := c.Get("hostname")
+		if !exists {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Hostname not found in context"})
+			return
+		}
+
+		// Parse log data from request
+		var logRequest APILogRequest
+		if err := c.ShouldBindJSON(&logRequest); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Use current time if timestamp not provided
+		timestamp := logRequest.Timestamp
+		if timestamp == "" {
+			timestamp = time.Now().Format(time.RFC3339)
+		}
+
+		// Parse the timestamp string into time.Time
+		parsedTime, err := time.Parse(time.RFC3339, timestamp)
+		if err != nil {
+			// If parsing fails, use current time
+			parsedTime = time.Now()
+		}
+
+		// Create log entry
+		log := HostLog{
+			HostName:  hostname.(string),
+			Level:     logRequest.Level,
+			Component: logRequest.Component,
+			Message:   logRequest.Message,
+			Timestamp: parsedTime,
+			Metadata:  logRequest.Metadata,
+		}
+
+		// Save to database
+		if err := db.Create(&log).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save log entry"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"status": "Log entry saved successfully"})
+	}
+}
+
+// @Summary Get all logs
+// @Description Retrieve all logs with pagination
+// @Tags Logs
+// @Security ApiKeyAuth
+// @Accept json
+// @Produce json
+// @Param page query int false "Page number (default: 1)"
+// @Param page_size query int false "Page size (default: 100, max: 1000)"
+// @Success 200 {object} APILogsResponse "Paginated logs response"
+// @Failure 401 {object} ErrorResponse "Unauthorized"
+// @Failure 500 {object} ErrorResponse "Internal server error"
+// @Router /logs [get]
+func getAllLogs(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Parse pagination parameters
+		pageStr := c.DefaultQuery("page", "1")
+		pageSizeStr := c.DefaultQuery("page_size", "100")
+
+		// Convert to integers
+		pageInt, err := strconv.Atoi(pageStr)
+		if err != nil || pageInt < 1 {
+			pageInt = 1
+		}
+
+		pageSizeInt, err := strconv.Atoi(pageSizeStr)
+		if err != nil || pageSizeInt < 1 {
+			pageSizeInt = 100
+		}
+
+		// Limit page size to prevent excessive queries
+		if pageSizeInt > 1000 {
+			pageSizeInt = 1000
+		}
+
+		// Calculate offset
+		offset := (pageInt - 1) * pageSizeInt
+
+		// Count total logs
+		var total int64
+		db.Model(&HostLog{}).Count(&total)
+
+		// Get logs with pagination
+		var logs []HostLog
+		if err := db.Order("timestamp desc").Offset(offset).Limit(pageSizeInt).Find(&logs).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve logs"})
+			return
+		}
+
+		// Calculate total pages
+		totalPages := (total + int64(pageSizeInt) - 1) / int64(pageSizeInt)
+
+		// Convert to response format
+		var logEntries []APILogEntry
+		for _, log := range logs {
+			logEntries = append(logEntries, APILogEntry{
+				ID:        log.ID,
+				HostName:  log.HostName,
+				Level:     log.Level,
+				Component: log.Component,
+				Message:   log.Message,
+				Timestamp: log.Timestamp.Format(time.RFC3339),
+				Metadata:  log.Metadata,
+				CreatedAt: log.CreatedAt.Format(time.RFC3339),
+				UpdatedAt: log.UpdatedAt.Format(time.RFC3339),
+			})
+		}
+
+		// Return paginated response
+		c.JSON(http.StatusOK, APILogsResponse{
+			Logs: logEntries,
+			Pagination: APILogPagination{
+				Total:    total,
+				Page:     pageInt,
+				PageSize: pageSizeInt,
+				Pages:    totalPages,
+			},
+		})
+	}
+}
+
+// @Summary Get logs for a specific host
+// @Description Retrieve logs for a specific host with pagination
+// @Tags Logs
+// @Security ApiKeyAuth
+// @Accept json
+// @Produce json
+// @Param hostname path string true "Hostname"
+// @Param page query int false "Page number (default: 1)"
+// @Param page_size query int false "Page size (default: 100, max: 1000)"
+// @Success 200 {object} APIHostLogsResponse "Paginated host logs response"
+// @Failure 401 {object} ErrorResponse "Unauthorized"
+// @Failure 500 {object} ErrorResponse "Internal server error"
+// @Router /logs/{hostname} [get]
+func getHostLogs(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Get hostname from path parameter
+		hostname := c.Param("hostname")
+		if hostname == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Hostname is required"})
+			return
+		}
+
+		// Parse pagination parameters
+		pageStr := c.DefaultQuery("page", "1")
+		pageSizeStr := c.DefaultQuery("page_size", "100")
+
+		// Convert to integers
+		pageInt, err := strconv.Atoi(pageStr)
+		if err != nil || pageInt < 1 {
+			pageInt = 1
+		}
+
+		pageSizeInt, err := strconv.Atoi(pageSizeStr)
+		if err != nil || pageSizeInt < 1 {
+			pageSizeInt = 100
+		}
+
+		// Limit page size to prevent excessive queries
+		if pageSizeInt > 1000 {
+			pageSizeInt = 1000
+		}
+
+		// Calculate offset
+		offset := (pageInt - 1) * pageSizeInt
+
+		// Count total logs for this host
+		var total int64
+		db.Model(&HostLog{}).Where("host_name = ?", hostname).Count(&total)
+
+		// Get logs with pagination
+		var logs []HostLog
+		if err := db.Where("host_name = ?", hostname).Order("timestamp desc").Offset(offset).Limit(pageSizeInt).Find(&logs).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve logs"})
+			return
+		}
+
+		// Calculate total pages
+		totalPages := (total + int64(pageSizeInt) - 1) / int64(pageSizeInt)
+
+		// Convert to response format
+		var logEntries []APILogEntry
+		for _, log := range logs {
+			logEntries = append(logEntries, APILogEntry{
+				ID:        log.ID,
+				HostName:  log.HostName,
+				Level:     log.Level,
+				Component: log.Component,
+				Message:   log.Message,
+				Timestamp: log.Timestamp.Format(time.RFC3339),
+				Metadata:  log.Metadata,
+				CreatedAt: log.CreatedAt.Format(time.RFC3339),
+				UpdatedAt: log.UpdatedAt.Format(time.RFC3339),
+			})
+		}
+
+		// Return paginated response
+		c.JSON(http.StatusOK, APIHostLogsResponse{
+			HostName: hostname,
+			Logs:     logEntries,
+			Pagination: APILogPagination{
+				Total:    total,
+				Page:     pageInt,
+				PageSize: pageSizeInt,
+				Pages:    totalPages,
+			},
+		})
+	}
+}
+
+// @Summary Search logs
+// @Description Search logs with various filters
+// @Tags Logs
+// @Security ApiKeyAuth
+// @Accept json
+// @Produce json
+// @Param search body APILogSearchRequest true "Search parameters"
+// @Success 200 {object} APILogsResponse "Paginated logs response"
+// @Failure 400 {object} ErrorResponse "Bad request"
+// @Failure 401 {object} ErrorResponse "Unauthorized"
+// @Failure 500 {object} ErrorResponse "Internal server error"
+// @Router /logs/search [post]
+func searchLogs(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Parse search parameters from request
+		var searchRequest APILogSearchRequest
+		if err := c.ShouldBindJSON(&searchRequest); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Set default pagination values if not provided
+		if searchRequest.Page < 1 {
+			searchRequest.Page = 1
+		}
+		if searchRequest.PageSize < 1 {
+			searchRequest.PageSize = 100
+		}
+		// Limit page size to prevent excessive queries
+		if searchRequest.PageSize > 1000 {
+			searchRequest.PageSize = 1000
+		}
+
+		// Calculate offset
+		offset := (searchRequest.Page - 1) * searchRequest.PageSize
+
+		// Build query with filters
+		query := db.Model(&HostLog{})
+
+		// Apply filters
+		if searchRequest.HostName != "" {
+			query = query.Where("LOWER(host_name) = LOWER(?)", searchRequest.HostName)
+		}
+		if searchRequest.Level != "" {
+			query = query.Where("level = ?", searchRequest.Level)
+		}
+		if searchRequest.Component != "" {
+			query = query.Where("component = ?", searchRequest.Component)
+		}
+		if searchRequest.MessageText != "" {
+			query = query.Where("message LIKE ?", "%"+searchRequest.MessageText+"%")
+		}
+		if searchRequest.StartTime != "" {
+			startTime, err := time.Parse(time.RFC3339, searchRequest.StartTime)
+			if err == nil {
+				query = query.Where("timestamp >= ?", startTime)
+			}
+		}
+		if searchRequest.EndTime != "" {
+			endTime, err := time.Parse(time.RFC3339, searchRequest.EndTime)
+			if err == nil {
+				query = query.Where("timestamp <= ?", endTime)
+			}
+		}
+
+		// Count total matching logs
+		var total int64
+		query.Count(&total)
+
+		// Get logs with pagination
+		var logs []HostLog
+		if err := query.Order("timestamp desc").Offset(offset).Limit(searchRequest.PageSize).Find(&logs).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve logs"})
+			return
+		}
+
+		// Calculate total pages
+		totalPages := (total + int64(searchRequest.PageSize) - 1) / int64(searchRequest.PageSize)
+
+		// Convert to response format
+		var logEntries []APILogEntry
+		for _, log := range logs {
+			logEntries = append(logEntries, APILogEntry{
+				ID:        log.ID,
+				HostName:  log.HostName,
+				Level:     log.Level,
+				Component: log.Component,
+				Message:   log.Message,
+				Timestamp: log.Timestamp.Format(time.RFC3339),
+				Metadata:  log.Metadata,
+				CreatedAt: log.CreatedAt.Format(time.RFC3339),
+				UpdatedAt: log.UpdatedAt.Format(time.RFC3339),
+			})
+		}
+
+		// Return paginated response
+		c.JSON(http.StatusOK, APILogsResponse{
+			Logs: logEntries,
+			Pagination: APILogPagination{
+				Total:    total,
+				Page:     searchRequest.Page,
+				PageSize: searchRequest.PageSize,
+				Pages:    totalPages,
+			},
+		})
 	}
 }

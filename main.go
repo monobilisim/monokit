@@ -169,6 +169,15 @@ func main() {
 		Run:   api.StartTUI,
 	}
 
+	var clientLogsCmd = &cobra.Command{
+		Use:   "logs",
+		Short: "View system logs",
+		Long: `View system logs with filtering options.
+You can filter logs by host, level, component, and time range.
+Supports pagination for large log sets.`,
+		Run: api.LogsCmd,
+	}
+
 	clientReqCmd.Flags().StringP("X", "X", "", "HTTP method (GET, POST, PUT, DELETE)")
 	clientReqCmd.Flags().String("data", "", "Request body data (JSON)")
 
@@ -489,6 +498,18 @@ func main() {
 	clientCmd.AddCommand(clientReqCmd)
 
 	clientCmd.AddCommand(clientTUICmd)
+
+	clientCmd.AddCommand(clientLogsCmd)
+
+	// Add flags for logs command
+	clientLogsCmd.Flags().String("host", "", "Filter logs by hostname")
+	clientLogsCmd.Flags().String("level", "", "Filter logs by level (ERROR, WARN, INFO, DEBUG)")
+	clientLogsCmd.Flags().String("component", "", "Filter logs by component")
+	clientLogsCmd.Flags().String("message", "", "Filter logs by message text")
+	clientLogsCmd.Flags().String("startTime", "", "Filter logs from this time (format: YYYY-MM-DD HH:MM:SS)")
+	clientLogsCmd.Flags().String("endTime", "", "Filter logs until this time (format: YYYY-MM-DD HH:MM:SS)")
+	clientLogsCmd.Flags().Int("page", 1, "Page number for pagination")
+	clientLogsCmd.Flags().Int("pageSize", 10, "Number of logs per page")
 
 	clientCmd.AddCommand(adminCmd)
 	adminCmd.AddCommand(adminGroupsCmd)

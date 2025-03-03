@@ -10,7 +10,8 @@ import {
   UsersIcon,
   MoonIcon,
   SunIcon,
-  CogIcon
+  CogIcon,
+  ClipboardListIcon
 } from '@patternfly/react-icons';
 import { Label } from '@patternfly/react-core';
 import CenteredIcon from './CenteredIcon';
@@ -30,7 +31,8 @@ const Navigation = () => {
     { name: 'Hosts', path: '/hosts', icon: <ServerIcon /> },
     { name: 'Users', path: '/users', icon: <UserIcon /> },
     { name: 'Inventories', path: '/inventories', icon: <StorageDomainIcon /> },
-    { name: 'Groups', path: '/groups', icon: <UsersIcon /> }
+    { name: 'Groups', path: '/groups', icon: <UsersIcon /> },
+    { name: 'Logs', path: '/logs', icon: <ClipboardListIcon /> }
   ];
 
   // Container styles
@@ -265,4 +267,4 @@ const Navigation = () => {
   );
 };
 
-export default Navigation; 
+export default Navigation;

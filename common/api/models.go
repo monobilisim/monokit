@@ -83,6 +83,17 @@ type Group struct {
 	Users []User `json:"users" gorm:"many2many:group_users;"`
 }
 
+// HostLog represents a log entry from a host
+type HostLog struct {
+	gorm.Model
+	HostName  string    `json:"host_name" gorm:"index"`
+	Level     string    `json:"level" gorm:"index"`     // info, warning, error, critical
+	Component string    `json:"component" gorm:"index"` // system, application, service name, etc.
+	Message   string    `json:"message"`
+	Timestamp time.Time `json:"timestamp" gorm:"index"`
+	Metadata  string    `json:"metadata"` // JSON string for additional data
+}
+
 // Global variables
 var ServerConfig struct {
 	Port     string `mapstructure:"port"`
