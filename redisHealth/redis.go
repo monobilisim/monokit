@@ -163,6 +163,25 @@ func RedisIsMaster() bool {
 func RedisReadWriteTest(isSentinel bool) {
 	err := rdb.Set(ctx, "redisHealth_foo", "bar", 0).Err()
 
+    if err != nil && strings.Contains(err.Error(), "MOVED") {
+        common.LogDebug("MOVED request, trying to get the new address")
+        // Get the new address
+        newAddr := strings.Split(err.Error(), " ")[2]
+        common.LogDebug("MOVED request, new address: " + newAddr)
+
+        // Reinitialize the client
+        rdb = redis.NewClient(&redis.Options{
+            Addr:       newAddr,
+            Password:   RedisHealthConfig.Password,
+            DB:         0,
+            MaxRetries: 5,
+        })
+        
+        // Run function again
+        RedisReadWriteTest(isSentinel)
+        return
+    }
+
 	if err != nil {
 		if isSentinel {
 			// Check if its master
