@@ -331,6 +331,12 @@ func SystemdLogs() {
 		return
 	}
 
+	// Skip if client configuration does not exist
+	if !common.ConfExists("client") {
+		common.LogInfo("Client configuration not found, skipping systemd logs collection")
+		return
+	}
+
 	common.SplitSection("Systemd Logs")
 	common.LogInfo("Collecting systemd logs...")
 
