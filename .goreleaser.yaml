@@ -19,9 +19,6 @@ builds:
   - id: withapi
     goos:
       - linux
-      - darwin
-      - windows
-      - freebsd
     env:
       - CGO_ENABLED=0
     ldflags:
@@ -32,7 +29,7 @@ builds:
     # Add a hook specific to the withapi build
     hooks:
       pre: 
-        - sh -c "rm -rf frontend/build common/api/frontend/build && cd frontend && npm install && npm run build && mkdir -p ../common/api/frontend/build && cp -r build/* ../common/api/frontend/build/"
+        - sh -c "make clean-frontend && make build-frontend"
 
 archives:
   - id: default
