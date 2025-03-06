@@ -13,7 +13,7 @@ import (
 var OsHealthConfig OsHealth
 
 func Main(cmd *cobra.Command, args []string) {
-	version := "2.2.2"
+	version := "2.2.3"
 	common.ScriptName = "osHealth"
 	common.TmpDir = common.TmpDir + "osHealth"
 	common.Init()
@@ -36,4 +36,8 @@ func Main(cmd *cobra.Command, args []string) {
 	common.SplitSection("System Load and RAM")
 	SysLoad()
 	RamUsage()
+
+	// Check for systemd logs and push them to the API
+	// This only runs on Linux systems with systemd
+	SystemdLogs()
 }

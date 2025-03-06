@@ -72,6 +72,7 @@ type APILogSearchRequest struct {
 	Level       string `json:"level" example:"error"`
 	Component   string `json:"component" example:"database"`
 	MessageText string `json:"message_text" example:"connection"`
+	Type        string `json:"type" example:"monokit"`
 	StartTime   string `json:"start_time" example:"2023-01-01T00:00:00Z"`
 	EndTime     string `json:"end_time" example:"2023-01-31T23:59:59Z"`
 	Page        int    `json:"page" example:"1"`
@@ -1068,6 +1069,9 @@ func searchLogs(db *gorm.DB) gin.HandlerFunc {
 		}
 		if searchRequest.MessageText != "" {
 			query = query.Where("message LIKE ?", "%"+searchRequest.MessageText+"%")
+		}
+		if searchRequest.Type != "" {
+			query = query.Where("type = ?", searchRequest.Type)
 		}
 		if searchRequest.StartTime != "" {
 			startTime, err := time.Parse(time.RFC3339, searchRequest.StartTime)

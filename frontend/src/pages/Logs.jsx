@@ -61,6 +61,9 @@ const Logs = ({ onAuthError }) => {
   const [hostFilter, setHostFilter] = useState('');
   const [isHostFilterOpen, setIsHostFilterOpen] = useState(false);
   const [availableHosts, setAvailableHosts] = useState([]);
+  const [availableTypes, setAvailableTypes] = useState([]);
+  const [typeFilter, setTypeFilter] = useState('');
+  const [isTypeFilterOpen, setIsTypeFilterOpen] = useState(false);
   const [selectedLogs, setSelectedLogs] = useState([]);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const { theme } = useTheme();
@@ -81,6 +84,13 @@ const Logs = ({ onAuthError }) => {
   const clearHostFilter = () => {
     setHostFilter('');
     setIsHostFilterOpen(false);
+    setPage(1);
+  };
+
+  // Function to clear the type filter
+  const clearTypeFilter = () => {
+    setTypeFilter('');
+    setIsTypeFilterOpen(false);
     setPage(1);
   };
 
@@ -179,6 +189,7 @@ const Logs = ({ onAuthError }) => {
         page_size: perPage,
         level: levelFilter,
         host: hostFilter,
+        type: typeFilter,
         message_text: searchValue
       };
 
@@ -194,10 +205,16 @@ const Logs = ({ onAuthError }) => {
         setTotalItems(pagination.total);
         setChartData(processLogsForChart(logsData));
 
-        // Extract unique host names for the host filter dropdown
-        if (logsData.length > 0 && availableHosts.length === 0) {
-          const hosts = [...new Set(logsData.map(log => log.host_name).filter(Boolean))];
-          setAvailableHosts(hosts);
+        // Extract unique host names and types for the filters
+        if (logsData.length > 0) {
+          if (availableHosts.length === 0) {
+            const hosts = [...new Set(logsData.map(log => log.host_name).filter(Boolean))];
+            setAvailableHosts(hosts);
+          }
+          if (availableTypes.length === 0) {
+            const types = [...new Set(logsData.map(log => log.type).filter(Boolean))];
+            setAvailableTypes(types);
+          }
         }
       } else {
         // Handle unexpected response format
@@ -227,7 +244,7 @@ const Logs = ({ onAuthError }) => {
 
   useEffect(() => {
     fetchLogs();
-  }, [page, perPage, levelFilter, hostFilter, searchValue]);
+  }, [page, perPage, levelFilter, hostFilter, typeFilter, searchValue]);
 
   const onSetPage = (_event, pageNumber) => {
     setPage(pageNumber);
@@ -252,6 +269,12 @@ const Logs = ({ onAuthError }) => {
   const onHostSelect = (_event, selection) => {
     setHostFilter(selection);
     setIsHostFilterOpen(false);
+    setPage(1);
+  };
+
+  const onTypeSelect = (_event, selection) => {
+    setTypeFilter(selection);
+    setIsTypeFilterOpen(false);
     setPage(1);
   };
 
@@ -379,7 +402,6 @@ const Logs = ({ onAuthError }) => {
                     </MenuToggle>
                   )}
                 >
-                  {/* Add an option to clear the filter */}
                   {levelFilter && (
                     <SelectOption key="clear" value="" onClick={clearLevelFilter}>
                       All Levels (Clear Filter)
@@ -416,7 +438,6 @@ const Logs = ({ onAuthError }) => {
                     </MenuToggle>
                   )}
                 >
-                  {/* Add an option to clear the filter */}
                   {hostFilter && (
                     <SelectOption key="clear" value="" onClick={clearHostFilter}>
                       All Hosts (Clear Filter)
@@ -425,6 +446,42 @@ const Logs = ({ onAuthError }) => {
                   {availableHosts.map((host, index) => (
                     <SelectOption key={index} value={host}>
                       {host}
+                    </SelectOption>
+                  ))}
+                </Select>
+              </ToolbarItem>
+              <ToolbarItem>
+                <Select
+                  aria-label="Select Type"
+                  isOpen={isTypeFilterOpen}
+                  selected={typeFilter}
+                  onToggle={() => setIsTypeFilterOpen(!isTypeFilterOpen)}
+                  onSelect={onTypeSelect}
+                  placeholderText="Filter by Type"
+                  hasInlineFilter
+                  onFilter={(_, value) => {
+                    return availableTypes.filter(t => 
+                      t.toLowerCase().includes(value.toLowerCase())
+                    );
+                  }}
+                  toggle={(toggleRef) => (
+                    <MenuToggle
+                      ref={toggleRef}
+                      onClick={() => setIsTypeFilterOpen(!isTypeFilterOpen)}
+                      isExpanded={isTypeFilterOpen}
+                    >
+                      {typeFilter || "Filter by Type"}
+                    </MenuToggle>
+                  )}
+                >
+                  {typeFilter && (
+                    <SelectOption key="clear" value="" onClick={clearTypeFilter}>
+                      All Types (Clear Filter)
+                    </SelectOption>
+                  )}
+                  {availableTypes.map((t, index) => (
+                    <SelectOption key={index} value={t}>
+                      {t}
                     </SelectOption>
                   ))}
                 </Select>
@@ -450,7 +507,7 @@ const Logs = ({ onAuthError }) => {
                     No logs found
                   </Title>
                   <EmptyStateBody>
-                    {levelFilter || hostFilter ? 
+                    {levelFilter || hostFilter || typeFilter ? 
                       `No logs found with the current filters. Try selecting different filters or adjusting your search criteria.` : 
                       'No logs found. Try adjusting your search criteria.'}
                   </EmptyStateBody>
