@@ -327,13 +327,11 @@ func pushLogsToAPI(entries []SystemdLogEntry) error {
 func SystemdLogs() {
 	// Skip if systemd is not available
 	if !hasSystemd() {
-		common.LogInfo("Systemd not available, skipping systemd logs collection")
 		return
 	}
 
 	// Skip if client configuration does not exist
 	if !common.ConfExists("client") {
-		common.LogInfo("Client configuration not found, skipping systemd logs collection")
 		return
 	}
 
