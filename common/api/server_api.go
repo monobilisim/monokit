@@ -49,6 +49,7 @@ type APILogRequest struct {
 	Message   string `json:"message" binding:"required" example:"System started successfully"`
 	Timestamp string `json:"timestamp" example:"2023-01-01T12:00:00Z"`
 	Metadata  string `json:"metadata" example:"{\"version\":\"1.2.3\"}"`
+	Type      string `json:"type" example:"monokit"`
 }
 
 // APILogEntry represents a log entry in the database and response
@@ -60,6 +61,7 @@ type APILogEntry struct {
 	Message   string `json:"message" example:"System started successfully"`
 	Timestamp string `json:"timestamp" example:"2023-01-01T12:00:00Z"`
 	Metadata  string `json:"metadata" example:"{\"version\":\"1.2.3\"}"`
+	Type      string `json:"type" example:"monokit"`
 	CreatedAt string `json:"created_at" example:"2023-01-01T12:00:01Z"`
 	UpdatedAt string `json:"updated_at" example:"2023-01-01T12:00:01Z"`
 }
@@ -179,6 +181,7 @@ func setupRoutes(r *gin.Engine, db *gorm.DB) {
 		api.GET("/logs", getAllLogs(db))
 		api.GET("/logs/:hostname", getHostLogs(db))
 		api.POST("/logs/search", searchLogs(db))
+		api.DELETE("/logs/:id", deleteLog(db))
 	}
 
 	// Host-specific API that uses host token authentication
@@ -601,6 +604,38 @@ func updateHostVersion(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
+// @Summary Delete log entry
+// @Description Delete a log entry by its ID
+// @Tags Logs
+// @Security ApiKeyAuth
+// @Accept json
+// @Produce json
+// @Param id path int true "Log ID"
+// @Success 200 {object} map[string]string "Log deleted successfully"
+// @Failure 400 {object} map[string]string "Invalid log id"
+// @Failure 404 {object} map[string]string "Log not found"
+// @Failure 500 {object} map[string]string "Failed to delete log entry"
+func deleteLog(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		idStr := c.Param("id")
+		id, err := strconv.Atoi(idStr)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid log id"})
+			return
+		}
+		var log HostLog
+		if err := db.First(&log, id).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Log not found"})
+			return
+		}
+		if err := db.Delete(&log).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete log entry"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"status": "deleted"})
+	}
+}
+
 // @Summary Enable component
 // @Description Enable a component on a host
 // @Tags hosts
@@ -784,7 +819,13 @@ func submitHostLog(db *gorm.DB) gin.HandlerFunc {
 			parsedTime = time.Now()
 		}
 
-		// Create log entry
+		// Create entry
+		logType := logRequest.Type
+
+		if logType == "" {
+			logType = "monokit"
+		}
+
 		log := HostLog{
 			HostName:  hostname.(string),
 			Level:     logRequest.Level,
@@ -792,6 +833,7 @@ func submitHostLog(db *gorm.DB) gin.HandlerFunc {
 			Message:   logRequest.Message,
 			Timestamp: parsedTime,
 			Metadata:  logRequest.Metadata,
+			Type:      logType,
 		}
 
 		// Save to database
@@ -866,6 +908,7 @@ func getAllLogs(db *gorm.DB) gin.HandlerFunc {
 				Message:   log.Message,
 				Timestamp: log.Timestamp.Format(time.RFC3339),
 				Metadata:  log.Metadata,
+				Type:      log.Type,
 				CreatedAt: log.CreatedAt.Format(time.RFC3339),
 				UpdatedAt: log.UpdatedAt.Format(time.RFC3339),
 			})
@@ -954,6 +997,7 @@ func getHostLogs(db *gorm.DB) gin.HandlerFunc {
 				Message:   log.Message,
 				Timestamp: log.Timestamp.Format(time.RFC3339),
 				Metadata:  log.Metadata,
+				Type:      log.Type,
 				CreatedAt: log.CreatedAt.Format(time.RFC3339),
 				UpdatedAt: log.UpdatedAt.Format(time.RFC3339),
 			})
@@ -1063,6 +1107,7 @@ func searchLogs(db *gorm.DB) gin.HandlerFunc {
 				Message:   log.Message,
 				Timestamp: log.Timestamp.Format(time.RFC3339),
 				Metadata:  log.Metadata,
+				Type:      log.Type,
 				CreatedAt: log.CreatedAt.Format(time.RFC3339),
 				UpdatedAt: log.UpdatedAt.Format(time.RFC3339),
 			})

@@ -1,8 +1,11 @@
 import React, { useState, useEffect } from 'react';
+import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
 import {
+  Button,
   Card,
   CardBody,
   CardHeader,
+  Checkbox,
   Flex,
   FlexItem,
   PageSection,
@@ -26,6 +29,7 @@ import {
   Grid,
   GridItem,
 } from '@patternfly/react-core';
+import { TrashIcon } from '@patternfly/react-icons';
 import {
   Chart,
   ChartArea,
@@ -57,6 +61,8 @@ const Logs = ({ onAuthError }) => {
   const [hostFilter, setHostFilter] = useState('');
   const [isHostFilterOpen, setIsHostFilterOpen] = useState(false);
   const [availableHosts, setAvailableHosts] = useState([]);
+  const [selectedLogs, setSelectedLogs] = useState([]);
+  const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const { theme } = useTheme();
   
   // Get the appropriate color palette based on the current theme
@@ -97,6 +103,70 @@ const Logs = ({ onAuthError }) => {
     });
 
     return Object.values(timeMap).sort((a, b) => a.timestamp - b.timestamp);
+  };
+
+  const handleSelectLog = (logId, isChecked) => {
+    if (isChecked) {
+      setSelectedLogs([...selectedLogs, logId]);
+    } else {
+      setSelectedLogs(selectedLogs.filter(id => id !== logId));
+    }
+  };
+
+  const handleSelectAll = (isChecked) => {
+    if (isChecked) {
+      setSelectedLogs(logs.map(log => log.id));
+    } else {
+      setSelectedLogs([]);
+    }
+  };
+
+  const openDeleteModal = () => {
+    if (selectedLogs.length > 0) {
+      setIsDeleteModalOpen(true);
+    } else {
+      addAlert('No logs selected', AlertVariant.info, 'Please select at least one log to delete.');
+    }
+  };
+
+  const closeDeleteModal = () => {
+    setIsDeleteModalOpen(false);
+  };
+
+  const deleteSelectedLogs = async () => {
+    try {
+      setIsLoading(true);
+      
+      // Delete each selected log
+      const deletePromises = selectedLogs.map(logId => 
+        api.delete(`/logs/${logId}`)
+      );
+      
+      await Promise.all(deletePromises);
+      
+      // Show success message
+      addAlert(
+        `Successfully deleted ${selectedLogs.length} log${selectedLogs.length > 1 ? 's' : ''}`, 
+        AlertVariant.success
+      );
+      
+      // Clear selection and close modal
+      setSelectedLogs([]);
+      setIsDeleteModalOpen(false);
+      
+      // Refresh logs
+      fetchLogs();
+    } catch (err) {
+      console.error('Failed to delete logs:', err);
+      if (err.response?.status === 401) {
+        onAuthError(err);
+      } else {
+        setError('Failed to delete logs. Please try again.');
+        addAlert('Error deleting logs', AlertVariant.danger, err.message);
+      }
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const fetchLogs = async () => {
@@ -199,6 +269,17 @@ const Logs = ({ onAuthError }) => {
           </Alert>
         ))}
       </AlertGroup>
+
+      {/* Delete Confirmation Modal */}
+      <DeleteConfirmationModal
+        isOpen={isDeleteModalOpen}
+        onClose={closeDeleteModal}
+        onDelete={deleteSelectedLogs}
+        title="Delete Logs"
+        message={`Are you sure you want to delete ${selectedLogs.length} selected log${selectedLogs.length !== 1 ? 's' : ''}?`}
+        isDeleting={isLoading}
+      />
+
       <Card>
         <CardHeader>
           <Title headingLevel="h1">System Logs</Title>
@@ -269,6 +350,16 @@ const Logs = ({ onAuthError }) => {
                   onChange={onSearch}
                   onClear={() => onSearch('')}
                 />
+              </ToolbarItem>
+              <ToolbarItem>
+                <Button 
+                  variant="danger" 
+                  icon={<TrashIcon />} 
+                  onClick={openDeleteModal}
+                  isDisabled={selectedLogs.length === 0}
+                >
+                  Delete Selected
+                </Button>
               </ToolbarItem>
               <ToolbarItem>
                 <Select
@@ -369,6 +460,15 @@ const Logs = ({ onAuthError }) => {
                   <Table aria-label="Logs table">
                     <Thead>
                       <Tr>
+                        <Th width={10}>
+                          <Checkbox
+                            id="select-all-logs"
+                            isChecked={selectedLogs.length > 0 && selectedLogs.length === logs.length}
+                            onChange={(_, checked) => handleSelectAll(checked)}
+                            aria-label="Select all logs"
+                            isIndeterminate={selectedLogs.length > 0 && selectedLogs.length < logs.length}
+                          />
+                        </Th>
                         <Th>Timestamp</Th>
                         <Th>Level</Th>
                         <Th>Component</Th>
@@ -379,6 +479,14 @@ const Logs = ({ onAuthError }) => {
                     <Tbody>
                       {logs.map((log) => (
                         <Tr key={log.id}>
+                          <Td>
+                            <Checkbox
+                              id={`select-log-${log.id}`}
+                              isChecked={selectedLogs.includes(log.id)}
+                              onChange={(_, checked) => handleSelectLog(log.id, checked)}
+                              aria-label={`Select log ${log.id}`}
+                            />
+                          </Td>
                           <Td>{new Date(log.timestamp).toLocaleString()}</Td>
                           <Td>{log.level}</Td>
                           <Td>{log.component}</Td>

@@ -92,6 +92,7 @@ type HostLog struct {
 	Message   string    `json:"message"`
 	Timestamp time.Time `json:"timestamp" gorm:"index"`
 	Metadata  string    `json:"metadata"` // JSON string for additional data
+	Type      string    `json:"type"`
 }
 
 // Global variables

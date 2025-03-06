@@ -200,11 +200,13 @@ func LogError(err string) {
 				Component string `json:"component"`
 				Message   string `json:"message"`
 				Timestamp string `json:"timestamp"`
+				Type      string `json:"type"`
 			}{
 				Level:     "error",
 				Component: ScriptName,
 				Message:   err,
 				Timestamp: time.Now().Format(time.RFC3339),
+				Type:      "monokit",
 			}
 
 			// Read host key if available
@@ -390,12 +392,14 @@ func (c *APIClient) SubmitLog(level, component, message, metadata string) error 
 		Message   string `json:"message"`
 		Timestamp string `json:"timestamp"`
 		Metadata  string `json:"metadata,omitempty"`
+		Type      string `json:"type,omitempty"`
 	}{
 		Level:     level,
 		Component: component,
 		Message:   message,
 		Timestamp: time.Now().Format(time.RFC3339),
 		Metadata:  metadata,
+		Type:      "monokit",
 	}
 
 	// Marshal log data to JSON
