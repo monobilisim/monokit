@@ -210,6 +210,9 @@ func SendReq(apiVersion string) {
 	// Get installed components directly
 	installedComponents := common.GetInstalledComponents()
 
+	// Split identifier to get inventory name
+	inventoryName := strings.Split(common.Config.Identifier, "-")[0]
+
 	// Marshal the response to Host struct
 	host := Host{
 		Name:                common.Config.Identifier,
@@ -223,6 +226,7 @@ func SendReq(apiVersion string) {
 		Status:              "Online",
 		WantsUpdateTo:       "",
 		Groups:              groups,
+		Inventory:           inventoryName,
 	}
 
 	// Marshal the response to JSON

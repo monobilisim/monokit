@@ -416,6 +416,17 @@ func registerHost(db *gorm.DB) gin.HandlerFunc {
 
 		if host.Inventory == "" {
 			host.Inventory = "default"
+		} else {
+			// Check if the inventory exists, if not create it
+			var inventory Inventory
+			if err := db.Where("name = ?", host.Inventory).First(&inventory).Error; err != nil {
+				// Create the inventory if it doesn't exist
+				newInventory := Inventory{Name: host.Inventory}
+				if err := db.Create(&newInventory).Error; err != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create inventory"})
+					return
+				}
+			}
 		}
 
 		var existingHost Host
