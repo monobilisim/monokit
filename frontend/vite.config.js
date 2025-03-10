@@ -31,5 +31,25 @@ export default defineConfig({
   },
   build: {
     outDir: 'build', // Match CRA's output directory
+    chunkSizeWarningLimit: 600, // Increase from default 500kb for Patternfly
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          // Group Patternfly components into a separate chunk
+          'patternfly': [
+            '@patternfly/react-core',
+            '@patternfly/react-icons',
+            '@patternfly/react-styles',
+            '@patternfly/react-tokens'
+          ],
+          // Vendor chunk for other major dependencies
+          'vendor': [
+            'react',
+            'react-dom',
+            'react-router-dom'
+          ]
+        }
+      }
+    }
   },
-}); 
+});
