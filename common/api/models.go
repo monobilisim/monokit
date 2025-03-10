@@ -18,6 +18,7 @@ type Server struct {
 		Password string
 		Dbname   string
 	}
+	Keycloak KeycloakConfig
 }
 
 // Host represents a monitored host
@@ -56,6 +57,7 @@ type User struct {
 	Role        string `json:"role"`
 	Groups      string `json:"groups"`
 	Inventories string `json:"inventories"`
+	AuthMethod  string `json:"auth_method"`
 }
 
 // HostKey represents an API key for a host
@@ -105,6 +107,7 @@ var ServerConfig struct {
 		Password string `mapstructure:"password"`
 		Dbname   string `mapstructure:"dbname"`
 	} `mapstructure:"postgres"`
+	Keycloak KeycloakConfig `mapstructure:"keycloak"`
 }
 
 var HostsList []Host

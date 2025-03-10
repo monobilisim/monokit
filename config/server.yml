@@ -1,7 +1,14 @@
-port: 4141
+port: 9989
 postgres:
   host: localhost
   port: 5432
-  user: test
-  password: test
-  dbname: test
+  user: monokit
+  password: monokit
+  dbname: monokit
+keycloak:
+  enabled: true 
+  url: "https://keycloak.example.com/auth"
+  realm: "monokit"
+  clientId: "monokit-api"
+  clientSecret: "your-client-secret"
+  disableLocalAuth: false

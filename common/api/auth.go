@@ -1,12 +1,16 @@
+//go:build with_api
+
 package common
 
 import (
 	"fmt"
 	"math/rand"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v4"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
 )
@@ -22,6 +26,7 @@ func CreateUser(username, password, email, role, groups, inventory string, db *g
 		return err
 	}
 
+	// Mark newly created users as local authentication users.
 	user := User{
 		Username:    username,
 		Password:    hashedPassword,
@@ -29,6 +34,7 @@ func CreateUser(username, password, email, role, groups, inventory string, db *g
 		Role:        role,
 		Groups:      groups,
 		Inventories: inventory,
+		AuthMethod:  "local",
 	}
 
 	return db.Create(&user).Error
@@ -73,9 +79,15 @@ func GenerateRandomString(length int) string {
 // @Router /auth/register [post]
 func registerUser(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// If local authentication is disabled, reject registration.
+		if ServerConfig.Keycloak.Enabled && ServerConfig.Keycloak.DisableLocalAuth {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Local registration is disabled. Please use Keycloak SSO login."})
+			return
+		}
+
 		// Check for admin access
-		user, exists := c.Get("user")
-		if !exists || user.(User).Role != "admin" {
+		userObj, exists := c.Get("user")
+		if !exists || userObj.(User).Role != "admin" {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}
@@ -124,11 +136,16 @@ func loginUser(db *gorm.DB) gin.HandlerFunc {
 
 		fmt.Printf("Login attempt for user: %s\n", req.Username)
 
-		// Find user
 		var user User
 		if result := db.Where("username = ?", req.Username).First(&user); result.Error != nil {
 			fmt.Printf("Login error: User not found - %v\n", result.Error)
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
+			return
+		}
+		// If local authentication is disabled, only Keycloak users can login
+		if ServerConfig.Keycloak.Enabled && ServerConfig.Keycloak.DisableLocalAuth && user.AuthMethod != "keycloak" {
+			fmt.Printf("Login error: Local authentication disabled, user %s is not a Keycloak user\n", user.Username)
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Keycloak authentication required"})
 			return
 		}
 
@@ -402,13 +419,54 @@ func SetupAuthRoutes(r *gin.Engine, db *gorm.DB) {
 // AuthMiddleware handles authentication for protected routes
 func AuthMiddleware(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// Check if user is already set in context by Keycloak middleware
+		if _, exists := c.Get("user"); exists {
+			// User is already authenticated by Keycloak
+			c.Next()
+			return
+		}
+
+		// Get authorization header
 		token := c.GetHeader("Authorization")
 		if token == "" {
+			// If Keycloak is available but no token is provided
+			if ServerConfig.Keycloak.Enabled {
+				// Redirect to login (let frontend handle Keycloak button)
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+				c.Abort()
+				return
+			}
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header required"})
 			c.Abort()
 			return
 		}
 
+		// Check if token is a Bearer token (potentially Keycloak)
+		if strings.HasPrefix(token, "Bearer ") {
+			tokenString := strings.TrimPrefix(token, "Bearer ")
+
+			// Attempt Keycloak authentication
+			if ServerConfig.Keycloak.Enabled {
+				authAttempt := attemptKeycloakAuth(tokenString, db, c)
+				if authAttempt {
+					// Successfully authenticated with Keycloak
+					c.Next()
+					return
+				}
+
+				// If Keycloak auth failed and local auth is disabled
+				if ServerConfig.Keycloak.DisableLocalAuth {
+					c.JSON(http.StatusUnauthorized, gin.H{"error": "Keycloak authentication required"})
+					c.Abort()
+					return
+				}
+			}
+
+			// If we reach here, either Keycloak is not enabled or the token is not a valid Keycloak token
+			// Fall through to check if it's a local token
+		}
+
+		// Handle normal session token authentication
 		var session Session
 		if err := db.Preload("User").Where("token = ?", token).First(&session).Error; err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
@@ -423,7 +481,64 @@ func AuthMiddleware(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		// If Keycloak is enabled and local auth is disabled, allow only sessions tied to Keycloak users.
+		if ServerConfig.Keycloak.Enabled && ServerConfig.Keycloak.DisableLocalAuth && session.User.AuthMethod != "keycloak" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Keycloak authentication required"})
+			c.Abort()
+			return
+		}
+
 		c.Set("user", session.User)
 		c.Next()
 	}
+}
+
+// attemptKeycloakAuth is a helper function to manually validate a Keycloak token
+func attemptKeycloakAuth(tokenString string, db *gorm.DB, c *gin.Context) bool {
+	// If Keycloak is not enabled, authentication fails
+	if !ServerConfig.Keycloak.Enabled {
+		return false
+	}
+
+	// Parse and validate the token
+	token, err := jwt.ParseWithClaims(tokenString, &KeycloakClaims{}, func(token *jwt.Token) (interface{}, error) {
+		if jwks == nil {
+			return nil, fmt.Errorf("JWKS is not initialized")
+		}
+		return jwks.Keyfunc(token)
+	})
+
+	if err != nil || !token.Valid {
+		fmt.Printf("Keycloak token validation failed: %v\n", err)
+		return false
+	}
+
+	// Extract and validate claims
+	claims, ok := token.Claims.(*KeycloakClaims)
+	if !ok {
+		fmt.Printf("Failed to extract KeycloakClaims from token\n")
+		return false
+	}
+
+	// Ensure issuer matches our Keycloak
+	expectedIssuer := fmt.Sprintf("%s/realms/%s", ServerConfig.Keycloak.URL, ServerConfig.Keycloak.Realm)
+	issuer := strings.TrimRight(claims.Issuer, "/")
+	expectedIssuer = strings.TrimRight(expectedIssuer, "/")
+
+	if issuer != expectedIssuer {
+		fmt.Printf("Token issuer does not match expected issuer\n")
+		fmt.Printf("Expected: %s, Got: %s\n", expectedIssuer, issuer)
+		return false
+	}
+
+	// Token is valid, sync the user
+	user, err := syncKeycloakUser(db, claims)
+	if err != nil {
+		fmt.Printf("Failed to sync Keycloak user: %v\n", err)
+		return false
+	}
+
+	// Set the user in the context and continue
+	c.Set("user", user)
+	return true
 }

@@ -24,9 +24,22 @@ api.interceptors.request.use(
   (config) => {
     const apiKey = localStorage.getItem('token');
     if (apiKey) {
-      // Set the API key directly as the Authorization header value
-      // (not using "Bearer" prefix based on the API requirements)
-      config.headers.Authorization = apiKey;
+      // Check if this is likely a JWT token (Keycloak tokens are JWTs)
+      // A valid JWT has 3 parts separated by dots and is typically long
+      const isJWT = apiKey.split('.').length === 3 && apiKey.length > 100;
+      
+      // Always add Bearer prefix for JWT tokens (Keycloak tokens)
+      if (isJWT) {
+        console.log('Adding Bearer prefix to JWT token');
+        config.headers.Authorization = `Bearer ${apiKey}`;
+      } else {
+        // For regular session tokens, use as-is
+        console.log('Using regular token without Bearer prefix');
+        config.headers.Authorization = apiKey;
+      }
+      
+      // Debug the final authorization header
+      console.log('Final Authorization header:', config.headers.Authorization.substring(0, 20) + '...');
     }
     return config;
   },
@@ -56,7 +69,7 @@ api.interceptors.response.use(
 export const login = async (username, password) => {
   try {
     // Use the dynamic base URL for login
-    const response = await axios.post(`${baseURL}/auth/login`, { 
+    const response = await api.post('/auth/login', { 
       username, 
       password 
     });
@@ -68,9 +81,19 @@ export const login = async (username, password) => {
       // Make sure we're storing the API key in the proper format
       const cleanedApiKey = typeof apiKey === 'string' ? apiKey.trim().replace(/^["']|["']$/g, '') : apiKey;
       
-      // Immediately set the API key in axios defaults
-      api.defaults.headers.common['Authorization'] = cleanedApiKey;
-      axios.defaults.headers.common['Authorization'] = cleanedApiKey;
+      // Check if this is likely a JWT token (Keycloak tokens are JWTs)
+      const isJWT = cleanedApiKey.split('.').length === 3 && cleanedApiKey.length > 100;
+      
+      // Set the appropriate authorization header
+      if (isJWT) {
+        console.log('Setting Bearer token for JWT');
+        api.defaults.headers.common['Authorization'] = `Bearer ${cleanedApiKey}`;
+        axios.defaults.headers.common['Authorization'] = `Bearer ${cleanedApiKey}`;
+      } else {
+        console.log('Setting regular token without Bearer prefix');
+        api.defaults.headers.common['Authorization'] = cleanedApiKey;
+        axios.defaults.headers.common['Authorization'] = cleanedApiKey;
+      }
       
       // Store it in localStorage
       localStorage.setItem('token', cleanedApiKey);
@@ -229,4 +252,4 @@ export const deleteGroup = async (groupName, withHosts = false) => {
   }
 };
 
-export default api; 
+export default api;

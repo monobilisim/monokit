@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v4"
 	_ "github.com/monobilisim/monokit/docs"
 	"github.com/spf13/cobra"
 	"gorm.io/driver/postgres"
@@ -153,10 +154,18 @@ func setupRoutes(r *gin.Engine, db *gorm.DB) {
 	// Setup API routes first
 	// Swagger route is already set up in server.go
 	SetupAuthRoutes(r, db)
+	// Setup Keycloak routes if enabled
+	if ServerConfig.Keycloak.Enabled {
+		SetupKeycloakRoutes(r, db)
+	}
 	r.POST("/api/v1/hosts", registerHost(db))
 	SetupAdminRoutes(r, db)
 
 	api := r.Group("/api/v1")
+	// Apply Keycloak middleware first if enabled, then fall back to standard auth
+	if ServerConfig.Keycloak.Enabled {
+		api.Use(KeycloakAuthMiddleware(db))
+	}
 	api.Use(authMiddleware(db))
 	{
 		// Host management
@@ -178,7 +187,7 @@ func setupRoutes(r *gin.Engine, db *gorm.DB) {
 		api.POST("/inventory", createInventory(db))
 		api.DELETE("/inventory/:name", deleteInventory(db))
 
-		// Log management
+		// Log management - ensure these endpoints use the same auth chain
 		api.GET("/logs", getAllLogs(db))
 		api.GET("/logs/:hostname", getHostLogs(db))
 		api.POST("/logs/search", searchLogs(db))
@@ -206,6 +215,15 @@ func generateToken() string {
 // Authentication middleware
 func authMiddleware(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// Check if user is already set in context by Keycloak middleware
+		if user, exists := c.Get("user"); exists {
+			// User is already authenticated by Keycloak
+			fmt.Printf("User already authenticated by Keycloak: %v for path: %s\n",
+				user.(User).Username, c.Request.URL.Path)
+			c.Next()
+			return
+		}
+
 		token := c.GetHeader("Authorization")
 		if token == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header required"})
@@ -213,21 +231,81 @@ func authMiddleware(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		fmt.Printf("Processing request with token for path: %s\n", c.Request.URL.Path)
+
+		// Extract token if it's a Bearer token (remove "Bearer " prefix)
+		tokenValue := token
+		if strings.HasPrefix(token, "Bearer ") {
+			tokenValue = strings.TrimPrefix(token, "Bearer ")
+			fmt.Printf("Found Bearer token, extracted value for path: %s\n", c.Request.URL.Path)
+
+			// For Bearer tokens, if Keycloak is enabled, we should try to validate as Keycloak token first
+			if ServerConfig.Keycloak.Enabled {
+				// Attempt Keycloak authentication
+				authAttempt := attemptKeycloakAuth(tokenValue, db, c)
+				if authAttempt {
+					// Successfully authenticated with Keycloak
+					fmt.Println("Successfully authenticated with Keycloak via authMiddleware")
+					c.Next()
+					return
+				}
+
+				// If Keycloak auth failed and local auth is disabled
+				if ServerConfig.Keycloak.DisableLocalAuth {
+					c.JSON(http.StatusUnauthorized, gin.H{"error": "Keycloak authentication required"})
+					c.Abort()
+					return
+				}
+			}
+		}
+
+		// If Keycloak is enabled and local auth is disabled, reject non-JWT tokens
+		if ServerConfig.Keycloak.Enabled && ServerConfig.Keycloak.DisableLocalAuth {
+			// Try to validate as JWT before rejecting
+			_, err := jwt.Parse(tokenValue, func(token *jwt.Token) (interface{}, error) {
+				// We're just checking if it's a valid JWT format, not validating signature here
+				return nil, fmt.Errorf("just checking format")
+			})
+
+			if err != nil && !strings.Contains(err.Error(), "just checking format") {
+				// Not a valid JWT format and local auth is disabled
+				fmt.Printf("Not a valid JWT token and local auth is disabled for path: %s\n", c.Request.URL.Path)
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "Keycloak authentication required"})
+				c.Abort()
+				return
+			}
+		}
+
+		// Standard session-based auth - try with the raw token value
 		var session Session
-		if err := db.Preload("User").Where("token = ?", token).First(&session).Error; err != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
-			c.Abort()
-			return
+		if err := db.Preload("User").Where("token = ?", tokenValue).First(&session).Error; err != nil {
+			// Also try with the full token including "Bearer " if applicable
+			if strings.HasPrefix(token, "Bearer ") && err != nil {
+				if err := db.Preload("User").Where("token = ?", token).First(&session).Error; err != nil {
+					fmt.Printf("Invalid token for path: %s - %v\n", c.Request.URL.Path, err)
+					c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+					c.Abort()
+					return
+				}
+			} else {
+				fmt.Printf("Invalid token for path: %s - %v\n", c.Request.URL.Path, err)
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+				c.Abort()
+				return
+			}
 		}
 
 		// Check if session has expired
 		if time.Now().After(session.Timeout) {
 			db.Delete(&session)
+			fmt.Printf("Token expired for path: %s\n", c.Request.URL.Path)
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Token expired"})
 			c.Abort()
 			return
 		}
 
+		fmt.Printf("Authenticated session user: %s for path: %s\n",
+			session.User.Username, c.Request.URL.Path)
 		c.Set("user", session.User)
 		c.Next()
 	}
@@ -259,6 +337,21 @@ func hostAuthMiddleware(db *gorm.DB) gin.HandlerFunc {
 // Admin authentication middleware
 func adminAuthMiddleware(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// Check if user is already set in context by Keycloak middleware
+		if user, exists := c.Get("user"); exists {
+			// User is already authenticated, check if admin
+			currentUser := user.(User)
+			if currentUser.Role != "admin" {
+				c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+				c.Abort()
+				return
+			}
+
+			// User is admin, proceed
+			c.Next()
+			return
+		}
+
 		token := c.GetHeader("Authorization")
 		if token == "" {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authorization header required"})
@@ -266,6 +359,26 @@ func adminAuthMiddleware(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		// Check if token is a Bearer token (Keycloak)
+		if strings.HasPrefix(token, "Bearer ") {
+			// If we get here and Keycloak is enabled, the token was invalid or user isn't set
+			// We should already have checked this in the KeycloakAuthMiddleware
+			if ServerConfig.Keycloak.Enabled && ServerConfig.Keycloak.DisableLocalAuth {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid Keycloak token"})
+				c.Abort()
+				return
+			}
+			// Fall through to standard auth below if local auth is allowed
+		}
+
+		// If Keycloak is enabled and local auth is disabled, reject non-Bearer tokens
+		if ServerConfig.Keycloak.Enabled && ServerConfig.Keycloak.DisableLocalAuth {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Keycloak authentication required"})
+			c.Abort()
+			return
+		}
+
+		// Standard session-based auth
 		var session Session
 		if err := db.Preload("User").Where("token = ?", token).First(&session).Error; err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})

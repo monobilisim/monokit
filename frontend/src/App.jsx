@@ -37,28 +37,52 @@ function App() {
   const { theme, toggleTheme } = useTheme();
 
   useEffect(() => {
-    // Check if user is already authenticated
-    const token = localStorage.getItem('token');
+    const checkAuthentication = async () => {
+      setIsLoading(true);
+      const token = localStorage.getItem('token');
+      
+      if (token) {
+        console.log('Token found in localStorage, checking validity');
+        try {
+          // Check if it's a JWT token (Keycloak)
+          const isJWT = token.split('.').length === 3 && token.length > 100;
+          
+          // Set the appropriate Authorization header
+          if (isJWT) {
+            axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+            api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+          } else {
+            axios.defaults.headers.common['Authorization'] = token;
+            api.defaults.headers.common['Authorization'] = token;
+          }
+          
+          // Test authentication with an API call
+          const response = await api.get('/auth/me');
+          setUser(response.data);
+          setIsAuthenticated(true);
+          console.log('Authentication successful');
+        } catch (err) {
+          console.log('Authentication failed:', err.message);
+          handleLogout();
+        }
+      } else {
+        console.log('No token found in localStorage');
+      }
+      
+      setIsLoading(false);
+    };
     
-    if (token) {
-      console.log('Token found in localStorage, setting authenticated state');
-      console.log('Token value (first few chars):', token.substring(0, 15) + '...');
-      setIsAuthenticated(true);
-      
-      // Set the token in the default headers for all axios requests
-      api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-      
-      // Also set for axios global defaults to ensure all requests include the token
-      axios.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-      
-      // Verify the headers are set
-      console.log('Authorization header set in api instance:', !!api.defaults.headers.common['Authorization']);
-      console.log('Authorization header set in axios global:', !!axios.defaults.headers.common['Authorization']);
-    } else {
-      console.log('No token found in localStorage');
+    checkAuthentication();
+  }, []);
+
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const tokenParam = urlParams.get('token');
+    if (tokenParam) {
+      console.log('Token found in URL, storing in localStorage and setting auth headers');
+      handleLogin(tokenParam);
+      window.history.replaceState(null, '', window.location.pathname);
     }
-    
-    setIsLoading(false);
   }, []);
 
   const handleLogin = (token) => {
@@ -70,14 +94,14 @@ function App() {
     // Store the clean token
     localStorage.setItem('token', cleanedToken);
     console.log('Token stored in localStorage:', cleanedToken);
-    
-    // Set the token in the default headers for all axios requests
-    api.defaults.headers.common['Authorization'] = `Bearer ${cleanedToken}`;
-    axios.defaults.headers.common['Authorization'] = `Bearer ${cleanedToken}`;
-    
-    // Verify headers
-    console.log('Authorization header set in api:', !!api.defaults.headers.common['Authorization']);
-    console.log('Authorization header set in axios:', !!axios.defaults.headers.common['Authorization']);
+      
+      // Set the token in the default headers for all axios requests
+      api.defaults.headers.common['Authorization'] = cleanedToken;
+      axios.defaults.headers.common['Authorization'] = cleanedToken;
+      
+      // Verify headers
+      console.log('Authorization header set in api:', !!api.defaults.headers.common['Authorization']);
+      console.log('Authorization header set in axios:', !!axios.defaults.headers.common['Authorization']);
     
     setIsAuthenticated(true);
   };

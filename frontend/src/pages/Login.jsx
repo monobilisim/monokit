@@ -18,8 +18,16 @@ const Login = ({ onLoginSuccess }) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const navigate = useNavigate();
-
+const navigate = useNavigate();
+  const handleKeycloakLogin = () => {
+    const origin = window.location.protocol + "//" + window.location.host;
+    const { baseUrl } = config.api;
+    const backendUrl = baseUrl.startsWith('http') ? baseUrl : `${origin}${baseUrl}`;
+    // Directly use the full URL as redirectUri without encoding to ensure the domain is included as expected.
+    const redirectUri = `${origin}/api/v1/auth/sso/callback`;
+    window.location.href = `${backendUrl}/auth/sso/login?redirect_uri=${redirectUri}`;
+  };
+  
   const handleSubmit = async (e) => {
     e.preventDefault();
     setIsLoading(true);
@@ -173,6 +181,9 @@ const Login = ({ onLoginSuccess }) => {
             </Button>
           </div>
         </form>
+        <div style={{ marginTop: '20px', textAlign: 'center' }}>
+          <Button variant="primary" onClick={handleKeycloakLogin}>Login with Keycloak</Button>
+        </div>
       </div>
       <div style={{
         position: 'absolute',
@@ -189,4 +200,4 @@ const Login = ({ onLoginSuccess }) => {
   );
 };
 
-export default Login; 
+export default Login;

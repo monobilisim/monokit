@@ -73,7 +73,15 @@ export const setupAuthHeaders = (axiosInstance) => {
   const token = localStorage.getItem('token');
   
   if (token) {
-    axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    // Check if this is likely a JWT token (Keycloak tokens are JWTs)
+    const isJWT = token.split('.').length === 3 && token.length > 100;
+    
+    // If it looks like a JWT (Keycloak token), add Bearer prefix
+    if (isJWT) {
+      axiosInstance.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    } else {
+      axiosInstance.defaults.headers.common['Authorization'] = token;
+    }
   } else {
     delete axiosInstance.defaults.headers.common['Authorization'];
   }
@@ -100,4 +108,4 @@ export const decodeToken = (token) => {
     console.error('Failed to decode token:', error);
     return null;
   }
-}; 
+};

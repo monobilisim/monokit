@@ -19,6 +19,12 @@
 // @in header
 // @name Authorization
 
+// @securityDefinitions.oauth2.implicit KeycloakAuth
+// @tokenUrl https://keycloak.example.com/auth/realms/your-realm/protocol/openid-connect/token
+// @authorizationUrl https://keycloak.example.com/auth/realms/your-realm/protocol/openid-connect/auth
+// @scope read Grants read access
+// @scope write Grants write access
+
 // @tag.name hosts
 // @tag.description Host management operations
 
@@ -75,7 +81,7 @@ func ServerMain(cmd *cobra.Command, args []string) {
 	db.AutoMigrate(&Group{})
 	db.AutoMigrate(&User{})
 	db.AutoMigrate(&Session{})
-	db.AutoMigrate(&HostLog{})   // Add migration for HostLog table
+	db.AutoMigrate(&HostLog{}) // Add migration for HostLog table
 
 	// Create default inventory if it doesn't exist
 	var defaultInventory Inventory

@@ -170,6 +170,7 @@ const Dashboard = () => {
         end_time: now.toISOString()
       };
 
+      // Use the API instance which already has the proper auth headers set up
       const response = await api.post('/logs/search', searchParams);
       
       if (response.data && typeof response.data === 'object') {
@@ -183,11 +184,8 @@ const Dashboard = () => {
 
   const fetchUserInfo = async () => {
     try {
-      const response = await axios.get('/api/v1/auth/me', {
-        headers: {
-          Authorization: localStorage.getItem('token')
-        }
-      });
+      // Use the API instance which already has the proper auth headers set up
+      const response = await api.get('/auth/me');
       setUserInfo(response.data);
       setUserRole(response.data.role);
       
