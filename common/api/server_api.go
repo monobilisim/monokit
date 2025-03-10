@@ -961,6 +961,38 @@ func submitHostLog(db *gorm.DB) gin.HandlerFunc {
 			Type:      logType,
 		}
 
+		// Count total logs
+		var total int64
+		if err := db.Model(&HostLog{}).Count(&total).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to count logs"})
+			return
+		}
+
+		// If we have more than 10000 logs, delete the oldest ones
+		if total >= 10000 {
+			// Calculate how many logs to delete
+			toDelete := total - 9999 // This ensures we'll have 9999 logs after deletion, allowing the new one to be the 10000th
+
+			// Find the IDs of the oldest logs we need to delete
+			var oldestLogs []HostLog
+			if err := db.Order("timestamp asc").Limit(int(toDelete)).Find(&oldestLogs).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to find oldest logs"})
+				return
+			}
+
+			// Extract IDs
+			var ids []uint
+			for _, log := range oldestLogs {
+				ids = append(ids, log.ID)
+			}
+
+			// Delete the oldest logs
+			if err := db.Delete(&HostLog{}, ids).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete old logs"})
+				return
+			}
+		}
+
 		// Save to database
 		if err := db.Create(&log).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save log entry"})
