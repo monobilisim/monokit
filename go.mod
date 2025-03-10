@@ -3,6 +3,7 @@ module github.com/monobilisim/monokit
 go 1.22.5
 
 require (
+	github.com/MicahParks/keyfunc v1.9.0
 	github.com/charmbracelet/bubbles v0.20.0
 	github.com/charmbracelet/bubbletea v1.3.3
 	github.com/charmbracelet/lipgloss v1.0.0
@@ -11,6 +12,7 @@ require (
 	github.com/gin-gonic/gin v1.10.0
 	github.com/go-ini/ini v1.67.0
 	github.com/go-sql-driver/mysql v1.8.1
+	github.com/golang-jwt/jwt/v4 v4.5.1
 	github.com/itchyny/gojq v0.12.17
 	github.com/lib/pq v1.10.9
 	github.com/michaelklishin/rabbit-hole/v2 v2.16.0
@@ -37,7 +39,6 @@ require (
 require (
 	filippo.io/edwards25519 v1.1.0 // indirect
 	github.com/KyleBanks/depth v1.2.1 // indirect
-	github.com/MicahParks/keyfunc v1.9.0 // indirect
 	github.com/Microsoft/go-winio v0.4.14 // indirect
 	github.com/atotto/clipboard v0.1.4 // indirect
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
@@ -74,7 +75,6 @@ require (
 	github.com/goccy/go-json v0.10.2 // indirect
 	github.com/godbus/dbus/v5 v5.0.4 // indirect
 	github.com/gogo/protobuf v1.3.2 // indirect
-	github.com/golang-jwt/jwt/v4 v4.4.2 // indirect
 	github.com/golang/protobuf v1.5.4 // indirect
 	github.com/golang/snappy v0.0.4 // indirect
 	github.com/google/gnostic-models v0.6.8 // indirect
