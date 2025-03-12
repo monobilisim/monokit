@@ -34,7 +34,7 @@ with-api: clean-frontend build-frontend bin/monokit-with-api
 # Build the frontend assets
 build-frontend:
 	@echo "$(BLUE)Building frontend assets...$(RESET)"
-	cd frontend && npm install && npm run build
+	cd frontend && npm ci && npm run build
 	mkdir -p common/api/frontend/build
 	cp -r frontend/build/* common/api/frontend/build/
 	@echo "$(GREEN)Frontend build complete$(RESET)"
@@ -44,8 +44,6 @@ clean-frontend:
 	@echo "$(BLUE)Cleaning frontend artifacts...$(RESET)"
 	rm -rf frontend/build
 	rm -rf common/api/frontend/build
-	rm -rf frontend/node_modules
-	cd frontend && npm cache clean --force
 	@echo "$(GREEN)Frontend clean complete$(RESET)"
 
 # Clean all build artifacts
