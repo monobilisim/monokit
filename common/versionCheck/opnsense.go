@@ -36,7 +36,7 @@ func OPNsenseCheck() {
         fmt.Println("OPNsense got updated.")
         fmt.Println("Old version:", oldVersion)
         fmt.Println("New version:", version)
-        CreateNews("OPNsense", oldVersion, version)
+        CreateNews("OPNsense", oldVersion, version, true)
     }
 
 

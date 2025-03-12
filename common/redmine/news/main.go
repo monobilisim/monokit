@@ -76,6 +76,8 @@ func Create(title string, description string, noDuplicate bool) string {
 
 	if newsId == "" {
 		common.LogError("News couldn't be created, id returns empty")
+        common.LogError("Redmine URL: " + common.Config.Redmine.Url + "/projects/" + projectId + "/news.json")
+        common.LogError("Redmine JSON: " + string(jsonBody))
 		return ""
 	} else {
 		return newsId

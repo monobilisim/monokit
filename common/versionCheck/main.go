@@ -1,60 +1,66 @@
 package common
 
 import (
-    "os"
-    "fmt"
-    "time"
-    "io/ioutil"
-    "github.com/spf13/cobra"
-    "github.com/monobilisim/monokit/common"
-    news "github.com/monobilisim/monokit/common/redmine/news"
+	"fmt"
+	"io/ioutil"
+	"os"
+	"strings"
+	"time"
+
+	"github.com/monobilisim/monokit/common"
+	news "github.com/monobilisim/monokit/common/redmine/news"
+	"github.com/spf13/cobra"
 )
 
 func StoreVersion(service string, version string) {
-    common.WriteToFile(common.TmpDir + "/" + service + ".version", version)
+	common.WriteToFile(common.TmpDir+"/"+service+".version", version)
 }
 
 func GatherVersion(service string) string {
-    // Check if the service has a file
-    if _, err := os.Stat(common.TmpDir + "/" + service + ".version"); os.IsNotExist(err) {
-        return ""
-    }
+	// Check if the service has a file
+	if _, err := os.Stat(common.TmpDir + "/" + service + ".version"); os.IsNotExist(err) {
+		return ""
+	}
 
-    // Read the file
-    content, err := ioutil.ReadFile(common.TmpDir + "/" + service + ".version")
-    if err != nil {
-        return ""
-    }
+	// Read the file
+	content, err := ioutil.ReadFile(common.TmpDir + "/" + service + ".version")
+	if err != nil {
+		return ""
+	}
 
-    return string(content)
+	return string(content)
 }
 
-func CreateNews(service string, oldVersion string, newVersion string) {
-    news.Create(common.Config.Identifier + " sunucusunun " + service + " sürümü güncellendi", common.Config.Identifier + " sunucusunda " + service + ", " + oldVersion + " sürümünden " + newVersion + " sürümüne yükseltildi.", true)
+func CreateNews(service string, oldVersion string, newVersion string, compactTitle bool) {
+	var identifier string = common.Config.Identifier
+	if compactTitle {
+		parts := strings.Split(identifier, "-")
+		if len(parts) > 1 {
+			identifier = strings.Join(parts[1:], "-")
+		}
+	}
+	news.Create(identifier+" sunucusunun "+service+" sürümü güncellendi", common.Config.Identifier+" sunucusunda "+service+", "+oldVersion+" sürümünden "+newVersion+" sürümüne yükseltildi.", true)
 }
-
 
 func VersionCheck(cmd *cobra.Command, args []string) {
-    version := "0.1.0"
-    common.ScriptName = "versionCheck"
-    common.TmpDir = "/var/cache/mono/" + common.ScriptName
-    common.Init()
+	version := "0.1.0"
+	common.ScriptName = "versionCheck"
+	common.TmpDir = "/var/cache/mono/" + common.ScriptName
+	common.Init()
 
-    fmt.Println("versionCheck - v" + version + " - " + time.Now().Format("2006-01-02 15:04:05"))
-    
-    // Proxmox
-    ProxmoxVECheck()
-    ProxmoxMGCheck()
-    ProxmoxBSCheck()
+	fmt.Println("versionCheck - v" + version + " - " + time.Now().Format("2006-01-02 15:04:05"))
 
-    // Zimbra
-    ZimbraCheck()
+	// Proxmox
+	ProxmoxVECheck()
+	ProxmoxMGCheck()
+	ProxmoxBSCheck()
 
-    // OPNsense
-    OPNsenseCheck()
+	// Zimbra
+	ZimbraCheck()
 
-    // PostgreSQL
-    PostgresCheck()
+	// OPNsense
+	OPNsenseCheck()
+
+	// PostgreSQL
+	PostgresCheck()
 }
-
-
