@@ -29,6 +29,13 @@
 
 ## Tools
 
+- searchHealth
+    - Check Opensearch/Elasticsearch health.
+    - Validates cluster health status through the /_cluster/health endpoint.
+    - Monitors shard allocation issues using the /_cluster/allocation/explain endpoint.
+    - Sends alarm notifications if shards cannot be allocated.
+    - Config: `/etc/mono/search.yaml`
+
 - server
     - An API server that gets information from other Monokit instances.
     - Config: `/etc/mono/server.yaml`

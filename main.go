@@ -16,6 +16,7 @@ import (
 	"github.com/monobilisim/monokit/lbPolicy"
 	"github.com/monobilisim/monokit/osHealth"
 	"github.com/monobilisim/monokit/pritunlHealth"
+	"github.com/monobilisim/monokit/searchHealth"
 	"github.com/monobilisim/monokit/shutdownNotifier"
 	"github.com/monobilisim/monokit/sshNotifier"
 	"github.com/monobilisim/monokit/wppconnectHealth"
@@ -55,6 +56,12 @@ func main() {
 		Use:   "pritunlHealth",
 		Short: "Pritunl Health",
 		Run:   pritunlHealth.Main,
+	}
+
+	var searchHealthCmd = &cobra.Command{
+		Use:   "searchHealth",
+		Short: "Elasticsearch Health",
+		Run:   searchHealth.Main,
 	}
 
 	var sshNotifierCmd = &cobra.Command{
@@ -434,6 +441,9 @@ Supports pagination for large log sets.`,
 
 	/// Pritunl Health
 	RootCmd.AddCommand(pritunlHealthCmd)
+
+	/// Search Health
+	RootCmd.AddCommand(searchHealthCmd)
 
 	RedisCommandAdd()
 
