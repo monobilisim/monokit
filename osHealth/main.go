@@ -13,7 +13,7 @@ import (
 var OsHealthConfig OsHealth
 
 func Main(cmd *cobra.Command, args []string) {
-	version := "2.2.3"
+	version := "2.3.0"
 	common.ScriptName = "osHealth"
 	common.TmpDir = common.TmpDir + "osHealth"
 	common.Init()
