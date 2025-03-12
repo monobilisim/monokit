@@ -44,6 +44,8 @@ clean-frontend:
 	@echo "$(BLUE)Cleaning frontend artifacts...$(RESET)"
 	rm -rf frontend/build
 	rm -rf common/api/frontend/build
+	rm -rf frontend/node_modules
+	cd frontend && npm cache clean --force
 	@echo "$(GREEN)Frontend clean complete$(RESET)"
 
 # Clean all build artifacts
