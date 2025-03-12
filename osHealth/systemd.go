@@ -336,7 +336,7 @@ func SystemdLogs() {
 	}
 
 	common.SplitSection("Systemd Logs")
-	common.LogInfo("Collecting systemd logs...")
+	fmt.Println("Collecting systemd logs...")
 
 	// Get the timestamp of the last sent log
 	lastTimestamp, err := getLastSentTimestamp()
@@ -345,7 +345,7 @@ func SystemdLogs() {
 		// We continue with the default timestamp (1 hour ago)
 	}
 
-	common.LogInfo(fmt.Sprintf("Collecting logs since %s", lastTimestamp.Format(time.RFC3339)))
+	fmt.Printf("Collecting logs since %s\n", lastTimestamp.Format(time.RFC3339))
 
 	// Collect logs since the last sent timestamp, max 1000 entries
 	entries, err := collectSystemdLogs(lastTimestamp, 1000)
@@ -354,7 +354,7 @@ func SystemdLogs() {
 		return
 	}
 
-	common.LogInfo(fmt.Sprintf("Collected %d systemd log entries", len(entries)))
+	fmt.Printf("Collected %d systemd log entries\n", len(entries))
 
 	// Push logs to API
 	if len(entries) > 0 {
@@ -363,8 +363,8 @@ func SystemdLogs() {
 			common.LogError("Failed to push systemd logs to API: " + err.Error())
 			return
 		}
-		common.LogInfo("Successfully pushed systemd logs to API")
+		fmt.Println("Successfully pushed systemd logs to API")
 	} else {
-		common.LogInfo("No systemd logs to push")
+		fmt.Println("No systemd logs to push")
 	}
 }
