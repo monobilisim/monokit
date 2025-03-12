@@ -32,6 +32,7 @@ func Main(cmd *cobra.Command, args []string) {
 	fmt.Println("OS Health Check REWRITE - v" + version + " - " + time.Now().Format("2006-01-02 15:04:05"))
 
 	DiskUsage()
+	ZFSHealth() // Add ZFS health check
 
 	common.SplitSection("System Load and RAM")
 	SysLoad()
