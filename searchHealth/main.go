@@ -113,15 +113,13 @@ func checkElasticsearchHealth() {
 
 	// Check status code
 	if resp.StatusCode == 200 {
-		common.PrettyPrint("Elasticsearch Health - Status code: 200", common.Green+"OK"+common.Reset,
-			0.0, false, true, false, 0)
+        common.PrettyPrintStr("Elasticsearch Health", true, "good, status code: 200")
 		common.AlarmCheckUp("elasticsearch_health",
 			"Elasticsearch cluster is healthy", false)
 	} else {
 		common.LogError("Elasticsearch health check failed with status code: " +
 			fmt.Sprintf("%d", resp.StatusCode))
-		common.PrettyPrint("Elasticsearch Health - Status code: "+fmt.Sprintf("%d", resp.StatusCode),
-			common.Fail+"FAILED"+common.Reset, 0.0, false, true, false, 0)
+        common.PrettyPrintStr("Elasticsearch Health", false, "good, status code: "+fmt.Sprintf("%d", resp.StatusCode))
 		common.AlarmCheckDown("elasticsearch_health",
 			fmt.Sprintf("Elasticsearch health check failed with status code %d: %s",
 				resp.StatusCode, string(body)), false, "", "")
@@ -187,8 +185,7 @@ func checkShardAllocation() {
 
 	// If the status code is 400, it may mean there are no unassigned shards to explain
 	if resp.StatusCode == 400 {
-		common.PrettyPrint("Elasticsearch Shard Allocation", common.Green+"OK"+common.Reset,
-			0.0, false, true, false, 0)
+		common.PrettyPrintStr("Elasticsearch Shard Allocation", true, common.Green+"OK"+common.Reset)
 		common.AlarmCheckUp("elasticsearch_shard_allocation",
 			"No unassigned shards detected", false)
 		return
@@ -209,12 +206,10 @@ func checkShardAllocation() {
 		message := fmt.Sprintf("Shards cannot be allocated. Shard: %d, Index: %s, Explanation: %s",
 			allocationResponse.Shard, allocationResponse.Index, allocationResponse.AllocateExplanation)
 		common.LogError(message)
-		common.PrettyPrint("Elasticsearch Shard Allocation",
-			common.Fail+"FAILED"+common.Reset, 0.0, false, true, false, 0)
+		common.PrettyPrintStr("Elasticsearch Shard Allocation", false, common.Fail+"FAILED"+common.Reset)
 		common.AlarmCheckDown("elasticsearch_shard_allocation", message, false, "", "")
 	} else {
-		common.PrettyPrint("Elasticsearch Shard Allocation", common.Green+"OK"+common.Reset,
-			0.0, false, true, false, 0)
+		common.PrettyPrintStr("Elasticsearch Shard Allocation", true, common.Green+"OK"+common.Reset)
 		common.AlarmCheckUp("elasticsearch_shard_allocation",
 			"Elasticsearch shard allocation is healthy", false)
 	}
