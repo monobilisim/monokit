@@ -35,11 +35,11 @@ builds:
 
 archives:
   - id: default
-    builds:
+    ids:
       - default
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     
   - id: withapi
-    builds:
+    ids:
       - withapi
     name_template: "{{ .ProjectName }}_withapi_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
