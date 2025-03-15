@@ -156,6 +156,36 @@ const UserDetails = () => {
                         )}
                       </DescriptionListDescription>
                     </DescriptionListGroup>
+                    
+                    {/* Add disabled components section here */}
+                    {user.disabledComponents && (
+                      <DescriptionListGroup>
+                        <DescriptionListTerm>Disabled Components</DescriptionListTerm>
+                        <DescriptionListDescription>
+                          {user.disabledComponents === 'nil' ? (
+                            'None'
+                          ) : (
+                            <Split hasGutter>
+                              {(() => {
+                                // Get components list, removing 'nil' and empty strings
+                                const components = user.disabledComponents
+                                  .split('::')
+                                  .filter(comp => comp !== 'nil' && comp.trim() !== '');
+                                
+                                // If filtered list is empty, show 'None' instead
+                                return components.length > 0 ? (
+                                  components.map(comp => (
+                                    <SplitItem key={comp}>
+                                      <Label color="red" isCompact>{comp.trim()}</Label>
+                                    </SplitItem>
+                                  ))
+                                ) : 'None';
+                              })()}
+                            </Split>
+                          )}
+                        </DescriptionListDescription>
+                      </DescriptionListGroup>
+                    )}
                   </DescriptionList>
                 </CardBody>
               </Card>

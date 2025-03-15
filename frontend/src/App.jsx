@@ -26,6 +26,7 @@ import UserForm from './pages/UserForm.jsx';
 import UserDetails from './pages/UserDetails.jsx';
 import Groups from './pages/Groups.jsx';
 import Logs from './pages/Logs.jsx';
+import MonokitConfig from './pages/MonokitConfig.jsx';
 import { useTheme } from './ThemeContext.jsx';
 import api from './utils/api';
 
@@ -210,6 +211,7 @@ function App() {
                 <Route path="/" element={<Dashboard onAuthError={handleAuthError} />} />
                 <Route path="/hosts" element={<Hosts onAuthError={handleAuthError} />} />
                 <Route path="/hosts/:hostname" element={<HostDetails onAuthError={handleAuthError} />} />
+                <Route path="/hosts/:hostname/config" element={<MonokitConfig onAuthError={handleAuthError} />} />
                 <Route path="/users" element={<Users onAuthError={handleAuthError} />} />
                 <Route path="/users/new" element={<UserForm onAuthError={handleAuthError} />} />
                 <Route path="/users/:username/edit" element={<UserForm onAuthError={handleAuthError} />} />

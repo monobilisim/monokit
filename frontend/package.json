@@ -4,6 +4,7 @@
   "private": true,
   "type": "module",
   "dependencies": {
+    "@monaco-editor/react": "^4.7.0",
     "@patternfly/patternfly": "^6.0.0",
     "@patternfly/react-charts": "^7.1.0",
     "@patternfly/react-core": "^6.0.0",

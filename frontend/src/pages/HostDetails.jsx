@@ -25,9 +25,10 @@ import {
   StackItem,
   Icon
 } from '@patternfly/react-core';
-import { ArrowLeftIcon, CheckCircleIcon, ExclamationCircleIcon, InfoCircleIcon } from '@patternfly/react-icons';
+import { ArrowLeftIcon, CheckCircleIcon, ExclamationCircleIcon, InfoCircleIcon, CubesIcon } from '@patternfly/react-icons';
 import axios from 'axios';
 import ButtonWithCenteredIcon from '../components/ButtonWithCenteredIcon';
+import EnabledComponents from '../components/EnabledComponents';
 
 const HostDetails = () => {
   const { hostname } = useParams();
@@ -36,6 +37,7 @@ const HostDetails = () => {
   const [host, setHost] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [isComponentsModalOpen, setIsComponentsModalOpen] = useState(false);
 
   useEffect(() => {
     fetchHostDetails();
@@ -238,6 +240,26 @@ const HostDetails = () => {
                         )}
                       </DescriptionListDescription>
                     </DescriptionListGroup>
+                    <DescriptionListGroup>
+                      <DescriptionListTerm>Configuration</DescriptionListTerm>
+                      <DescriptionListDescription>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                          <Button 
+                            variant="secondary" 
+                            onClick={() => navigate(`/hosts/${hostname}/config`)}
+                          >
+                            Edit Monokit Configuration
+                          </Button>
+                          <Button
+                            variant="primary"
+                            onClick={() => setIsComponentsModalOpen(true)}
+                          >
+                            <CubesIcon style={{ marginRight: '8px' }} />
+                            Manage Components
+                          </Button>
+                        </div>
+                      </DescriptionListDescription>
+                    </DescriptionListGroup>
                   </DescriptionList>
                 </CardBody>
               </Card>
@@ -245,8 +267,19 @@ const HostDetails = () => {
           </Grid>
         </StackItem>
       </Stack>
+
+      <EnabledComponents 
+        isOpen={isComponentsModalOpen} 
+        onClose={() => {
+          setIsComponentsModalOpen(false);
+          // Refresh host details when modal is closed to get updated component state
+          fetchHostDetails();
+        }}
+        hostname={hostname}
+        hostData={host}
+      />
     </PageSection>
   );
 };
 
-export default HostDetails; 
+export default HostDetails;

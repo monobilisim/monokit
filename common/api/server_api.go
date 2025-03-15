@@ -124,14 +124,31 @@ func setupDatabase() *gorm.DB {
 		panic("Failed to connect to database")
 	}
 
-	// Auto migrate the schema in the correct order
-	db.AutoMigrate(&Inventory{}) // First create Inventory table
-	db.AutoMigrate(&Host{})      // Then Host table that references Inventory
-	db.AutoMigrate(&User{})
-	db.AutoMigrate(&HostKey{})
-	db.AutoMigrate(&Session{})
-	db.AutoMigrate(&Group{})
-	db.AutoMigrate(&HostLog{})
+	// Begin transaction for table creation
+	tx := db.Begin()
+	if tx.Error != nil {
+		panic(fmt.Sprintf("Failed to begin transaction: %v", tx.Error))
+	}
+
+	// Auto migrate the rest of the schema in the correct order
+	if err := db.AutoMigrate(
+		&APILogEntry{},
+		&Inventory{},
+		&Host{},
+		&User{},
+		&HostKey{},
+		&Session{},
+		&Group{},
+		&HostLog{},
+		&HostFileConfig{},
+	); err != nil {
+		panic(fmt.Sprintf("Failed to migrate schema: %v", err))
+	}
+
+	// Verify the host_file_configs table exists and has the correct structure
+	if err := db.Exec("SELECT * FROM host_file_configs LIMIT 0").Error; err != nil {
+		panic(fmt.Sprintf("Failed to verify host_file_configs table: %v", err))
+	}
 
 	// Create default inventory if it doesn't exist
 	var defaultInventory Inventory
@@ -174,10 +191,20 @@ func setupRoutes(r *gin.Engine, db *gorm.DB) {
 		api.GET("/hosts/:name", getHostByName())
 		api.DELETE("/hosts/:name", deleteHost(db))
 		api.PUT("/hosts/:name", updateHost(db))
+
+		// Config endpoints - using handlers from host_config.go
+		api.GET("/hosts/:name/config", HandleGetHostConfig(db))                 // GET config - get all configs for a host
+		api.POST("/hosts/:name/config", HandlePostHostConfig(db))               // POST config - create or update host configs
+		api.PUT("/hosts/:name/config", HandlePutHostConfig(db))                 // PUT config - update host configs (same as POST)
+		api.DELETE("/hosts/:name/config/:filename", HandleDeleteHostConfig(db)) // DELETE config - delete a specific config file
+
 		api.POST("/hosts/:name/updateTo/:version", updateHostVersion(db))
 		api.POST("/hosts/:name/enable/:service", enableComponent(db))
 		api.POST("/hosts/:name/disable/:service", disableComponent(db))
-		api.GET("/hosts/:name/:service", getComponentStatus())
+		api.GET("/hosts/:name/status/:service", getComponentStatus())
+
+		// Add direct component status route (for compatibility with frontend)
+		api.GET("/hosts/:name/:component", getComponentStatus())
 
 		// Group management
 		api.GET("/groups", getAllGroups(db))
@@ -198,6 +225,13 @@ func setupRoutes(r *gin.Engine, db *gorm.DB) {
 	hostApi := r.Group("/api/v1/host")
 	hostApi.Use(hostAuthMiddleware(db))
 	{
+		// Config endpoints - with self-host auto-detection
+		hostApi.GET("/config", HandleGetHostConfig(db))
+		hostApi.PUT("/config", HandlePutHostConfig(db))
+
+		// Status endpoints - make the parameter name more explicit
+		hostApi.GET("/status/:service", getComponentStatus()) // Changed from "/:service" to "/status/:service"
+
 		// Allow hosts to submit their logs
 		hostApi.POST("/logs", submitHostLog(db))
 	}
@@ -884,21 +918,35 @@ func disableComponent(db *gorm.DB) gin.HandlerFunc {
 func getComponentStatus() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		name := c.Param("name")
+		if name == "" {
+			if h, ok := c.Get("hostname"); ok {
+				name = h.(string)
+			}
+		}
 		service := c.Param("service")
+		if service == "" {
+			service = c.Param("component")
+		}
+		if name == "" || service == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Missing host name or service name"})
+			return
+		}
 
 		for _, host := range HostsList {
 			if host.Name == name {
 				components := strings.Split(host.DisabledComponents, "::")
 				isDisabled := slices.Contains(components, service)
+
+				// Return consistent responses with both formats to support different clients
 				c.JSON(http.StatusOK, gin.H{
 					"name":     name,
 					"service":  service,
 					"disabled": isDisabled,
+					"status":   map[bool]string{true: "disabled", false: "enabled"}[isDisabled],
 				})
 				return
 			}
 		}
-
 		c.JSON(http.StatusNotFound, gin.H{"error": "Host not found"})
 	}
 }

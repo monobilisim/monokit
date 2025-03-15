@@ -252,4 +252,60 @@ export const deleteGroup = async (groupName, withHosts = false) => {
   }
 };
 
+// Logs API calls
+export const getLogs = async () => {
+  try {
+    const response = await api.get('/logs');
+    return response;
+  } catch (error) {
+    console.error('Error fetching logs:', error);
+    throw error;
+  }
+};
+
+// Config API calls
+export const getConfig = async (name) => {
+  try {
+    const endpoint = name ? `/hosts/${name}/config` : '/host/config';
+    const response = await api.get(endpoint);
+    return response;
+  } catch (error) {
+console.error(`Error fetching config for host ${name || 'current host'}:`, error);
+    throw error;
+  }
+};
+
+export const updateConfig = async (name, configData) => {
+  try {
+    const endpoint = name ? `/hosts/${name}/config` : '/host/config';
+    const response = await api.post(endpoint, configData);
+    return response;
+  } catch (error) {
+    console.error('Error updating config:', error);
+    throw error;
+  }
+};
+
+// Add this new function for deleting configuration files
+export const deleteConfig = async (name, fileName) => {
+  try {
+    const endpoint = name ? `/hosts/${name}/config/${fileName}` : `/host/config/${fileName}`;
+    const response = await api.delete(endpoint);
+    return response;
+  } catch (error) {
+    console.error(`Error deleting config file ${fileName}:`, error);
+    throw error;
+  }
+};
+
+export const createLog = async (logData) => {
+  try {
+    const response = await api.post('/logs', logData);
+    return response;
+  } catch (error) {
+    console.error('Error creating log:', error);
+    throw error;
+  }
+};
+
 export default api;

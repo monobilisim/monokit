@@ -38,9 +38,12 @@ type AdminGroupResponse struct {
 }
 
 func GetServiceStatus(serviceName string) (bool, string) {
+	common.LogDebug("Checking service status for: " + serviceName)
 	apiVersion := "1"
 
 	req, err := http.NewRequest("GET", ClientConf.URL+"/api/v"+apiVersion+"/hosts/"+common.Config.Identifier+"/"+serviceName, nil)
+
+	common.LogDebug("Sending GET request to " + ClientConf.URL + "/api/v" + apiVersion + "/hosts/" + common.Config.Identifier + "/" + serviceName)
 
 	if err != nil {
 		common.LogError(err.Error())
@@ -68,16 +71,28 @@ func GetServiceStatus(serviceName string) (bool, string) {
 	var serviceStatus map[string]interface{}
 	json.NewDecoder(resp.Body).Decode(&serviceStatus)
 
+	common.LogDebug("Service status response: " + fmt.Sprintf("%v", serviceStatus))
+
 	wantsUpdateTo := ""
 	if serviceStatus["wantsUpdateTo"] != nil {
 		wantsUpdateTo = serviceStatus["wantsUpdateTo"].(string)
 	}
 
-	if serviceStatus["status"] == nil {
-		return true, ""
+	// First try to check if there's an explicit "status" field
+	if serviceStatus["status"] != nil {
+		return serviceStatus["status"] == "enabled", wantsUpdateTo
 	}
 
-	return (serviceStatus["status"] == "enabled" || serviceStatus["status"] == "not found"), wantsUpdateTo
+	// Next, check if there's a "disabled" field
+	if serviceStatus["disabled"] != nil {
+		disabled, ok := serviceStatus["disabled"].(bool)
+		if ok {
+			return !disabled, wantsUpdateTo // Return !disabled because we want to return true if enabled
+		}
+	}
+
+	// Default to enabled if we can't determine status
+	return true, wantsUpdateTo
 }
 
 func WrapperGetServiceStatus(serviceName string) {
@@ -182,6 +197,8 @@ func GetReq(apiVersion string) (map[string]interface{}, error) {
 }
 
 func SendReq(apiVersion string) {
+	// Sync host configuration with server
+	SyncConfig(nil, nil)
 
 	beforeHost, err := GetReq(apiVersion)
 
@@ -233,6 +250,7 @@ func SendReq(apiVersion string) {
 	hostJson, _ := json.Marshal(host)
 
 	// Send the response to the API
+	common.LogDebug("Preparing to send POST request to " + ClientConf.URL + "/api/v" + apiVersion + "/hosts")
 	req, err := http.NewRequest("POST", ClientConf.URL+"/api/v"+apiVersion+"/hosts", bytes.NewBuffer(hostJson))
 
 	if err != nil {
@@ -259,6 +277,7 @@ func SendReq(apiVersion string) {
 
 	defer resp.Body.Close()
 
+	common.LogDebug("POST request completed, decoding response...")
 	// Handle the response
 	var response struct {
 		Host   *Host  `json:"host"`
@@ -271,6 +290,8 @@ func SendReq(apiVersion string) {
 		fmt.Printf("Error reading response: %v\n", err)
 		return
 	}
+
+	common.LogDebug("Response body: " + string(body))
 
 	if err := json.Unmarshal(body, &response); err != nil {
 		fmt.Printf("Error decoding response: %v\nBody: %s\n", err, string(body))
@@ -302,6 +323,9 @@ func SendReq(apiVersion string) {
 		common.RemoveMonokit()
 		os.Exit(0)
 	}
+
+	// Remove lockfile
+	common.RemoveLockfile()
 }
 
 func GetHosts(apiVersion string, hostName string) []Host {
@@ -1159,6 +1183,130 @@ func DeleteMe(cmd *cobra.Command, args []string) {
 	}
 
 	fmt.Println("Account deleted successfully")
+}
+
+// SyncConfig synchronizes local config with the server.
+func SyncConfig(cmd *cobra.Command, args []string) {
+	apiVersion := ClientInit()
+	hostname := common.Config.Identifier
+	configDir := "/etc/mono"
+	client := &http.Client{}
+
+	// Ensure config directory exists
+	if err := os.MkdirAll(configDir, 0755); err != nil {
+		common.LogError("Failed to create config directory: " + err.Error())
+		return
+	}
+
+	common.LogDebug("SyncConfig: Starting configuration sync for host " + hostname)
+
+	// Get host key for authentication
+	keyPath := filepath.Join("/var/lib/mono/api/hostkey", hostname)
+	hostKey, _ := os.ReadFile(keyPath) // Ignore error, we'll just proceed without host key
+
+	// GET remote configs
+	url := ClientConf.URL + "/api/v" + apiVersion + "/hosts/" + hostname + "/config"
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		common.LogError("Error creating GET request: " + err.Error())
+		return
+	}
+
+	if len(hostKey) > 0 {
+		req.Header.Set("Authorization", string(hostKey))
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		common.LogError("Error retrieving remote configs: " + err.Error())
+		return
+	}
+	defer resp.Body.Close()
+
+	var remoteConfigs map[string]string
+	if err := json.NewDecoder(resp.Body).Decode(&remoteConfigs); err != nil {
+		common.LogError("Error decoding remote configs: " + err.Error())
+		return
+	}
+
+	common.LogDebug(fmt.Sprintf("Retrieved %d remote config file(s)", len(remoteConfigs)))
+
+	// Write remote configs to local files
+	for filename, content := range remoteConfigs {
+		localPath := filepath.Join(configDir, filename)
+		if err := os.WriteFile(localPath, []byte(content), 0644); err != nil {
+			common.LogError(fmt.Sprintf("Error writing config file %s: %s", filename, err.Error()))
+			return
+		}
+	}
+
+	// Read local config files
+	localConfigs := make(map[string]string)
+	files, err := os.ReadDir(configDir)
+	if err != nil {
+		common.LogError("Error reading config directory: " + err.Error())
+		return
+	}
+
+	for _, file := range files {
+		if !file.IsDir() {
+			data, err := os.ReadFile(filepath.Join(configDir, file.Name()))
+			if err != nil {
+				common.LogError(fmt.Sprintf("Error reading config file %s: %s", file.Name(), err.Error()))
+				return
+			}
+			localConfigs[file.Name()] = string(data)
+		}
+	}
+
+	// POST local configs to server
+	payload, err := json.Marshal(localConfigs)
+	if err != nil {
+		common.LogError("Error marshaling config data: " + err.Error())
+		return
+	}
+
+	postReq, err := http.NewRequest("POST", url, bytes.NewBuffer(payload))
+	if err != nil {
+		common.LogError("Error creating POST request: " + err.Error())
+		return
+	}
+
+	postReq.Header.Set("Content-Type", "application/json")
+	if len(hostKey) > 0 {
+		postReq.Header.Set("Authorization", string(hostKey))
+	}
+
+	postResp, err := client.Do(postReq)
+	if err != nil {
+		common.LogError("Error sending local configs: " + err.Error())
+		return
+	}
+	defer postResp.Body.Close()
+
+	// Read response body to parse success/error message
+	bodyBytes, err := io.ReadAll(postResp.Body)
+	if err != nil {
+		common.LogError("Error reading response body: " + err.Error())
+		return
+	}
+
+	// Check for successful status codes OR check if the response contains success indicators
+	if postResp.StatusCode != http.StatusOK && postResp.StatusCode != http.StatusCreated {
+		// Try to parse the response as JSON
+		var respData map[string]string
+		if err := json.Unmarshal(bodyBytes, &respData); err == nil {
+			// If status is "created" or message indicates success, don't treat as error
+			if respData["status"] == "created" || strings.Contains(respData["message"], "updated") {
+				fmt.Println("Configuration synchronized successfully")
+				return
+			}
+		}
+		common.LogError("Server error during sync: " + string(bodyBytes))
+		return
+	}
+
+	fmt.Println("Configuration synchronized successfully")
 }
 
 func authDelete(path string) (*http.Response, error) {

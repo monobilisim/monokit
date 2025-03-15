@@ -81,7 +81,8 @@ func ServerMain(cmd *cobra.Command, args []string) {
 	db.AutoMigrate(&Group{})
 	db.AutoMigrate(&User{})
 	db.AutoMigrate(&Session{})
-	db.AutoMigrate(&HostLog{}) // Add migration for HostLog table
+	db.AutoMigrate(&HostLog{})        // Add migration for HostLog table
+	db.AutoMigrate(&HostFileConfig{}) // Add migration for host file configs
 
 	// Create default inventory if it doesn't exist
 	var defaultInventory Inventory

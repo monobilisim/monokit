@@ -85,6 +85,16 @@ type Group struct {
 	Users []User `json:"users" gorm:"many2many:group_users;"`
 }
 
+// HostFileConfig model
+type HostFileConfig struct {
+	ID        uint      `gorm:"primaryKey" json:"id"`
+	HostName  string    `gorm:"index" json:"host_name"`
+	FileName  string    `json:"file_name"`
+	Content   string    `gorm:"type:text" json:"content"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 // HostLog represents a log entry from a host
 type HostLog struct {
 	gorm.Model
