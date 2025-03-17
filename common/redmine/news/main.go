@@ -69,8 +69,10 @@ func Create(title string, description string, noDuplicate bool) string {
 		common.LogError("client.Do error: " + err.Error() + "\n" + "Redmine URL: " + common.Config.Redmine.Url + "/issues.json" + "\n" + "Redmine JSON: " + string(jsonBody))
 		return ""
 	}
-
+	
 	defer resp.Body.Close()
+    
+    respBody, err := ioutil.ReadAll(resp.Body)
 
 	newsId := Exists(title, description)
 
@@ -78,6 +80,7 @@ func Create(title string, description string, noDuplicate bool) string {
 		common.LogError("News couldn't be created, id returns empty")
         common.LogError("Redmine URL: " + common.Config.Redmine.Url + "/projects/" + projectId + "/news.json")
         common.LogError("Redmine JSON: " + string(jsonBody))
+        common.LogError("Response body: " + string(respBody))
 		return ""
 	} else {
 		return newsId

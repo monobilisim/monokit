@@ -25,22 +25,11 @@ import {
   AlertActionCloseButton,
   EmptyState,
   EmptyStateVariant,
-  EmptyStateBody,
-  Grid,
-  GridItem,
+  EmptyStateBody
 } from '@patternfly/react-core';
 import { TrashIcon } from '@patternfly/react-icons';
-import {
-  Chart,
-  ChartArea,
-  ChartAxis,
-  ChartGroup,
-  ChartLegend,
-  ChartThemeColor,
-  ChartVoronoiContainer
-} from '@patternfly/react-charts';
+import { Chart, ChartAxis, ChartBar, ChartGroup, ChartVoronoiContainer } from '@patternfly/react-charts';
 import { Table, Thead, Tr, Th, Tbody, Td } from '@patternfly/react-table';
-import axios from 'axios';
 import api from '../utils/api';
 import { useTheme } from '../ThemeContext.jsx';
 import { GruvboxColors } from '../ThemeContext.jsx';
@@ -68,26 +57,21 @@ const Logs = ({ onAuthError }) => {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const { theme } = useTheme();
   
-  // Get the appropriate color palette based on the current theme
   const colors = theme === 'dark' ? GruvboxColors.dark : GruvboxColors.light;
-
   const logLevels = ['info', 'warning', 'error', 'critical'];
-  
-  // Function to clear the level filter
+
   const clearLevelFilter = () => {
     setLevelFilter('');
     setIsLevelFilterOpen(false);
     setPage(1);
   };
 
-  // Function to clear the host filter
   const clearHostFilter = () => {
     setHostFilter('');
     setIsHostFilterOpen(false);
     setPage(1);
   };
 
-  // Function to clear the type filter
   const clearTypeFilter = () => {
     setTypeFilter('');
     setIsTypeFilterOpen(false);
@@ -103,16 +87,47 @@ const Logs = ({ onAuthError }) => {
   };
 
   const processLogsForChart = (logs) => {
+    if (!logs.length) return [];
+
+    // Find latest log timestamp and round up to next 10 minutes
+    const latest = new Date(Math.max(...logs.map(l => new Date(l.timestamp).getTime())));
+    latest.setMilliseconds(0);
+    latest.setSeconds(0);
+    latest.setMinutes(Math.ceil(latest.getMinutes() / 10) * 10);
+
+    // Set start time to one hour before latest, rounded down to nearest 10 minutes
+    const start = new Date(latest);
+    start.setHours(latest.getHours() - 1);
+    start.setMinutes(Math.floor(start.getMinutes() / 10) * 10);
+
+    // Create time slots
     const timeMap = {};
+    const currentTime = new Date(start);
+    while (currentTime <= latest) {
+      timeMap[currentTime.getTime()] = {
+        timestamp: currentTime.getTime(),
+        info: 0,
+        warning: 0,
+        error: 0,
+        critical: 0
+      };
+      currentTime.setMinutes(currentTime.getMinutes() + 10);
+    }
+
+    // Count logs in their time slots
     logs.forEach(log => {
-      const timestamp = new Date(log.timestamp).getTime();
-      if (!timeMap[timestamp]) {
-        timeMap[timestamp] = { timestamp, info: 0, warning: 0, error: 0, critical: 0 };
+      const logTime = new Date(log.timestamp);
+      logTime.setMilliseconds(0);
+      logTime.setSeconds(0);
+      logTime.setMinutes(Math.floor(logTime.getMinutes() / 10) * 10);
+      const slotTime = logTime.getTime();
+
+      if (timeMap[slotTime]) {
+        timeMap[slotTime][log.level.toLowerCase()]++;
       }
-      timeMap[timestamp][log.level.toLowerCase()]++;
     });
 
-    return Object.values(timeMap).sort((a, b) => a.timestamp - b.timestamp);
+    return Object.values(timeMap);
   };
 
   const handleSelectLog = (logId, isChecked) => {
@@ -147,24 +162,19 @@ const Logs = ({ onAuthError }) => {
     try {
       setIsLoading(true);
       
-      // Delete each selected log
       const deletePromises = selectedLogs.map(logId => 
         api.delete(`/logs/${logId}`)
       );
       
       await Promise.all(deletePromises);
       
-      // Show success message
       addAlert(
         `Successfully deleted ${selectedLogs.length} log${selectedLogs.length > 1 ? 's' : ''}`, 
         AlertVariant.success
       );
       
-      // Clear selection and close modal
       setSelectedLogs([]);
       setIsDeleteModalOpen(false);
-      
-      // Refresh logs
       fetchLogs();
     } catch (err) {
       console.error('Failed to delete logs:', err);
@@ -195,9 +205,7 @@ const Logs = ({ onAuthError }) => {
 
       const response = await api.post('/logs/search', searchParams);
       
-      // Check if response data has the expected structure
       if (response.data && typeof response.data === 'object') {
-        // Handle case where logs might be null or undefined
         const logsData = response.data.logs || [];
         const pagination = response.data.pagination || { total: 0 };
         
@@ -205,7 +213,6 @@ const Logs = ({ onAuthError }) => {
         setTotalItems(pagination.total);
         setChartData(processLogsForChart(logsData));
 
-        // Extract unique host names and types for the filters
         if (logsData.length > 0) {
           if (availableHosts.length === 0) {
             const hosts = [...new Set(logsData.map(log => log.host_name).filter(Boolean))];
@@ -217,7 +224,6 @@ const Logs = ({ onAuthError }) => {
           }
         }
       } else {
-        // Handle unexpected response format
         console.error('Unexpected response format:', response.data);
         setLogs([]);
         setTotalItems(0);
@@ -227,7 +233,6 @@ const Logs = ({ onAuthError }) => {
       if (err.response?.status === 401) {
         onAuthError(err);
       } else {
-        // For non-auth errors, show empty logs instead of error when filtering
         if (levelFilter || hostFilter) {
           console.log(`No logs found for filters: level=${levelFilter}, host=${hostFilter}`);
           setLogs([]);
@@ -293,7 +298,6 @@ const Logs = ({ onAuthError }) => {
         ))}
       </AlertGroup>
 
-      {/* Delete Confirmation Modal */}
       <DeleteConfirmationModal
         isOpen={isDeleteModalOpen}
         onClose={closeDeleteModal}
@@ -313,57 +317,107 @@ const Logs = ({ onAuthError }) => {
               <Title headingLevel="h2" size="lg">Log Activity</Title>
             </CardHeader>
             <CardBody>
-              <div style={{ height: '300px' }}>
+              <div style={{ height: '250px', width: '600px', margin: '0 auto', background: colors.bg0, padding: '16px', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                 <Chart
-                  ariaTitle="Log activity over time"
-                  containerComponent={<ChartVoronoiContainer labels={({ datum }) => `${datum.name}: ${datum.y}`} />}
+                  ariaDesc="Log activity over last hour"
+                  ariaTitle="Time series data of system logs"
+                  name="log-activity"
+                  height={250}
+                  width={600}
+                  containerComponent={
+                    <ChartVoronoiContainer
+                      constrainToVisibleArea
+                      voronoiDimension="x"
+                      labels={({ datum }) => (
+                        `${datum.name}: ${datum.y} ${datum.y === 1 ? 'log' : 'logs'} at ${
+                          new Date(datum.x).toLocaleTimeString('en-US', {
+                            hour: 'numeric',
+                            minute: '2-digit',
+                            hour12: true
+                          })
+                        }`
+                      )}
+                    />
+                  }
                   legendData={[
                     { name: 'Info', symbol: { fill: colors.blue } },
                     { name: 'Warning', symbol: { fill: colors.yellow } },
                     { name: 'Error', symbol: { fill: colors.red } },
                     { name: 'Critical', symbol: { fill: colors.purple } }
                   ]}
-                  legendPosition="bottom-left"
-                  height={300}
+                  legendOrientation="vertical"
+                  legendPosition="right"
                   padding={{
-                    bottom: 75,
+                    bottom: 50,
                     left: 50,
-                    right: 50,
-                    top: 50
+                    right: 150,
+                    top: 20
                   }}
-                  width={800}
-                  legendComponent={
-                    <ChartLegend 
-                      style={{
-                        labels: { fill: colors.fg }
-                      }}
-                    />
-                  }
+                  scale={{ x: "time", y: "linear" }}
+                  domain={{
+                    x: [
+                      chartData.length ? new Date(chartData[0].timestamp).getTime() : new Date().getTime() - 3600000,
+                      chartData.length ? new Date(chartData[chartData.length - 1].timestamp).getTime() + 600000 : new Date().getTime()
+                    ],
+                    y: [0, Math.max(5, Math.ceil(Math.max(...chartData.map(d => Math.max(d.info, d.warning, d.error, d.critical)))))]
+                  }}
                 >
-                  <ChartAxis tickFormat={x => new Date(x).toLocaleTimeString()} />
-                  <ChartAxis dependentAxis />
-                  <ChartGroup>
-                    <ChartArea
-                      data={chartData.map(d => ({ x: d.timestamp, y: d.info, name: 'Info' }))}
-                      style={{ data: { fill: colors.blue, stroke: colors.blue } }}
-                    />
-                    <ChartArea
-                      data={chartData.map(d => ({ x: d.timestamp, y: d.warning, name: 'Warning' }))}
-                      style={{ data: { fill: colors.yellow, stroke: colors.yellow } }}
-                    />
-                    <ChartArea
-                      data={chartData.map(d => ({ x: d.timestamp, y: d.error, name: 'Error' }))}
-                      style={{ data: { fill: colors.red, stroke: colors.red } }}
-                    />
-                    <ChartArea
-                      data={chartData.map(d => ({ x: d.timestamp, y: d.critical, name: 'Critical' }))}
-                      style={{ data: { fill: colors.purple, stroke: colors.purple } }}
-                    />
+                  <ChartAxis
+                    fixLabelOverlap
+                    tickFormat={x => {
+                      const date = new Date(x);
+                      return date.toLocaleTimeString('en-US', { 
+                        hour: 'numeric',
+                        minute: '2-digit',
+                        hour12: true
+                      });
+                    }}
+                    style={{
+                      tickLabels: { 
+                        fontSize: 12, 
+                        angle: -45, 
+                        textAnchor: 'end', 
+                        fill: colors.fg 
+                      },
+                      axis: { stroke: colors.bg3 },
+                      ticks: { stroke: colors.bg3, size: 5 }
+                    }}
+                    tickCount={7}
+                  />
+                  <ChartAxis
+                    dependentAxis
+                    showGrid
+                    tickCount={6}
+                    style={{
+                      axis: { stroke: colors.bg3 },
+                      grid: { stroke: colors.bg1, strokeDasharray: '3,3' },
+                      tickLabels: { fontSize: 12, fill: colors.fg },
+                      ticks: { stroke: colors.bg3, size: 5 }
+                    }}
+                  />
+                  <ChartGroup offset={12}>
+                    {['info', 'warning', 'error', 'critical'].map((level) => (
+                      <ChartBar
+                        key={level}
+                        data={chartData.map(d => ({
+                          x: d.timestamp,
+                          y: d[level],
+                          name: level.charAt(0).toUpperCase() + level.slice(1)
+                        }))}
+                        barWidth={12}
+                        style={{
+                          data: {
+                            fill: colors[level === 'info' ? 'blue' : level === 'warning' ? 'yellow' : level === 'error' ? 'red' : 'purple']
+                          }
+                        }}
+                      />
+                    ))}
                   </ChartGroup>
                 </Chart>
               </div>
             </CardBody>
           </Card>
+
           <Toolbar>
             <ToolbarContent>
               <ToolbarItem>

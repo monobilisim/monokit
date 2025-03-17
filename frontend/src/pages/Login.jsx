@@ -10,8 +10,10 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { login } from '../utils/api';
 import axios from 'axios';
+import api from '../utils/api'; // Add the missing import for api
 import './Login.css';
 import config from '../config';
+import * as auth from '../utils/auth';
 
 const Login = ({ onLoginSuccess }) => {
   const [username, setUsername] = useState('');
@@ -38,12 +40,25 @@ const navigate = useNavigate();
     // For development, allow a mock login if we're in dev mode
     if (config.environment.isDevelopment && username === 'admin' && password === 'admin') {
       console.log('Using mock login for development');
-      // Create a mock token
-      const mockToken = 'mock-jwt-token-for-development';
-      localStorage.setItem('token', mockToken);
-      onLoginSuccess(mockToken);
-      setIsLoading(false);
-      navigate('/');
+      
+      try {
+        // Import utility for creating a mock token that's properly formatted
+        const mockToken = auth.createMockToken();
+        
+        localStorage.setItem('token', mockToken);
+        
+        // Set authorization headers with Bearer prefix for mock JWT
+        axios.defaults.headers.common['Authorization'] = `Bearer ${mockToken}`;
+        api.defaults.headers.common['Authorization'] = `Bearer ${mockToken}`;
+        
+        onLoginSuccess(mockToken);
+        setIsLoading(false);
+        navigate('/');
+      } catch (error) {
+        console.error('Error in mock login:', error);
+        setError('Failed to set up mock session');
+        setIsLoading(false);
+      }
       return;
     }
 
@@ -67,7 +82,11 @@ const navigate = useNavigate();
       console.log('Token stored in localStorage:', cleanedToken);
       
       // Set token in axios header for future requests
-      axios.defaults.headers.common['Authorization'] = `Bearer ${cleanedToken}`;
+      const isJWT = cleanedToken.split('.').length === 3 && cleanedToken.length > 100;
+      const authHeader = isJWT ? `Bearer ${cleanedToken}` : cleanedToken;
+      
+      axios.defaults.headers.common['Authorization'] = authHeader;
+      api.defaults.headers.common['Authorization'] = authHeader;
       
       // Log the headers to verify
       console.log('Authorization header set:', axios.defaults.headers.common['Authorization']);

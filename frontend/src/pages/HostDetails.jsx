@@ -177,7 +177,7 @@ const HostDetails = () => {
                       </DescriptionListDescription>
                     </DescriptionListGroup>
                     <DescriptionListGroup>
-                      <DescriptionListTerm>Wants Update To</DescriptionListTerm>
+                      <DescriptionListTerm>Wants Update To Monokit version</DescriptionListTerm>
                       <DescriptionListDescription>
                         {host.wantsUpdateTo ? (
                           <Label color="blue" isCompact>{host.wantsUpdateTo}</Label>

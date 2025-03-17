@@ -22,24 +22,25 @@ const api = axios.create({
 // Add a request interceptor to include the API key in all requests
 api.interceptors.request.use(
   (config) => {
-    const apiKey = localStorage.getItem('token');
-    if (apiKey) {
-      // Check if this is likely a JWT token (Keycloak tokens are JWTs)
-      // A valid JWT has 3 parts separated by dots and is typically long
-      const isJWT = apiKey.split('.').length === 3 && apiKey.length > 100;
-      
-      // Always add Bearer prefix for JWT tokens (Keycloak tokens)
-      if (isJWT) {
-        console.log('Adding Bearer prefix to JWT token');
-        config.headers.Authorization = `Bearer ${apiKey}`;
-      } else {
-        // For regular session tokens, use as-is
-        console.log('Using regular token without Bearer prefix');
-        config.headers.Authorization = apiKey;
+    const token = localStorage.getItem('token');
+    if (token) {
+      try {
+        // Check if this is likely a JWT token
+        const isJWT = token.includes('.') && token.split('.').length === 3 && token.length > 50;
+        
+        if (isJWT) {
+          config.headers['Authorization'] = `Bearer ${token}`;
+          console.log('Adding JWT Bearer token to request');
+        } else {
+          // For non-JWT tokens, just use the token directly
+          config.headers['Authorization'] = token;
+          console.log('Adding standard token to request');
+        }
+      } catch (error) {
+        // If there's any error detecting token type, just use the token as-is
+        console.warn('Error checking token type:', error);
+        config.headers['Authorization'] = token;
       }
-      
-      // Debug the final authorization header
-      console.log('Final Authorization header:', config.headers.Authorization.substring(0, 20) + '...');
     }
     return config;
   },
@@ -60,7 +61,16 @@ api.interceptors.response.use(
     
     console.error(`API Error: ${status} on ${url}`, error.response?.data || error.message);
     
-    // Don't handle auth errors here, let the components decide what to do
+    // If we get a 401 error, it could mean the token is expired
+    if (error.response && error.response.status === 401) {
+      // Only log out if not on the login page already
+      if (!window.location.pathname.includes('/login')) {
+        console.log('Received 401 error, session may have expired');
+        // Mark this request as failed authentication
+        error.isAuthError = true;
+      }
+    }
+    
     return Promise.reject(error);
   }
 );
@@ -81,26 +91,36 @@ export const login = async (username, password) => {
       // Make sure we're storing the API key in the proper format
       const cleanedApiKey = typeof apiKey === 'string' ? apiKey.trim().replace(/^["']|["']$/g, '') : apiKey;
       
-      // Check if this is likely a JWT token (Keycloak tokens are JWTs)
-      const isJWT = cleanedApiKey.split('.').length === 3 && cleanedApiKey.length > 100;
+      // Store the token in localStorage regardless of type
+      localStorage.setItem('token', cleanedApiKey);
       
-      // Set the appropriate authorization header
-      if (isJWT) {
-        console.log('Setting Bearer token for JWT');
-        api.defaults.headers.common['Authorization'] = `Bearer ${cleanedApiKey}`;
-        axios.defaults.headers.common['Authorization'] = `Bearer ${cleanedApiKey}`;
-      } else {
-        console.log('Setting regular token without Bearer prefix');
+      try {
+        // Check if this is likely a JWT token (Keycloak tokens are JWTs)
+        const isJWT = cleanedApiKey && 
+                    cleanedApiKey.includes('.') && 
+                    cleanedApiKey.split('.').length === 3 && 
+                    cleanedApiKey.length > 50;
+        
+        // Set the appropriate authorization header
+        if (isJWT) {
+          console.log('Setting Bearer token for JWT');
+          api.defaults.headers.common['Authorization'] = `Bearer ${cleanedApiKey}`;
+          axios.defaults.headers.common['Authorization'] = `Bearer ${cleanedApiKey}`;
+        } else {
+          console.log('Setting standard token (non-JWT)');
+          api.defaults.headers.common['Authorization'] = cleanedApiKey;
+          axios.defaults.headers.common['Authorization'] = cleanedApiKey;
+        }
+      } catch (headerError) {
+        console.warn('Error setting auth headers:', headerError);
+        // Fallback to setting token without Bearer prefix
         api.defaults.headers.common['Authorization'] = cleanedApiKey;
         axios.defaults.headers.common['Authorization'] = cleanedApiKey;
       }
       
-      // Store it in localStorage
-      localStorage.setItem('token', cleanedApiKey);
-      
       return response.data;
     } else {
-      throw new Error('No data received from login');
+      throw new Error('Invalid response format from server');
     }
   } catch (error) {
     console.error('Login error:', error);
@@ -270,7 +290,7 @@ export const getConfig = async (name) => {
     const response = await api.get(endpoint);
     return response;
   } catch (error) {
-console.error(`Error fetching config for host ${name || 'current host'}:`, error);
+    console.error(`Error fetching config for host ${name || 'current host'}:`, error);
     throw error;
   }
 };

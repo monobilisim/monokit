@@ -29,12 +29,14 @@ import Logs from './pages/Logs.jsx';
 import MonokitConfig from './pages/MonokitConfig.jsx';
 import { useTheme } from './ThemeContext.jsx';
 import api from './utils/api';
+import { isTokenExpired, setupAuthHeaders } from './utils/authCore'; // Import the isTokenExpired and setupAuthHeaders utility
 
 function App() {
   const [isNavOpen, setIsNavOpen] = useState(true);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [user, setUser] = useState(null); // Add missing user state
   const { theme, toggleTheme } = useTheme();
 
   useEffect(() => {
@@ -44,6 +46,14 @@ function App() {
       
       if (token) {
         console.log('Token found in localStorage, checking validity');
+        // Check if token is expired
+        if (isTokenExpired(token)) {
+          console.log('Token is expired, logging out');
+          handleLogout();
+          setIsLoading(false);
+          return;
+        }
+        
         try {
           // Check if it's a JWT token (Keycloak)
           const isJWT = token.split('.').length === 3 && token.length > 100;
@@ -58,13 +68,30 @@ function App() {
           }
           
           // Test authentication with an API call
-          const response = await api.get('/auth/me');
-          setUser(response.data);
+          try {
+            const response = await api.get('/auth/me');
+            if (response && response.data) {
+              setUser(response.data); // Save user data if available
+            }
+          } catch (userError) {
+            console.warn('Could not fetch user details, but continuing with authentication', userError);
+            // Don't fail authentication just because we couldn't get user details
+          }
+          
+          // Set authenticated state regardless of user details
           setIsAuthenticated(true);
           console.log('Authentication successful');
         } catch (err) {
-          console.log('Authentication failed:', err.message);
-          handleLogout();
+          console.error('Authentication failed:', err.message);
+          // Only logout if it's truly an auth error
+          if (err.response?.status === 401) {
+            handleLogout();
+          } else {
+            // For other errors (like network issues), still attempt to authenticate
+            // based on the presence of the token, to prevent unnecessary logouts on page refresh
+            console.warn('Non-authentication error encountered, maintaining session based on token presence');
+            setIsAuthenticated(true);
+          }
         }
       } else {
         console.log('No token found in localStorage');
