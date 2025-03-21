@@ -290,7 +290,7 @@ export const getConfig = async (name) => {
     const response = await api.get(endpoint);
     return response;
   } catch (error) {
-    console.error(`Error fetching config for host ${name || 'current host'}:`, error);
+    console.error('Error fetching config for host %s:', name || 'current host', error);
     throw error;
   }
 };
