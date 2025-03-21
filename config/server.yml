@@ -10,5 +10,16 @@ keycloak:
   url: "https://keycloak.example.com/auth"
   realm: "monokit"
   clientId: "monokit-api"
-  clientSecret: "your-client-secret"
+  clientSecret: "your-client-secret" 
   disableLocalAuth: false
+
+awx:
+  enabled: true
+  url: "https://test.com"  # Base URL without /api/v2, the code will add it if needed
+  username: "admin"
+  password: "password123" 
+  verify_ssl: false
+  timeout: 30
+  host_id_map:
+    # Add any static host mappings here if needed
+    # Format is "hostname": "awx_host_id"

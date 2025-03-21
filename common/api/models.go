@@ -10,15 +10,27 @@ import (
 
 // Server represents the server configuration
 type Server struct {
-	Port     string
+	Port     string `mapstructure:"port"`
 	Postgres struct {
-		Host     string
-		Port     string
-		User     string
-		Password string
-		Dbname   string
-	}
-	Keycloak KeycloakConfig
+		Host     string `mapstructure:"host"`
+		Port     string `mapstructure:"port"`
+		User     string `mapstructure:"user"`
+		Password string `mapstructure:"password"`
+		Dbname   string `mapstructure:"dbname"`
+	} `mapstructure:"postgres"`
+	Keycloak KeycloakConfig `mapstructure:"keycloak"`
+	Awx      AwxConfig      `mapstructure:"awx"`
+}
+
+// AwxConfig represents AWX connection settings
+type AwxConfig struct {
+	Enabled   bool              `mapstructure:"enabled"`
+	Url       string            `mapstructure:"url"`
+	Username  string            `mapstructure:"username"`
+	Password  string            `mapstructure:"password"`
+	VerifySSL bool              `mapstructure:"verify_ssl"`
+	Timeout   int               `mapstructure:"timeout"`
+	HostIdMap map[string]string `mapstructure:"host_id_map"`
 }
 
 // Host represents a monitored host
@@ -33,6 +45,8 @@ type Host struct {
 	InstalledComponents string    `json:"installedComponents"`
 	IpAddress           string    `json:"ipAddress"`
 	Status              string    `json:"status"`
+	AwxHostId           string    `json:"awxHostId"`
+	AwxHostUrl          string    `json:"awxHostUrl"`
 	UpdatedAt           time.Time `json:"updatedAt"`
 	CreatedAt           time.Time `json:"createdAt"`
 	WantsUpdateTo       string    `json:"wantsUpdateTo"`
@@ -118,6 +132,7 @@ var ServerConfig struct {
 		Dbname   string `mapstructure:"dbname"`
 	} `mapstructure:"postgres"`
 	Keycloak KeycloakConfig `mapstructure:"keycloak"`
+	Awx      AwxConfig      `mapstructure:"awx"`
 }
 
 var HostsList []Host

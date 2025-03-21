@@ -524,6 +524,9 @@ func Update(cmd *cobra.Command, args []string) {
 	apiVersion := ClientInit()
 
 	SendReq(apiVersion)
+	
+	// Ensure lockfile is removed after update
+	common.RemoveLockfile()
 }
 
 func Get(cmd *cobra.Command, args []string) {

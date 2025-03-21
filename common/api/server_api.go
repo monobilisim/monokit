@@ -5,7 +5,9 @@ package common
 import (
 	"crypto/rand"
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
 	"slices"
 	"strconv"
@@ -191,6 +193,7 @@ func setupRoutes(r *gin.Engine, db *gorm.DB) {
 		api.GET("/hosts/:name", getHostByName())
 		api.DELETE("/hosts/:name", deleteHost(db))
 		api.PUT("/hosts/:name", updateHost(db))
+		api.GET("/hosts/:name/awx-jobs", getHostAwxJobs(db))
 
 		// Config endpoints - using handlers from host_config.go
 		api.GET("/hosts/:name/config", HandleGetHostConfig(db))                 // GET config - get all configs for a host
@@ -792,6 +795,143 @@ func deleteLog(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"status": "deleted"})
+	}
+}
+
+// getHostAwxJobs fetches AWX jobs information for a specific host
+// @Summary Get AWX jobs for a host
+// @Description Get AWX jobs for a specific host by name
+// @Tags hosts
+// @Security ApiKeyAuth
+// @Accept json
+// @Produce json
+// @Param name path string true "Host name"
+// @Success 200 {array} map[string]interface{}
+// @Failure 400 {object} map[string]string "Bad request"
+// @Failure 404 {object} map[string]string "Host not found"
+// @Failure 500 {object} map[string]string "Server error"
+// @Router /hosts/{name}/awx-jobs [get]
+func getHostAwxJobs(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		hostname := c.Param("name")
+
+		// Find the host in the database
+		var host Host
+		if err := db.Where("name = ?", hostname).First(&host).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Host not found"})
+			return
+		}
+
+		// Check if AWX is enabled and host has AWX ID
+		if !ServerConfig.Awx.Enabled {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "AWX integration is not enabled"})
+			return
+		}
+
+		if host.AwxHostId == "" {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Host has no AWX ID"})
+			return
+		}
+
+		// Convert AWX host ID to integer
+		awxHostID, err := strconv.Atoi(host.AwxHostId)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid AWX host ID"})
+			return
+		}
+
+		// Use the correct AWX API endpoint and parameter format
+		awxURL := ServerConfig.Awx.Url
+		apiURL := fmt.Sprintf("%s/api/v2/jobs/?hosts__id=%d", awxURL, awxHostID)
+
+		// Create a new HTTP client with timeout
+		client := &http.Client{
+			Timeout: time.Duration(ServerConfig.Awx.Timeout) * time.Second,
+		}
+
+		// Create the request
+		req, err := http.NewRequest("GET", apiURL, nil)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create request: " + err.Error()})
+			return
+		}
+
+		// Set basic auth
+		req.SetBasicAuth(ServerConfig.Awx.Username, ServerConfig.Awx.Password)
+		req.Header.Set("Content-Type", "application/json")
+
+		// Execute the request
+		resp, err := client.Do(req)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to execute request: " + err.Error()})
+			return
+		}
+		defer resp.Body.Close()
+
+		// Check response status
+		if resp.StatusCode != http.StatusOK {
+			// Read error response for debugging
+			errorBody, _ := io.ReadAll(resp.Body)
+			errorMsg := fmt.Sprintf("AWX API returned status: %d - %s", resp.StatusCode, string(errorBody))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": errorMsg})
+			return
+		}
+
+		// Parse the response for direct jobs API
+		var responseData struct {
+			Count    int    `json:"count"`
+			Next     string `json:"next"`
+			Previous string `json:"previous"`
+			Results  []struct {
+				ID              int       `json:"id"`
+				Name            string    `json:"name"`
+				Status          string    `json:"status"`
+				Failed          bool      `json:"failed"`
+				Started         string    `json:"started"`
+				Finished        string    `json:"finished"`
+				Elapsed         float64   `json:"elapsed"`
+				Type            string    `json:"type"`
+				SummaryFields   struct {
+					JobTemplate struct {
+						ID   int    `json:"id"`
+						Name string `json:"name"`
+					} `json:"job_template"`
+				} `json:"summary_fields"`
+			} `json:"results"`
+		}
+
+		// Decode JSON
+		if err := json.NewDecoder(resp.Body).Decode(&responseData); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode response: " + err.Error()})
+			return
+		}
+
+		// Process jobs directly
+		jobs := []gin.H{}
+
+		for _, job := range responseData.Results {
+			// Format job data according to required output format
+			// Include URL for frontend linking to AWX interface
+			jobData := gin.H{
+				"id":                job.ID,
+				"name":              job.Name,
+				"status":            job.Status,
+				"failed":            job.Failed,
+				"started":           job.Started,
+				"finished":          job.Finished,
+				"elapsed":           job.Elapsed,
+				"job_template_id":   job.SummaryFields.JobTemplate.ID,
+				"job_template_name": job.SummaryFields.JobTemplate.Name,
+				"type":              job.Type,
+				"url":               fmt.Sprintf("%s/#/jobs/playbook/%d", strings.TrimSuffix(ServerConfig.Awx.Url, "/api"), job.ID),
+			}
+			
+			jobs = append(jobs, jobData)
+		}
+
+		// No need to convert since we're already building the jobs slice directly
+
+		c.JSON(http.StatusOK, jobs)
 	}
 }
 
