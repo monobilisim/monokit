@@ -283,6 +283,21 @@ export const getLogs = async () => {
   }
 };
 
+// AWX Jobs Logs API call
+export const getAwxJobLogs = async (hostname, jobId, focusOnHost = true) => {
+  try {
+    const response = await api.get(`/hosts/${hostname}/awx-jobs/${jobId}/logs`, {
+      params: {
+        focus_host: focusOnHost
+      }
+    });
+    return response;
+  } catch (error) {
+    console.error(`Error fetching AWX job logs for job ${jobId}:`, error);
+    throw error;
+  }
+};
+
 // Config API calls
 export const getConfig = async (name) => {
   try {

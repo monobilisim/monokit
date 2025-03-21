@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Table, Thead, Tbody, Tr, Td, Th } from '@patternfly/react-table';
 import { 
   Spinner, 
@@ -8,13 +9,15 @@ import {
   Label, 
   Button,
   Pagination,
-  Badge
+  Badge,
+  Tooltip
 } from '@patternfly/react-core';
-import { ExclamationCircleIcon, SearchIcon, ListIcon } from '@patternfly/react-icons';
+import { ExclamationCircleIcon, SearchIcon, ListIcon, FileAltIcon } from '@patternfly/react-icons';
 import axios from 'axios';
 import { format } from 'date-fns';
 
 const AwxJobsTable = ({ hostName }) => {
+  const navigate = useNavigate();
   const [jobs, setJobs] = useState([]);
   const [filteredJobs, setFilteredJobs] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -257,8 +260,14 @@ const AwxJobsTable = ({ hostName }) => {
     { title: 'Status' },
     { title: 'Summary' },
     { title: 'Timestamp' },
-    { title: 'Node' }
+    { title: 'Node' },
+    { title: 'Actions' }
   ];
+  
+  // Function to navigate to logs page
+  const navigateToJobLogs = (job) => {
+    navigate(`/hosts/${hostName}/awx-jobs/${job.id}/logs`);
+  };
 
   const getStatusLabel = (status) => {
     const statusMap = {
@@ -446,6 +455,17 @@ const AwxJobsTable = ({ hostName }) => {
               <Td>{job.summary}</Td>
               <Td>{format(new Date(job.timestamp), 'PPpp')}</Td>
               <Td>{job.node}</Td>
+              <Td>
+                <Tooltip content="View Job Logs">
+                  <Button 
+                    variant="plain" 
+                    aria-label="View job logs" 
+                    onClick={() => navigateToJobLogs(job)}
+                  >
+                    <FileAltIcon />
+                  </Button>
+                </Tooltip>
+              </Td>
             </Tr>
           ))}
         </Tbody>

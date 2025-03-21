@@ -27,6 +27,7 @@ import UserDetails from './pages/UserDetails.jsx';
 import Groups from './pages/Groups.jsx';
 import Logs from './pages/Logs.jsx';
 import MonokitConfig from './pages/MonokitConfig.jsx';
+import AwxJobLogViewer from './pages/AwxJobLogViewer.jsx';
 import { useTheme } from './ThemeContext.jsx';
 import api from './utils/api';
 import { isTokenExpired, setupAuthHeaders } from './utils/authCore'; // Import the isTokenExpired and setupAuthHeaders utility
@@ -239,6 +240,7 @@ function App() {
                 <Route path="/hosts" element={<Hosts onAuthError={handleAuthError} />} />
                 <Route path="/hosts/:hostname" element={<HostDetails onAuthError={handleAuthError} />} />
                 <Route path="/hosts/:hostname/config" element={<MonokitConfig onAuthError={handleAuthError} />} />
+                <Route path="/hosts/:hostname/awx-jobs/:jobId/logs" element={<AwxJobLogViewer onAuthError={handleAuthError} />} />
                 <Route path="/users" element={<Users onAuthError={handleAuthError} />} />
                 <Route path="/users/new" element={<UserForm onAuthError={handleAuthError} />} />
                 <Route path="/users/:username/edit" element={<UserForm onAuthError={handleAuthError} />} />

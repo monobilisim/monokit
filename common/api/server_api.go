@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -194,6 +195,7 @@ func setupRoutes(r *gin.Engine, db *gorm.DB) {
 		api.DELETE("/hosts/:name", deleteHost(db))
 		api.PUT("/hosts/:name", updateHost(db))
 		api.GET("/hosts/:name/awx-jobs", getHostAwxJobs(db))
+		api.GET("/hosts/:name/awx-jobs/:jobID/logs", getHostAwxJobLogs(db))
 
 		// Config endpoints - using handlers from host_config.go
 		api.GET("/hosts/:name/config", HandleGetHostConfig(db))                 // GET config - get all configs for a host
@@ -933,6 +935,214 @@ func getHostAwxJobs(db *gorm.DB) gin.HandlerFunc {
 
 		c.JSON(http.StatusOK, jobs)
 	}
+}
+
+// getHostAwxJobLogs fetches the logs for a specific AWX job
+// @Summary Get logs for a specific AWX job
+// @Description Get logs for a specific AWX job of a host
+// @Tags hosts
+// @Security ApiKeyAuth
+// @Accept json
+// @Produce json
+// @Param name path string true "Host name"
+// @Param jobID path integer true "AWX Job ID"
+// @Success 200 {object} map[string]interface{}
+// @Failure 400 {object} map[string]string "Bad request"
+// @Failure 404 {object} map[string]string "Host or job not found"
+// @Failure 500 {object} map[string]string "Server error"
+// @Router /hosts/{name}/awx-jobs/{jobID}/logs [get]
+func getHostAwxJobLogs(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		hostname := c.Param("name")
+		jobID := c.Param("jobID")
+
+		// Find the host in the database
+		var host Host
+		if err := db.Where("name = ?", hostname).First(&host).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Host not found"})
+			return
+		}
+
+		// Check if AWX is enabled
+		if !ServerConfig.Awx.Enabled {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "AWX integration is not enabled"})
+			return
+		}
+
+		// Validate job ID
+		if jobID == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Job ID is required"})
+			return
+		}
+
+		// Check if we should focus on host-specific logs
+		focusOnHost := c.Query("focus_host") != "false" // Default to true if not specified
+		
+		// Use the correct AWX API endpoint for job logs with text download format
+		// txt_download format ensures complete logs even for large jobs
+		awxURL := ServerConfig.Awx.Url
+		apiURL := fmt.Sprintf("%s/api/v2/jobs/%s/stdout/?format=txt_download", awxURL, jobID)
+
+		// Create a new HTTP client with timeout
+		client := &http.Client{
+			Timeout: time.Duration(ServerConfig.Awx.Timeout) * time.Second,
+		}
+
+		// Create the request
+		req, err := http.NewRequest("GET", apiURL, nil)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create request: " + err.Error()})
+			return
+		}
+
+		// Set basic auth
+		req.SetBasicAuth(ServerConfig.Awx.Username, ServerConfig.Awx.Password)
+		req.Header.Set("Content-Type", "application/json")
+
+		// Execute the request
+		resp, err := client.Do(req)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to execute request: " + err.Error()})
+			return
+		}
+		defer resp.Body.Close()
+
+		// Check response status
+		if resp.StatusCode != http.StatusOK {
+			// Read error response for debugging
+			errorBody, _ := io.ReadAll(resp.Body)
+			errorMsg := fmt.Sprintf("AWX API returned status: %d - %s", resp.StatusCode, string(errorBody))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": errorMsg})
+			return
+		}
+
+		// Parse the response - AWX stdout response might be plain text or JSON
+		contentType := resp.Header.Get("Content-Type")
+		
+		if strings.Contains(contentType, "application/json") {
+			// Decode JSON response
+			var logData map[string]interface{}
+			if err := json.NewDecoder(resp.Body).Decode(&logData); err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode JSON response: " + err.Error()})
+				return
+			}
+			c.JSON(http.StatusOK, logData)
+		} else {
+			// Handle plain text response
+			logs, err := io.ReadAll(resp.Body)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read logs: " + err.Error()})
+				return
+			}
+			
+			logText := string(logs)
+			
+			// If focusOnHost is true, filter the logs to only show content related to this host
+			if focusOnHost {
+				logText = filterLogsForHost(logText, hostname)
+			}
+			
+			c.JSON(http.StatusOK, gin.H{
+				"job_id": jobID,
+				"logs": logText,
+				"format": "plain_text",
+				"filtered": focusOnHost,
+			})
+		}
+	}
+}
+
+// filterLogsForHost parses AWX job logs and filters content to focus on a specific host
+// while keeping task headers and other important structural elements
+func filterLogsForHost(rawLogs string, hostname string) string {
+	lines := strings.Split(rawLogs, "\n")
+	filteredLines := []string{}
+	keepNextLines := false
+	inTaskBlock := false
+	inPlayRecap := false
+	addedRecapHeader := false
+	
+	for i := 0; i < len(lines); i++ {
+		line := lines[i]
+		
+		// Exact match for the "PLAY RECAP" line
+		if strings.HasPrefix(line, "PLAY RECAP") {
+			inPlayRecap = true
+			addedRecapHeader = false
+			// We'll add this line later when we find a matching host
+			continue
+		}
+		
+		// Special handling for PLAY RECAP section
+		if inPlayRecap {
+			// If we find the exact hostname followed by a colon (summary line)
+			if strings.HasPrefix(line, hostname) && strings.Contains(line, ":") {
+				// If we haven't added the PLAY RECAP header yet, add it first
+				if !addedRecapHeader {
+					filteredLines = append(filteredLines, "PLAY RECAP *********************************************************************")
+					addedRecapHeader = true
+				}
+				// Add the summary line for this host
+				filteredLines = append(filteredLines, line)
+			}
+			
+			// If we hit a new section (line starting with uppercase letters followed by a space)
+			if regexp.MustCompile(`^[A-Z]+\s`).MatchString(line) && !strings.HasPrefix(line, "PLAY RECAP") {
+				inPlayRecap = false
+				// Process this line normally (don't continue to next iteration)
+			} else {
+				// Stay in the PLAY RECAP section and skip to next line
+				continue
+			}
+		}
+		
+		// General patterns
+		playPattern := regexp.MustCompile(`PLAY\s+\[.*?\]`)
+		taskPattern := regexp.MustCompile(`TASK\s+\[.*?\]`)
+		hostPattern := regexp.MustCompile(`\[` + regexp.QuoteMeta(hostname) + `\]|\[` + regexp.QuoteMeta(hostname) + `\s+->.*?\]`)
+		includePattern := regexp.MustCompile(`INCLUDED TASKS|RUNNING HANDLER`)
+		skippingPattern := regexp.MustCompile(`skipping:\s+\[` + regexp.QuoteMeta(hostname) + `\]`)
+		statsPattern := regexp.MustCompile(`STATS|failed=|ok=|changed=|unreachable=`)
+		
+		// Always include play headers, task headers, and statistical information
+		if playPattern.MatchString(line) || 
+			taskPattern.MatchString(line) || 
+			includePattern.MatchString(line) ||
+			statsPattern.MatchString(line) {
+			filteredLines = append(filteredLines, line)
+			inTaskBlock = true
+			keepNextLines = false
+			continue
+		}
+		
+		// If the line contains the host name, include it and remember to keep next related lines
+		if hostPattern.MatchString(line) {
+			filteredLines = append(filteredLines, line)
+			keepNextLines = true
+			continue
+		}
+		
+		// If we're keeping lines due to a previous host match
+		if keepNextLines {
+			// Keep the line only if it seems to be related (indented or has specific content)
+			if strings.HasPrefix(line, " ") || line == "" || skippingPattern.MatchString(line) {
+				filteredLines = append(filteredLines, line)
+			} else {
+				// Stop keeping lines if we hit another content type
+				keepNextLines = false
+			}
+		}
+		
+		// If we're in a task block but not keeping specific lines,
+		// add empty spacing where appropriate to maintain structure
+		if inTaskBlock && !keepNextLines && len(filteredLines) > 0 && 
+			filteredLines[len(filteredLines)-1] != "" && line == "" {
+			filteredLines = append(filteredLines, "")
+			inTaskBlock = false
+		}
+	}
+	
+	return strings.Join(filteredLines, "\n")
 }
 
 // @Summary Enable component
