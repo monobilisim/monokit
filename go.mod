@@ -20,7 +20,7 @@ require (
 	github.com/michaelklishin/rabbit-hole/v2 v2.16.0
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/prometheus-community/pro-bing v0.4.1
-	github.com/redis/go-redis/v9 v9.6.1
+	github.com/redis/go-redis/v9 v9.6.3
 	github.com/shirou/gopsutil/v4 v4.24.7
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/cobra v1.8.1
