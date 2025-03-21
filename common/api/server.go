@@ -83,6 +83,9 @@ func ServerMain(cmd *cobra.Command, args []string) {
 	db.AutoMigrate(&Session{})
 	db.AutoMigrate(&HostLog{})        // Add migration for HostLog table
 	db.AutoMigrate(&HostFileConfig{}) // Add migration for host file configs
+	
+	// Create index on host_logs.timestamp for faster queries
+	db.Exec("CREATE INDEX IF NOT EXISTS idx_host_logs_timestamp ON host_logs (timestamp)")
 
 	// Create default inventory if it doesn't exist
 	var defaultInventory Inventory

@@ -184,9 +184,10 @@ const AwxJobLogViewer = () => {
           <SplitItem isFilled>
             <Title headingLevel="h1" size="xl">
               AWX Job Logs
-              <Badge style={{ marginLeft: '10px' }}>Job #{jobId}</Badge>
-              {jobDetails?.name && (
+              {jobDetails?.name ? (
                 <Badge style={{ marginLeft: '10px' }}>{jobDetails.name}</Badge>
+              ) : (
+                <Badge style={{ marginLeft: '10px' }}>Job #{jobId}</Badge>
               )}
             </Title>
           </SplitItem>

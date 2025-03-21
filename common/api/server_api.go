@@ -1371,21 +1371,16 @@ func submitHostLog(db *gorm.DB) gin.HandlerFunc {
 			// Calculate how many logs to delete
 			toDelete := total - 9999 // This ensures we'll have 9999 logs after deletion, allowing the new one to be the 10000th
 
-			// Find the IDs of the oldest logs we need to delete
-			var oldestLogs []HostLog
-			if err := db.Order("timestamp asc").Limit(int(toDelete)).Find(&oldestLogs).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to find oldest logs"})
+			// Use a more efficient approach to delete old logs
+			// Find the timestamp threshold for deletion without fetching all records
+			var thresholdLog HostLog
+			if err := db.Order("timestamp asc").Limit(1).Offset(int(toDelete)-1).Select("timestamp").Find(&thresholdLog).Error; err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to find threshold for old logs"})
 				return
 			}
 
-			// Extract IDs
-			var ids []uint
-			for _, log := range oldestLogs {
-				ids = append(ids, log.ID)
-			}
-
-			// Delete the oldest logs
-			if err := db.Delete(&HostLog{}, ids).Error; err != nil {
+			// Delete all logs older than or equal to the threshold timestamp
+			if err := db.Where("timestamp <= ?", thresholdLog.Timestamp).Delete(&HostLog{}).Error; err != nil {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete old logs"})
 				return
 			}
