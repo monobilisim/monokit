@@ -158,7 +158,7 @@ func handleLeaderSwitch(member Member, client *http.Client) {
 // runLeaderSwitchHook runs the leader switch hook
 // and logs the result
 func runLeaderSwitchHook() {
-	cmd := exec.Command(DbHealthConfig.Postgres.Leader_switch_hook)
+	cmd := exec.Command("sh", "-c", DbHealthConfig.Postgres.Leader_switch_hook)
 	if err := cmd.Run(); err != nil {
 		common.LogError(fmt.Sprintf("Error running leader switch hook: %v\n", err))
 		common.Alarm("[ Patroni - "+common.Config.Identifier+" ] [:red_circle:] Error running leader switch hook: "+err.Error(), "", "", false)
