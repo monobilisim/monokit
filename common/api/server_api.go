@@ -3,6 +3,7 @@
 package common
 
 import (
+	"bytes"
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
@@ -19,6 +20,7 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 	_ "github.com/monobilisim/monokit/docs"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 )
@@ -147,6 +149,21 @@ func setupDatabase() *gorm.DB {
 	); err != nil {
 		panic(fmt.Sprintf("Failed to migrate schema: %v", err))
 	}
+	
+	// Add indexes for host_logs table to improve query performance
+	if err := db.Exec("CREATE INDEX IF NOT EXISTS idx_host_logs_deleted_at_timestamp ON host_logs (deleted_at, timestamp)").Error; err != nil {
+		fmt.Printf("Warning: Failed to create index on host_logs: %v\n", err)
+	}
+	
+	// Add index for timestamp alone for faster sorting
+	if err := db.Exec("CREATE INDEX IF NOT EXISTS idx_host_logs_timestamp ON host_logs (timestamp)").Error; err != nil {
+		fmt.Printf("Warning: Failed to create index on host_logs timestamp: %v\n", err)
+	}
+	
+	// Add index for the id column to speed up "WHERE id IN (...)" queries
+	if err := db.Exec("CREATE INDEX IF NOT EXISTS idx_host_logs_id ON host_logs (id)").Error; err != nil {
+		fmt.Printf("Warning: Failed to create index on host_logs id: %v\n", err)
+	}
 
 	// Verify the host_file_configs table exists and has the correct structure
 	if err := db.Exec("SELECT * FROM host_file_configs LIMIT 0").Error; err != nil {
@@ -196,6 +213,9 @@ func setupRoutes(r *gin.Engine, db *gorm.DB) {
 		api.PUT("/hosts/:name", updateHost(db))
 		api.GET("/hosts/:name/awx-jobs", getHostAwxJobs(db))
 		api.GET("/hosts/:name/awx-jobs/:jobID/logs", getHostAwxJobLogs(db))
+		api.GET("/hosts/:name/awx-job-templates", getAwxJobTemplates(db))
+		api.GET("/hosts/:name/awx-job-templates/:templateID", getAwxJobTemplateDetails(db))
+		api.POST("/hosts/:name/awx-jobs/execute", executeAwxJob(db))
 
 		// Config endpoints - using handlers from host_config.go
 		api.GET("/hosts/:name/config", HandleGetHostConfig(db))                 // GET config - get all configs for a host
@@ -977,7 +997,7 @@ func getHostAwxJobLogs(db *gorm.DB) gin.HandlerFunc {
 
 		// Check if we should focus on host-specific logs
 		focusOnHost := c.Query("focus_host") != "false" // Default to true if not specified
-		
+
 		// Use the correct AWX API endpoint for job logs with text download format
 		// txt_download format ensures complete logs even for large jobs
 		awxURL := ServerConfig.Awx.Url
@@ -1018,7 +1038,7 @@ func getHostAwxJobLogs(db *gorm.DB) gin.HandlerFunc {
 
 		// Parse the response - AWX stdout response might be plain text or JSON
 		contentType := resp.Header.Get("Content-Type")
-		
+
 		if strings.Contains(contentType, "application/json") {
 			// Decode JSON response
 			var logData map[string]interface{}
@@ -1034,21 +1054,420 @@ func getHostAwxJobLogs(db *gorm.DB) gin.HandlerFunc {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read logs: " + err.Error()})
 				return
 			}
-			
+
 			logText := string(logs)
-			
+
 			// If focusOnHost is true, filter the logs to only show content related to this host
 			if focusOnHost {
 				logText = filterLogsForHost(logText, hostname)
 			}
-			
+
 			c.JSON(http.StatusOK, gin.H{
-				"job_id": jobID,
-				"logs": logText,
-				"format": "plain_text",
+				"job_id":   jobID,
+				"logs":     logText,
+				"format":   "plain_text",
 				"filtered": focusOnHost,
 			})
 		}
+	}
+}
+
+// getAwxJobTemplateDetails retrieves details of a specific job template from AWX
+// @Summary Get AWX job template details
+// @Description Get details of a specific job template from AWX including variables
+// @Tags hosts
+// @Security ApiKeyAuth
+// @Accept json
+// @Produce json
+// @Param name path string true "Host name"
+// @Param templateID path integer true "Template ID"
+// @Success 200 {object} map[string]interface{} "Job template details"
+// @Failure 400 {object} map[string]string "Bad request"
+// @Failure 404 {object} map[string]string "Host or template not found"
+// @Failure 500 {object} map[string]string "Server error"
+// @Router /hosts/{name}/awx-job-templates/{templateID} [get]
+func getAwxJobTemplateDetails(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		hostname := c.Param("name")
+		templateID := c.Param("templateID")
+
+		// Find the host in the database
+		var host Host
+		if err := db.Where("name = ?", hostname).First(&host).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Host not found"})
+			return
+		}
+
+		// Check if AWX is enabled
+		if !ServerConfig.Awx.Enabled {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "AWX integration is not enabled"})
+			return
+		}
+
+		// Create a new HTTP client with timeout
+		client := &http.Client{
+			Timeout: time.Duration(ServerConfig.Awx.Timeout) * time.Second,
+		}
+
+		// AWX API endpoint for job template details
+		awxURL := ServerConfig.Awx.Url
+		apiURL := fmt.Sprintf("%s/api/v2/job_templates/%s/", awxURL, templateID)
+
+		// Create the request
+		req, err := http.NewRequest("GET", apiURL, nil)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create request: " + err.Error()})
+			return
+		}
+
+		// Set basic auth and headers
+		req.SetBasicAuth(ServerConfig.Awx.Username, ServerConfig.Awx.Password)
+		req.Header.Set("Content-Type", "application/json")
+
+		// Execute the request
+		resp, err := client.Do(req)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to execute request: " + err.Error()})
+			return
+		}
+		defer resp.Body.Close()
+
+		// Check response status
+		if resp.StatusCode != http.StatusOK {
+			// Read error response for debugging
+			errorBody, _ := io.ReadAll(resp.Body)
+			errorMsg := fmt.Sprintf("AWX API returned status: %d - %s", resp.StatusCode, string(errorBody))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": errorMsg})
+			return
+		}
+
+		// Parse response for template details
+		var templateDetails map[string]interface{}
+		if err := json.NewDecoder(resp.Body).Decode(&templateDetails); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode response: " + err.Error()})
+			return
+		}
+
+		// Check if template has a survey
+		surveyEnabled, exists := templateDetails["survey_enabled"]
+		hasSurveyEnabled := false
+		
+		// Check if survey is enabled
+		if exists {
+			// Try to convert to boolean if it exists
+			if boolVal, ok := surveyEnabled.(bool); ok {
+				hasSurveyEnabled = boolVal
+			}
+		}
+		
+		// Store template variables
+		variables := gin.H{}
+		
+		// If there are extra_vars, try to parse them
+		if extraVars, exists := templateDetails["extra_vars"]; exists && extraVars != "" {
+			extraVarsStr, ok := extraVars.(string)
+			if ok && extraVarsStr != "" {
+				var parsedVars map[string]interface{}
+				if err := json.Unmarshal([]byte(extraVarsStr), &parsedVars); err == nil {
+					variables["extra_vars"] = parsedVars
+				} else {
+					variables["extra_vars"] = extraVarsStr
+				}
+			}
+		}
+		
+		// If survey is enabled, fetch survey details
+		if hasSurveyEnabled {
+			// Fetch survey spec
+			surveyURL := fmt.Sprintf("%s/api/v2/job_templates/%s/survey_spec/", awxURL, templateID)
+			surveyReq, err := http.NewRequest("GET", surveyURL, nil)
+			if err == nil {
+				surveyReq.SetBasicAuth(ServerConfig.Awx.Username, ServerConfig.Awx.Password)
+				surveyReq.Header.Set("Content-Type", "application/json")
+				
+				surveyResp, err := client.Do(surveyReq)
+				if err == nil && surveyResp.StatusCode == http.StatusOK {
+					defer surveyResp.Body.Close()
+					
+					var surveySpec map[string]interface{}
+					if err := json.NewDecoder(surveyResp.Body).Decode(&surveySpec); err == nil {
+						variables["survey_spec"] = surveySpec
+					}
+				}
+			}
+		}
+		
+		// Prepare the response
+		result := gin.H{
+			"id":           templateDetails["id"],
+			"name":         templateDetails["name"],
+			"description":  templateDetails["description"],
+			"variables":    variables,
+			"has_survey":   hasSurveyEnabled,
+			"job_type":     templateDetails["job_type"],
+			"created":      templateDetails["created"],
+			"modified":     templateDetails["modified"],
+		}
+
+		c.JSON(http.StatusOK, result)
+	}
+}
+
+// getAwxJobTemplates retrieves available job templates from AWX
+// @Summary Get AWX job templates
+// @Description Get available job templates from AWX for a specific host
+// @Tags hosts
+// @Security ApiKeyAuth
+// @Accept json
+// @Produce json
+// @Param name path string true "Host name"
+// @Success 200 {array} map[string]interface{} "List of job templates"
+// @Failure 400 {object} map[string]string "Bad request"
+// @Failure 404 {object} map[string]string "Host not found"
+// @Failure 500 {object} map[string]string "Server error"
+// @Router /hosts/{name}/awx-job-templates [get]
+func getAwxJobTemplates(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		hostname := c.Param("name")
+
+		// Find the host in the database
+		var host Host
+		if err := db.Where("name = ?", hostname).First(&host).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Host not found"})
+			return
+		}
+
+		// Check if AWX is enabled
+		if !ServerConfig.Awx.Enabled {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "AWX integration is not enabled"})
+			return
+		}
+
+		// Create a new HTTP client with timeout
+		client := &http.Client{
+			Timeout: time.Duration(ServerConfig.Awx.Timeout) * time.Second,
+		}
+
+		// AWX API endpoint for job templates
+		awxURL := ServerConfig.Awx.Url
+		apiURL := fmt.Sprintf("%s/api/v2/job_templates/", awxURL)
+
+		// Create the request
+		req, err := http.NewRequest("GET", apiURL, nil)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create request: " + err.Error()})
+			return
+		}
+
+		// Set basic auth and headers
+		req.SetBasicAuth(ServerConfig.Awx.Username, ServerConfig.Awx.Password)
+		req.Header.Set("Content-Type", "application/json")
+
+		// Execute the request
+		resp, err := client.Do(req)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to execute request: " + err.Error()})
+			return
+		}
+		defer resp.Body.Close()
+
+		// Check response status
+		if resp.StatusCode != http.StatusOK {
+			// Read error response for debugging
+			errorBody, _ := io.ReadAll(resp.Body)
+			errorMsg := fmt.Sprintf("AWX API returned status: %d - %s", resp.StatusCode, string(errorBody))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": errorMsg})
+			return
+		}
+
+		// Parse response
+		var responseData struct {
+			Count    int    `json:"count"`
+			Next     string `json:"next"`
+			Previous string `json:"previous"`
+			Results  []struct {
+				ID          int    `json:"id"`
+				Name        string `json:"name"`
+				Description string `json:"description"`
+				URL         string `json:"url"`
+			} `json:"results"`
+		}
+
+		if err := json.NewDecoder(resp.Body).Decode(&responseData); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode response: " + err.Error()})
+			return
+		}
+
+		// Process templates for frontend display
+		templates := []gin.H{}
+		for _, template := range responseData.Results {
+			templateData := gin.H{
+				"id":          template.ID,
+				"name":        template.Name,
+				"description": template.Description,
+				"url":         template.URL,
+			}
+			templates = append(templates, templateData)
+		}
+
+		c.JSON(http.StatusOK, templates)
+	}
+}
+
+// executeAwxJob launches a job template on AWX for a specific host
+// @Summary Execute an AWX job template
+// @Description Launch a job template on AWX for a specific host
+// @Tags hosts
+// @Security ApiKeyAuth
+// @Accept json
+// @Produce json
+// @Param name path string true "Host name"
+// @Param job_data body map[string]interface{} true "Job execution parameters"
+// @Success 200 {object} map[string]interface{} "Job launched successfully"
+// @Failure 400 {object} map[string]string "Bad request"
+// @Failure 404 {object} map[string]string "Host not found"
+// @Failure 500 {object} map[string]string "Server error"
+// @Router /hosts/{name}/awx-jobs/execute [post]
+func executeAwxJob(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		hostname := c.Param("name")
+
+		// Find the host in the database
+		var host Host
+		if err := db.Where("name = ?", hostname).First(&host).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Host not found"})
+			return
+		}
+
+		// Check if AWX is enabled
+		if !ServerConfig.Awx.Enabled {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "AWX integration is not enabled"})
+			return
+		}
+
+		// Check if host has AWX ID
+		if host.AwxHostId == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Host has no AWX ID configured"})
+			return
+		}
+
+                // Parse request body
+                var requestData struct {
+                        TemplateID int                    `json:"template_id" binding:"required"`
+                        ExtraVars  map[string]interface{} `json:"extra_vars"`
+                        Format     string                 `json:"format"`
+                }
+
+                if err := c.ShouldBindJSON(&requestData); err != nil {
+                        c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body: " + err.Error()})
+                        return
+                }
+                
+                // Log received data for debugging
+                fmt.Printf("Received execute AWX job request: template_id=%d, format=%s, extra_vars=%+v\n", 
+                        requestData.TemplateID, requestData.Format, requestData.ExtraVars)
+
+		// Convert host ID to integer
+		awxHostID, err := strconv.Atoi(host.AwxHostId)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid AWX host ID"})
+			return
+		}
+
+		// Prepare payload for AWX API
+		payload := map[string]interface{}{
+			"limit": host.Name, // Limit execution to the specific host
+		}
+
+		// Add extra_vars if provided
+		if len(requestData.ExtraVars) > 0 {
+			var extraVarsStr string
+			
+                        // Check if format is YAML, otherwise use JSON (default)
+                        if requestData.Format == "yaml" {
+                                // Convert to YAML string
+                                extraVarsYAML, err := yaml.Marshal(requestData.ExtraVars)
+                                if err != nil {
+                                        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to encode extra_vars to YAML: " + err.Error()})
+                                        return
+                                }
+                                extraVarsStr = string(extraVarsYAML)
+                                fmt.Printf("Converted to YAML: %s\n", extraVarsStr)
+                        } else {
+                                // Convert to JSON string (default for backward compatibility)
+                                extraVarsJSON, err := json.Marshal(requestData.ExtraVars)
+                                if err != nil {
+                                        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to encode extra_vars to JSON: " + err.Error()})
+                                        return
+                                }
+                                extraVarsStr = string(extraVarsJSON)
+                                fmt.Printf("Converted to JSON: %s\n", extraVarsStr)
+                        }
+
+                        payload["extra_vars"] = extraVarsStr
+		}
+
+		// Add host ID to the inventory hosts list
+		payload["inventory_sources"] = []int{awxHostID}
+
+		// Marshal payload to JSON
+		payloadBytes, err := json.Marshal(payload)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to encode request payload: " + err.Error()})
+			return
+		}
+
+		// Create a new HTTP client with timeout
+		client := &http.Client{
+			Timeout: time.Duration(ServerConfig.Awx.Timeout) * time.Second,
+		}
+
+		// AWX API endpoint for launching a job template
+		awxURL := ServerConfig.Awx.Url
+		apiURL := fmt.Sprintf("%s/api/v2/job_templates/%d/launch/", awxURL, requestData.TemplateID)
+
+		// Create the request
+		req, err := http.NewRequest("POST", apiURL, bytes.NewBuffer(payloadBytes))
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create request: " + err.Error()})
+			return
+		}
+
+		// Set basic auth and headers
+		req.SetBasicAuth(ServerConfig.Awx.Username, ServerConfig.Awx.Password)
+		req.Header.Set("Content-Type", "application/json")
+
+		// Execute the request
+		resp, err := client.Do(req)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to execute request: " + err.Error()})
+			return
+		}
+		defer resp.Body.Close()
+
+		// Check response status
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			// Read error response for debugging
+			errorBody, _ := io.ReadAll(resp.Body)
+			errorMsg := fmt.Sprintf("AWX API returned status: %d - %s", resp.StatusCode, string(errorBody))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": errorMsg})
+			return
+		}
+
+		// Parse response
+		var responseData map[string]interface{}
+		if err := json.NewDecoder(resp.Body).Decode(&responseData); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode response: " + err.Error()})
+			return
+		}
+
+		// Return job information
+		c.JSON(http.StatusOK, gin.H{
+			"job_id":     responseData["id"],
+			"status":     responseData["status"],
+			"message":    "Job launched successfully",
+			"job_details": responseData,
+		})
 	}
 }
 
@@ -1370,19 +1789,33 @@ func submitHostLog(db *gorm.DB) gin.HandlerFunc {
 		if total >= 10000 {
 			// Calculate how many logs to delete
 			toDelete := total - 9999 // This ensures we'll have 9999 logs after deletion, allowing the new one to be the 10000th
-
-			// Use a more efficient approach to delete old logs
-			// Find the timestamp threshold for deletion without fetching all records
-			var thresholdLog HostLog
-			if err := db.Order("timestamp asc").Limit(1).Offset(int(toDelete)-1).Select("timestamp").Find(&thresholdLog).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to find threshold for old logs"})
-				return
-			}
-
-			// Delete all logs older than or equal to the threshold timestamp
-			if err := db.Where("timestamp <= ?", thresholdLog.Timestamp).Delete(&HostLog{}).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete old logs"})
-				return
+			
+			// Use a batch approach instead of a single large delete
+			batchSize := 500
+			for deleted := 0; deleted < int(toDelete); deleted += batchSize {
+				// Calculate current batch size
+				currentBatch := batchSize
+				if deleted+batchSize > int(toDelete) {
+					currentBatch = int(toDelete) - deleted
+				}
+				
+				// Get IDs of logs to delete in this batch
+				var logIds []uint
+				if err := db.Model(&HostLog{}).Where("deleted_at IS NULL").Order("timestamp ASC").Limit(currentBatch).Pluck("id", &logIds).Error; err != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to identify old logs"})
+					return
+				}
+				
+				// Skip if no logs found
+				if len(logIds) == 0 {
+					break
+				}
+				
+				// Delete logs by their IDs directly (avoids subquery)
+				if err := db.Where("id IN ?", logIds).Delete(&HostLog{}).Error; err != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete old logs"})
+					return
+				}
 			}
 		}
 
@@ -1433,13 +1866,13 @@ func getAllLogs(db *gorm.DB) gin.HandlerFunc {
 		// Calculate offset
 		offset := (pageInt - 1) * pageSizeInt
 
-		// Count total logs
+		// Count total logs - explicitly specify not deleted for consistency and to use index
 		var total int64
-		db.Model(&HostLog{}).Count(&total)
+		db.Model(&HostLog{}).Where("deleted_at IS NULL").Count(&total)
 
-		// Get logs with pagination
+		// Get logs with pagination - specify deleted_at IS NULL to use the composite index
 		var logs []HostLog
-		if err := db.Order("timestamp desc").Offset(offset).Limit(pageSizeInt).Find(&logs).Error; err != nil {
+		if err := db.Where("deleted_at IS NULL").Order("timestamp desc").Offset(offset).Limit(pageSizeInt).Find(&logs).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve logs"})
 			return
 		}
@@ -1524,11 +1957,11 @@ func getHostLogs(db *gorm.DB) gin.HandlerFunc {
 
 		// Count total logs for this host
 		var total int64
-		db.Model(&HostLog{}).Where("host_name = ?", hostname).Count(&total)
+		db.Model(&HostLog{}).Where("host_name = ? AND deleted_at IS NULL", hostname).Count(&total)
 
-		// Get logs with pagination
+		// Get logs with pagination - specify deleted_at IS NULL to use the composite index
 		var logs []HostLog
-		if err := db.Where("host_name = ?", hostname).Order("timestamp desc").Offset(offset).Limit(pageSizeInt).Find(&logs).Error; err != nil {
+		if err := db.Where("host_name = ? AND deleted_at IS NULL", hostname).Order("timestamp desc").Offset(offset).Limit(pageSizeInt).Find(&logs).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve logs"})
 			return
 		}
@@ -1603,8 +2036,8 @@ func searchLogs(db *gorm.DB) gin.HandlerFunc {
 		// Calculate offset
 		offset := (searchRequest.Page - 1) * searchRequest.PageSize
 
-		// Build query with filters
-		query := db.Model(&HostLog{})
+		// Build query with filters - always include deleted_at IS NULL to use the index
+		query := db.Model(&HostLog{}).Where("deleted_at IS NULL")
 
 		// Apply filters
 		if searchRequest.HostName != "" {

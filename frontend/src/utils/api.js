@@ -298,6 +298,46 @@ export const getAwxJobLogs = async (hostname, jobId, focusOnHost = true) => {
   }
 };
 
+// Get AWX Job Templates API call
+export const getAwxJobTemplates = async (hostname) => {
+  try {
+    const response = await api.get(`/hosts/${hostname}/awx-job-templates`);
+    return response;
+  } catch (error) {
+    console.error(`Error fetching AWX job templates for host ${hostname}:`, error);
+    throw error;
+  }
+};
+
+// Get AWX Job Template Details API call
+export const getAwxJobTemplateDetails = async (hostname, templateId) => {
+  try {
+    const response = await api.get(`/hosts/${hostname}/awx-job-templates/${templateId}`);
+    return response;
+  } catch (error) {
+    console.error(`Error fetching AWX job template ${templateId} details for host ${hostname}:`, error);
+    throw error;
+  }
+};
+
+// Execute AWX Job API call
+export const executeAwxJob = async (hostname, templateId, extraVars = {}) => {
+  try {
+    console.log("Sending extra vars to server:", extraVars);
+    
+    // Set a flag to indicate we're sending YAML format
+    const response = await api.post(`/hosts/${hostname}/awx-jobs/execute`, {
+      template_id: templateId,
+      extra_vars: extraVars,
+      format: "yaml"  // Indicate that we're using YAML format
+    });
+    return response;
+  } catch (error) {
+    console.error(`Error executing AWX job template ${templateId} for host ${hostname}:`, error);
+    throw error;
+  }
+};
+
 // Config API calls
 export const getConfig = async (name) => {
   try {

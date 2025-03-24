@@ -12,7 +12,8 @@ import {
   Badge,
   Tooltip
 } from '@patternfly/react-core';
-import { ExclamationCircleIcon, SearchIcon, ListIcon, FileAltIcon } from '@patternfly/react-icons';
+import { ExclamationCircleIcon, SearchIcon, ListIcon, FileAltIcon, PlayIcon } from '@patternfly/react-icons';
+import AwxJobExecute from './AwxJobExecute';
 import axios from 'axios';
 import { format } from 'date-fns';
 
@@ -33,6 +34,9 @@ const AwxJobsTable = ({ hostName }) => {
   const [page, setPage] = useState(1);
   const [perPage, setPerPage] = useState(10);
   const [totalItems, setTotalItems] = useState(0);
+
+  // Job execution modal state
+  const [isJobExecuteModalOpen, setIsJobExecuteModalOpen] = useState(false);
 
   const fetchJobs = async (url = null, append = false) => {
     try {
@@ -402,6 +406,13 @@ const AwxJobsTable = ({ hostName }) => {
           <Button variant="secondary" onClick={handleRefresh}>
             Refresh Jobs
           </Button>
+          <Button 
+            variant="primary" 
+            onClick={() => setIsJobExecuteModalOpen(true)}
+            icon={<PlayIcon />}
+          >
+            Run Job
+          </Button>
           <span style={{ fontSize: '0.9rem', color: '#666', display: 'flex', alignItems: 'center' }}>
             <ListIcon style={{ marginRight: '5px' }} />
             Showing {totalItems} jobs for this host
@@ -505,6 +516,19 @@ const AwxJobsTable = ({ hostName }) => {
           />
         </div>
       </div>
+
+      {/* Job Execution Modal */}
+      <AwxJobExecute
+        isOpen={isJobExecuteModalOpen}
+        onClose={() => setIsJobExecuteModalOpen(false)}
+        hostname={hostName}
+        onJobLaunched={(jobData) => {
+          // Refresh the job list after launching a new job
+          setTimeout(() => {
+            handleRefresh();
+          }, 2000); // Wait a couple seconds for the job to be registered
+        }}
+      />
     </div>
   );
 };
