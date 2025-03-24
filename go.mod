@@ -14,7 +14,7 @@ require (
 	github.com/gin-gonic/gin v1.10.0
 	github.com/go-ini/ini v1.67.0
 	github.com/go-sql-driver/mysql v1.8.1
-	github.com/golang-jwt/jwt/v4 v4.5.1
+	github.com/golang-jwt/jwt/v4 v4.5.2
 	github.com/itchyny/gojq v0.12.17
 	github.com/lib/pq v1.10.9
 	github.com/michaelklishin/rabbit-hole/v2 v2.16.0
