@@ -5,13 +5,11 @@ package mysqlHealth
 import (
 	"fmt"
 	"time"
-	"github.com/spf13/cobra"
-	"github.com/monobilisim/monokit/common"
-	db "github.com/monobilisim/monokit/common/db"
-	api "github.com/monobilisim/monokit/common/api"
-)
 
-var DbHealthConfig db.DbHealth
+	"github.com/monobilisim/monokit/common"
+	api "github.com/monobilisim/monokit/common/api"
+	"github.com/spf13/cobra"
+)
 
 func Main(cmd *cobra.Command, args []string) {
 	version := "3.1.0"
@@ -25,32 +23,28 @@ func Main(cmd *cobra.Command, args []string) {
 		DbHealthConfig.Mysql.Cluster.Check_table_hour = "05:00"
 	}
 
-    api.WrapperGetServiceStatus("mysqlHealth")
+	api.WrapperGetServiceStatus("mysqlHealth")
 
 	fmt.Println("MySQL Health Check REWRITE - v" + version + " - " + time.Now().Format("2006-01-02 15:04:05"))
-    
-    finalConnStr, err := ParseMyCnfAndConnect("client")
+
+	finalConnStr, err := ParseMyCnfAndConnect("client")
 
 	if err != nil {
 		common.LogError("Can't ping MySQL connection. err: " + err.Error())
 		common.AlarmCheckDown("ping", "Can't ping MySQL connection. err: "+err.Error(), false, "", "")
-    }
+	}
 
-    if Connect(finalConnStr) != nil {
-        common.LogError("Can't connect to a MySQL connection. err: " + err.Error())
-        common.AlarmCheckDown("ping", "Can't connect to a MySQL connection. err: "+err.Error(), false, "", "")
-    }
+	if Connect(finalConnStr) != nil {
+		common.LogError("Can't connect to a MySQL connection. err: " + err.Error())
+		common.AlarmCheckDown("ping", "Can't connect to a MySQL connection. err: "+err.Error(), false, "", "")
+	}
 
 	defer Connection.Close()
-	
-    //common.AlarmCheckUp("ping", "MySQL ping returns no error.", false)
 
 	common.SplitSection("MySQL Access:")
-
 	SelectNow()
 
 	common.SplitSection("Number of Processes:")
-
 	CheckProcessCount()
 
 	if DbHealthConfig.Mysql.Cluster.Enabled {
