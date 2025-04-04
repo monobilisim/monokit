@@ -6,7 +6,7 @@ import (
 	"io"
 	"net/http"
 	"time"
-
+	"crypto/tls"
 	"github.com/monobilisim/monokit/common"
 	api "github.com/monobilisim/monokit/common/api"
 	"github.com/spf13/cobra"
@@ -89,8 +89,12 @@ func checkElasticsearchHealth() {
 	common.AddUserAgent(req)
 
 	// Execute request
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
 	client := &http.Client{
-		Timeout: 10 * time.Second,
+		Transport: tr,
+		Timeout:   10 * time.Second,
 	}
 	resp, err := client.Do(req)
 
