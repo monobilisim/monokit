@@ -60,9 +60,8 @@ func Main(cmd *cobra.Command, args []string) {
 	}
 }
 
+// Services checks if postal.service is active and verifies Docker container status
 func RequestCheck() {
-	// Check localhost:5000/login (health-web), localhost:9090/health (health-worker), localhost:9091/health (health-smtp)
-
 	services := []string{"web::5000/login", "worker::9090/health", "smtp::9091/health"}
 	for _, service := range services {
 		split := strings.Split(service, "::")
@@ -91,6 +90,11 @@ func RequestCheck() {
 	}
 }
 
+// RequestCheck verifies the health of Postal services by making HTTP requests to their endpoints
+// It checks the following services:
+// - Web interface (port 5000)
+// - Worker service (port 9090)
+// - SMTP service (port 9091)
 func Services() {
 	apiClient, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	defer apiClient.Close()
@@ -141,6 +145,7 @@ func Services() {
 	}
 }
 
+// MySQLConnect establishes a connection to a MySQL database using configuration from /opt/postal/config/postal.yml
 func MySQLConnect(dbName string, dbPath string, doPrint bool) *sql.DB {
 	// Get info out of /opt/postal/config/postal.yml
 	viper.SetConfigName("postal")
@@ -182,6 +187,8 @@ func MySQLDisconnect(db *sql.DB) {
 	db.Close()
 }
 
+// GetMessageQueue checks the number of messages in the Postal message queue and compares it with the configured threshold.
+// It queries the postal.queued_messages table in the message database and raises an alarm if the count exceeds the threshold.
 func GetMessageQueue() {
 	rows, err := MessageDB.Query("SELECT COUNT(*) FROM postal.queued_messages")
 	if err != nil {
@@ -203,8 +210,11 @@ func GetMessageQueue() {
 	}
 }
 
+// GetHeldMessages checks the number of held messages for each Postal server and compares them with the configured threshold.
+// It queries the postal.servers table to get server IDs and names, then checks the messages table for each server
+// to count messages with 'Held' status. Raises alarms if any server's held message count exceeds the threshold.
 func GetHeldMessages() {
-	// select id, permalink from postal.servers
+	// Select ID permalink from postal.servers
 	rows, err := MessageDB.Query("SELECT id, permalink FROM postal.servers")
 	if err != nil {
 		common.LogError("Couldn't get held messages: " + err.Error())
