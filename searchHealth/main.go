@@ -165,8 +165,12 @@ func checkShardAllocation() {
 	common.AddUserAgent(req)
 
 	// Execute request
+	tr := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+	}
 	client := &http.Client{
-		Timeout: 10 * time.Second,
+		Transport: tr,
+		Timeout:   10 * time.Second,
 	}
 	resp, err := client.Do(req)
 
