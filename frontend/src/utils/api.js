@@ -293,7 +293,7 @@ export const getAwxJobLogs = async (hostname, jobId, focusOnHost = true) => {
     });
     return response;
   } catch (error) {
-    console.error(`Error fetching AWX job logs for job ${jobId}:`, error);
+    console.error('Error fetching AWX job logs for job %s:', jobId, error);
     throw error;
   }
 };
