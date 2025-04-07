@@ -304,7 +304,7 @@ export const getAwxJobTemplates = async (hostname) => {
     const response = await api.get(`/hosts/${hostname}/awx-job-templates`);
     return response;
   } catch (error) {
-    console.error(`Error fetching AWX job templates for host ${hostname}:`, error);
+    console.error('Error fetching AWX job templates for host %s:', hostname, error);
     throw error;
   }
 };
@@ -315,7 +315,7 @@ export const getAwxJobTemplateDetails = async (hostname, templateId) => {
     const response = await api.get(`/hosts/${hostname}/awx-job-templates/${templateId}`);
     return response;
   } catch (error) {
-    console.error(`Error fetching AWX job template ${templateId} details for host ${hostname}:`, error);
+    console.error('Error fetching AWX job template %s details for host %s:', templateId, hostname, error);
     throw error;
   }
 };
@@ -333,7 +333,7 @@ export const executeAwxJob = async (hostname, templateId, extraVars = {}) => {
     });
     return response;
   } catch (error) {
-    console.error(`Error executing AWX job template ${templateId} for host ${hostname}:`, error);
+    console.error('Error executing AWX job template %s for host %s:', templateId, hostname, error);
     throw error;
   }
 };
@@ -368,7 +368,7 @@ export const deleteConfig = async (name, fileName) => {
     const response = await api.delete(endpoint);
     return response;
   } catch (error) {
-    console.error(`Error deleting config file ${fileName}:`, error);
+    console.error('Error deleting config file %s:', fileName, error);
     throw error;
   }
 };
