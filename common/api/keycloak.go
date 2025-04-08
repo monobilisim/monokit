@@ -280,6 +280,11 @@ func syncKeycloakUser(db *gorm.DB, claims *KeycloakClaims) (User, error) {
 	if username == "" {
 		username = claims.Email
 	}
+	// Split username at '@' to get the local part of the email address
+	if strings.Contains(username, "@") {
+		username = strings.Split(username, "@")[0]
+	}
+
 	// Check if user already exists
 	result := db.Where("username = ?", username).First(&user)
 
