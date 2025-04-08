@@ -36,7 +36,7 @@ type AwxConfig struct {
 // Host represents a monitored host
 type Host struct {
 	gorm.Model
-	Name                string    `json:"name"`
+	Name                string    `json:"name" gorm:"uniqueIndex"`
 	CpuCores            int       `json:"cpuCores"`
 	Ram                 string    `json:"ram"`
 	MonokitVersion      string    `json:"monokitVersion"`

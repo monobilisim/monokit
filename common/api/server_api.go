@@ -181,8 +181,10 @@ func setupDatabase() *gorm.DB {
 		fmt.Printf("Warning: Failed to create initial admin user: %v\n", err)
 	}
 
-	// Load all hosts into memory
+// Load all hosts into memory
 	db.Find(&HostsList)
+	
+	// Note: fixDuplicateHosts is now called from ServerMain in server.go
 
 	return db
 }

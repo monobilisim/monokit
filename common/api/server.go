@@ -100,6 +100,11 @@ func ServerMain(cmd *cobra.Command, args []string) {
 
 	// Get the hosts list from the pgsql database
 	db.Find(&HostsList)
+	
+	// Fix any duplicate host names
+	fmt.Println("=============== RUNNING DUPLICATE HOST FIX (MAIN) ===============")
+	fixDuplicateHosts(db)
+	fmt.Println("=============== DUPLICATE HOST FIX COMPLETED (MAIN) ===============")
 
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.Default()
@@ -114,4 +119,54 @@ func ServerMain(cmd *cobra.Command, args []string) {
 	SetupFrontend(r)
 
 	r.Run(":" + ServerConfig.Port)
+}
+
+// Fixes any duplicate host names in the database
+func fixDuplicateHosts(db *gorm.DB) {
+	fmt.Println("*** CHECKING FOR DUPLICATE HOST NAMES ***")
+	
+	// Get all hosts
+	var hosts []Host
+	db.Find(&hosts)
+	
+	// Track all host names and their counts
+	hostCounts := make(map[string]int)
+	for _, host := range hosts {
+		hostCounts[host.Name]++
+	}
+	
+	// Find duplicates
+	var duplicates []string
+	for name, count := range hostCounts {
+		if count > 1 {
+			duplicates = append(duplicates, name)
+			fmt.Printf("Found %d hosts with name '%s'\n", count, name)
+		}
+	}
+	
+	if len(duplicates) == 0 {
+		fmt.Println("No duplicate host names found")
+		return
+	}
+	
+	// Fix each duplicate
+	for _, name := range duplicates {
+		// Get all hosts with this name
+		var dupeHosts []Host
+		db.Where("name = ?", name).Order("id asc").Find(&dupeHosts)
+		
+		// Keep first one, rename others
+		for i := 1; i < len(dupeHosts); i++ {
+			newName := fmt.Sprintf("%s-%d", name, i)
+			fmt.Printf("Renaming host ID=%d from '%s' to '%s'\n", 
+				dupeHosts[i].ID, dupeHosts[i].Name, newName)
+			
+			// Update the host
+			db.Model(&dupeHosts[i]).Update("name", newName)
+		}
+	}
+	
+	// Reload hosts list
+	db.Find(&HostsList)
+	fmt.Println("Duplicate host names fixed")
 }
