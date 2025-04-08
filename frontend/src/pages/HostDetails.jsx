@@ -27,15 +27,21 @@ import {
   Tab,
   Tabs, 
   TabTitleText,
-  EmptyState
+  EmptyState,
+  Modal,
+  ModalVariant,
+  ButtonVariant,
+  AlertVariant
 } from '@patternfly/react-core';
 import { Table, Thead, Tbody, Tr, Th, Td, TableVariant } from '@patternfly/react-table';
-import { ArrowLeftIcon, CheckCircleIcon, ExclamationCircleIcon, InfoCircleIcon, CubesIcon, CubeIcon, SearchIcon } from '@patternfly/react-icons';
+import { ArrowLeftIcon, CheckCircleIcon, ExclamationCircleIcon, InfoCircleIcon, CubesIcon, CubeIcon, SearchIcon, TrashIcon, ExclamationTriangleIcon } from '@patternfly/react-icons';
 import { format } from 'date-fns';
 import axios from 'axios';
+import { forceDeleteHost } from '../utils/api';
 import ButtonWithCenteredIcon from '../components/ButtonWithCenteredIcon';
 import EnabledComponents from '../components/EnabledComponents';
 import AwxJobsTable from '../components/AwxJobsTable';
+import ForceDeleteConfirmationModal from '../components/ForceDeleteConfirmationModal';
 
 const HostDetails = () => {
   const { hostname } = useParams();
@@ -45,10 +51,13 @@ const HostDetails = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [isComponentsModalOpen, setIsComponentsModalOpen] = useState(false);
+  const [isForceDeleteModalOpen, setIsForceDeleteModalOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [activeTabKey, setActiveTabKey] = useState(0);
   const [awxJobs, setAwxJobs] = useState([]);
   const [awxLoading, setAwxLoading] = useState(true);
   const [awxError, setAwxError] = useState(null);
+  const [deleteError, setDeleteError] = useState(null);
   // We'll use a different approach that doesn't make API calls
 
   useEffect(() => {
@@ -155,6 +164,24 @@ const HostDetails = () => {
     );
   }
 
+  // Handle force delete action
+  const handleForceDelete = async () => {
+    try {
+      setIsDeleting(true);
+      setDeleteError(null);
+      
+      await forceDeleteHost(hostname);
+      
+      // Redirect to hosts page after successful deletion
+      navigate('/hosts');
+    } catch (err) {
+      console.error('Error during force delete:', err);
+      setDeleteError(err.message || 'Failed to force delete the host');
+      setIsDeleting(false);
+      setIsForceDeleteModalOpen(true); // Keep the modal open to show the error
+    }
+  };
+
   return (
     <PageSection style={{ backgroundColor: theme === 'dark' ? '#212427' : '#ffffff' }}>
       <Stack hasGutter>
@@ -186,6 +213,15 @@ const HostDetails = () => {
               >
                 {host.status}
               </Label>
+            </SplitItem>
+            <SplitItem>
+              <Button 
+                variant="danger" 
+                icon={<TrashIcon />}
+                onClick={() => setIsForceDeleteModalOpen(true)}
+              >
+                Force Delete
+              </Button>
             </SplitItem>
           </Split>
         </StackItem>
@@ -428,6 +464,19 @@ const HostDetails = () => {
         }}
         hostname={hostname}
         hostData={host}
+      />
+      
+      {/* Force Delete Confirmation Modal */}
+      <ForceDeleteConfirmationModal
+        isOpen={isForceDeleteModalOpen}
+        onClose={() => {
+          setIsForceDeleteModalOpen(false);
+          setDeleteError(null);
+        }}
+        onDelete={handleForceDelete}
+        hostname={hostname}
+        isDeleting={isDeleting}
+        error={deleteError}
       />
     </PageSection>
   );

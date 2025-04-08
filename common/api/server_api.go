@@ -212,6 +212,7 @@ func setupRoutes(r *gin.Engine, db *gorm.DB) {
 		api.GET("/hosts", getAllHosts(db))
 		api.GET("/hosts/:name", getHostByName())
 		api.DELETE("/hosts/:name", deleteHost(db))
+		api.DELETE("/hosts/:name/force", forceDeleteHost(db))
 		api.PUT("/hosts/:name", updateHost(db))
 		api.GET("/hosts/:name/awx-jobs", getHostAwxJobs(db))
 		api.GET("/hosts/:name/awx-jobs/:jobID/logs", getHostAwxJobLogs(db))
@@ -577,13 +578,19 @@ func getAllHosts(db *gorm.DB) gin.HandlerFunc {
 
 		for i := range filteredHosts {
 			isOffline := time.Since(filteredHosts[i].UpdatedAt).Minutes() > 5
+			
+			// If host is scheduled for deletion AND offline for 5 minutes, delete it
+			if filteredHosts[i].UpForDeletion && isOffline {
+				fmt.Printf("Deleting host '%s' (ID=%d) - scheduled for deletion and offline for 5+ minutes\n", 
+					filteredHosts[i].Name, filteredHosts[i].ID)
+				
+				// Use Unscoped().Delete to permanently remove the host
+				db.Unscoped().Delete(&filteredHosts[i])
+				continue
+			}
+			
+			// Update status for remaining hosts
 			if filteredHosts[i].UpForDeletion {
-				if isOffline {
-					if currentUser.Role == "admin" {
-						db.Unscoped().Delete(&filteredHosts[i])
-						continue
-					}
-				}
 				filteredHosts[i].Status = "Scheduled for deletion"
 			} else if isOffline {
 				filteredHosts[i].Status = "Offline"
@@ -629,6 +636,33 @@ func deleteHost(db *gorm.DB) gin.HandlerFunc {
 
 		db.Find(&HostsList)
 		c.JSON(http.StatusOK, gin.H{"status": "deleted"})
+	}
+}
+
+// Force delete host handler - immediately and permanently deletes a host
+func forceDeleteHost(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		name := c.Param("name")
+		var host Host
+		if err := db.Where("name = ?", name).First(&host).Error; err != nil {
+			c.JSON(http.StatusNotFound, gin.H{"error": "Host not found"})
+			return
+		}
+
+		// Use Unscoped to bypass soft delete and permanently remove the host
+		if err := db.Unscoped().Delete(&host).Error; err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to force delete host"})
+			return
+		}
+
+		// Also delete any host keys associated with this host
+		db.Where("host_name = ?", name).Unscoped().Delete(&HostKey{})
+		
+		// Also delete any host config files associated with this host
+		db.Where("host_name = ?", name).Unscoped().Delete(&HostFileConfig{})
+
+		db.Find(&HostsList)
+		c.JSON(http.StatusOK, gin.H{"status": "force_deleted"})
 	}
 }
 

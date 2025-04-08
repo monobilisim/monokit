@@ -21,12 +21,19 @@ import {
   AlertActionCloseButton,
   AlertGroup,
   AlertVariant,
+  Dropdown,
+  DropdownItem,
+  DropdownSeparator,
+  KebabToggle,
+  ButtonVariant,
 } from '@patternfly/react-core';
-import { Table, Thead, Tr, Th, Tbody, Td } from '@patternfly/react-table';
+import { Table, Thead, Tr, Th, Tbody, Td, ActionsColumn } from '@patternfly/react-table';
+import { ExclamationTriangleIcon } from '@patternfly/react-icons';
 import { useNavigate } from 'react-router-dom';
-import { getHosts } from '../utils/api';
+import { getHosts, forceDeleteHost } from '../utils/api';
 import axios from 'axios';
 import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
+import ForceDeleteConfirmationModal from '../components/ForceDeleteConfirmationModal';
 
 const Hosts = ({ onAuthError }) => {
   const [hosts, setHosts] = useState([]);
@@ -38,7 +45,11 @@ const Hosts = ({ onAuthError }) => {
   const [perPage, setPerPage] = useState(10);
   const [selectedHosts, setSelectedHosts] = useState([]);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
+  const [isForceDeleteModalOpen, setIsForceDeleteModalOpen] = useState(false);
+  const [hostToForceDelete, setHostToForceDelete] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [alerts, setAlerts] = useState([]);
+  const [actionDropdownOpen, setActionDropdownOpen] = useState({});
   const navigate = useNavigate();
 
   const addAlert = (title, variant, description = '') => {
@@ -161,6 +172,40 @@ const Hosts = ({ onAuthError }) => {
     } else {
       setSelectedHosts([]);
     }
+  };
+
+  // Handle force delete action for a single host
+  const handleForceDelete = async () => {
+    if (!hostToForceDelete) return;
+    
+    try {
+      setIsDeleting(true);
+      
+      await forceDeleteHost(hostToForceDelete);
+      
+      // Refresh the hosts list
+      const response = await getHosts();
+      const updatedHosts = response.data;
+      setHosts(updatedHosts);
+      setFilteredHosts(updatedHosts);
+      
+      addAlert(`Successfully force deleted host ${hostToForceDelete}`, AlertVariant.success);
+      setHostToForceDelete(null);
+      setIsForceDeleteModalOpen(false);
+      setIsDeleting(false);
+    } catch (error) {
+      console.error('Failed to force delete host:', error);
+      addAlert('Failed to force delete host', AlertVariant.danger, error.message || 'Please try again later.');
+      setIsDeleting(false);
+    }
+  };
+
+  // Toggle action dropdown for a host
+  const onToggleActionDropdown = (hostName, isOpen) => {
+    setActionDropdownOpen({
+      ...actionDropdownOpen,
+      [hostName]: isOpen
+    });
   };
 
   // Delete selected hosts
@@ -410,13 +455,22 @@ const Hosts = ({ onAuthError }) => {
                         })()}
                       </Td>
                       <Td>
-                        <Button 
-                          variant="link" 
-                          onClick={() => handleViewHost(host.name)}
-                          isDisabled={!host.name}
-                        >
-                          View
-                        </Button>
+                        <ActionsColumn
+                          items={[
+                            {
+                              title: 'View',
+                              onClick: () => handleViewHost(host.name)
+                            },
+                            {
+                              title: 'Force Delete',
+                              onClick: () => {
+                                setHostToForceDelete(host.name);
+                                setIsForceDeleteModalOpen(true);
+                              },
+                              tooltipContent: 'Immediately delete this host, bypassing all safety checks'
+                            }
+                          ]}
+                        />
                       </Td>
                     </Tr>
                   ))}
@@ -443,6 +497,18 @@ const Hosts = ({ onAuthError }) => {
         onDelete={deleteSelectedHosts}
         title={`Delete ${selectedHosts.length} selected host${selectedHosts.length !== 1 ? 's' : ''}?`}
         message={`Are you sure you want to delete ${selectedHosts.length} selected host${selectedHosts.length !== 1 ? 's' : ''}?`}
+      />
+
+      {/* Force Delete Confirmation Modal */}
+      <ForceDeleteConfirmationModal
+        isOpen={isForceDeleteModalOpen}
+        onClose={() => {
+          setIsForceDeleteModalOpen(false);
+          setHostToForceDelete(null);
+        }}
+        onDelete={handleForceDelete}
+        hostname={hostToForceDelete}
+        isDeleting={isDeleting}
       />
     </PageSection>
   );

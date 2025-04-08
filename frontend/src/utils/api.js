@@ -272,6 +272,17 @@ export const deleteGroup = async (groupName, withHosts = false) => {
   }
 };
 
+// Force delete a host (bypassing all safety checks)
+export const forceDeleteHost = async (hostname) => {
+  try {
+    const response = await api.delete(`/hosts/${hostname}/force`);
+    return response;
+  } catch (error) {
+    console.error(`Error force deleting host ${hostname}:`, error);
+    throw error;
+  }
+};
+
 // Logs API calls
 export const getLogs = async () => {
   try {
