@@ -206,7 +206,7 @@ const HostDetails = () => {
             <SplitItem isFilled>
               <Title headingLevel="h1" size="xl">{hostname}</Title>
             </SplitItem>
-            <SplitItem>
+            <SplitItem style={{ marginRight: '16px' }}>
               <Label 
                 color={getStatusColor(host.status)} 
                 icon={getStatusIcon(host.status)}
