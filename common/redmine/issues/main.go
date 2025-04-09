@@ -3,6 +3,7 @@ package common
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"os"
@@ -13,6 +14,16 @@ import (
 	"github.com/monobilisim/monokit/common"
 )
 
+// Helper function to convert string to int
+func atoi(s string) int {
+	i, err := strconv.Atoi(s)
+	if err != nil {
+		common.LogError("strconv.Atoi error: " + err.Error())
+		return 0
+	}
+	return i
+}
+
 type Issue struct {
 	Id           int    `json:"id,omitempty"`
 	Notes        string `json:"notes,omitempty"`
@@ -22,7 +33,7 @@ type Issue struct {
 	Subject      string `json:"subject,omitempty"`
 	PriorityId   int    `json:"priority_id,omitempty"`
 	StatusId     int    `json:"status_id,omitempty"`
-	AssignedToId string `json:"assigned_to_id,omitempty"`
+	AssignedToId string `json:"assigned_to_id"`
 }
 
 type RedmineIssue struct {
@@ -222,18 +233,328 @@ func CheckDown(service string, subject string, message string, EnableCustomInter
 	}
 }
 
-func Create(service string, subject string, message string) {
-	serviceReplaced := strings.Replace(service, "/", "-", -1)
-	filePath := common.TmpDir + "/" + serviceReplaced + "-redmine.log"
+// Function to check for recent issues
+func findRecentIssue(subject string, hoursBack int) string {
+	common.LogDebug("findRecentIssue - Looking for recent issues with subject: " + subject + " in last " + strconv.Itoa(hoursBack) + " hours")
+
+	var projectId string
+	if common.Config.Redmine.Project_id == "" {
+		projectId = strings.Split(common.Config.Identifier, "-")[0]
+	} else {
+		projectId = common.Config.Redmine.Project_id
+	}
 
 	if common.Config.Redmine.Enabled == false {
+		common.LogDebug("findRecentIssue - Redmine is disabled")
+		return ""
+	}
+
+	// Calculate time range
+	now := time.Now()
+	hoursAgo := now.Add(-time.Duration(hoursBack) * time.Hour)
+
+	// Try different date formats for Redmine API
+	dateFormats := []string{
+		hoursAgo.Format("2006-01-02"),                 // Just the date
+		">=" + hoursAgo.Format("2006-01-02"),          // Date with >=
+		hoursAgo.Format("2006-01-02T15:04:05"),        // ISO without timezone
+		">=" + hoursAgo.Format("2006-01-02T15:04:05"), // ISO with >= without timezone
+		hoursAgo.Format(time.RFC3339),                 // Full RFC3339
+		">=" + hoursAgo.Format(time.RFC3339),          // Full RFC3339 with >=
+	}
+
+	common.LogDebug("findRecentIssue - Current time: " + now.Format(time.RFC3339))
+	common.LogDebug("findRecentIssue - Looking back to: " + hoursAgo.Format(time.RFC3339))
+
+	// Try each date format
+	for _, dateFormat := range dateFormats {
+		common.LogDebug("findRecentIssue - Trying date format: " + dateFormat)
+
+		// Build URL, let http.NewRequest handle URL encoding
+		baseUrl := common.Config.Redmine.Url + "/issues.json"
+		req, err := http.NewRequest("GET", baseUrl, nil)
+		if err != nil {
+			common.LogError("http.NewRequest error: " + err.Error())
+			continue
+		}
+
+		// Add query params
+		q := req.URL.Query()
+		q.Add("project_id", projectId)
+		q.Add("subject", subject) // Try exact match first
+		q.Add("created_on", dateFormat)
+		q.Add("status_id", "*") // All statuses
+		req.URL.RawQuery = q.Encode()
+
+		common.LogDebug("findRecentIssue - Request URL: " + req.URL.String())
+
+		// Set headers
+		common.AddUserAgent(req)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Redmine-API-Key", common.Config.Redmine.Api_key)
+
+		// Make request
+		client := &http.Client{Timeout: time.Second * 10}
+		resp, err := client.Do(req)
+		if err != nil {
+			common.LogError("client.Do error: " + err.Error())
+			continue
+		}
+
+		// Process response
+		defer resp.Body.Close()
+		common.LogDebug("findRecentIssue - Response status: " + resp.Status)
+
+		// Read full response for debugging
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			common.LogError("Error reading response: " + err.Error())
+			continue
+		}
+
+		common.LogDebug("findRecentIssue - Response body: " + string(body))
+
+		// Parse JSON
+		var data map[string]interface{}
+		if err := json.Unmarshal(body, &data); err != nil {
+			common.LogError("JSON unmarshal error: " + err.Error())
+			continue
+		}
+
+		// Check if we have results
+		totalCount, ok := data["total_count"].(float64)
+		if !ok || totalCount == 0 {
+			common.LogDebug("findRecentIssue - No issues found with exact subject match")
+
+			// Try with partial match if exact match failed
+			q.Set("subject", "~"+subject)
+			req.URL.RawQuery = q.Encode()
+
+			common.LogDebug("findRecentIssue - Trying with partial match: " + req.URL.String())
+
+			resp2, err := client.Do(req)
+			if err != nil {
+				common.LogError("client.Do error (partial match): " + err.Error())
+				continue
+			}
+
+			defer resp2.Body.Close()
+			body2, err := io.ReadAll(resp2.Body)
+			if err != nil {
+				common.LogError("Error reading response (partial match): " + err.Error())
+				continue
+			}
+
+			common.LogDebug("findRecentIssue - Partial match response: " + string(body2))
+
+			if err := json.Unmarshal(body2, &data); err != nil {
+				common.LogError("JSON unmarshal error (partial match): " + err.Error())
+				continue
+			}
+
+			totalCount, ok = data["total_count"].(float64)
+			if !ok || totalCount == 0 {
+				common.LogDebug("findRecentIssue - No issues found with partial subject match either")
+				continue
+			}
+		}
+
+		// We have results - find the most recent relevant issue
+		common.LogDebug("findRecentIssue - Found " + strconv.Itoa(int(totalCount)) + " issues")
+
+		issues, ok := data["issues"].([]interface{})
+		if !ok || len(issues) == 0 {
+			common.LogDebug("findRecentIssue - Issues array is empty or invalid")
+			continue
+		}
+
+		// Check each issue
+		for _, issue := range issues {
+			issueMap, ok := issue.(map[string]interface{})
+			if !ok {
+				continue
+			}
+
+			issueId := int(issueMap["id"].(float64))
+			status, ok := issueMap["status"].(map[string]interface{})
+			if !ok {
+				continue
+			}
+
+			statusId := int(status["id"].(float64))
+			statusName := status["name"].(string)
+
+			common.LogDebug(fmt.Sprintf("findRecentIssue - Found issue #%d with status %s (ID: %d)",
+				issueId, statusName, statusId))
+
+			// Return the first issue that matches (they should be sorted by creation date, newest first)
+			return strconv.Itoa(issueId)
+		}
+	}
+
+	common.LogDebug("findRecentIssue - No recent issues found after trying all date formats")
+	return ""
+}
+
+func getCurrentUserId() (string, error) {
+	if !common.Config.Redmine.Enabled {
+		common.LogDebug("getCurrentUserId - Redmine is disabled")
+		return "", fmt.Errorf("redmine is disabled")
+	}
+
+	// Build URL for the current user
+	redmineUrl := common.Config.Redmine.Url + "/users/current.json"
+
+	// Create request
+	req, err := http.NewRequest("GET", redmineUrl, nil)
+	if err != nil {
+		common.LogError("getCurrentUserId - http.NewRequest error: " + err.Error())
+		return "", err
+	}
+
+	common.AddUserAgent(req)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Redmine-API-Key", common.Config.Redmine.Api_key)
+
+	// Execute request
+	client := &http.Client{Timeout: time.Second * 10}
+	resp, err := client.Do(req)
+	if err != nil {
+		common.LogError("getCurrentUserId - client.Do error: " + err.Error())
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	// Check response status
+	if resp.StatusCode != 200 {
+		errMsg := fmt.Sprintf("getCurrentUserId - Redmine API returned status code %d instead of 200", resp.StatusCode)
+		common.LogError(errMsg)
+		return "", fmt.Errorf(errMsg)
+	}
+
+	// Parse response
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		common.LogError("getCurrentUserId - error reading response body: " + err.Error())
+		return "", err
+	}
+
+	var data map[string]interface{}
+	if err := json.Unmarshal(body, &data); err != nil {
+		common.LogError("getCurrentUserId - json.Unmarshal error: " + err.Error())
+		return "", err
+	}
+
+	// Extract user ID
+	user, ok := data["user"].(map[string]interface{})
+	if !ok {
+		return "", fmt.Errorf("getCurrentUserId - couldn't find user in response")
+	}
+
+	userId, ok := user["id"].(float64)
+	if !ok {
+		return "", fmt.Errorf("getCurrentUserId - couldn't find user id in response")
+	}
+
+	return strconv.Itoa(int(userId)), nil
+}
+
+func Create(service string, subject string, message string) {
+	common.LogDebug("Create - Creating/reopening issue for service: " + service + ", subject: " + subject)
+
+	serviceReplaced := strings.Replace(service, "/", "-", -1)
+	filePath := common.TmpDir + "/" + serviceReplaced + "-redmine.log"
+	common.LogDebug("Create - Using log file: " + filePath)
+
+	if common.Config.Redmine.Enabled == false {
+		common.LogDebug("Create - Redmine is disabled, returning")
 		return
 	}
 
 	if redmineCheckIssueLog(service) == true {
+		common.LogDebug("Create - Issue log already exists, returning")
 		return
 	}
 
+	// Check if a similar issue exists in the last 6 hours
+	existingIssueId := findRecentIssue(subject, 6)
+	if existingIssueId != "" {
+		common.LogDebug("Create - Found existing issue #" + existingIssueId + ", reopening instead of creating a new one")
+
+		// Get the assigned user
+		assignedToId := getAssignedToId(existingIssueId)
+
+		// Get current user
+		currentUserId, err := getCurrentUserId()
+		if err != nil {
+			common.LogError("getCurrentUserId error: " + err.Error())
+			return
+		}
+		common.LogDebug("Create - Current user ID: " + currentUserId)
+		common.LogDebug("Create - Assigned user ID: " + assignedToId)
+
+		if assignedToId == currentUserId {
+			assignedToId = ""
+		}
+
+		// Reopen the issue (status ID 2 = "In Progress")
+		body := RedmineIssue{Issue: Issue{
+			Id:           atoi(existingIssueId),
+			Notes:        "Sorun devam ettiğinden iş yeniden açıldı.\n" + message,
+			StatusId:     8,
+			AssignedToId: assignedToId,
+		}}
+
+		jsonBody, err := json.Marshal(body)
+		if err != nil {
+			common.LogError("json.Marshal error: " + err.Error())
+			// Continue to creating new issue if reopening fails
+		} else {
+			// PUT request to update the issue
+			req, err := http.NewRequest("PUT", common.Config.Redmine.Url+"/issues/"+existingIssueId+".json", bytes.NewBuffer(jsonBody))
+			if err != nil {
+				common.LogError("http.NewRequest error: " + err.Error())
+				// Continue to creating new issue if reopening fails
+			} else {
+				common.AddUserAgent(req)
+				req.Header.Set("Content-Type", "application/json")
+				req.Header.Set("X-Redmine-API-Key", common.Config.Redmine.Api_key)
+
+				common.LogDebug("Create - Sending PUT request to reopen issue: " + common.Config.Redmine.Url + "/issues/" + existingIssueId + ".json")
+				common.LogDebug("Create - Request body: " + string(jsonBody))
+
+				client := &http.Client{Timeout: time.Second * 10}
+				resp, err := client.Do(req)
+
+				if err != nil {
+					common.LogError("client.Do error: " + err.Error())
+					// Continue to creating new issue
+				} else {
+					defer resp.Body.Close()
+
+					// Check response
+					if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+						common.LogDebug("Create - Successfully reopened issue #" + existingIssueId)
+
+						// Write the issue ID to the service's log file
+						err = os.WriteFile(filePath, []byte(existingIssueId), 0644)
+						if err != nil {
+							common.LogError("os.WriteFile error: " + err.Error())
+						}
+						return
+					} else {
+						respBody, _ := io.ReadAll(resp.Body)
+						common.LogError("Failed to reopen issue, status: " + resp.Status + ", response: " + string(respBody))
+						// Continue to creating new issue
+					}
+				}
+			}
+		}
+
+		common.LogDebug("Create - Failed to reopen existing issue, will create a new one")
+	}
+
+	common.LogDebug("Create - Creating a new issue")
 	var priorityId int
 	var projectId string
 
