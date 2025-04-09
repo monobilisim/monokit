@@ -1,4 +1,4 @@
-package searchHealth
+package esHealth
 
 import (
 	"encoding/json"
@@ -38,24 +38,24 @@ type UnassignedInfo struct {
 
 func Main(cmd *cobra.Command, args []string) {
 	version := "0.1.0"
-	common.ScriptName = "searchHealth"
-	common.TmpDir = common.TmpDir + "searchHealth"
+	common.ScriptName = "esHealth"
+	common.TmpDir = common.TmpDir + "esHealth"
 	common.Init()
-	common.ConfInit("search", &Config)
+	common.ConfInit("es", &Config)
 
-	fmt.Println("Search Health - v" + version + " - " + time.Now().Format("2006-01-02 15:04:05"))
-	api.WrapperGetServiceStatus("searchHealth")
+	fmt.Println("esHealth - v" + version + " - " + time.Now().Format("2006-01-02 15:04:05"))
+	api.WrapperGetServiceStatus("esHealth")
 
 	// Check Elasticsearch cluster health
-	checkElasticsearchHealth()
+	checkElasticesHealth()
 
 	// Check shard allocation
 	checkShardAllocation()
 }
 
-// checkElasticsearchHealth checks the Elasticsearch cluster health status
+// checkElasticesHealth checks the Elasticsearch cluster health status
 // by making a request to /_cluster/health?pretty endpoint
-func checkElasticsearchHealth() {
+func checkElasticesHealth() {
 	common.LogFunctionEntry()
 
 	url := Config.Api_url
