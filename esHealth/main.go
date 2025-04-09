@@ -47,15 +47,15 @@ func Main(cmd *cobra.Command, args []string) {
 	api.WrapperGetServiceStatus("esHealth")
 
 	// Check Elasticsearch cluster health
-	checkElasticesHealth()
+	checkElasticsearchHealth()
 
 	// Check shard allocation
 	checkShardAllocation()
 }
 
-// checkElasticesHealth checks the Elasticsearch cluster health status
+// checkElasticsearchHealth checks the Elasticsearch cluster health status
 // by making a request to /_cluster/health?pretty endpoint
-func checkElasticesHealth() {
+func checkElasticsearchHealth() {
 	common.LogFunctionEntry()
 
 	url := Config.Api_url
