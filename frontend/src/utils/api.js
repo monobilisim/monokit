@@ -61,14 +61,30 @@ api.interceptors.response.use(
     
     console.error(`API Error: ${status} on ${url}`, error.response?.data || error.message);
     
-    // If we get a 401 error, it could mean the token is expired
-    if (error.response && error.response.status === 401) {
-      // Only log out if not on the login page already
-      if (!window.location.pathname.includes('/login')) {
-        console.log('Received 401 error, session may have expired');
-        // Mark this request as failed authentication
-        error.isAuthError = true;
+    // Add more detailed information for common network errors
+    if (error.response) {
+      switch (error.response.status) {
+        case 401:
+          // Only log out if not on the login page already
+          if (!window.location.pathname.includes('/login')) {
+            console.log('Received 401 error, session may have expired');
+            // Mark this request as failed authentication
+            error.isAuthError = true;
+          }
+          break;
+        case 502:
+          console.error('Bad Gateway (502) error - Connection to backend service failed');
+          error.userMessage = 'Unable to connect to the server. Check network configuration and server status.';
+          break;
+        case 504:
+          console.error('Gateway Timeout (504) error - Connection timed out');
+          error.userMessage = 'The connection timed out. The server might be overloaded or unavailable.';
+          break;
       }
+    } else if (error.request) {
+      // Request was made but no response received
+      console.error('No response received for request:', error.request);
+      error.userMessage = 'No response received from the server. Please check your network connection.';
     }
     
     return Promise.reject(error);
@@ -320,6 +336,52 @@ export const getAwxJobTemplates = async (hostname) => {
   }
 };
 
+// Get AWX Job Templates without requiring a host
+export const getAwxTemplatesGlobal = async () => {
+  try {
+    const response = await api.get('/awx/job-templates');
+    return response;
+  } catch (error) {
+    console.error('Error fetching global AWX job templates:', error);
+    
+    // Add more details to 502 errors
+    if (error.response && error.response.status === 502) {
+      const enhancedError = new Error('Bad Gateway (502): Unable to connect to AWX server. Please check your network and server configuration.');
+      enhancedError.originalError = error;
+      enhancedError.status = 502;
+      throw enhancedError;
+    }
+    
+    throw error;
+  }
+};
+
+// Get AWX Workflow Templates without requiring a host
+export const getAwxWorkflowTemplatesGlobal = async () => {
+  try {
+    const response = await api.get('/awx/workflow-templates');
+    return response;
+  } catch (error) {
+    console.error('Error fetching global AWX workflow templates:', error);
+    
+    // We handle this gracefully as it might not be supported by all backends
+    if (error.response && error.response.status === 404) {
+      console.log('Workflow templates endpoint not found, this may be expected');
+      return { data: [] };  // Return empty array instead of throwing
+    }
+    
+    // Add more details to 502 errors
+    if (error.response && error.response.status === 502) {
+      const enhancedError = new Error('Bad Gateway (502): Unable to connect to AWX server. Please check your network and server configuration.');
+      enhancedError.originalError = error;
+      enhancedError.status = 502;
+      throw enhancedError;
+    }
+    
+    throw error;
+  }
+};
+
 // Get AWX Job Template Details API call
 export const getAwxJobTemplateDetails = async (hostname, templateId) => {
   try {
@@ -332,19 +394,80 @@ export const getAwxJobTemplateDetails = async (hostname, templateId) => {
 };
 
 // Execute AWX Job API call
-export const executeAwxJob = async (hostname, templateId, extraVars = {}) => {
+export const executeAwxJob = async (hostname, templateId, extraVars = {}, inventoryId = null) => {
   try {
-    console.log("Sending extra vars to server:", extraVars);
+    console.log("Sending execute AWX job request for host:", hostname);
+    console.log("Template ID:", templateId);
+    console.log("Extra vars:", extraVars);
     
-    // Set a flag to indicate we're sending YAML format
-    const response = await api.post(`/hosts/${hostname}/awx-jobs/execute`, {
+    const payload = {
       template_id: templateId,
       extra_vars: extraVars,
       format: "yaml"  // Indicate that we're using YAML format
-    });
+    };
+    
+    // Always include inventory_id in the payload
+    if (inventoryId) {
+      payload.inventory_id = inventoryId;
+      console.log("Using explicit inventory ID:", inventoryId);
+    } else {
+      // Try to get inventory ID from server default
+      console.log("No inventory ID provided, using server default");
+    }
+    
+    const response = await api.post(`/hosts/${hostname}/awx-jobs/execute`, payload);
     return response;
   } catch (error) {
     console.error('Error executing AWX job template %s for host %s:', templateId, hostname, error);
+    throw error;
+  }
+};
+
+// Create a host in AWX
+export const createAwxHost = async (name, ipAddress) => {
+  try {
+    const response = await api.post('/hosts/awx', {
+      name: name,
+      ip_address: ipAddress
+    });
+    console.log('AWX host creation response:', response);
+    return response;
+  } catch (error) {
+    // Log detailed error information
+    console.error('Error creating host in AWX:', error);
+    if (error.response) {
+      console.error('Error response:', error.response);
+      console.error('Error data:', error.response.data);
+    }
+    
+    // Transform error to ensure it has a useful string representation
+    if (error.response?.data?.error && typeof error.response.data.error === 'object') {
+      const enhancedError = new Error(JSON.stringify(error.response.data.error));
+      enhancedError.originalError = error;
+      throw enhancedError;
+    }
+    throw error;
+  }
+};
+
+// Delete a host from AWX
+export const deleteAwxHost = async (hostId) => {
+  try {
+    const response = await api.delete(`/hosts/awx/${hostId}`);
+    return response;
+  } catch (error) {
+    console.error(`Error deleting host ${hostId} from AWX:`, error);
+    throw error;
+  }
+};
+
+// Get AWX job status
+export const getAwxJobStatus = async (jobId) => {
+  try {
+    const response = await api.get(`/awx/jobs/${jobId}`);
+    return response;
+  } catch (error) {
+    console.error(`Error fetching AWX job ${jobId} status:`, error);
     throw error;
   }
 };

@@ -26,14 +26,16 @@ import {
   DropdownSeparator,
   KebabToggle,
   ButtonVariant,
+  Tooltip,
 } from '@patternfly/react-core';
 import { Table, Thead, Tr, Th, Tbody, Td, ActionsColumn } from '@patternfly/react-table';
-import { ExclamationTriangleIcon } from '@patternfly/react-icons';
+import { ExclamationTriangleIcon, PlusCircleIcon } from '@patternfly/react-icons';
 import { useNavigate } from 'react-router-dom';
 import { getHosts, forceDeleteHost } from '../utils/api';
 import axios from 'axios';
 import DeleteConfirmationModal from '../components/DeleteConfirmationModal';
 import ForceDeleteConfirmationModal from '../components/ForceDeleteConfirmationModal';
+import AwxHostAdd from '../components/AwxHostAdd';
 
 const Hosts = ({ onAuthError }) => {
   const [hosts, setHosts] = useState([]);
@@ -46,6 +48,7 @@ const Hosts = ({ onAuthError }) => {
   const [selectedHosts, setSelectedHosts] = useState([]);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [isForceDeleteModalOpen, setIsForceDeleteModalOpen] = useState(false);
+  const [isAwxHostAddModalOpen, setIsAwxHostAddModalOpen] = useState(false);
   const [hostToForceDelete, setHostToForceDelete] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [alerts, setAlerts] = useState([]);
@@ -321,7 +324,7 @@ const Hosts = ({ onAuthError }) => {
                     <SearchInput
                       placeholder="Filter hosts..."
                       value={searchValue}
-                      onChange={(_, value) => setSearchValue(value)}
+                      onChange={(event, value) => setSearchValue(value)}
                       onClear={() => setSearchValue('')}
                     />
                   </ToolbarItem>
@@ -333,6 +336,17 @@ const Hosts = ({ onAuthError }) => {
                     >
                       Delete Selected ({selectedHosts.length})
                     </Button>
+                  </ToolbarItem>
+                  <ToolbarItem>
+                    <Tooltip content="Add a new host to AWX and verify its connectivity">
+                      <Button
+                        variant="primary"
+                        icon={<PlusCircleIcon />}
+                        onClick={() => navigate('/hosts/awx/add')}
+                      >
+                        Add Host to AWX
+                      </Button>
+                    </Tooltip>
                   </ToolbarItem>
                 </ToolbarContent>
               </Toolbar>
@@ -509,6 +523,32 @@ const Hosts = ({ onAuthError }) => {
         onDelete={handleForceDelete}
         hostname={hostToForceDelete}
         isDeleting={isDeleting}
+      />
+      
+      {/* AWX Host Add Modal */}
+      <AwxHostAdd
+        isOpen={isAwxHostAddModalOpen}
+        onClose={() => setIsAwxHostAddModalOpen(false)}
+        onHostAdded={(host) => {
+          // Just show a success alert, don't refresh hosts list since we're not adding to dashboard
+          if (host.awxOnly) {
+            // For AWX-only hosts (not added to dashboard)
+            addAlert(`Successfully added host "${host.hostName}" to AWX (not added to dashboard)`, AlertVariant.success);
+          } else {
+            // This branch shouldn't be reached anymore, but keeping for backward compatibility
+            addAlert(`Successfully added host "${host.name}" to AWX`, AlertVariant.success);
+            getHosts()
+              .then(response => {
+                if (response && response.data) {
+                  setHosts(Array.isArray(response.data) ? response.data : []);
+                  setFilteredHosts(Array.isArray(response.data) ? response.data : []);
+                }
+              })
+              .catch(error => {
+                console.error('Failed to refresh hosts list:', error);
+              });
+          }
+        }}
       />
     </PageSection>
   );

@@ -50,6 +50,7 @@ const AwxJobExecute = ({ isOpen, onClose, hostname, onJobLaunched = () => {} }) 
   const [templates, setTemplates] = useState([]);
   const [selectedTemplate, setSelectedTemplate] = useState('');
   const [extraVars, setExtraVars] = useState('');
+  const [inventoryId, setInventoryId] = useState('');
   const [templateVars, setTemplateVars] = useState(null);
   const [templateDetails, setTemplateDetails] = useState(null);
   const [error, setError] = useState(null);
@@ -62,6 +63,7 @@ const AwxJobExecute = ({ isOpen, onClose, hostname, onJobLaunched = () => {} }) 
       // Reset form when reopening
       setSelectedTemplate('');
       setExtraVars('');
+      setInventoryId('');
       setTemplateVars(null);
       setTemplateDetails(null);
       setError(null);
@@ -226,11 +228,21 @@ const AwxJobExecute = ({ isOpen, onClose, hostname, onJobLaunched = () => {} }) 
       
       console.log("Calling executeAwxJob with:", hostname, templateId);
       
+      // Parse inventory ID if provided
+      let awxInventoryId = null;
+      if (inventoryId && inventoryId.trim() !== '') {
+        awxInventoryId = parseInt(inventoryId.trim(), 10);
+        if (isNaN(awxInventoryId)) {
+          throw new Error("Invalid inventory ID");
+        }
+      }
+
       // Execute the job
       const response = await executeAwxJob(
         hostname, 
         templateId, 
-        parsedExtraVars
+        parsedExtraVars,
+        awxInventoryId
       );
       
       console.log("Job execution response:", response.data);
@@ -251,13 +263,32 @@ const AwxJobExecute = ({ isOpen, onClose, hostname, onJobLaunched = () => {} }) 
       
     } catch (err) {
       console.error('Error executing job:', err);
-      setError(err.response?.data?.error || err.message || 'Failed to launch job');
+      // Ensure error is always a string, not an object
+      let errorMessage;
+      try {
+        if (err.response?.data?.error) {
+          errorMessage = typeof err.response.data.error === 'object' 
+            ? JSON.stringify(err.response.data.error) 
+            : String(err.response.data.error);
+        } else if (err.message) {
+          errorMessage = err.message;
+        } else if (err.toString() !== '[object Object]') {
+          errorMessage = err.toString();
+        } else {
+          errorMessage = JSON.stringify(err);
+        }
+      } catch (e) {
+        errorMessage = 'Failed to launch job';
+      }
+      setError(errorMessage);
     } finally {
       setLoading(false);
     }
   };
   
   const isFormValid = () => {
+    // We don't actually have access to ServerConfig from the frontend
+    // Just require template selection, inventory will be validated server-side
     return selectedTemplate !== '';
   };
   
@@ -287,7 +318,7 @@ const AwxJobExecute = ({ isOpen, onClose, hostname, onJobLaunched = () => {} }) 
   };
   
   return (
-    <Modal
+  <Modal
       variant={ModalVariant.large}
       title={
         <div style={{ display: 'flex', alignItems: 'center' }}>
@@ -295,7 +326,7 @@ const AwxJobExecute = ({ isOpen, onClose, hostname, onJobLaunched = () => {} }) 
             icon={<PlayIcon style={{ color: '#0066CC' }} />} 
             style={{ marginRight: '10px' }} 
           />
-          Execute AWX Job on {hostname}
+          Execute AWX Job on {hostname} {!selectedTemplate && <span style={{fontWeight: 'normal', fontSize: '14px'}}>(host may exist in AWX only)</span>}
         </div>
       }
       isOpen={isOpen}
@@ -315,6 +346,12 @@ const AwxJobExecute = ({ isOpen, onClose, hostname, onJobLaunched = () => {} }) 
             style={{ marginBottom: '24px' }}
           >
             {error}
+            {(error.includes("inventory ID") || error.includes("Inventory matching")) && (
+              <div style={{ marginTop: '8px' }}>
+                <strong>Administrator action required:</strong> The server needs a default AWX inventory ID configured.
+                Please update the <code>default_inventory_id</code> in the server configuration file.
+              </div>
+            )}
           </Alert>
         )}
         
@@ -408,6 +445,51 @@ const AwxJobExecute = ({ isOpen, onClose, hostname, onJobLaunched = () => {} }) 
             )}
           </FormGroup>
           
+          {/* Inventory ID field */}
+          <FormGroup 
+            label={
+              <div style={{ display: 'flex', alignItems: 'center' }}>
+                <span>Inventory ID (Optional)</span>
+                <Popover
+                  headerContent={<div>AWX Inventory ID</div>}
+                  bodyContent={
+                    <div>
+                      <p>Enter the AWX Inventory ID to use for this job.</p>
+                      <p>If left empty, the server will use the default inventory configured for this host.</p>
+                    </div>
+                  }
+                >
+                  <Button variant="plain" aria-label="Help" style={{ padding: '0 8px' }}>
+                    <HelpIcon />
+                  </Button>
+                </Popover>
+              </div>
+            }
+            fieldId="inventory-id"
+            style={{ marginBottom: '20px' }}
+          >
+            <input 
+              type="text"
+              id="inventory-id"
+              name="inventory-id"
+              value={inventoryId}
+              onChange={(e) => setInventoryId(e.target.value)}
+              placeholder="Enter AWX inventory ID (optional)"
+              style={{
+                padding: '8px 12px',
+                width: '100%',
+                border: '1px solid #d2d2d2',
+                borderRadius: '3px',
+                backgroundColor: 'transparent',
+                fontSize: '14px',
+                height: '36px',
+                color: 'inherit',
+                boxShadow: '0 1px 1px rgba(0,0,0,0.05)'
+              }}
+              disabled={loading}
+            />
+          </FormGroup>
+
           <FormGroup 
             label={
               <div style={{ display: 'flex', alignItems: 'center' }}>
@@ -427,7 +509,7 @@ const AwxJobExecute = ({ isOpen, onClose, hostname, onJobLaunched = () => {} }) 
                 defaultLanguage="yaml"
                 language="yaml"
                 value={extraVars || ''}
-                onChange={value => setExtraVars(value)}
+                onChange={(value, event) => setExtraVars(value)}
                 options={{
                   minimap: { enabled: false },
                   scrollBeyondLastLine: false,

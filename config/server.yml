@@ -20,6 +20,22 @@ awx:
   password: "password123" 
   verify_ssl: false
   timeout: 30
+  # *** CRITICAL CONFIGURATION REQUIRED ***
+  # The default_inventory_id is ABSOLUTELY REQUIRED for ANY AWX operations to work.
+  # Without this, all AWX functionality (creating hosts, running jobs) will fail.
+  # 
+  # You MUST set this to a valid inventory ID from your AWX instance.
+  # To find your inventory ID:
+  # 1. Log in to AWX/Ansible Tower web interface
+  # 2. Go to Inventories
+  # 3. Select your inventory
+  # 4. The ID is in the URL: /inventories/inventory/{id}/
+  #    Example: if your URL is https://awx.example.com/#/inventories/inventory/3/
+  #             then your inventory ID is 3
+  #
+  # NOTE: The AWX API requires this value - it CANNOT be 0 or empty!
+  default_inventory_id: 2  # CHANGE THIS to your actual AWX inventory ID
+  
   host_id_map:
     # Add any static host mappings here if needed
     # Format is "hostname": "awx_host_id"

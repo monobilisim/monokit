@@ -5,10 +5,12 @@ package common
 import (
 	"bytes"
 	"crypto/rand"
+	"crypto/tls"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"regexp"
 	"slices"
@@ -219,6 +221,11 @@ func setupRoutes(r *gin.Engine, db *gorm.DB) {
 		api.GET("/hosts/:name/awx-job-templates", getAwxJobTemplates(db))
 		api.GET("/hosts/:name/awx-job-templates/:templateID", getAwxJobTemplateDetails(db))
 		api.POST("/hosts/:name/awx-jobs/execute", executeAwxJob(db))
+		api.POST("/hosts/awx", createAwxHost(db))
+		api.DELETE("/hosts/awx/:id", deleteAwxHost(db))
+		api.GET("/awx/jobs/:jobID", getAwxJobStatus(db))
+		api.GET("/awx/job-templates", getAwxTemplatesGlobal(db))
+		api.GET("/awx/workflow-templates", getAwxWorkflowTemplatesGlobal(db))
 
 		// Config endpoints - using handlers from host_config.go
 		api.GET("/hosts/:name/config", HandleGetHostConfig(db))                 // GET config - get all configs for a host
@@ -636,6 +643,311 @@ func deleteHost(db *gorm.DB) gin.HandlerFunc {
 
 		db.Find(&HostsList)
 		c.JSON(http.StatusOK, gin.H{"status": "deleted"})
+	}
+}
+
+// Create a host in AWX
+func createAwxHost(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Check if AWX is enabled
+		if !ServerConfig.Awx.Enabled {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "AWX integration is not enabled"})
+			return
+		}
+
+		// Parse request body
+		var requestData struct {
+			Name      string                 `json:"name" binding:"required"`
+			IpAddress string                 `json:"ip_address" binding:"required"`
+			ExtraVars map[string]interface{} `json:"extra_vars"`
+		}
+
+		if err := c.ShouldBindJSON(&requestData); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request: " + err.Error()})
+			return
+		}
+
+		// Create a new HTTP client with timeout
+		client := &http.Client{
+			Timeout: time.Duration(ServerConfig.Awx.Timeout) * time.Second,
+		}
+
+		// AWX API endpoint for hosts
+		awxURL := ServerConfig.Awx.Url
+		apiURL := fmt.Sprintf("%s/api/v2/hosts/", awxURL)
+
+		// Check if inventory ID is available in config
+		if ServerConfig.Awx.DefaultInventoryID <= 0 {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "No default inventory ID configured. Please set 'default_inventory_id' in the server configuration.",
+				"details": "The AWX API requires an inventory ID for creating hosts.",
+			})
+			return
+		}
+
+		// Prepare variables for AWX API
+		variables := map[string]interface{}{
+			"ansible_host": requestData.IpAddress,
+		}
+		
+		// Add any extra variables if provided
+		if len(requestData.ExtraVars) > 0 {
+			for k, v := range requestData.ExtraVars {
+				variables[k] = v
+			}
+		}
+		
+		// Convert variables to YAML string
+		variablesYaml, err := yaml.Marshal(variables)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to format variables: " + err.Error()})
+			return
+		}
+		
+		// Prepare payload for AWX API
+		payload := map[string]interface{}{
+			"name":       requestData.Name,
+			"variables":  string(variablesYaml),
+			"enabled":    true,
+			"instance_id": "",
+			"inventory":  ServerConfig.Awx.DefaultInventoryID, // Inventory is required by AWX API
+		}
+
+		payloadBytes, err := json.Marshal(payload)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to marshal payload: " + err.Error()})
+			return
+		}
+
+		// Create the request
+		req, err := http.NewRequest("POST", apiURL, bytes.NewBuffer(payloadBytes))
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create request: " + err.Error()})
+			return
+		}
+
+		// Set basic auth and headers
+		req.SetBasicAuth(ServerConfig.Awx.Username, ServerConfig.Awx.Password)
+		req.Header.Set("Content-Type", "application/json")
+
+		// Execute the request
+		resp, err := client.Do(req)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to execute request: " + err.Error()})
+			return
+		}
+		defer resp.Body.Close()
+
+		// Check response status
+		if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
+			// Read error response for debugging
+			errorBody, _ := io.ReadAll(resp.Body)
+			errorMsg := fmt.Sprintf("AWX API returned status: %d - %s", resp.StatusCode, string(errorBody))
+			fmt.Printf("AWX API error: %s\n", errorMsg)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": errorMsg})
+			return
+		}
+
+		// Parse response
+		var awxHostResponse map[string]interface{}
+		respBody, _ := io.ReadAll(resp.Body)
+		if err := json.Unmarshal(respBody, &awxHostResponse); err != nil {
+			errorMsg := fmt.Sprintf("Failed to decode response: %s. Raw response: %s", err.Error(), string(respBody))
+			fmt.Printf("AWX response parsing error: %s\n", errorMsg)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": errorMsg})
+			return
+		}
+
+		c.JSON(http.StatusCreated, awxHostResponse)
+	}
+}
+
+// Delete a host from AWX
+func deleteAwxHost(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Check if AWX is enabled
+		if !ServerConfig.Awx.Enabled {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "AWX integration is not enabled"})
+			return
+		}
+
+		// Get host ID from URL
+		hostID := c.Param("id")
+
+		// Create a new HTTP client with timeout
+		client := &http.Client{
+			Timeout: time.Duration(ServerConfig.Awx.Timeout) * time.Second,
+		}
+
+		// AWX API endpoint for deleting host
+		awxURL := ServerConfig.Awx.Url
+		apiURL := fmt.Sprintf("%s/api/v2/hosts/%s/", awxURL, hostID)
+
+		// Create the request
+		req, err := http.NewRequest("DELETE", apiURL, nil)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create request: " + err.Error()})
+			return
+		}
+
+		// Set basic auth and headers
+		req.SetBasicAuth(ServerConfig.Awx.Username, ServerConfig.Awx.Password)
+
+		// Execute the request
+		resp, err := client.Do(req)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to execute request: " + err.Error()})
+			return
+		}
+		defer resp.Body.Close()
+
+		// Check response status
+		if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
+			// Read error response for debugging
+			errorBody, _ := io.ReadAll(resp.Body)
+			errorMsg := fmt.Sprintf("AWX API returned status: %d - %s", resp.StatusCode, string(errorBody))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": errorMsg})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"status": "deleted"})
+	}
+}
+
+// Get all AWX job templates without requiring a host
+func getAwxTemplatesGlobal(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Check if AWX is enabled
+		if !ServerConfig.Awx.Enabled {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "AWX integration is not enabled"})
+			return
+		}
+
+		// Create a new HTTP client with timeout and custom transport for better error handling
+		transport := &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: !ServerConfig.Awx.VerifySSL,
+			},
+			// Add timeout settings for better diagnostics
+			DialContext: (&net.Dialer{
+				Timeout:   30 * time.Second,
+				KeepAlive: 30 * time.Second,
+			}).DialContext,
+		}
+		
+		client := &http.Client{
+			Timeout:   time.Duration(ServerConfig.Awx.Timeout) * time.Second,
+			Transport: transport,
+		}
+
+		// AWX API endpoint for job templates
+		awxURL := ServerConfig.Awx.Url
+		apiURL := fmt.Sprintf("%s/api/v2/job_templates/", awxURL)
+
+		// Create the request
+		req, err := http.NewRequest("GET", apiURL, nil)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create request: " + err.Error()})
+			return
+		}
+
+		// Set basic auth and headers
+		req.SetBasicAuth(ServerConfig.Awx.Username, ServerConfig.Awx.Password)
+		req.Header.Set("Content-Type", "application/json")
+
+		// Execute the request
+		resp, err := client.Do(req)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to execute request: " + err.Error()})
+			return
+		}
+		defer resp.Body.Close()
+
+		// Check response status
+		if resp.StatusCode != http.StatusOK {
+			// Read error response for debugging
+			errorBody, _ := io.ReadAll(resp.Body)
+			errorMsg := fmt.Sprintf("AWX API returned status: %d - %s", resp.StatusCode, string(errorBody))
+			fmt.Printf("AWX API error: %s\n", errorMsg)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": errorMsg})
+			return
+		}
+
+		// Read the response body
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read response body: " + err.Error()})
+			return
+		}
+
+		// Parse the JSON response
+		var result map[string]interface{}
+		if err := json.Unmarshal(body, &result); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to parse response: " + err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, result)
+	}
+}
+
+// Get the status of a job in AWX
+func getAwxJobStatus(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Check if AWX is enabled
+		if !ServerConfig.Awx.Enabled {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "AWX integration is not enabled"})
+			return
+		}
+
+		// Get job ID from URL
+		jobID := c.Param("jobID")
+
+		// Create a new HTTP client with timeout
+		client := &http.Client{
+			Timeout: time.Duration(ServerConfig.Awx.Timeout) * time.Second,
+		}
+
+		// AWX API endpoint for job status
+		awxURL := ServerConfig.Awx.Url
+		apiURL := fmt.Sprintf("%s/api/v2/jobs/%s/", awxURL, jobID)
+
+		// Create the request
+		req, err := http.NewRequest("GET", apiURL, nil)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create request: " + err.Error()})
+			return
+		}
+
+		// Set basic auth and headers
+		req.SetBasicAuth(ServerConfig.Awx.Username, ServerConfig.Awx.Password)
+		req.Header.Set("Content-Type", "application/json")
+
+		// Execute the request
+		resp, err := client.Do(req)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to execute request: " + err.Error()})
+			return
+		}
+		defer resp.Body.Close()
+
+		// Check response status
+		if resp.StatusCode != http.StatusOK {
+			// Read error response for debugging
+			errorBody, _ := io.ReadAll(resp.Body)
+			errorMsg := fmt.Sprintf("AWX API returned status: %d - %s", resp.StatusCode, string(errorBody))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": errorMsg})
+			return
+		}
+
+		// Parse response
+		var jobResponse map[string]interface{}
+		if err := json.NewDecoder(resp.Body).Decode(&jobResponse); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode response: " + err.Error()})
+			return
+		}
+
+		c.JSON(http.StatusOK, jobResponse)
 	}
 }
 
@@ -1350,6 +1662,80 @@ func getAwxJobTemplates(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
+// Get all AWX workflow templates without requiring a host
+func getAwxWorkflowTemplatesGlobal(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Check if AWX is enabled
+		if !ServerConfig.Awx.Enabled {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "AWX integration is not enabled"})
+			return
+		}
+
+		// Create a new HTTP client with timeout and custom transport for better error handling
+		transport := &http.Transport{
+			TLSClientConfig: &tls.Config{
+				InsecureSkipVerify: !ServerConfig.Awx.VerifySSL,
+			},
+			ResponseHeaderTimeout: time.Duration(ServerConfig.Awx.Timeout) * time.Second,
+		}
+		client := &http.Client{
+			Transport: transport,
+			Timeout:   time.Duration(ServerConfig.Awx.Timeout) * time.Second,
+		}
+
+		// AWX API endpoint for workflow templates
+		awxURL := ServerConfig.Awx.Url
+		apiURL := fmt.Sprintf("%s/api/v2/workflow_job_templates/", awxURL)
+
+		// Create the request
+		req, err := http.NewRequest("GET", apiURL, nil)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create request: " + err.Error()})
+			return
+		}
+
+		// Set basic auth and headers
+		req.SetBasicAuth(ServerConfig.Awx.Username, ServerConfig.Awx.Password)
+		req.Header.Set("Content-Type", "application/json")
+
+		// Execute the request
+		resp, err := client.Do(req)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to execute request: " + err.Error()})
+			return
+		}
+		defer resp.Body.Close()
+
+		// Check response status
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			// Read error response for debugging
+			errorBody, _ := io.ReadAll(resp.Body)
+			errorMsg := fmt.Sprintf("AWX API returned status: %d - %s", resp.StatusCode, string(errorBody))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": errorMsg})
+			return
+		}
+
+		// Parse response
+		var responseData map[string]interface{}
+		if err := json.NewDecoder(resp.Body).Decode(&responseData); err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode response: " + err.Error()})
+			return
+		}
+
+		// Extract templates array
+		var templates []interface{}
+		results, ok := responseData["results"].([]interface{})
+		if ok {
+			templates = results
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid response format from AWX"})
+			return
+		}
+
+		c.JSON(http.StatusOK, templates)
+	}
+}
+
 // executeAwxJob launches a job template on AWX for a specific host
 // @Summary Execute an AWX job template
 // @Description Launch a job template on AWX for a specific host
@@ -1368,30 +1754,18 @@ func executeAwxJob(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		hostname := c.Param("name")
 
-		// Find the host in the database
-		var host Host
-		if err := db.Where("name = ?", hostname).First(&host).Error; err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Host not found"})
-			return
-		}
-
 		// Check if AWX is enabled
 		if !ServerConfig.Awx.Enabled {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "AWX integration is not enabled"})
 			return
 		}
 
-		// Check if host has AWX ID
-		if host.AwxHostId == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Host has no AWX ID configured"})
-			return
-		}
-
                 // Parse request body
                 var requestData struct {
-                        TemplateID int                    `json:"template_id" binding:"required"`
-                        ExtraVars  map[string]interface{} `json:"extra_vars"`
-                        Format     string                 `json:"format"`
+                        TemplateID   int                    `json:"template_id" binding:"required"`
+                        ExtraVars    map[string]interface{} `json:"extra_vars"`
+                        Format       string                 `json:"format"`
+                        InventoryID  int                    `json:"inventory_id"`
                 }
 
                 if err := c.ShouldBindJSON(&requestData); err != nil {
@@ -1403,16 +1777,25 @@ func executeAwxJob(db *gorm.DB) gin.HandlerFunc {
                 fmt.Printf("Received execute AWX job request: template_id=%d, format=%s, extra_vars=%+v\n", 
                         requestData.TemplateID, requestData.Format, requestData.ExtraVars)
 
-		// Convert host ID to integer
-		awxHostID, err := strconv.Atoi(host.AwxHostId)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Invalid AWX host ID"})
-			return
-		}
-
 		// Prepare payload for AWX API
 		payload := map[string]interface{}{
-			"limit": host.Name, // Limit execution to the specific host
+			"limit": hostname, // Limit execution to the specific host
+		}
+		
+		// Inventory ID is required by AWX API
+		if requestData.InventoryID > 0 {
+			// Use inventory ID from request if provided
+			payload["inventory"] = requestData.InventoryID
+		} else if ServerConfig.Awx.DefaultInventoryID > 0 {
+			// Use default inventory ID from config if available
+			payload["inventory"] = ServerConfig.Awx.DefaultInventoryID
+		} else {
+			// No inventory ID available - this will cause an error from AWX
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "No inventory ID provided and no default configured",
+				"details": "The AWX API requires an inventory ID for job execution. Please provide an inventory_id in the request or set default_inventory_id in server config.",
+			})
+			return
 		}
 
 		// Add extra_vars if provided
@@ -1443,8 +1826,9 @@ func executeAwxJob(db *gorm.DB) gin.HandlerFunc {
                         payload["extra_vars"] = extraVarsStr
 		}
 
-		// Add host ID to the inventory hosts list
-		payload["inventory_sources"] = []int{awxHostID}
+		// Don't use inventory_sources as we're setting the inventory ID directly
+		// Commenting this out to prevent inventory mismatch errors
+		// payload["inventory_sources"] = []int{awxHostID}
 
 		// Marshal payload to JSON
 		payloadBytes, err := json.Marshal(payload)
@@ -1486,6 +1870,17 @@ func executeAwxJob(db *gorm.DB) gin.HandlerFunc {
 			// Read error response for debugging
 			errorBody, _ := io.ReadAll(resp.Body)
 			errorMsg := fmt.Sprintf("AWX API returned status: %d - %s", resp.StatusCode, string(errorBody))
+			
+			// Check for specific error messages
+			if strings.Contains(string(errorBody), "Inventory matching query does not exist") {
+				// This is likely due to missing or invalid inventory ID
+				if ServerConfig.Awx.DefaultInventoryID <= 0 {
+					errorMsg = "AWX Error: No inventory specified. Please configure default_inventory_id in server config or provide an inventory_id in the request."
+				} else {
+					errorMsg = fmt.Sprintf("AWX Error: Inventory with ID %d does not exist. Please update the inventory_id in your request or the default_inventory_id in server config.", ServerConfig.Awx.DefaultInventoryID)
+				}
+			}
+			
 			c.JSON(http.StatusInternalServerError, gin.H{"error": errorMsg})
 			return
 		}
