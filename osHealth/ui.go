@@ -2,7 +2,6 @@ package osHealth
 
 import (
 	"fmt"
-	"strconv"
 	"strings"
 
 	"github.com/monobilisim/monokit/common"
@@ -89,8 +88,6 @@ func NewHealthData() *HealthData {
 func (h *HealthData) RenderCompact() string {
 	var sb strings.Builder
 	
-	// We'll use the common display utilities instead of defining styles here
-		
 	// Disk Usage section
 	sb.WriteString(common.SectionTitle("Disk Usage"))
 	sb.WriteString("\n")
@@ -99,8 +96,8 @@ func (h *HealthData) RenderCompact() string {
 	for _, disk := range h.Disk {
 		isSuccess := disk.UsedPct <= OsHealthConfig.Part_use_limit
 		
-		limits := strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64) + "%"
-		current := strconv.FormatFloat(disk.UsedPct, 'f', 0, 64) + "%"
+		limits := fmt.Sprintf("%.0f%%", OsHealthConfig.Part_use_limit)
+		current := fmt.Sprintf("%.0f%%", disk.UsedPct)
 		
 		sb.WriteString(common.StatusListItem(
 			disk.Mountpoint,

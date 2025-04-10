@@ -2,7 +2,6 @@ package ui
 
 import (
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
 
 // SingleBoxModel represents a simple non-scrollable box UI model
@@ -51,11 +50,8 @@ func (m SingleBoxModel) View() string {
 		return "Initializing..."
 	}
 
-	// Main box style with rounded borders
-	boxStyle := lipgloss.NewStyle().
-		BorderStyle(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("#7D56F4")). // Purple border like in the screenshot
-		Padding(0).
+	// Main box style with rounded borders - reuse existing BoxStyle
+	boxStyle := BoxStyle.Copy().
 		Width(m.termWidth - 4)
 	
 	// Format content with appropriate spacing

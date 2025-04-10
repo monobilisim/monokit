@@ -3,8 +3,6 @@ package ui
 import (
 	"fmt"
 	"strings"
-
-	"github.com/charmbracelet/lipgloss"
 )
 
 // StatsPanel represents a box containing a collection of key-value statistics
@@ -90,11 +88,7 @@ func (p *StatusPanel) Render() string {
 		p.Title, 
 		FormatStatusText(p.Status, p.IsActive))
 	
-	titleStyle := lipgloss.NewStyle().
-		Bold(true).
-		BorderStyle(lipgloss.NormalBorder()).
-		BorderBottom(true).
-		PaddingLeft(1).
+	titleStyle := TitleStyle.Copy().
 		PaddingRight(1)
 	
 	sb.WriteString(titleStyle.Render(titleStatus))

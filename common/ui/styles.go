@@ -6,19 +6,20 @@ import (
 	"fmt"
 
 	"github.com/charmbracelet/lipgloss"
+	"github.com/monobilisim/monokit/common"
 )
 
 var (
-	// Colors
-	StatusActiveColor   = lipgloss.Color("#00FF00") // Bright green for ACTIVE
-	StatusInactiveColor = lipgloss.Color("#FF0000") // Bright red for INACTIVE
-	HeaderColor         = lipgloss.Color("#7D56F4") // Purple like in the screenshot
-	SectionTitleColor   = lipgloss.Color("#6B97F7") // Light Blue
+	// Colors - reuse existing color definitions from common package
+	StatusActiveColor   = common.SuccessColor
+	StatusInactiveColor = common.ErrorColor
+	HeaderColor         = common.PrimaryColor
+	SectionTitleColor   = common.SecondaryColor
 	InfoColor           = lipgloss.Color("#FFB946") // Orange/Yellow
-	SuccessColor        = lipgloss.Color("#00FF00") // Same green as ACTIVE
-	WarningColor        = lipgloss.Color("#F5B041") // Yellow
-	ErrorColor          = lipgloss.Color("#FF0000") // Same red as INACTIVE
-	NormalTextColor     = lipgloss.Color("#FFFFFF") // White
+	SuccessColor        = common.SuccessColor
+	WarningColor        = common.WarningColor
+	ErrorColor          = common.ErrorColor
+	NormalTextColor     = common.NormalTextColor
 
 	// Styles
 	TitleStyle = lipgloss.NewStyle().

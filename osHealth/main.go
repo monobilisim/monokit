@@ -76,8 +76,7 @@ func collectHealthData(version string) *HealthData {
 // displayBoxUI displays the health data in a nice box UI
 func displayBoxUI(healthData *HealthData) {
 	// Set up the title and content
-	titleStyle := common.NewTitleStyle()
-	title := titleStyle.Render("monokit osHealth")
+	title := "monokit osHealth"
 	content := healthData.RenderAll()
 	
 	// Format and print the output using common display utilities
