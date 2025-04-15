@@ -1646,6 +1646,25 @@ func getAwxJobTemplates(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		// Robust, case-insensitive, trimmed lookup for "manual-install-monokit-client"
+		var foundTemplate *gin.H
+		var availableNames []string
+		for _, template := range responseData.Results {
+			availableNames = append(availableNames, template.Name)
+			if strings.EqualFold(strings.TrimSpace(template.Name), "manual-install-monokit-client") {
+				t := gin.H{
+					"id":          template.ID,
+					"name":        template.Name,
+					"description": template.Description,
+					"url":         template.URL,
+				}
+				foundTemplate = &t
+			}
+		}
+		if foundTemplate == nil {
+			fmt.Printf("Job template 'manual-install-monokit-client' not found. Available templates: %v\n", availableNames)
+		}
+
 		// Process templates for frontend display
 		templates := []gin.H{}
 		for _, template := range responseData.Results {
