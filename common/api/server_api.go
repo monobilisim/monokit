@@ -2291,7 +2291,7 @@ func submitHostLog(db *gorm.DB) gin.HandlerFunc {
 
 			// Use a batch approach instead of a single large delete
 			batchSize := 500
-			deleted := 0
+			var deleted int
 			for deleted < int(toDelete) {
 				// Calculate current batch size
 				currentBatch := batchSize
