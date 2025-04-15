@@ -2288,33 +2288,36 @@ func submitHostLog(db *gorm.DB) gin.HandlerFunc {
 		if total >= 10000 {
 			// Calculate how many logs to delete
 			toDelete := total - 9999 // This ensures we'll have 9999 logs after deletion, allowing the new one to be the 10000th
-			
+
 			// Use a batch approach instead of a single large delete
 			batchSize := 500
-			for deleted := 0; deleted < int(toDelete); deleted += batchSize {
+			deleted := 0
+			for deleted < int(toDelete) {
 				// Calculate current batch size
 				currentBatch := batchSize
 				if deleted+batchSize > int(toDelete) {
 					currentBatch = int(toDelete) - deleted
 				}
-				
+
 				// Get IDs of logs to delete in this batch
 				var logIds []uint
 				if err := db.Model(&HostLog{}).Where("deleted_at IS NULL").Order("timestamp ASC").Limit(currentBatch).Pluck("id", &logIds).Error; err != nil {
 					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to identify old logs"})
 					return
 				}
-				
+
 				// Skip if no logs found
 				if len(logIds) == 0 {
 					break
 				}
-				
+
 				// Delete logs by their IDs directly (avoids subquery)
 				if err := db.Where("id IN ?", logIds).Delete(&HostLog{}).Error; err != nil {
 					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete old logs"})
 					return
 				}
+
+				deleted += currentBatch
 			}
 		}
 
