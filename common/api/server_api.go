@@ -1649,32 +1649,81 @@ func getAwxJobTemplates(db *gorm.DB) gin.HandlerFunc {
 		// Robust, case-insensitive, trimmed lookup for "manual-install-monokit-client"
 		var foundTemplate *gin.H
 		var availableNames []string
-		for _, template := range responseData.Results {
-			availableNames = append(availableNames, template.Name)
-			if strings.EqualFold(strings.TrimSpace(template.Name), "manual-install-monokit-client") {
-				t := gin.H{
+		templates := []gin.H{}
+
+		// Pagination loop
+		nextURL := apiURL
+		client := &http.Client{
+			Timeout: time.Duration(ServerConfig.Awx.Timeout) * time.Second,
+		}
+		for nextURL != "" {
+			req, err := http.NewRequest("GET", nextURL, nil)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create request: " + err.Error()})
+				return
+			}
+			req.SetBasicAuth(ServerConfig.Awx.Username, ServerConfig.Awx.Password)
+			req.Header.Set("Content-Type", "application/json")
+
+			resp, err := client.Do(req)
+			if err != nil {
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to execute request: " + err.Error()})
+				return
+			}
+			if resp.StatusCode != http.StatusOK {
+				errorBody, _ := io.ReadAll(resp.Body)
+				resp.Body.Close()
+				errorMsg := fmt.Sprintf("AWX API returned status: %d - %s", resp.StatusCode, string(errorBody))
+				c.JSON(http.StatusInternalServerError, gin.H{"error": errorMsg})
+				return
+			}
+
+			var responseData struct {
+				Count    int    `json:"count"`
+				Next     string `json:"next"`
+				Previous string `json:"previous"`
+				Results  []struct {
+					ID          int    `json:"id"`
+					Name        string `json:"name"`
+					Description string `json:"description"`
+					URL         string `json:"url"`
+				} `json:"results"`
+			}
+			if err := json.NewDecoder(resp.Body).Decode(&responseData); err != nil {
+				resp.Body.Close()
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode response: " + err.Error()})
+				return
+			}
+			resp.Body.Close()
+
+			for _, template := range responseData.Results {
+				availableNames = append(availableNames, template.Name)
+				templateData := gin.H{
 					"id":          template.ID,
 					"name":        template.Name,
 					"description": template.Description,
 					"url":         template.URL,
 				}
-				foundTemplate = &t
+				templates = append(templates, templateData)
+				if foundTemplate == nil && strings.EqualFold(strings.TrimSpace(template.Name), "manual-install-monokit-client") {
+					t := templateData
+					foundTemplate = &t
+				}
 			}
-		}
-		if foundTemplate == nil {
-			fmt.Printf("Job template 'manual-install-monokit-client' not found. Available templates: %v\n", availableNames)
+
+			// If there is a next page, follow it
+			nextURL = ""
+			if responseData.Next != "" {
+				if strings.HasPrefix(responseData.Next, "/") {
+					nextURL = strings.TrimRight(awxURL, "/") + responseData.Next
+				} else if strings.HasPrefix(responseData.Next, "http") {
+					nextURL = responseData.Next
+				}
+			}
 		}
 
-		// Process templates for frontend display
-		templates := []gin.H{}
-		for _, template := range responseData.Results {
-			templateData := gin.H{
-				"id":          template.ID,
-				"name":        template.Name,
-				"description": template.Description,
-				"url":         template.URL,
-			}
-			templates = append(templates, templateData)
+		if foundTemplate == nil {
+			fmt.Printf("Job template 'manual-install-monokit-client' not found. Available templates: %v\n", availableNames)
 		}
 
 		c.JSON(http.StatusOK, templates)
