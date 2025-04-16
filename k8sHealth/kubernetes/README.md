@@ -61,7 +61,7 @@ kubectl apply -k /path/to/monokit/k8sHealth/kubernetes
 
 This configuration uses a CronJob for periodic monitoring which:
 
-- Runs k8sHealth checks on a scheduled basis (default: every 30 minutes)
+- Runs k8sHealth checks on a scheduled basis (default: every 2 minutes)
 - Consumes fewer resources than a continuous deployment
 - Is ideal for cluster health checks that don't require real-time monitoring
 - Creates a new pod for each execution and cleans up automatically
