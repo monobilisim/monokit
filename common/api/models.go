@@ -24,14 +24,16 @@ type Server struct {
 
 // AwxConfig represents AWX connection settings
 type AwxConfig struct {
-	Enabled           bool              `mapstructure:"enabled"`
-	Url               string            `mapstructure:"url"`
-	Username          string            `mapstructure:"username"`
-	Password          string            `mapstructure:"password"`
-	VerifySSL         bool              `mapstructure:"verify_ssl"`
-	Timeout           int               `mapstructure:"timeout"`
-	HostIdMap         map[string]string `mapstructure:"host_id_map"`
+	Enabled            bool              `mapstructure:"enabled"`
+	Url                string            `mapstructure:"url"`
+	Username           string            `mapstructure:"username"`
+	Password           string            `mapstructure:"password"`
+	VerifySSL          bool              `mapstructure:"verify_ssl"`
+	Timeout            int               `mapstructure:"timeout"`
+	HostIdMap          map[string]string `mapstructure:"host_id_map"`
 	DefaultInventoryID int               `mapstructure:"default_inventory_id"`
+	// Map of template names to IDs
+	TemplateIDs        map[string]int    `mapstructure:"template_ids"`
 }
 
 // Host represents a monitored host
