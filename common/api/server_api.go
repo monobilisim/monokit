@@ -12,14 +12,14 @@ import (
 	"io"
 	"net"
 	"net/http"
-	"os"
 	"regexp"
 	"runtime"
 	"slices"
 	"strconv"
 	"strings"
 	"time"
-
+	
+	commonPkg "github.com/monobilisim/monokit/common"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
 	_ "github.com/monobilisim/monokit/docs"
@@ -817,11 +817,11 @@ func createAwxHost(db *gorm.DB) gin.HandlerFunc {
 		// Extract AWX host ID
 		awxHostID, ok := awxHostResponse["id"].(float64)
 		if !ok {
-   LogDebug("Warning: Couldn't extract AWX host ID from response: %+v", awxHostResponse)
+   commonPkg.LogDebug(fmt.Sprintf("Warning: Couldn't extract AWX host ID from response: %+v", awxHostResponse))
 		}
 		
 		// Now, create the host in the local database
-  LogDebug("Creating local database entry for host: %s", requestData.Name)
+  commonPkg.LogDebug(fmt.Sprintf("Creating local database entry for host: %s", requestData.Name))
 		
 		// Create the host in the local database
 		localHost := Host{
@@ -2059,7 +2059,7 @@ func getAwxWorkflowTemplatesGlobal(db *gorm.DB) gin.HandlerFunc {
 func executeAwxJob(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		hostname := c.Param("name")
-  LogDebug("Executing AWX job for host: %s", hostname)
+  commonPkg.LogDebug(fmt.Sprintf("Executing AWX job for host: %s", hostname))
 
 		// Check if host exists
 		var host Host
@@ -2115,7 +2115,7 @@ func executeAwxJob(db *gorm.DB) gin.HandlerFunc {
 			// Check if we have a template ID for this name in the configuration
 			if ServerConfig.Awx.TemplateIDs != nil {
 				if id, exists := ServerConfig.Awx.TemplateIDs[requestData.TemplateName]; exists {
-     LogDebug("Found template ID %d for name '%s' in configuration", id, requestData.TemplateName)
+     commonPkg.LogDebug(fmt.Sprintf("Found template ID %d for name '%s' in configuration", id, requestData.TemplateName))
 					requestData.TemplateID = id
 				} else {
 					// Check for common aliases
@@ -2124,7 +2124,7 @@ func executeAwxJob(db *gorm.DB) gin.HandlerFunc {
 					// Try some common alternative names
 					if templateName == "client" || templateName == "monokit-client" {
 						if id, exists := ServerConfig.Awx.TemplateIDs["manual-install-monokit-client"]; exists {
-       LogDebug("Using template ID %d for 'manual-install-monokit-client'", id)
+       commonPkg.LogDebug(fmt.Sprintf("Using template ID %d for 'manual-install-monokit-client'", id))
 							requestData.TemplateID = id
 						}
 					}
@@ -2133,7 +2133,7 @@ func executeAwxJob(db *gorm.DB) gin.HandlerFunc {
 			
 			// If we still don't have a template ID, report an error
 			if requestData.TemplateID <= 0 {
-    LogDebug("No template ID found for name: %s", requestData.TemplateName)
+    commonPkg.LogDebug(fmt.Sprintf("No template ID found for name: %s", requestData.TemplateName))
 				
 				// Provide a helpful message listing available templates
 				var availableTemplates []string
@@ -2153,10 +2153,10 @@ func executeAwxJob(db *gorm.DB) gin.HandlerFunc {
 		// If no specific template was provided, use "manual-install-monokit-client" by default
 		if requestData.TemplateID <= 0 && requestData.TemplateName == "" {
 			if id, exists := ServerConfig.Awx.TemplateIDs["manual-install-monokit-client"]; exists {
-    LogDebug("Using default 'manual-install-monokit-client' template ID: %d", id)
+    commonPkg.LogDebug(fmt.Sprintf("Using default 'manual-install-monokit-client' template ID: %d", id))
 				requestData.TemplateID = id
 			} else {
-    LogDebug("No template ID configured for 'manual-install-monokit-client'")
+    commonPkg.LogDebug("No template ID configured for 'manual-install-monokit-client'")
 				
 				// Provide a helpful message listing available templates
 				var availableTemplates []string
@@ -2175,12 +2175,12 @@ func executeAwxJob(db *gorm.DB) gin.HandlerFunc {
 		
 		// Validate we have a template ID
 		if requestData.TemplateID <= 0 {
-   LogDebug("No template ID or name provided")
+   commonPkg.LogDebug("No template ID or name provided")
 			c.JSON(http.StatusBadRequest, gin.H{"error": "No template_id or template_name provided"})
 			return
 		}
 
-  LogDebug("Will execute template_id=%d for host %s", requestData.TemplateID, hostname)
+  commonPkg.LogDebug(fmt.Sprintf("Will execute template_id=%d for host %s", requestData.TemplateID, hostname))
 
 		// Check host IP address for local network
 		if host.IpAddress == "" {
@@ -2315,15 +2315,15 @@ func executeAwxJob(db *gorm.DB) gin.HandlerFunc {
 		// AWX API endpoint for launching a job template - ensure URL is properly formatted
 		awxURL := strings.TrimRight(ServerConfig.Awx.Url, "/")
 		apiURL := fmt.Sprintf("%s/api/v2/job_templates/%d/launch/", awxURL, requestData.TemplateID)
-  LogDebug("Calling AWX API: %s", apiURL)
+  commonPkg.LogDebug(fmt.Sprintf("Calling AWX API: %s", apiURL))
 
 		// Create the request with complete debugging
-  LogDebug("Preparing to execute AWX job template ID: %d for host: %s", requestData.TemplateID, hostname)
-  LogDebug("AWX API URL: %s", apiURL)
-  LogDebug("Request payload: %s", string(payloadBytes))
+  commonPkg.LogDebug(fmt.Sprintf("Preparing to execute AWX job template ID: %d for host: %s", requestData.TemplateID, hostname))
+  commonPkg.LogDebug(fmt.Sprintf("AWX API URL: %s", apiURL))
+  commonPkg.LogDebug(fmt.Sprintf("Request payload: %s", string(payloadBytes)))
 		
 		// Simple log message about which template we're using
-  LogDebug("Using template ID %d from configuration", requestData.TemplateID)
+  commonPkg.LogDebug(fmt.Sprintf("Using template ID %d from configuration", requestData.TemplateID))
 
 		req, err := http.NewRequest("POST", apiURL, bytes.NewBuffer(payloadBytes))
 		if err != nil {
