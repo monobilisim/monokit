@@ -1,0 +1,35 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: k8shealth-cronjob
+spec:
+  schedule: "*/2 * * * *"  # Run every 2 minutes
+  jobTemplate:
+    spec:
+      template:
+        spec:
+          serviceAccountName: k8shealth-sa
+          containers:
+          - name: k8shealth
+            image: ghcr.io/monobilisim/monokit
+            command: 
+            - "monokit"
+            - "k8sHealth"
+            env:
+            - name: MONOKIT_NOCOLOR
+              value: "true"
+            volumeMounts:
+            - name: config-volume
+              mountPath: /etc/mono/k8s.yml
+              subPath: k8s.yml
+            - name: global-config-volume
+              mountPath: /etc/mono/global.yml
+              subPath: global.yml
+          volumes:
+          - name: config-volume
+            configMap:
+              name: k8shealth-config
+          - name: global-config-volume
+            configMap:
+              name: monokit-global-config
+          restartPolicy: OnFailure

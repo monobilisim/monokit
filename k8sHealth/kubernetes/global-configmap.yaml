@@ -1,0 +1,29 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: monokit-global-config
+data:
+  global.yml: |
+    identifier: k8s-monitor
+
+    alarm:
+      enabled: true
+      interval: 3
+      webhook_urls:
+        - https://hooks.slack.com/services/YOUR_SLACK_WEBHOOK_URL
+      
+      bot:
+        enabled: false
+        alarm_url: ""
+        email: ""
+        api_key: ""
+        user_emails: []
+
+    redmine:
+      api_key: ""
+      project_id: ""
+      url: ""
+      status_id_closed: 5
+      status_id: 1
+      tracker_id: 1
+      priority_id: 4

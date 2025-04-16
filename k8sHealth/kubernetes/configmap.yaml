@@ -1,0 +1,15 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: k8shealth-config
+data:
+  k8s.yml: |
+    k8s:
+      floating_ips:
+        - YOUR_FLOATING_IP_1
+      ingress_floating_ips:
+        - YOUR_INGRESS_IP_1
+    
+    # Alarm configurations
+    send_alarm: true
+    send_dm_alarm: true

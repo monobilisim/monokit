@@ -166,6 +166,38 @@ If you use Monokit on a place where there is no proper color support, you can di
 
 ---
 
+## Kubernetes Deployment
+
+Some components of monokit, like `k8sHealth`, can be deployed directly in Kubernetes. We've provided Kubernetes manifests and instructions to help you deploy these components in your cluster.
+
+### k8sHealth in Kubernetes
+
+To deploy k8sHealth in a Kubernetes cluster:
+
+1. Go to the `k8sHealth/kubernetes/` directory
+2. Update the `configmap.yaml` with your specific configurations
+3. Run `./deploy.sh` to deploy all resources
+
+The deployment includes:
+- RBAC resources for appropriate permissions
+- ConfigMap for configuration
+- Deployment or CronJob (configurable) for running k8sHealth
+
+For more details, see the [k8sHealth Kubernetes README](k8sHealth/kubernetes/README.md).
+
+### Docker Images
+
+Docker images for monokit are automatically built and published to GitHub Container Registry (ghcr.io) through GitHub Actions. These images are built for multiple architectures (amd64 and arm64), so they'll work on both Intel/AMD and ARM-based systems including Raspberry Pi.
+
+You can use these images in your Kubernetes deployments:
+
+```yaml
+image: ghcr.io/monobilisim/monokit:latest  # Latest stable release
+# OR
+image: ghcr.io/monobilisim/monokit:1.2.3   # Specific version
+```
+
+---
 
 ## Building
 
