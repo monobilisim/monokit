@@ -1,7 +1,7 @@
 FROM --platform=$BUILDPLATFORM golang:1.24-alpine AS builder
 
 # Install make and other build dependencies
-RUN apk add --no-cache make git bash
+RUN apk add --no-cache make git bash binutils
 
 WORKDIR /app
 
