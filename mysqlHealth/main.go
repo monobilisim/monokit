@@ -52,6 +52,10 @@ func Main(cmd *cobra.Command, args []string) {
 	common.SplitSection("Number of Processes:")
 
 	CheckProcessCount()
+	
+	common.SplitSection("Certification Waiting Processes:")
+	
+	CheckCertificationWaiting()
 
 	if DbHealthConfig.Mysql.Cluster.Enabled {
 		common.SplitSection("Cluster Status:")

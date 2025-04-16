@@ -379,6 +379,53 @@ func CheckDB() {
 	}
 }
 
+func CheckCertificationWaiting() {
+	rows, err := Connection.Query("SELECT User, Host, db, State, Info, Time from INFORMATION_SCHEMA.PROCESSLIST where State = 'Waiting for certification' AND Time > 60")
+	if err != nil {
+		common.LogError("Error querying database for waiting processes: " + err.Error())
+		return
+	}
+	defer rows.Close()
+
+	var waitingCount int
+	var waitingProcesses []string
+
+	for rows.Next() {
+		var user, host, db, state, info sql.NullString
+		var time int
+		
+		if err := rows.Scan(&user, &host, &db, &state, &info, &time); err != nil {
+			common.LogError("Error scanning row: " + err.Error())
+			continue
+		}
+		
+		waitingCount++
+		processInfo := fmt.Sprintf("User: %s, Host: %s, DB: %s, Time: %d seconds", 
+			user.String, host.String, db.String, time)
+		waitingProcesses = append(waitingProcesses, processInfo)
+	}
+
+	if waitingCount > 0 {
+		message := fmt.Sprintf("Found %d processes waiting for certification for more than 60 seconds", waitingCount)
+		common.AlarmCheckDown("certification_waiting", message, false, "", "")
+		
+		common.PrettyPrintStr("Long waiting certification processes", false, fmt.Sprintf("%d", waitingCount))
+		
+		// Log all waiting processes to the error log
+		for _, process := range waitingProcesses {
+			common.LogError("Process waiting for certification: " + process)
+		}
+		
+		// Show first few processes in the output
+		for i := 0; i < len(waitingProcesses) && i < 3; i++ {
+			common.PrettyPrintStr(fmt.Sprintf("- Process %d", i+1), false, waitingProcesses[i])
+		}
+	} else {
+		common.AlarmCheckUp("certification_waiting", "No processes waiting for certification for more than 60 seconds", false)
+		common.PrettyPrintStr("Long waiting certification processes", true, "0")
+	}
+}
+
 func checkPMM() {
 	notInstalled := `
 dpkg-query: package 'pmm2-client' is not installed and no information is available
