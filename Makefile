@@ -65,7 +65,10 @@ bin/monokit: .FORCE
 	@rm -f bin/monokit
 	@rm -rf common/api/frontend/build
 	CGO_ENABLED=0 go build -tags "" -o bin/monokit
-	strip bin/monokit
+	# Only strip when not cross-compiling
+	if [ "$(shell go env GOOS)" = "$(shell go env GOHOSTOS)" ] && [ "$(shell go env GOARCH)" = "$(shell go env GOHOSTARCH)" ]; then \
+		strip bin/monokit || true; \
+	fi
 	@echo "$(GREEN)Build complete: bin/monokit$(RESET)"
 
 # Build binary with API (includes frontend)
@@ -74,7 +77,10 @@ bin/monokit-with-api: .FORCE
 	@mkdir -p bin
 	@rm -f bin/monokit
 	CGO_ENABLED=0 go build -tags "with_api" -o bin/monokit
-	strip bin/monokit
+	# Only strip when not cross-compiling
+	if [ "$(shell go env GOOS)" = "$(shell go env GOHOSTOS)" ] && [ "$(shell go env GOARCH)" = "$(shell go env GOHOSTARCH)" ]; then \
+		strip bin/monokit || true; \
+	fi
 	@echo "$(GREEN)Build complete: bin/monokit (with API)$(RESET)"
 
 # Install minimal build
