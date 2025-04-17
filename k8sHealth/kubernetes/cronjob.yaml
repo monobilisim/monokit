@@ -9,6 +9,15 @@ spec:
       template:
         spec:
           serviceAccountName: k8shealth-sa
+          initContainers:
+          - name: init-kubeconfig
+            image: busybox
+            command: ['sh', '-c', 'mkdir -p /root/.kube && touch /root/.kube/config && chmod 600 /root/.kube/config && rm -f /etc/mono/client.yml']
+            volumeMounts:
+            - name: kubeconfig-dir
+              mountPath: /root/.kube
+            - name: etc-mono-dir
+              mountPath: /etc/mono
           containers:
           - name: k8shealth
             image: ghcr.io/monobilisim/monokit
@@ -25,6 +34,10 @@ spec:
             - name: global-config-volume
               mountPath: /etc/mono/global.yml
               subPath: global.yml
+            - name: kubeconfig-dir
+              mountPath: /root/.kube
+            - name: etc-mono-dir
+              mountPath: /etc/mono
           volumes:
           - name: config-volume
             configMap:
@@ -32,4 +45,8 @@ spec:
           - name: global-config-volume
             configMap:
               name: monokit-global-config
+          - name: kubeconfig-dir
+            emptyDir: {}
+          - name: etc-mono-dir
+            emptyDir: {}
           restartPolicy: OnFailure
