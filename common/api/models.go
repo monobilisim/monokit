@@ -33,7 +33,11 @@ type AwxConfig struct {
 	HostIdMap          map[string]string `mapstructure:"host_id_map"`
 	DefaultInventoryID int               `mapstructure:"default_inventory_id"`
 	// Map of template names to IDs
-	TemplateIDs        map[string]int    `mapstructure:"template_ids"`
+	TemplateIDs map[string]int `mapstructure:"template_ids"`
+	// Map of workflow template names to IDs
+	WorkflowTemplateIDs map[string]int `mapstructure:"workflow_template_ids"`
+	// Default workflow template ID to use if none specified
+	DefaultWorkflowTemplateID int `mapstructure:"default_workflow_template_id"`
 }
 
 // Host represents a monitored host
@@ -56,6 +60,7 @@ type Host struct {
 	Groups              string    `json:"groups"`
 	UpForDeletion       bool      `json:"upForDeletion"`
 	Inventory           string    `json:"inventory"`
+	AwxOnly             bool      `json:"awx_only"` // If true, this host is only in AWX and should not be shown in dashboard
 }
 
 // Inventory represents a collection of hosts

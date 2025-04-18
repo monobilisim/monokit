@@ -56,10 +56,9 @@ const AwxJobExecute = ({ isOpen, onClose, hostname, onJobLaunched = () => {} }) 
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
   
-  // Fetch templates from AWX API when the modal opens
+  // Use hardcoded template IDs
   useEffect(() => {
     if (isOpen && hostname) {
-      fetchTemplates();
       // Reset form when reopening
       setSelectedTemplate('');
       setExtraVars('');
@@ -69,6 +68,16 @@ const AwxJobExecute = ({ isOpen, onClose, hostname, onJobLaunched = () => {} }) 
       setError(null);
       setSuccess(null);
       console.log("Form reset, extraVars set to empty string");
+      
+      // Use the hardcoded template IDs you provided
+      const templates = [
+        { id: 107, name: "manual-check-ping" },
+        { id: 95, name: "workflow-manual-setup-fresh" },
+        { id: 258, name: "manual-install-monokit-client" }
+      ];
+      
+      console.log("Using hardcoded template IDs:", templates);
+      setTemplates(templates);
     }
   }, [isOpen, hostname]);
   
@@ -81,22 +90,6 @@ const AwxJobExecute = ({ isOpen, onClose, hostname, onJobLaunched = () => {} }) 
       setTemplateDetails(null);
     }
   }, [selectedTemplate]);
-  
-  const fetchTemplates = async () => {
-    setTemplateLoading(true);
-    setError(null);
-    
-    try {
-      const response = await getAwxJobTemplates(hostname);
-      setTemplates(response.data || []);
-    } catch (err) {
-      console.error('Error fetching job templates:', err);
-      setError(err.response?.data?.error || err.message || 'Failed to fetch job templates');
-      setTemplates([]);
-    } finally {
-      setTemplateLoading(false);
-    }
-  };
   
   const fetchTemplateDetails = async (templateId) => {
     if (!templateId) {
@@ -265,22 +258,45 @@ const AwxJobExecute = ({ isOpen, onClose, hostname, onJobLaunched = () => {} }) 
       console.error('Error executing job:', err);
       // Ensure error is always a string, not an object
       let errorMessage;
+      let detailMessage = '';
+      
       try {
-        if (err.response?.data?.error) {
-          errorMessage = typeof err.response.data.error === 'object' 
-            ? JSON.stringify(err.response.data.error) 
-            : String(err.response.data.error);
+        // Check for structured error response
+        if (err.response?.data) {
+          const errData = err.response.data;
+          
+          // Use the title field if available (from our custom error format)
+          if (errData.title && errData.error) {
+            errorMessage = `${errData.title}: ${errData.error}`;
+            if (errData.detail) {
+              detailMessage = errData.detail;
+            }
+          } else if (errData.error) {
+            // Standard error format
+            errorMessage = typeof errData.error === 'object' 
+              ? JSON.stringify(errData.error) 
+              : String(errData.error);
+            
+            if (errData.detail) {
+              detailMessage = errData.detail;
+            }
+          } else if (err.message) {
+            errorMessage = err.message;
+          } else if (err.toString() !== '[object Object]') {
+            errorMessage = err.toString();
+          } else {
+            errorMessage = JSON.stringify(err);
+          }
         } else if (err.message) {
           errorMessage = err.message;
-        } else if (err.toString() !== '[object Object]') {
-          errorMessage = err.toString();
         } else {
-          errorMessage = JSON.stringify(err);
+          errorMessage = 'Failed to launch job';
         }
       } catch (e) {
         errorMessage = 'Failed to launch job';
       }
-      setError(errorMessage);
+      
+      setError(detailMessage ? `${errorMessage} - ${detailMessage}` : errorMessage);
     } finally {
       setLoading(false);
     }
@@ -320,13 +336,13 @@ const AwxJobExecute = ({ isOpen, onClose, hostname, onJobLaunched = () => {} }) 
   return (
   <Modal
       variant={ModalVariant.large}
-      title={
+      title={`Execute AWX Job on ${hostname}${!selectedTemplate ? ' (host may exist in AWX only)' : ''}`}
+      titleIconVariant={
         <div style={{ display: 'flex', alignItems: 'center' }}>
           <CenteredIcon 
             icon={<PlayIcon style={{ color: '#0066CC' }} />} 
             style={{ marginRight: '10px' }} 
           />
-          Execute AWX Job on {hostname} {!selectedTemplate && <span style={{fontWeight: 'normal', fontSize: '14px'}}>(host may exist in AWX only)</span>}
         </div>
       }
       isOpen={isOpen}
@@ -372,7 +388,7 @@ const AwxJobExecute = ({ isOpen, onClose, hostname, onJobLaunched = () => {} }) 
               <div style={{ display: 'flex', alignItems: 'center' }}>
                 <span>Job Template</span>
                 <Popover
-                  headerContent={<div>About Job Templates</div>}
+                  headerContent="About Job Templates"
                   bodyContent={
                     <div>
                       <p>Select from available AWX job templates to execute on this host.</p>
@@ -451,7 +467,7 @@ const AwxJobExecute = ({ isOpen, onClose, hostname, onJobLaunched = () => {} }) 
               <div style={{ display: 'flex', alignItems: 'center' }}>
                 <span>Inventory ID (Optional)</span>
                 <Popover
-                  headerContent={<div>AWX Inventory ID</div>}
+                  headerContent="AWX Inventory ID"
                   bodyContent={
                     <div>
                       <p>Enter the AWX Inventory ID to use for this job.</p>
@@ -558,7 +574,7 @@ const AwxJobExecute = ({ isOpen, onClose, hostname, onJobLaunched = () => {} }) 
               {templateVars && templateVars.extra_vars && (
                 <SplitItem>
                   <Popover
-                    headerContent={<div>Default Template Variables</div>}
+                    headerContent="Default Template Variables"
                     bodyContent={
                       <div style={{ maxWidth: '500px', maxHeight: '400px', overflow: 'auto' }}>
                         <Card isCompact>

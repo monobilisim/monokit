@@ -18,7 +18,6 @@ import {
   ModalVariant,
   Checkbox,
   Alert,
-  AlertActionCloseButton,
   AlertGroup,
   AlertVariant,
   Dropdown,
@@ -28,6 +27,7 @@ import {
   ButtonVariant,
   Tooltip,
 } from '@patternfly/react-core';
+import { AlertActionCloseButton } from '@patternfly/react-core/dist/js/components/Alert/AlertActionCloseButton';
 import { Table, Thead, Tr, Th, Tbody, Td, ActionsColumn } from '@patternfly/react-table';
 import { ExclamationTriangleIcon, PlusCircleIcon } from '@patternfly/react-icons';
 import { useNavigate } from 'react-router-dom';
@@ -299,12 +299,8 @@ const Hosts = ({ onAuthError }) => {
             key={key}
             variant={variant}
             title={title}
-            actionClose={
-              <AlertActionCloseButton
-                title={title}
-                onClose={() => setAlerts(alerts.filter(alert => alert.key !== key))}
-              />
-            }
+            isLiveRegion
+            onClose={() => setAlerts(alerts.filter(alert => alert.key !== key))}
           >
             {description}
           </Alert>

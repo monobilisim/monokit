@@ -131,16 +131,7 @@ const AwxJobLogs = ({ isOpen, onClose, jobId, hostname, jobName }) => {
   return (
     <Modal
       variant={ModalVariant.large}
-      title={
-        <div style={{ display: 'flex', alignItems: 'center' }}>
-          <span>AWX Job Logs</span>
-          <Badge style={{ marginLeft: '10px' }}>Job #{jobId}</Badge>
-          {jobName && <Badge style={{ marginLeft: '10px' }}>{jobName}</Badge>}
-          <Badge style={{ marginLeft: '10px' }}>
-            {logFormat === 'json' ? 'JSON' : 'Text'}
-          </Badge>
-        </div>
-      }
+      title={`AWX Job Logs #${jobId} ${jobName ? `- ${jobName}` : ''} (${logFormat === 'json' ? 'JSON' : 'Text'})`}
       isOpen={isOpen}
       onClose={onClose}
       actions={[

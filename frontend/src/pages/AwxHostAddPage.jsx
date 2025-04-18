@@ -23,6 +23,7 @@ import {
   Stack,
   StackItem
 } from '@patternfly/react-core';
+import { AlertActionCloseButton } from '@patternfly/react-core/dist/js/components/Alert/AlertActionCloseButton';
 import { PlusCircleIcon, InfoCircleIcon, HelpIcon, ArrowLeftIcon } from '@patternfly/react-icons';
 import { getAwxTemplatesGlobal, getAwxWorkflowTemplatesGlobal, createAwxHost } from '../utils/api';
 import axios from 'axios';
@@ -83,153 +84,28 @@ const AwxHostAddPage = ({ onAuthError }) => {
     setShowAdvanced(false);
     setRunSetupAfterPing(false);
     
-    // Find the ping template
-    findPingTemplate();
+    // Initialize templates with hardcoded IDs
+    initializeTemplates();
   }, []);
 
-  // Find the required job templates
-  const findPingTemplate = async () => {
+  // Initialize with hardcoded template IDs
+  const initializeTemplates = async () => {
     try {
-      console.log("Finding required templates...");
+      console.log("Initializing with hardcoded template IDs...");
       
-      // First get regular job templates
-      console.log("Fetching job templates...");
-      const jobResponse = await getAwxTemplatesGlobal();
+      // Use the template IDs you provided
+      const pingId = 107;  // manual-check-ping
+      const setupId = 95;  // workflow-manual-setup-fresh
+      const manualInstallId = 258;  // manual-install-monokit-client
       
-      if (!jobResponse.data) {
-        console.log("No data in job templates response");
-        setErrorMessage("Error fetching job templates from AWX");
-        return;
-      }
+      setPingTemplateId(pingId);
+      setSetupTemplateId(setupId);
+      setManualInstallTemplateId(manualInstallId);
       
-      // Then get workflow templates
-      console.log("Fetching workflow templates...");
-      let workflowTemplates = [];
-      try {
-        const workflowResponse = await getAwxWorkflowTemplatesGlobal();
-        if (workflowResponse.data && (workflowResponse.data.results || workflowResponse.data)) {
-          workflowTemplates = workflowResponse.data.results || workflowResponse.data;
-          console.log("Workflow templates:", workflowTemplates);
-        }
-      } catch (err) {
-        console.warn("Error fetching workflow templates (this might be expected):", err);
-        // We'll continue even if this fails
-      }
-      
-      // Combine both template types
-      const jobTemplates = jobResponse.data.results || jobResponse.data;
-      const templates = [...jobTemplates, ...workflowTemplates];
-      
-      console.log(`Found ${jobTemplates.length} job templates and ${workflowTemplates.length} workflow templates`);
-      
-      if (!Array.isArray(templates)) {
-        console.log("Templates is not an array:", templates);
-        setErrorMessage("Invalid response format from AWX");
-        return;
-      }
-      
-      // Log all template names to debug
-      console.log('All template names:');
-      templates.forEach(template => {
-        if (template.name) {
-          console.log(`- "${template.name}" (ID: ${template.id}, Type: ${template.type || 'job_template'})`);
-        }
-      });
-      
-      // More flexible search with trimming and contains logic
-      const findTemplateByNameContains = (searchStr) => {
-        // Log the search string to help with debugging
-        console.log(`Searching for template: "${searchStr}"`);
-        
-        searchStr = searchStr.toLowerCase().trim();
-        // Try different search approaches in order of precision
-        
-        // 1. First try exact match after lowercase and trim
-        let template = templates.find(t => 
-          t.name && t.name.toLowerCase().trim() === searchStr
-        );
-        
-        if (template) {
-          console.log(`Found exact match for "${searchStr}": "${template.name}" (ID: ${template.id})`);
-          return template;
-        }
-        
-        // 2. Try contains
-        template = templates.find(t => 
-          t.name && t.name.toLowerCase().trim().includes(searchStr)
-        );
-        
-        if (template) {
-          console.log(`Found contains match for "${searchStr}": "${template.name}" (ID: ${template.id})`);
-          return template;
-        }
-        
-        // 3. Try more flexible partial match (word boundaries)
-        const words = searchStr.split(/[\s-]+/);
-        template = templates.find(t => {
-          if (!t.name) return false;
-          const templateName = t.name.toLowerCase().trim();
-          return words.every(word => templateName.includes(word));
-        });
-        
-        if (template) {
-          console.log(`Found word match for "${searchStr}": "${template.name}" (ID: ${template.id})`);
-          return template;
-        }
-        
-        console.log(`No template found matching "${searchStr}"`);
-        
-        // No match found
-        return null;
-      };
-
-      // Find ping template
-      const pingTemplate = findTemplateByNameContains('manual-check-ping');
-      
-      if (pingTemplate && pingTemplate.id) {
-        console.log('Found ping template with ID:', pingTemplate.id);
-        console.log('Ping template name:', pingTemplate.name);
-        setPingTemplateId(pingTemplate.id);
-      } else {
-        console.log("Ping template not found");
-        setErrorMessage('The "manual-check-ping" job template was not found in AWX');
-      }
-
-      // Find setup template - using both exact and fuzzy match
-      const setupTemplateName = 'workflow-manual-setup-fresh';
-      const setupTemplate = findTemplateByNameContains(setupTemplateName);
-      
-      if (setupTemplate && setupTemplate.id) {
-        console.log('Found setup template with ID:', setupTemplate.id);
-        console.log('Setup template name:', setupTemplate.name);
-        setSetupTemplateId(setupTemplate.id);
-      } else {
-        console.log(`Setup template "${setupTemplateName}" not found`);
-        // We don't show an error here as this template is optional
-      }
-      
-      // Find manual install monokit client template
-      const manualInstallTemplateName = 'manual-install-monokit-client';
-      const manualInstallTemplate = findTemplateByNameContains(manualInstallTemplateName);
-      
-      if (manualInstallTemplate && manualInstallTemplate.id) {
-        console.log('Found manual install template with ID:', manualInstallTemplate.id);
-        console.log('Manual install template name:', manualInstallTemplate.name);
-        setManualInstallTemplateId(manualInstallTemplate.id);
-      } else {
-        console.log(`Manual install template "${manualInstallTemplateName}" not found`);
-        // We don't show an error here as this template is optional
-      }
+      console.log(`Using hardcoded template IDs: ping=${pingId}, setup=${setupId}, manual-install=${manualInstallId}`);
     } catch (err) {
-      console.error("Error finding ping template:", err);
-      
-      if (err.response?.status === 502) {
-        setErrorMessage("Cannot connect to AWX (502 Bad Gateway)");
-      } else if (err.message && typeof err.message === 'string') {
-        setErrorMessage("Error connecting to AWX: " + err.message);
-      } else {
-        setErrorMessage("Error connecting to AWX server");
-      }
+      console.error("Error initializing templates:", err);
+      setErrorMessage("Error initializing templates");
     }
   };
 
@@ -300,7 +176,8 @@ const AwxHostAddPage = ({ onAuthError }) => {
         // Prepare request payload
         const payload = {
           name: hostName,
-          ip_address: ipAddress
+          ip_address: ipAddress,
+          awx_only: true // Always set to true - we want to add to AWX only, not to local dashboard
         };
         
         // Add extra variables if provided
@@ -414,17 +291,25 @@ const AwxHostAddPage = ({ onAuthError }) => {
           
           if (status === 'successful') {
             // Ping test succeeded!
+            let setupSuccess = false;
+            let manualInstallSuccess = false;
+            let messages = [];
             
-            // If setup toggle is enabled, run manual-setup-fresh-install
+            // Track which jobs were launched to create an appropriate final success message
+            const jobsLaunched = [];
+
+            // Run setup workflow if enabled
             if (runSetupAfterPing && setupTemplateId) {
               console.log("Ping successful! Now running workflow-manual-setup-fresh...");
               setProcessingStep('setup');
-              setSuccessMessage(`Host "${hostName}" passed ping test, now running setup workflow...`);
               
               try {
-                const setupResponse = await axios.post(`/api/v1/hosts/${hostName}/awx-jobs/execute`, {
-                  template_id: setupTemplateId,
-                  extra_vars: { limit: hostName }
+                // Use the workflow-specific endpoint for this workflow template
+                const setupResponse = await axios.post(`/api/v1/hosts/${hostName}/awx-workflow-jobs/execute`, {
+                  workflow_template_id: setupTemplateId,
+                  extra_vars: { limit: hostName },
+                  format: "yaml",
+                  is_workflow: true
                 }, {
                   headers: {
                     'Authorization': localStorage.getItem('token'),
@@ -439,23 +324,20 @@ const AwxHostAddPage = ({ onAuthError }) => {
                 }
                 
                 console.log("Setup job launched with ID:", setupJobId);
-                
-                // We won't wait for this job to complete
-                setProcessingStep('success');
-                setSuccessMessage(`Host "${hostName}" successfully added to AWX and setup job launched`);
-                addAlert(`Host "${hostName}" successfully added to AWX`, 'success', 'Setup job has been launched');
+                jobsLaunched.push('setup');
+                setupSuccess = true;
+                addAlert(`Setup job launched for "${hostName}"`, 'success');
               } catch (setupErr) {
                 console.error("Failed to run setup job:", setupErr);
-                // We still consider this a success since the ping passed
-                setProcessingStep('success');
-                setSuccessMessage(`Host "${hostName}" added to AWX, but setup job failed to launch: ${setupErr.message}`);
-                addAlert(`Host "${hostName}" added to AWX`, 'warning', 'Host was added but setup job failed to launch');
+                addAlert(`Setup job failed to launch for "${hostName}"`, 'warning', setupErr.message);
+                messages.push(`Setup job failed to launch: ${setupErr.message}`);
               }
-            } else if (manualInstallMonokitClient && manualInstallTemplateId) {
-              // If manual install toggle is enabled, run manual-install-monokit-client
-              console.log("Ping successful! Now running manual-install-monokit-client...");
+            }
+            
+            // Run manual install if enabled
+            if (manualInstallMonokitClient && manualInstallTemplateId) {
+              console.log("Now running manual-install-monokit-client...");
               setProcessingStep('setup');
-              setSuccessMessage(`Host "${hostName}" passed ping test, now running monokit client installation...`);
               
               try {
                 const manualInstallResponse = await axios.post(`/api/v1/hosts/${hostName}/awx-jobs/execute`, {
@@ -475,23 +357,32 @@ const AwxHostAddPage = ({ onAuthError }) => {
                 }
                 
                 console.log("Manual install job launched with ID:", manualInstallJobId);
-                
-                // We won't wait for this job to complete
-                setProcessingStep('success');
-                setSuccessMessage(`Host "${hostName}" successfully added to AWX and monokit client installation launched`);
-                addAlert(`Host "${hostName}" successfully added to AWX`, 'success', 'Monokit client installation has been launched');
+                jobsLaunched.push('monokit client installation');
+                manualInstallSuccess = true;
+                addAlert(`Monokit client installation launched for "${hostName}"`, 'success');
               } catch (manualInstallErr) {
                 console.error("Failed to run manual install job:", manualInstallErr);
-                // We still consider this a success since the ping passed
-                setProcessingStep('success');
-                setSuccessMessage(`Host "${hostName}" added to AWX, but monokit client installation failed to launch: ${manualInstallErr.message}`);
-                addAlert(`Host "${hostName}" added to AWX`, 'warning', 'Host was added but monokit client installation failed to launch');
+                addAlert(`Monokit client installation failed to launch for "${hostName}"`, 'warning', manualInstallErr.message);
+                messages.push(`Monokit client installation failed to launch: ${manualInstallErr.message}`);
               }
-            } else {
-              // Just ping test was needed and it succeeded
-              setProcessingStep('success');
+            }
+            
+            // Create final success message
+            setProcessingStep('success');
+            
+            if (jobsLaunched.length === 0) {
+              // No jobs were requested or launched
               setSuccessMessage(`Host "${hostName}" was successfully added to AWX`);
               addAlert(`Host "${hostName}" successfully added to AWX`, 'success');
+            } else {
+              // One or more jobs were launched
+              const jobsText = jobsLaunched.join(' and ');
+              setSuccessMessage(`Host "${hostName}" successfully added to AWX and ${jobsText} launched`);
+              
+              // Only add a summary alert if we haven't already sent individual alerts
+              if (messages.length > 0) {
+                addAlert(`Host "${hostName}" added with some issues`, 'warning', messages.join('; '));
+              }
             }
             
             // Create a host object but don't add it to the database
@@ -757,7 +648,7 @@ const AwxHostAddPage = ({ onAuthError }) => {
                       <div style={{ display: 'flex', alignItems: 'center' }}>
                         <span>Extra Variables (YAML format)</span>
                         <Popover
-                          headerContent={<div>Extra Variables</div>}
+                          headerContent="Extra Variables"
                           bodyContent={
                             <div>
                               <p>Specify additional variables for the host in YAML format.</p>

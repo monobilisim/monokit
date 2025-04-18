@@ -59,112 +59,27 @@ const AwxHostAdd = ({ isOpen, onClose, onHostAdded = () => {} }) => {
       setShowAdvanced(false);
       setRunSetupAfterPing(false);
       
-      // Find the ping template
-      findPingTemplate();
+      // Initialize templates with hardcoded IDs
+      initializeTemplates();
     }
   }, [isOpen]);
 
-  // Find the required job templates
-  const findPingTemplate = async () => {
+  // Initialize with hardcoded template IDs
+  const initializeTemplates = async () => {
     try {
-      console.log("Finding required templates...");
+      console.log("Initializing with hardcoded template IDs...");
       
-      // First get regular job templates
-      console.log("Fetching job templates...");
-      const jobResponse = await getAwxTemplatesGlobal();
+      // Use the template IDs you provided
+      const pingId = 107;  // manual-check-ping
+      const setupId = 95;  // workflow-manual-setup-fresh
       
-      if (!jobResponse.data) {
-        console.log("No data in job templates response");
-        setErrorMessage("Error fetching job templates from AWX");
-        return;
-      }
+      setPingTemplateId(pingId);
+      setSetupTemplateId(setupId);
       
-      // Then get workflow templates
-      console.log("Fetching workflow templates...");
-      let workflowTemplates = [];
-      try {
-        const workflowResponse = await getAwxWorkflowTemplatesGlobal();
-        if (workflowResponse.data && (workflowResponse.data.results || workflowResponse.data)) {
-          workflowTemplates = workflowResponse.data.results || workflowResponse.data;
-          console.log("Workflow templates:", workflowTemplates);
-        }
-      } catch (err) {
-        console.warn("Error fetching workflow templates (this might be expected):", err);
-        // We'll continue even if this fails
-      }
-      
-      // Combine both template types
-      const jobTemplates = jobResponse.data.results || jobResponse.data;
-      const templates = [...jobTemplates, ...workflowTemplates];
-      
-      console.log(`Found ${jobTemplates.length} job templates and ${workflowTemplates.length} workflow templates`);
-      
-      if (!Array.isArray(templates)) {
-        console.log("Templates is not an array:", templates);
-        setErrorMessage("Invalid response format from AWX");
-        return;
-      }
-      
-      // Log all template names to debug
-      console.log('All template names:');
-      templates.forEach(template => {
-        if (template.name) {
-          console.log(`- "${template.name}" (ID: ${template.id})`);
-        }
-      });
-      
-      // More flexible search with trimming and contains logic
-      const findTemplateByNameContains = (searchStr) => {
-        searchStr = searchStr.toLowerCase().trim();
-        // First try exact match after lowercase and trim
-        let template = templates.find(t => 
-          t.name && t.name.toLowerCase().trim() === searchStr
-        );
-        
-        // If not found, try contains
-        if (!template) {
-          template = templates.find(t => 
-            t.name && t.name.toLowerCase().trim().includes(searchStr)
-          );
-        }
-        
-        return template;
-      };
-
-      // Find ping template
-      const pingTemplate = findTemplateByNameContains('manual-check-ping');
-      
-      if (pingTemplate && pingTemplate.id) {
-        console.log('Found ping template with ID:', pingTemplate.id);
-        console.log('Ping template name:', pingTemplate.name);
-        setPingTemplateId(pingTemplate.id);
-      } else {
-        console.log("Ping template not found");
-        setErrorMessage('The "manual-check-ping" job template was not found in AWX');
-      }
-
-      // Find setup template - using both exact and fuzzy match
-      const setupTemplateName = 'workflow-manual-setup-fresh';
-      const setupTemplate = findTemplateByNameContains(setupTemplateName);
-      
-      if (setupTemplate && setupTemplate.id) {
-        console.log('Found setup template with ID:', setupTemplate.id);
-        console.log('Setup template name:', setupTemplate.name);
-        setSetupTemplateId(setupTemplate.id);
-      } else {
-        console.log(`Setup template "${setupTemplateName}" not found`);
-        // We don't show an error here as this template is optional
-      }
+      console.log(`Using hardcoded template IDs: ping=${pingId}, setup=${setupId}`);
     } catch (err) {
-      console.error("Error finding ping template:", err);
-      
-      if (err.response?.status === 502) {
-        setErrorMessage("Cannot connect to AWX (502 Bad Gateway)");
-      } else if (err.message && typeof err.message === 'string') {
-        setErrorMessage("Error connecting to AWX: " + err.message);
-      } else {
-        setErrorMessage("Error connecting to AWX server");
-      }
+      console.error("Error initializing templates:", err);
+      setErrorMessage("Error initializing templates");
     }
   };
 
@@ -235,7 +150,8 @@ const AwxHostAdd = ({ isOpen, onClose, onHostAdded = () => {} }) => {
         // Prepare request payload
         const payload = {
           name: hostName,
-          ip_address: ipAddress
+          ip_address: ipAddress,
+          awx_only: true // Always set to true - we want to add to AWX only, not to local dashboard
         };
         
         // Add extra variables if provided
@@ -357,9 +273,11 @@ const AwxHostAdd = ({ isOpen, onClose, onHostAdded = () => {} }) => {
               setSuccessMessage(`Host "${hostName}" passed ping test, now running setup workflow...`);
               
               try {
-                const setupResponse = await axios.post(`/api/v1/hosts/${hostName}/awx-jobs/execute`, {
-                  template_id: setupTemplateId,
-                  extra_vars: { limit: hostName }
+                // Use the workflow-specific endpoint for this workflow template
+                const setupResponse = await axios.post(`/api/v1/hosts/${hostName}/awx-workflow-jobs/execute`, {
+                  workflow_template_id: setupTemplateId,
+                  extra_vars: { limit: hostName },
+                  format: "yaml"
                 }, {
                   headers: {
                     'Authorization': localStorage.getItem('token'),
@@ -367,7 +285,7 @@ const AwxHostAdd = ({ isOpen, onClose, onHostAdded = () => {} }) => {
                   }
                 });
                 
-                const setupJobId = setupResponse.data.job_id || setupResponse.data.id;
+                const setupJobId = setupResponse?.data?.job_id || setupResponse?.data?.id;
                 
                 if (!setupJobId) {
                   throw new Error("No job ID returned from AWX for setup job");
@@ -465,13 +383,13 @@ const AwxHostAdd = ({ isOpen, onClose, onHostAdded = () => {} }) => {
   return (
     <Modal
       variant={ModalVariant.medium}
-      title={
-        <div style={{ display: 'flex', alignItems: 'center', padding: '16px 16px 0 16px' }}>
+      title="Add Host to AWX"
+      titleIconVariant={
+        <div style={{ display: 'flex', alignItems: 'center' }}>
           <CenteredIcon 
             icon={<PlusCircleIcon style={{ color: '#0066CC' }} />} 
             style={{ marginRight: '10px' }} 
           />
-          Add Host to AWX
         </div>
       }
       isOpen={isOpen}

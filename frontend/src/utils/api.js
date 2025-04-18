@@ -325,72 +325,62 @@ export const getAwxJobLogs = async (hostname, jobId, focusOnHost = true) => {
   }
 };
 
-// Get AWX Job Templates API call
+// Get AWX Job Templates API call - now returns hardcoded data
 export const getAwxJobTemplates = async (hostname) => {
-  try {
-    const response = await api.get(`/hosts/${hostname}/awx-job-templates`);
-    return response;
-  } catch (error) {
-    console.error('Error fetching AWX job templates for host %s:', hostname, error);
-    throw error;
-  }
+  console.log(`Returning hardcoded job templates for host ${hostname}`);
+  // Return a mock response with hardcoded templates
+  return {
+    data: [
+      { id: 107, name: "manual-check-ping" },
+      { id: 95, name: "workflow-manual-setup-fresh" },
+      { id: 258, name: "manual-install-monokit-client" }
+    ]
+  };
 };
 
-// Get AWX Job Templates without requiring a host
+// Get AWX Job Templates without requiring a host - uses hardcoded template IDs
 export const getAwxTemplatesGlobal = async () => {
-  try {
-    const response = await api.get('/awx/job-templates');
-    return response;
-  } catch (error) {
-    console.error('Error fetching global AWX job templates:', error);
-    
-    // Add more details to 502 errors
-    if (error.response && error.response.status === 502) {
-      const enhancedError = new Error('Bad Gateway (502): Unable to connect to AWX server. Please check your network and server configuration.');
-      enhancedError.originalError = error;
-      enhancedError.status = 502;
-      throw enhancedError;
+  console.log("Returning hardcoded job templates");
+  // Return a mock response with hardcoded templates
+  return {
+    data: {
+      results: [
+        { id: 107, name: "manual-check-ping" },
+        { id: 258, name: "manual-install-monokit-client" }
+      ]
     }
-    
-    throw error;
-  }
+  };
 };
 
-// Get AWX Workflow Templates without requiring a host
+// Get AWX Workflow Templates without requiring a host - uses hardcoded template IDs
 export const getAwxWorkflowTemplatesGlobal = async () => {
-  try {
-    const response = await api.get('/awx/workflow-templates');
-    return response;
-  } catch (error) {
-    console.error('Error fetching global AWX workflow templates:', error);
-    
-    // We handle this gracefully as it might not be supported by all backends
-    if (error.response && error.response.status === 404) {
-      console.log('Workflow templates endpoint not found, this may be expected');
-      return { data: [] };  // Return empty array instead of throwing
+  console.log("Returning hardcoded workflow templates");
+  // Return a mock response with hardcoded templates
+  return {
+    data: {
+      results: [
+        { id: 95, name: "workflow-manual-setup-fresh" }
+      ]
     }
-    
-    // Add more details to 502 errors
-    if (error.response && error.response.status === 502) {
-      const enhancedError = new Error('Bad Gateway (502): Unable to connect to AWX server. Please check your network and server configuration.');
-      enhancedError.originalError = error;
-      enhancedError.status = 502;
-      throw enhancedError;
-    }
-    
-    throw error;
-  }
+  };
 };
 
-// Get AWX Job Template Details API call
+// Get AWX Job Template Details API call - now returns hardcoded data
 export const getAwxJobTemplateDetails = async (hostname, templateId) => {
-  try {
-    const response = await api.get(`/hosts/${hostname}/awx-job-templates/${templateId}`);
-    return response;
-  } catch (error) {
-    console.error('Error fetching AWX job template %s details for host %s:', templateId, hostname, error);
-    throw error;
-  }
+  console.log(`Returning hardcoded details for template ${templateId} on host ${hostname}`);
+  // Return a mock response with template details
+  return {
+    data: {
+      id: templateId,
+      name: `Template ${templateId}`,
+      description: "Template description",
+      variables: {
+        extra_vars: {
+          example_var: "example_value"
+        }
+      }
+    }
+  };
 };
 
 // Execute AWX Job API call
@@ -399,6 +389,15 @@ export const executeAwxJob = async (hostname, templateId, extraVars = {}, invent
     console.log("Sending execute AWX job request for host:", hostname);
     console.log("Template ID:", templateId);
     console.log("Extra vars:", extraVars);
+    
+    // Find the template name based on templateId to determine if it's a workflow
+    let isWorkflow = false;
+    
+    // Check for workflow templates - 95 is workflow-manual-setup-fresh
+    if (templateId === 95) {
+      isWorkflow = true;
+      console.log("Detected workflow template. Using workflow job endpoint.");
+    }
     
     const payload = {
       template_id: templateId,
@@ -413,12 +412,39 @@ export const executeAwxJob = async (hostname, templateId, extraVars = {}, invent
     } else {
       // Try to get inventory ID from server default
       console.log("No inventory ID provided, using server default");
+      
+      // Set a default inventory ID here as a fallback (you can adjust this as needed)
+      payload.inventory_id = 2; // This should match the server default_inventory_id
     }
     
-    const response = await api.post(`/hosts/${hostname}/awx-jobs/execute`, payload);
+    // For workflow templates, use a specialized endpoint
+    let endpoint = `/hosts/${hostname}/awx-jobs/execute`;
+    
+    if (isWorkflow) {
+      console.log("Using dedicated workflow endpoint for template ID:", templateId);
+      // Use workflow-specific endpoint
+      endpoint = `/hosts/${hostname}/awx-workflow-jobs/execute`;
+      // Rename the key for workflow templates
+      payload.workflow_template_id = payload.template_id;
+      delete payload.template_id;
+    }
+    
+    console.log(`Executing AWX job at endpoint: ${endpoint}`);
+    const response = await api.post(endpoint, payload);
     return response;
   } catch (error) {
     console.error('Error executing AWX job template %s for host %s:', templateId, hostname, error);
+    
+    // Add more context to the error for debugging
+    if (error.response && error.response.status === 500) {
+      console.error('Error details from server:', error.response.data);
+      
+      // Check if this might be a workflow template error
+      if (templateId === 95) {
+        console.warn('This appears to be a workflow template (ID: 95). The server may need to use a different endpoint for workflows.');
+      }
+    }
+    
     throw error;
   }
 };
@@ -426,6 +452,7 @@ export const executeAwxJob = async (hostname, templateId, extraVars = {}, invent
 // Create a host in AWX
 export const createAwxHost = async (name, ipAddress) => {
   try {
+    console.log('Creating AWX host with params:', { name, ip_address: ipAddress });
     const response = await api.post('/hosts/awx', {
       name: name,
       ip_address: ipAddress
@@ -435,18 +462,44 @@ export const createAwxHost = async (name, ipAddress) => {
   } catch (error) {
     // Log detailed error information
     console.error('Error creating host in AWX:', error);
+    
+    // Safely extract error information without causing secondary errors
+    const statusCode = error.response?.status;
+    let errorMessage = 'Unknown error occurred';
+    
     if (error.response) {
-      console.error('Error response:', error.response);
-      console.error('Error data:', error.response.data);
+      console.error('Error response status:', statusCode);
+      console.error('Error response headers:', error.response.headers);
+      
+      try {
+        // Safely log the error data
+        const errorData = error.response.data;
+        console.error('Error data:', typeof errorData === 'object' ? JSON.stringify(errorData) : errorData);
+        
+        // Extract a user-friendly error message
+        if (typeof errorData === 'string') {
+          errorMessage = errorData;
+        } else if (errorData?.error) {
+          errorMessage = typeof errorData.error === 'string' 
+            ? errorData.error 
+            : JSON.stringify(errorData.error);
+        } else if (statusCode === 502) {
+          errorMessage = 'Unable to connect to AWX service. Please check if AWX is running and accessible.';
+        }
+      } catch (parseError) {
+        console.error('Error parsing error response:', parseError);
+      }
+    } else if (error.request) {
+      errorMessage = 'No response received from server. Network issue or server unreachable.';
+    } else {
+      errorMessage = error.message || 'Unknown error occurred';
     }
     
-    // Transform error to ensure it has a useful string representation
-    if (error.response?.data?.error && typeof error.response.data.error === 'object') {
-      const enhancedError = new Error(JSON.stringify(error.response.data.error));
-      enhancedError.originalError = error;
-      throw enhancedError;
-    }
-    throw error;
+    // Create a new error with a clean message that won't cause issues when displayed
+    const enhancedError = new Error(errorMessage);
+    enhancedError.originalError = error;
+    enhancedError.statusCode = statusCode;
+    throw enhancedError;
   }
 };
 

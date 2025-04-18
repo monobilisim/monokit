@@ -22,11 +22,11 @@ import {
   AlertGroup,
   AlertVariant,
   MenuToggle,
-  AlertActionCloseButton,
   EmptyState,
   EmptyStateVariant,
   EmptyStateBody
 } from '@patternfly/react-core';
+import { AlertActionCloseButton } from '@patternfly/react-core/dist/js/components/Alert/AlertActionCloseButton';
 import { TrashIcon } from '@patternfly/react-icons';
 import { Chart, ChartAxis, ChartBar, ChartGroup, ChartVoronoiContainer } from '@patternfly/react-charts';
 import { Table, Thead, Tr, Th, Tbody, Td } from '@patternfly/react-table';

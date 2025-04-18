@@ -19,12 +19,12 @@ import {
   Split,
   SplitItem,
   AlertGroup,
-  AlertActionCloseButton,
   FormGroup,
   Grid,
   GridItem,
   TextArea,
 } from '@patternfly/react-core';
+import { AlertActionCloseButton } from '@patternfly/react-core/dist/js/components/Alert/AlertActionCloseButton';
 import { ArrowLeftIcon, TrashIcon, SaveIcon, PlusCircleIcon } from '@patternfly/react-icons';
 import { getConfig, updateConfig, deleteConfig } from '../utils/api';
 import ButtonWithCenteredIcon from '../components/ButtonWithCenteredIcon';

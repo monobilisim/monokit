@@ -18,10 +18,10 @@ import (
 	"strconv"
 	"strings"
 	"time"
-	
-	commonPkg "github.com/monobilisim/monokit/common"
+
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
+	commonPkg "github.com/monobilisim/monokit/common"
 	_ "github.com/monobilisim/monokit/docs"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -153,17 +153,23 @@ func setupDatabase() *gorm.DB {
 	); err != nil {
 		panic(fmt.Sprintf("Failed to migrate schema: %v", err))
 	}
-	
+
+	// Add AwxOnly column to hosts table if it doesn't exist
+	// This helps with backward compatibility for existing databases
+	if err := db.Exec("ALTER TABLE hosts ADD COLUMN IF NOT EXISTS awx_only boolean DEFAULT false").Error; err != nil {
+		fmt.Printf("Warning: Failed to add awx_only column: %v\n", err)
+	}
+
 	// Add indexes for host_logs table to improve query performance
 	if err := db.Exec("CREATE INDEX IF NOT EXISTS idx_host_logs_deleted_at_timestamp ON host_logs (deleted_at, timestamp)").Error; err != nil {
 		fmt.Printf("Warning: Failed to create index on host_logs: %v\n", err)
 	}
-	
+
 	// Add index for timestamp alone for faster sorting
 	if err := db.Exec("CREATE INDEX IF NOT EXISTS idx_host_logs_timestamp ON host_logs (timestamp)").Error; err != nil {
 		fmt.Printf("Warning: Failed to create index on host_logs timestamp: %v\n", err)
 	}
-	
+
 	// Add index for the id column to speed up "WHERE id IN (...)" queries
 	if err := db.Exec("CREATE INDEX IF NOT EXISTS idx_host_logs_id ON host_logs (id)").Error; err != nil {
 		fmt.Printf("Warning: Failed to create index on host_logs id: %v\n", err)
@@ -185,9 +191,9 @@ func setupDatabase() *gorm.DB {
 		fmt.Printf("Warning: Failed to create initial admin user: %v\n", err)
 	}
 
-// Load all hosts into memory
+	// Load all hosts into memory
 	db.Find(&HostsList)
-	
+
 	// Note: fixDuplicateHosts is now called from ServerMain in server.go
 
 	return db
@@ -223,6 +229,7 @@ func setupRoutes(r *gin.Engine, db *gorm.DB) {
 		api.GET("/hosts/:name/awx-job-templates", getAwxJobTemplates(db))
 		api.GET("/hosts/:name/awx-job-templates/:templateID", getAwxJobTemplateDetails(db))
 		api.POST("/hosts/:name/awx-jobs/execute", executeAwxJob(db))
+		api.POST("/hosts/:name/awx-workflow-jobs/execute", executeAwxWorkflowJob(db))
 		api.POST("/hosts/awx", createAwxHost(db))
 		api.DELETE("/hosts/awx/:id", deleteAwxHost(db))
 		api.GET("/awx/jobs/:jobID", getAwxJobStatus(db))
@@ -341,7 +348,10 @@ func authMiddleware(db *gorm.DB) gin.HandlerFunc {
 			if err != nil && !strings.Contains(err.Error(), "just checking format") {
 				// Not a valid JWT format and local auth is disabled
 				fmt.Printf("Not a valid JWT token and local auth is disabled for path: %s\n", c.Request.URL.Path)
-				c.JSON(http.StatusUnauthorized, gin.H{"error": "Keycloak authentication required"})
+				c.JSON(http.StatusBadRequest, gin.H{
+					"error": fmt.Sprintf("Not a valid JWT token and local auth is disabled for path: %s", c.Request.URL.Path),
+					"title": "Authentication Error",
+				})
 				c.Abort()
 				return
 			}
@@ -480,7 +490,7 @@ func adminAuthMiddleware(db *gorm.DB) gin.HandlerFunc {
 func registerHost(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		fmt.Printf("Processing host registration request\n")
-		
+
 		// Parse host data from request body
 		var host Host
 		if err := c.ShouldBindJSON(&host); err != nil {
@@ -488,8 +498,8 @@ func registerHost(db *gorm.DB) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		
-		fmt.Printf("Registering host: %s, IP: %s, Inventory: %s\n", 
+
+		fmt.Printf("Registering host: %s, IP: %s, Inventory: %s\n",
 			host.Name, host.IpAddress, host.Inventory)
 
 		// Set default inventory if not provided
@@ -516,7 +526,7 @@ func registerHost(db *gorm.DB) gin.HandlerFunc {
 		result := db.Where("name = ?", host.Name).First(&existingHost)
 		if result.Error == nil {
 			fmt.Printf("Host already exists: %s (ID=%d)\n", existingHost.Name, existingHost.ID)
-			
+
 			// Verify authentication for existing host
 			token := c.GetHeader("Authorization")
 			if token == "" {
@@ -542,21 +552,21 @@ func registerHost(db *gorm.DB) gin.HandlerFunc {
 			// Preserve existing ID and deletion status
 			host.ID = existingHost.ID
 			host.UpForDeletion = existingHost.UpForDeletion
-			
+
 			// Update host
 			if err := db.Model(&existingHost).Updates(&host).Error; err != nil {
 				fmt.Printf("Error updating host: %v\n", err)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update host"})
 				return
 			}
-			
+
 			fmt.Printf("Host updated successfully: %s (ID=%d)\n", host.Name, host.ID)
-			
+
 			// Refresh hosts list
 			if err := db.Find(&HostsList).Error; err != nil {
 				fmt.Printf("Warning: Error refreshing hosts list: %v\n", err)
 			}
-			
+
 			c.JSON(http.StatusOK, gin.H{"host": host})
 			return
 		}
@@ -588,7 +598,7 @@ func registerHost(db *gorm.DB) gin.HandlerFunc {
 		if err := db.Find(&HostsList).Error; err != nil {
 			fmt.Printf("Warning: Error refreshing hosts list: %v\n", err)
 		}
-		
+
 		c.JSON(http.StatusCreated, gin.H{
 			"host":   host,
 			"apiKey": token,
@@ -610,36 +620,44 @@ func getAllHosts(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		currentUser := user.(User)
-		var filteredHosts []Host
+                currentUser := user.(User)
+                var filteredHosts []Host
 
-		if currentUser.Role == "admin" {
-			filteredHosts = HostsList
-		} else {
-			for _, host := range HostsList {
-				userInventories := strings.Split(currentUser.Inventories, ",")
-				for _, inv := range userInventories {
-					if host.Inventory == strings.TrimSpace(inv) {
-						filteredHosts = append(filteredHosts, host)
-						break
-					}
-				}
-			}
-		}
+                // First filter out AWX-only hosts that should not be shown in dashboard
+                var visibleHosts []Host
+                for _, host := range HostsList {
+                        if !host.AwxOnly {
+                                visibleHosts = append(visibleHosts, host)
+                        }
+                }
+
+                if currentUser.Role == "admin" {
+                        filteredHosts = visibleHosts
+                } else {
+                        for _, host := range visibleHosts {
+                                userInventories := strings.Split(currentUser.Inventories, ",")
+                                for _, inv := range userInventories {
+                                        if host.Inventory == strings.TrimSpace(inv) {
+                                                filteredHosts = append(filteredHosts, host)
+                                                break
+                                        }
+                                }
+                        }
+                }
 
 		for i := range filteredHosts {
 			isOffline := time.Since(filteredHosts[i].UpdatedAt).Minutes() > 5
-			
+
 			// If host is scheduled for deletion AND offline for 5 minutes, delete it
 			if filteredHosts[i].UpForDeletion && isOffline {
-				fmt.Printf("Deleting host '%s' (ID=%d) - scheduled for deletion and offline for 5+ minutes\n", 
+				fmt.Printf("Deleting host '%s' (ID=%d) - scheduled for deletion and offline for 5+ minutes\n",
 					filteredHosts[i].Name, filteredHosts[i].ID)
-				
+
 				// Use Unscoped().Delete to permanently remove the host
 				db.Unscoped().Delete(&filteredHosts[i])
 				continue
 			}
-			
+
 			// Update status for remaining hosts
 			if filteredHosts[i].UpForDeletion {
 				filteredHosts[i].Status = "Scheduled for deletion"
@@ -678,14 +696,14 @@ func deleteHost(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		name := c.Param("name")
 		fmt.Printf("Attempting to delete host: %s\n", name)
-		
+
 		var host Host
 		if err := db.Where("name = ?", name).First(&host).Error; err != nil {
 			fmt.Printf("Error finding host for deletion: %v\n", err)
 			c.JSON(http.StatusNotFound, gin.H{"error": "Host not found"})
 			return
 		}
-		
+
 		fmt.Printf("Found host for deletion: %s (ID=%d)\n", host.Name, host.ID)
 
 		if err := db.Delete(&host).Error; err != nil {
@@ -693,7 +711,7 @@ func deleteHost(db *gorm.DB) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete host"})
 			return
 		}
-		
+
 		fmt.Printf("Host deleted successfully: %s (ID=%d)\n", host.Name, host.ID)
 
 		// Refresh the hosts list
@@ -711,12 +729,13 @@ func createAwxHost(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// Parse request body
-		var requestData struct {
-			Name      string                 `json:"name" binding:"required"`
-			IpAddress string                 `json:"ip_address" binding:"required"`
-			ExtraVars map[string]interface{} `json:"extra_vars"`
-		}
+                // Parse request body
+                var requestData struct {
+                        Name      string                 `json:"name" binding:"required"`
+                        IpAddress string                 `json:"ip_address" binding:"required"`
+                        ExtraVars map[string]interface{} `json:"extra_vars"`
+                        AwxOnly   bool                   `json:"awx_only"`
+                }
 
 		if err := c.ShouldBindJSON(&requestData); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request: " + err.Error()})
@@ -735,7 +754,7 @@ func createAwxHost(db *gorm.DB) gin.HandlerFunc {
 		// Check if inventory ID is available in config
 		if ServerConfig.Awx.DefaultInventoryID <= 0 {
 			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "No default inventory ID configured. Please set 'default_inventory_id' in the server configuration.",
+				"error":   "No default inventory ID configured. Please set 'default_inventory_id' in the server configuration.",
 				"details": "The AWX API requires an inventory ID for creating hosts.",
 			})
 			return
@@ -745,28 +764,28 @@ func createAwxHost(db *gorm.DB) gin.HandlerFunc {
 		variables := map[string]interface{}{
 			"ansible_host": requestData.IpAddress,
 		}
-		
+
 		// Add any extra variables if provided
 		if len(requestData.ExtraVars) > 0 {
 			for k, v := range requestData.ExtraVars {
 				variables[k] = v
 			}
 		}
-		
+
 		// Convert variables to YAML string
 		variablesYaml, err := yaml.Marshal(variables)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to format variables: " + err.Error()})
 			return
 		}
-		
+
 		// Prepare payload for AWX API
 		payload := map[string]interface{}{
-			"name":       requestData.Name,
-			"variables":  string(variablesYaml),
-			"enabled":    true,
+			"name":        requestData.Name,
+			"variables":   string(variablesYaml),
+			"enabled":     true,
 			"instance_id": "",
-			"inventory":  ServerConfig.Awx.DefaultInventoryID, // Inventory is required by AWX API
+			"inventory":   ServerConfig.Awx.DefaultInventoryID, // Inventory is required by AWX API
 		}
 
 		payloadBytes, err := json.Marshal(payload)
@@ -813,78 +832,90 @@ func createAwxHost(db *gorm.DB) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": errorMsg})
 			return
 		}
-		
+
 		// Extract AWX host ID
 		awxHostID, ok := awxHostResponse["id"].(float64)
 		if !ok {
-   commonPkg.LogDebug(fmt.Sprintf("Warning: Couldn't extract AWX host ID from response: %+v", awxHostResponse))
+			commonPkg.LogDebug(fmt.Sprintf("Warning: Couldn't extract AWX host ID from response: %+v", awxHostResponse))
 		}
-		
-		// Now, create the host in the local database
-  commonPkg.LogDebug(fmt.Sprintf("Creating local database entry for host: %s", requestData.Name))
-		
-		// Create the host in the local database
-		localHost := Host{
-			Name:      requestData.Name,
-			IpAddress: requestData.IpAddress,
-			Os:        "Unknown", // This can be updated later
-			Status:    "Pending",
-			Inventory: "default", // Use default inventory 
-			Groups:    "",        // Can be populated later
-			AwxHostId: fmt.Sprintf("%d", int(awxHostID)), // Store the AWX host ID as string
-		}
-		
-		// Check if host already exists
-		var existingHost Host
-		result := db.Where("name = ?", localHost.Name).First(&existingHost)
-		if result.Error == nil {
-			// Host already exists, update it
-			fmt.Printf("Host already exists in local DB, updating: %s (ID=%d)\n", 
-				existingHost.Name, existingHost.ID)
-			
-			// Update existing host with new AWX data
-			existingHost.IpAddress = localHost.IpAddress
-			existingHost.AwxHostId = localHost.AwxHostId
-			existingHost.Status = "Pending"
-			
-			if err := db.Save(&existingHost).Error; err != nil {
-				fmt.Printf("Error updating existing host: %v\n", err)
-				// Don't return error, continue with AWX host creation success
-			}
-		} else {
-			// Create new host
-			if err := db.Create(&localHost).Error; err != nil {
-				fmt.Printf("Error creating local host entry: %v\n", err)
-				// Don't return error, still return success for AWX host creation
-			} else {
-				fmt.Printf("Created local host entry: %s (ID=%d)\n", localHost.Name, localHost.ID)
-				
-				// Generate an API key for this host
-				token := generateToken()
-				hostKey := HostKey{
-					Token:    token,
-					HostName: localHost.Name,
-				}
-				
-				if err := db.Create(&hostKey).Error; err != nil {
-					fmt.Printf("Error creating host key: %v\n", err)
-				} else {
-					fmt.Printf("Created host key for %s\n", localHost.Name)
-					
-					// Include the API key in the response
-					awxHostResponse["apiKey"] = token
-				}
-			}
-		}
-		
-		// Refresh the hosts list
-		if err := db.Find(&HostsList).Error; err != nil {
-			fmt.Printf("Warning: Error refreshing hosts list: %v\n", err)
-		}
-		
-		// Add local host information to response
-		awxHostResponse["localHostRegistered"] = true
-		
+
+            // We always need to create a minimal entry in the local database
+            // This is necessary for the API to find the host for AWX job execution
+            commonPkg.LogDebug(fmt.Sprintf("Creating local database entry for host: %s", requestData.Name))
+
+            // Create the host in the local database
+            localHost := Host{
+                    Name:      requestData.Name,
+                    IpAddress: requestData.IpAddress,
+                    Os:        "Unknown", // This can be updated later
+                    Status:    "Pending",
+                    Inventory: "default",                         // Use default inventory
+                    Groups:    "",                                // Can be populated later
+                    AwxHostId: fmt.Sprintf("%d", int(awxHostID)), // Store the AWX host ID as string
+            }
+
+            // If this is AWX-only, mark it as hidden from dashboard listings
+            if requestData.AwxOnly {
+                    localHost.AwxOnly = true // This field needs to be added to the Host struct
+            }
+
+            // Check if host already exists
+            var existingHost Host
+            result := db.Where("name = ?", localHost.Name).First(&existingHost)
+            if result.Error == nil {
+                    // Host already exists, update it
+                    fmt.Printf("Host already exists in local DB, updating: %s (ID=%d)\n",
+                            existingHost.Name, existingHost.ID)
+
+                    // Update existing host with new AWX data
+                    existingHost.IpAddress = localHost.IpAddress
+                    existingHost.AwxHostId = localHost.AwxHostId
+                    existingHost.Status = "Pending"
+                    if requestData.AwxOnly {
+                            existingHost.AwxOnly = true
+                    }
+
+                    if err := db.Save(&existingHost).Error; err != nil {
+                            fmt.Printf("Error updating existing host: %v\n", err)
+                            // Don't return error, continue with AWX host creation success
+                    }
+            } else {
+                    // Create new host
+                    if err := db.Create(&localHost).Error; err != nil {
+                            fmt.Printf("Error creating local host entry: %v\n", err)
+                            // Don't return error, still return success for AWX host creation
+                    } else {
+                            fmt.Printf("Created local host entry: %s (ID=%d)\n", localHost.Name, localHost.ID)
+
+                            // Generate an API key for this host
+                            token := generateToken()
+                            hostKey := HostKey{
+                                    Token:    token,
+                                    HostName: localHost.Name,
+                            }
+
+                            if err := db.Create(&hostKey).Error; err != nil {
+                                    fmt.Printf("Error creating host key: %v\n", err)
+                            } else {
+                                    fmt.Printf("Created host key for %s\n", localHost.Name)
+
+                                    // Include the API key in the response
+                                    awxHostResponse["apiKey"] = token
+                            }
+                    }
+            }
+
+            // Refresh the hosts list
+            if err := db.Find(&HostsList).Error; err != nil {
+                    fmt.Printf("Warning: Error refreshing hosts list: %v\n", err)
+            }
+
+            // Add local host information to response
+            awxHostResponse["localHostRegistered"] = true
+            if requestData.AwxOnly {
+                    awxHostResponse["awxOnly"] = true
+            }
+
 		c.JSON(http.StatusCreated, awxHostResponse)
 	}
 }
@@ -905,31 +936,31 @@ func deleteAwxHost(db *gorm.DB) gin.HandlerFunc {
 		// First, find if there's a local host with this AWX host ID
 		var localHost Host
 		result := db.Where("awx_host_id = ?", hostID).First(&localHost)
-		
+
 		// If first query fails, try as string comparison since AwxHostId is a string field
 		if result.Error != nil {
 			result = db.Where("awx_host_id = ?", fmt.Sprintf("%s", hostID)).First(&localHost)
 		}
 		if result.Error == nil {
 			fmt.Printf("Found matching local host: %s (ID=%d)\n", localHost.Name, localHost.ID)
-			
+
 			// Delete the host keys associated with this host
 			if err := db.Where("host_name = ?", localHost.Name).Delete(&HostKey{}).Error; err != nil {
 				fmt.Printf("Warning: Error deleting host keys: %v\n", err)
 			}
-			
+
 			// Delete host config files
 			if err := db.Where("host_name = ?", localHost.Name).Delete(&HostFileConfig{}).Error; err != nil {
 				fmt.Printf("Warning: Error deleting host config files: %v\n", err)
 			}
-			
+
 			// Delete the local host entry
 			if err := db.Unscoped().Delete(&localHost).Error; err != nil {
 				fmt.Printf("Error deleting local host: %v\n", err)
 			} else {
 				fmt.Printf("Deleted local host: %s\n", localHost.Name)
 			}
-			
+
 			// Refresh hosts list
 			if err := db.Find(&HostsList).Error; err != nil {
 				fmt.Printf("Warning: Error refreshing hosts list: %v\n", err)
@@ -982,7 +1013,7 @@ func deleteAwxHost(db *gorm.DB) gin.HandlerFunc {
 		c.JSON(http.StatusOK, gin.H{
 			"status": "deleted",
 			"details": map[string]interface{}{
-				"awx_host_id": hostID,
+				"awx_host_id":        hostID,
 				"local_host_deleted": result.Error == nil,
 			},
 		})
@@ -1009,7 +1040,7 @@ func getAwxTemplatesGlobal(db *gorm.DB) gin.HandlerFunc {
 				KeepAlive: 30 * time.Second,
 			}).DialContext,
 		}
-		
+
 		client := &http.Client{
 			Timeout:   time.Duration(ServerConfig.Awx.Timeout) * time.Second,
 			Transport: transport,
@@ -1096,6 +1127,351 @@ func getAwxTemplatesGlobal(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
+// Execute an AWX Workflow Job
+func executeAwxWorkflowJob(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Check if AWX is enabled
+		if !ServerConfig.Awx.Enabled {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": "AWX integration is not enabled",
+				"title": "AWX Not Enabled",
+				"code":  "AWX_NOT_ENABLED",
+			})
+			return
+		}
+
+		hostname := c.Param("name")
+		fmt.Printf("Executing AWX workflow job for host: %s\n", hostname)
+
+		// Parse request body with more lenient binding
+		var requestData struct {
+			WorkflowTemplateID   int                    `json:"workflow_template_id"`
+			WorkflowTemplateName string                 `json:"workflow_template_name"`
+			ExtraVars            map[string]interface{} `json:"extra_vars"`
+			Format               string                 `json:"format"` // e.g. "yaml" or "json"
+			InventoryID          int                    `json:"inventory_id"`
+		}
+
+		// Read the raw request body for debugging
+		rawBody, _ := io.ReadAll(c.Request.Body)
+		c.Request.Body = io.NopCloser(bytes.NewBuffer(rawBody)) // Reset the body
+
+		fmt.Printf("Raw workflow request body: %s\n", string(rawBody))
+
+		if err := c.ShouldBindJSON(&requestData); err != nil {
+			fmt.Printf("Error parsing workflow request body: %v\n", err)
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error": fmt.Sprintf("Invalid request: %v", err),
+				"title": "Invalid Request Format",
+				"code":  "INVALID_REQUEST_FORMAT",
+			})
+			return
+		}
+
+		// Log received data for debugging
+		fmt.Printf("Parsed workflow request: template_id=%d, template_name=%s, format=%s, inventory_id=%d\n",
+			requestData.WorkflowTemplateID, requestData.WorkflowTemplateName, requestData.Format, requestData.InventoryID)
+
+		// Use template ID directly if provided or look up by name
+		if requestData.WorkflowTemplateID <= 0 && requestData.WorkflowTemplateName != "" {
+			// Check if we have a workflow template ID for this name in the configuration
+			if ServerConfig.Awx.WorkflowTemplateIDs != nil {
+				if id, exists := ServerConfig.Awx.WorkflowTemplateIDs[requestData.WorkflowTemplateName]; exists {
+					fmt.Printf("Found workflow template ID %d for name '%s' in configuration\n", id, requestData.WorkflowTemplateName)
+					requestData.WorkflowTemplateID = id
+				} else {
+					// Try some common alternative names or patterns
+					templateName := strings.ToLower(strings.TrimSpace(requestData.WorkflowTemplateName))
+
+					if strings.Contains(templateName, "setup") || strings.Contains(templateName, "install") {
+						// Check for setup/install workflow templates
+						for name, id := range ServerConfig.Awx.WorkflowTemplateIDs {
+							if strings.Contains(strings.ToLower(name), "setup") ||
+								strings.Contains(strings.ToLower(name), "install") {
+								fmt.Printf("Using workflow template ID %d for '%s'\n", id, name)
+								requestData.WorkflowTemplateID = id
+								break
+							}
+						}
+					}
+				}
+			}
+
+			// If we still don't have a template ID, report an error with available options
+			if requestData.WorkflowTemplateID <= 0 {
+				fmt.Printf("No workflow template ID found for name: %s\n", requestData.WorkflowTemplateName)
+
+				// Provide a helpful message listing available templates
+				var availableTemplates []string
+				if ServerConfig.Awx.WorkflowTemplateIDs != nil {
+					for name := range ServerConfig.Awx.WorkflowTemplateIDs {
+						availableTemplates = append(availableTemplates, name)
+					}
+				}
+
+				c.JSON(http.StatusBadRequest, gin.H{
+					"error":               fmt.Sprintf("No workflow template ID configured for '%s'", requestData.WorkflowTemplateName),
+					"detail":              "Please configure the workflow template ID in server.yml or provide a valid workflow_template_id directly",
+					"available_templates": availableTemplates,
+					"title":               "Workflow Template Not Found",
+					"code":                "WORKFLOW_TEMPLATE_NOT_FOUND",
+				})
+				return
+			}
+		}
+
+		// If no specific template was provided and we have a default workflow template
+		if requestData.WorkflowTemplateID <= 0 && ServerConfig.Awx.DefaultWorkflowTemplateID > 0 {
+			fmt.Printf("Using default workflow template ID: %d\n", ServerConfig.Awx.DefaultWorkflowTemplateID)
+			requestData.WorkflowTemplateID = ServerConfig.Awx.DefaultWorkflowTemplateID
+		}
+
+		// Validate we have a template ID at this point
+		if requestData.WorkflowTemplateID <= 0 {
+			fmt.Printf("No workflow template ID or name provided\n")
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":  "No workflow_template_id or workflow_template_name provided",
+				"detail": "Please provide either workflow_template_id or workflow_template_name in the request",
+				"title":  "Missing Template Information",
+				"code":   "MISSING_TEMPLATE_INFO",
+			})
+			return
+		}
+
+		fmt.Printf("Will execute workflow template_id=%d for host %s\n", requestData.WorkflowTemplateID, hostname)
+
+		// Check host existence
+		var host Host
+		if err := db.Where("name = ?", hostname).First(&host).Error; err != nil {
+			fmt.Printf("Error finding host %s: %v\n", hostname, err)
+			c.JSON(http.StatusNotFound, gin.H{
+				"error": "Host not found",
+				"title": "Host Not Found",
+				"code":  "HOST_NOT_FOUND",
+			})
+			return
+		}
+		fmt.Printf("Found host: %s (ID=%d)\n", host.Name, host.ID)
+
+		// Create a new HTTP client with timeout
+		client := &http.Client{
+			Timeout: time.Duration(ServerConfig.Awx.Timeout) * time.Second,
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{
+					InsecureSkipVerify: !ServerConfig.Awx.VerifySSL,
+				},
+			},
+		}
+
+		// Create AWX API URL for workflow job templates
+		awxURL := strings.TrimRight(ServerConfig.Awx.Url, "/")
+		apiURL := fmt.Sprintf("%s/api/v2/workflow_job_templates/%d/launch/", awxURL, requestData.WorkflowTemplateID)
+
+		// Determine inventory ID - use provided one or default from config
+		inventoryID := requestData.InventoryID
+		if inventoryID <= 0 {
+			inventoryID = ServerConfig.Awx.DefaultInventoryID
+			fmt.Printf("Using default inventory ID from config: %d\n", inventoryID)
+		}
+
+		if inventoryID <= 0 {
+			// Handle this case more gracefully
+			fmt.Printf("ERROR: No inventory ID provided or configured. This is required for AWX API calls.\n")
+
+			// Return a more specific error that the frontend can handle
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":  "No inventory ID provided or configured",
+				"detail": "Please set 'default_inventory_id' in the server configuration or provide an inventory_id in the request.",
+				"title":  "Missing Inventory ID",
+				"code":   "MISSING_INVENTORY_ID",
+			})
+			return
+		}
+
+		fmt.Printf("Executing AWX workflow job template ID %d for host %s with inventory ID %d\n",
+			requestData.WorkflowTemplateID, hostname, inventoryID)
+
+		// Find the host in database to get AWX host ID if available
+		if host.AwxHostId != "" {
+			fmt.Printf("Found host %s (AWX ID: %s) in database\n", hostname, host.AwxHostId)
+		} else if host.IpAddress != "" {
+			// Try to find or create AWX host if we have IP but no AWX ID
+			fmt.Printf("Host %s not registered in AWX, will create it first\n", hostname)
+
+			awxHostId, err := ensureHostInAwx(db, host)
+			if err != nil {
+				fmt.Printf("Error ensuring host in AWX: %v\n", err)
+				// Continue anyway as the job might still work with just hostname
+			} else if awxHostId != "" {
+				fmt.Printf("Successfully registered host in AWX with ID: %s\n", awxHostId)
+				// Update the host record with AWX ID
+				host.AwxHostId = awxHostId
+				if err := db.Save(&host).Error; err != nil {
+					fmt.Printf("Warning: Failed to update host with AWX ID: %v\n", err)
+				}
+			}
+		}
+
+		// Prepare payload for AWX API - keep it minimal for workflows
+		// For workflow templates, we typically only need the inventory
+		payload := map[string]interface{}{
+			"inventory": inventoryID,
+		}
+
+		// Check if we need to add a limit based on workflow template configuration
+		workflowSupportsLimit := false
+		// You would ideally check this from AWX API but for now we can use a hardcoded list or config
+		if workflowSupportsLimit {
+			if host.Name != "" {
+				payload["limit"] = host.Name
+				fmt.Printf("Using limit: %s\n", host.Name)
+			}
+		}
+
+		// If extra_vars are explicitly allowed for this template, include them
+		// This would typically be stored in a config or determined by querying the AWX API
+		isExtraVarsEnabled := false // Default to false for safety
+
+		// Check if this specific template has extra_vars enabled
+		if requestData.WorkflowTemplateID == 95 {
+			// Template ID 95 is known not to support extra_vars at launch
+			isExtraVarsEnabled = false
+			fmt.Printf("Template ID 95 does not support extra_vars at launch\n")
+		}
+
+		// Only add extra_vars if the template supports them
+		if isExtraVarsEnabled && requestData.ExtraVars != nil && len(requestData.ExtraVars) > 0 {
+			fmt.Printf("Processing extra_vars for workflow: %+v\n", requestData.ExtraVars)
+			var extraVarsStr string
+
+			// Check if format is YAML, otherwise use JSON (default)
+			format := strings.ToLower(requestData.Format)
+			if format == "yaml" || format == "yml" {
+				// Convert to YAML string
+				extraVarsYAML, err := yaml.Marshal(requestData.ExtraVars)
+				if err != nil {
+					fmt.Printf("Error encoding extra_vars to YAML: %v\n", err)
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to encode extra_vars to YAML: " + err.Error()})
+					return
+				}
+				extraVarsStr = string(extraVarsYAML)
+				fmt.Printf("Converted workflow extra_vars to YAML: %s\n", extraVarsStr)
+			} else {
+				// Convert to JSON string (default for backward compatibility)
+				extraVarsJSON, err := json.Marshal(requestData.ExtraVars)
+				if err != nil {
+					fmt.Printf("Error encoding extra_vars to JSON: %v\n", err)
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to encode extra_vars to JSON: " + err.Error()})
+					return
+				}
+				extraVarsStr = string(extraVarsJSON)
+				fmt.Printf("Converted workflow extra_vars to JSON: %s\n", extraVarsStr)
+			}
+
+			payload["extra_vars"] = extraVarsStr
+			fmt.Printf("Added extra_vars to workflow payload\n")
+		} else {
+			// Don't include extra_vars at all if not supported
+			fmt.Printf("Skipping extra_vars for workflow template %d as they're not enabled\n", requestData.WorkflowTemplateID)
+		}
+
+		// Convert payload to JSON
+		payloadBytes, err := json.Marshal(payload)
+		if err != nil {
+			fmt.Printf("Error marshalling workflow payload: %v\n", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to marshal payload: %v", err)})
+			return
+		}
+
+		fmt.Printf("Sending request to AWX API: %s with workflow payload: %s\n", apiURL, string(payloadBytes))
+
+		// Create the request
+		req, err := http.NewRequest("POST", apiURL, bytes.NewBuffer(payloadBytes))
+		if err != nil {
+			fmt.Printf("Error creating workflow request: %v\n", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to create request: %v", err)})
+			return
+		}
+
+		// Set request headers and authentication
+		req.Header.Set("Content-Type", "application/json")
+		req.SetBasicAuth(ServerConfig.Awx.Username, ServerConfig.Awx.Password)
+
+		// Execute the request
+		resp, err := client.Do(req)
+		if err != nil {
+			fmt.Printf("Error executing workflow request: %v\n", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to execute request: %v", err)})
+			return
+		}
+		defer resp.Body.Close()
+
+		// Read response body
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			fmt.Printf("Error reading workflow response body: %v\n", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to read response body: %v", err)})
+			return
+		}
+
+		// Check response status code (add title and code to error responses)
+		if resp.StatusCode >= 400 {
+			errMsg := fmt.Sprintf("AWX API returned error status %d: %s", resp.StatusCode, string(body))
+			fmt.Printf("%s\n", errMsg)
+
+			// Try to parse the error message for better user feedback
+			var errorResponse map[string]interface{}
+			var errorDetail string
+
+			if err := json.Unmarshal(body, &errorResponse); err == nil {
+				// Try to extract a specific error message if available
+				if extraVarsErr, ok := errorResponse["extra_vars"].([]interface{}); ok && len(extraVarsErr) > 0 {
+					errorDetail = fmt.Sprintf("Extra variables not allowed: %v", extraVarsErr[0])
+				}
+			}
+
+			if errorDetail == "" {
+				errorDetail = "Check that the workflow template exists and has valid parameters"
+			}
+
+			c.JSON(resp.StatusCode, gin.H{
+				"error":   errMsg,
+				"details": errorDetail,
+				"title":   "AWX API Error",
+				"code":    "AWX_API_ERROR",
+			})
+			return
+		}
+
+		// Parse response body
+		var responseData map[string]interface{}
+		if err := json.Unmarshal(body, &responseData); err != nil {
+			fmt.Printf("Error parsing workflow response JSON: %v\n", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to parse response body: %v", err)})
+			return
+		}
+
+		// Extract job ID from response
+		jobID, ok := responseData["id"]
+		if !ok {
+			fmt.Printf("No job ID returned from AWX workflow\n")
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "No job ID returned from AWX"})
+			return
+		}
+
+		fmt.Printf("Successfully launched AWX workflow job with ID %v for host %s\n", jobID, hostname)
+
+		// Return response to client
+		c.JSON(http.StatusOK, gin.H{
+			"job_id":               jobID,
+			"status":               "launched",
+			"host":                 hostname,
+			"workflow_template_id": requestData.WorkflowTemplateID,
+			"job_details":          responseData,
+		})
+	}
+}
+
 // Get the status of a job in AWX
 func getAwxJobStatus(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -1174,7 +1550,7 @@ func forceDeleteHost(db *gorm.DB) gin.HandlerFunc {
 
 		// Also delete any host keys associated with this host
 		db.Where("host_name = ?", name).Unscoped().Delete(&HostKey{})
-		
+
 		// Also delete any host config files associated with this host
 		db.Where("host_name = ?", name).Unscoped().Delete(&HostFileConfig{})
 
@@ -1458,15 +1834,15 @@ func getHostAwxJobs(db *gorm.DB) gin.HandlerFunc {
 			Next     string `json:"next"`
 			Previous string `json:"previous"`
 			Results  []struct {
-				ID              int       `json:"id"`
-				Name            string    `json:"name"`
-				Status          string    `json:"status"`
-				Failed          bool      `json:"failed"`
-				Started         string    `json:"started"`
-				Finished        string    `json:"finished"`
-				Elapsed         float64   `json:"elapsed"`
-				Type            string    `json:"type"`
-				SummaryFields   struct {
+				ID            int     `json:"id"`
+				Name          string  `json:"name"`
+				Status        string  `json:"status"`
+				Failed        bool    `json:"failed"`
+				Started       string  `json:"started"`
+				Finished      string  `json:"finished"`
+				Elapsed       float64 `json:"elapsed"`
+				Type          string  `json:"type"`
+				SummaryFields struct {
 					JobTemplate struct {
 						ID   int    `json:"id"`
 						Name string `json:"name"`
@@ -1500,7 +1876,7 @@ func getHostAwxJobs(db *gorm.DB) gin.HandlerFunc {
 				"type":              job.Type,
 				"url":               fmt.Sprintf("%s/#/jobs/playbook/%d", strings.TrimSuffix(ServerConfig.Awx.Url, "/api"), job.ID),
 			}
-			
+
 			jobs = append(jobs, jobData)
 		}
 
@@ -1519,7 +1895,7 @@ func getHostAwxJobs(db *gorm.DB) gin.HandlerFunc {
 // @Produce json
 // @Param name path string true "Host name"
 // @Param jobID path integer true "AWX Job ID"
-// @Success 200 {object} map[string]interface{}
+// @Success 200 {object} map[string.interface{}
 // @Failure 400 {object} map[string]string "Bad request"
 // @Failure 404 {object} map[string]string "Host or job not found"
 // @Failure 500 {object} map[string]string "Server error"
@@ -1596,7 +1972,7 @@ func getHostAwxJobLogs(db *gorm.DB) gin.HandlerFunc {
 			// Decode JSON response
 			var logData map[string]interface{}
 			if err := json.NewDecoder(resp.Body).Decode(&logData); err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode JSON response: " + err.Error()})
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to decode logs: " + err.Error()})
 				return
 			}
 			c.JSON(http.StatusOK, logData)
@@ -1634,7 +2010,7 @@ func getHostAwxJobLogs(db *gorm.DB) gin.HandlerFunc {
 // @Produce json
 // @Param name path string true "Host name"
 // @Param templateID path integer true "Template ID"
-// @Success 200 {object} map[string]interface{} "Job template details"
+// @Success 200 {object} map[string.interface{} "Job template details"
 // @Failure 400 {object} map[string]string "Bad request"
 // @Failure 404 {object} map[string]string "Host or template not found"
 // @Failure 500 {object} map[string]string "Server error"
@@ -1704,7 +2080,7 @@ func getAwxJobTemplateDetails(db *gorm.DB) gin.HandlerFunc {
 		// Check if template has a survey
 		surveyEnabled, exists := templateDetails["survey_enabled"]
 		hasSurveyEnabled := false
-		
+
 		// Check if survey is enabled
 		if exists {
 			// Try to convert to boolean if it exists
@@ -1712,10 +2088,10 @@ func getAwxJobTemplateDetails(db *gorm.DB) gin.HandlerFunc {
 				hasSurveyEnabled = boolVal
 			}
 		}
-		
+
 		// Store template variables
 		variables := gin.H{}
-		
+
 		// If there are extra_vars, try to parse them
 		if extraVars, exists := templateDetails["extra_vars"]; exists && extraVars != "" {
 			extraVarsStr, ok := extraVars.(string)
@@ -1728,7 +2104,7 @@ func getAwxJobTemplateDetails(db *gorm.DB) gin.HandlerFunc {
 				}
 			}
 		}
-		
+
 		// If survey is enabled, fetch survey details
 		if hasSurveyEnabled {
 			// Fetch survey spec
@@ -1737,11 +2113,11 @@ func getAwxJobTemplateDetails(db *gorm.DB) gin.HandlerFunc {
 			if err == nil {
 				surveyReq.SetBasicAuth(ServerConfig.Awx.Username, ServerConfig.Awx.Password)
 				surveyReq.Header.Set("Content-Type", "application/json")
-				
+
 				surveyResp, err := client.Do(surveyReq)
 				if err == nil && surveyResp.StatusCode == http.StatusOK {
 					defer surveyResp.Body.Close()
-					
+
 					var surveySpec map[string]interface{}
 					if err := json.NewDecoder(surveyResp.Body).Decode(&surveySpec); err == nil {
 						variables["survey_spec"] = surveySpec
@@ -1749,17 +2125,17 @@ func getAwxJobTemplateDetails(db *gorm.DB) gin.HandlerFunc {
 				}
 			}
 		}
-		
+
 		// Prepare the response
 		result := gin.H{
-			"id":           templateDetails["id"],
-			"name":         templateDetails["name"],
-			"description":  templateDetails["description"],
-			"variables":    variables,
-			"has_survey":   hasSurveyEnabled,
-			"job_type":     templateDetails["job_type"],
-			"created":      templateDetails["created"],
-			"modified":     templateDetails["modified"],
+			"id":          templateDetails["id"],
+			"name":        templateDetails["name"],
+			"description": templateDetails["description"],
+			"variables":   variables,
+			"has_survey":  hasSurveyEnabled,
+			"job_type":    templateDetails["job_type"],
+			"created":     templateDetails["created"],
+			"modified":    templateDetails["modified"],
 		}
 
 		c.JSON(http.StatusOK, result)
@@ -1774,7 +2150,7 @@ func getAwxJobTemplateDetails(db *gorm.DB) gin.HandlerFunc {
 // @Accept json
 // @Produce json
 // @Param name path string true "Host name"
-// @Success 200 {array} map[string]interface{} "List of job templates"
+// @Success 200 {array} map[string.interface{} "List of job templates"
 // @Failure 400 {object} map[string]string "Bad request"
 // @Failure 404 {object} map[string]string "Host not found"
 // @Failure 500 {object} map[string]string "Server error"
@@ -2049,8 +2425,8 @@ func getAwxWorkflowTemplatesGlobal(db *gorm.DB) gin.HandlerFunc {
 // @Accept json
 // @Produce json
 // @Param name path string true "Host name"
-// @Param job_data body map[string]interface{} true "Job execution parameters"
-// @Success 200 {object} map[string]interface{} "Job launched successfully"
+// @Param job_data body map[string.interface{} true "Job execution parameters"
+// @Success 200 {object} map[string.interface{} "Job launched successfully"
 // @Failure 400 {object} map[string]string "Bad request"
 // @Failure 404 {object} map[string]string "Host not found"
 // @Failure 500 {object} map[string]string "Server error"
@@ -2059,7 +2435,7 @@ func getAwxWorkflowTemplatesGlobal(db *gorm.DB) gin.HandlerFunc {
 func executeAwxJob(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		hostname := c.Param("name")
-  commonPkg.LogDebug(fmt.Sprintf("Executing AWX job for host: %s", hostname))
+		commonPkg.LogDebug(fmt.Sprintf("Executing AWX job for host: %s", hostname))
 
 		// Check if host exists
 		var host Host
@@ -2089,7 +2465,7 @@ func executeAwxJob(db *gorm.DB) gin.HandlerFunc {
 		// Read the raw request body for debugging
 		rawBody, _ := io.ReadAll(c.Request.Body)
 		c.Request.Body = io.NopCloser(bytes.NewBuffer(rawBody)) // Reset the body
-		
+
 		fmt.Printf("Raw request body: %s\n", string(rawBody))
 
 		if err := c.ShouldBindJSON(&requestData); err != nil {
@@ -2097,7 +2473,7 @@ func executeAwxJob(db *gorm.DB) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body: " + err.Error()})
 			return
 		}
-		
+
 		// Double-check that the host still exists in the database (it might have been deleted)
 		var checkHost Host
 		if err := db.Where("name = ?", hostname).First(&checkHost).Error; err != nil {
@@ -2105,86 +2481,87 @@ func executeAwxJob(db *gorm.DB) gin.HandlerFunc {
 			c.JSON(http.StatusNotFound, gin.H{"error": "Host not found or has been deleted"})
 			return
 		}
-		
+
 		// Log received data for debugging
-		fmt.Printf("Parsed request: template_id=%d, template_name=%s, format=%s, inventory_id=%d\n", 
+		fmt.Printf("Parsed request: template_id=%d, template_name=%s, format=%s, inventory_id=%d\n",
 			requestData.TemplateID, requestData.TemplateName, requestData.Format, requestData.InventoryID)
-		
+
 		// Use template ID directly if provided
 		if requestData.TemplateID <= 0 && requestData.TemplateName != "" {
 			// Check if we have a template ID for this name in the configuration
 			if ServerConfig.Awx.TemplateIDs != nil {
 				if id, exists := ServerConfig.Awx.TemplateIDs[requestData.TemplateName]; exists {
-     commonPkg.LogDebug(fmt.Sprintf("Found template ID %d for name '%s' in configuration", id, requestData.TemplateName))
+					commonPkg.LogDebug(fmt.Sprintf("Found template ID %d for name '%s' in configuration", id, requestData.TemplateName))
 					requestData.TemplateID = id
 				} else {
 					// Check for common aliases
 					templateName := strings.ToLower(strings.TrimSpace(requestData.TemplateName))
-					
+
 					// Try some common alternative names
 					if templateName == "client" || templateName == "monokit-client" {
 						if id, exists := ServerConfig.Awx.TemplateIDs["manual-install-monokit-client"]; exists {
-       commonPkg.LogDebug(fmt.Sprintf("Using template ID %d for 'manual-install-monokit-client'", id))
+							commonPkg.LogDebug(fmt.Sprintf("Using template ID %d for 'manual-install-monokit-client'", id))
 							requestData.TemplateID = id
 						}
 					}
 				}
 			}
-			
+
 			// If we still don't have a template ID, report an error
 			if requestData.TemplateID <= 0 {
-    commonPkg.LogDebug(fmt.Sprintf("No template ID found for name: %s", requestData.TemplateName))
-				
+				commonPkg.LogDebug(fmt.Sprintf("No template ID found for name: %s", requestData.TemplateName))
+
 				// Provide a helpful message listing available templates
 				var availableTemplates []string
 				for name := range ServerConfig.Awx.TemplateIDs {
 					availableTemplates = append(availableTemplates, name)
 				}
-				
+
 				c.JSON(http.StatusBadRequest, gin.H{
-					"error": fmt.Sprintf("No template ID configured for '%s'", requestData.TemplateName),
-					"detail": "Please configure the template ID in server.yml or provide a valid template_id directly",
+					"error":               fmt.Sprintf("No template ID configured for '%s'", requestData.TemplateName),
+					"detail":              "Please configure the template ID in server.yml or provide a valid template_id directly",
 					"available_templates": availableTemplates,
 				})
 				return
 			}
 		}
-		
+
 		// If no specific template was provided, use "manual-install-monokit-client" by default
 		if requestData.TemplateID <= 0 && requestData.TemplateName == "" {
 			if id, exists := ServerConfig.Awx.TemplateIDs["manual-install-monokit-client"]; exists {
-    commonPkg.LogDebug(fmt.Sprintf("Using default 'manual-install-monokit-client' template ID: %d", id))
+				commonPkg.LogDebug(fmt.Sprintf("Using default 'manual-install-monokit-client' template ID: %d", id))
 				requestData.TemplateID = id
 			} else {
-    commonPkg.LogDebug("No template ID configured for 'manual-install-monokit-client'")
-				
+				commonPkg.LogDebug("No template ID configured for 'manual-install-monokit-client'")
+
 				// Provide a helpful message listing available templates
 				var availableTemplates []string
 				for name := range ServerConfig.Awx.TemplateIDs {
 					availableTemplates = append(availableTemplates, name)
 				}
-				
+
 				c.JSON(http.StatusBadRequest, gin.H{
-					"error": "No default template ID configured",
-					"detail": "Please configure a template ID for 'manual-install-monokit-client' in server.yml",
+					"error":               "No default template ID configured",
+					"detail":              "Please configure a template ID for 'manual-install-monokit-client' in server.yml",
 					"available_templates": availableTemplates,
 				})
 				return
 			}
 		}
-		
+
 		// Validate we have a template ID
 		if requestData.TemplateID <= 0 {
-   commonPkg.LogDebug("No template ID or name provided")
+			commonPkg.LogDebug("No template ID or name provided")
 			c.JSON(http.StatusBadRequest, gin.H{"error": "No template_id or template_name provided"})
 			return
 		}
 
-  commonPkg.LogDebug(fmt.Sprintf("Will execute template_id=%d for host %s", requestData.TemplateID, hostname))
+		commonPkg.LogDebug(fmt.Sprintf("Will execute template_id=%d for host %s", requestData.TemplateID, hostname))
 
 		// Check host IP address for local network
 		if host.IpAddress == "" {
 			fmt.Printf("Warning: Host %s has no IP address\n", hostname)
+			return
 		} else {
 			fmt.Printf("Host %s has IP address: %s\n", hostname, host.IpAddress)
 		}
@@ -2200,7 +2577,7 @@ func executeAwxJob(db *gorm.DB) gin.HandlerFunc {
 
 		// Prepare payload for AWX API
 		payload := map[string]interface{}{}
-		
+
 		// Determine the appropriate limit parameter for the job
 		if awxHostId != "" {
 			// If we have AWX host ID, use it in a hosts list
@@ -2211,15 +2588,15 @@ func executeAwxJob(db *gorm.DB) gin.HandlerFunc {
 			fmt.Printf("Using hostname as limit: %s\n", hostname)
 			payload["limit"] = hostname
 		}
-		
+
 		// Log inventory configuration
-		fmt.Printf("Inventory configuration: request_inventory_id=%d, default_inventory_id=%d\n", 
+		fmt.Printf("Inventory configuration: request_inventory_id=%d, default_inventory_id=%d\n",
 			requestData.InventoryID, ServerConfig.Awx.DefaultInventoryID)
-		
+
 		// Check if the host is in AWX already
 		if host.AwxHostId == "" {
 			fmt.Printf("Host %s not registered in AWX, will create it first\n", hostname)
-			
+
 			// Try to find or create AWX host
 			awxHostId, err := ensureHostInAwx(db, host)
 			if err != nil {
@@ -2234,7 +2611,7 @@ func executeAwxJob(db *gorm.DB) gin.HandlerFunc {
 				}
 			}
 		}
-		
+
 		// Inventory ID is required by AWX API
 		if requestData.InventoryID > 0 {
 			// Use inventory ID from request if provided
@@ -2248,7 +2625,7 @@ func executeAwxJob(db *gorm.DB) gin.HandlerFunc {
 			// No inventory ID available - this will cause an error from AWX
 			fmt.Printf("No inventory ID provided and no default configured\n")
 			c.JSON(http.StatusBadRequest, gin.H{
-				"error": "No inventory ID provided and no default configured",
+				"error":   "No inventory ID provided and no default configured",
 				"details": "The AWX API requires an inventory ID for job execution. Please provide an inventory_id in the request or set default_inventory_id in server config.",
 			})
 			return
@@ -2258,7 +2635,7 @@ func executeAwxJob(db *gorm.DB) gin.HandlerFunc {
 		if requestData.ExtraVars != nil && len(requestData.ExtraVars) > 0 {
 			fmt.Printf("Processing extra_vars: %+v\n", requestData.ExtraVars)
 			var extraVarsStr string
-			
+
 			// Check if format is YAML, otherwise use JSON (default)
 			format := strings.ToLower(requestData.Format)
 			if format == "yaml" || format == "yml" {
@@ -2309,21 +2686,21 @@ func executeAwxJob(db *gorm.DB) gin.HandlerFunc {
 		}
 		client := &http.Client{
 			Transport: transport,
-			Timeout: time.Duration(ServerConfig.Awx.Timeout) * time.Second,
+			Timeout:   time.Duration(ServerConfig.Awx.Timeout) * time.Second,
 		}
 
 		// AWX API endpoint for launching a job template - ensure URL is properly formatted
 		awxURL := strings.TrimRight(ServerConfig.Awx.Url, "/")
 		apiURL := fmt.Sprintf("%s/api/v2/job_templates/%d/launch/", awxURL, requestData.TemplateID)
-  commonPkg.LogDebug(fmt.Sprintf("Calling AWX API: %s", apiURL))
+		commonPkg.LogDebug(fmt.Sprintf("Calling AWX API: %s", apiURL))
 
 		// Create the request with complete debugging
-  commonPkg.LogDebug(fmt.Sprintf("Preparing to execute AWX job template ID: %d for host: %s", requestData.TemplateID, hostname))
-  commonPkg.LogDebug(fmt.Sprintf("AWX API URL: %s", apiURL))
-  commonPkg.LogDebug(fmt.Sprintf("Request payload: %s", string(payloadBytes)))
-		
+		commonPkg.LogDebug(fmt.Sprintf("Preparing to execute AWX job template ID: %d for host: %s", requestData.TemplateID, hostname))
+		commonPkg.LogDebug(fmt.Sprintf("AWX API URL: %s", apiURL))
+		commonPkg.LogDebug(fmt.Sprintf("Request payload: %s", string(payloadBytes)))
+
 		// Simple log message about which template we're using
-  commonPkg.LogDebug(fmt.Sprintf("Using template ID %d from configuration", requestData.TemplateID))
+		commonPkg.LogDebug(fmt.Sprintf("Using template ID %d from configuration", requestData.TemplateID))
 
 		req, err := http.NewRequest("POST", apiURL, bytes.NewBuffer(payloadBytes))
 		if err != nil {
@@ -2335,7 +2712,7 @@ func executeAwxJob(db *gorm.DB) gin.HandlerFunc {
 		// Set basic auth and headers
 		req.SetBasicAuth(ServerConfig.Awx.Username, ServerConfig.Awx.Password)
 		req.Header.Set("Content-Type", "application/json")
-		
+
 		// Add detailed debugging
 		fmt.Printf("Request headers: %+v\n", req.Header)
 
@@ -2362,7 +2739,7 @@ func executeAwxJob(db *gorm.DB) gin.HandlerFunc {
 			defer resp.Body.Close()
 
 			fmt.Printf("AWX API response status: %d\n", resp.StatusCode)
-			
+
 			// Read the entire response body for logging and analysis
 			respBody, err := io.ReadAll(resp.Body)
 			if err != nil {
@@ -2370,14 +2747,14 @@ func executeAwxJob(db *gorm.DB) gin.HandlerFunc {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read response: " + err.Error()})
 				return
 			}
-			
+
 			// Log the raw response for debugging
 			fmt.Printf("AWX API response body: %s\n", string(respBody))
-			
+
 			// Check response status
 			if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 				errorMsg := fmt.Sprintf("AWX API returned status: %d - %s", resp.StatusCode, string(respBody))
-				
+
 				// Check for specific error messages and provide more user-friendly errors
 				if strings.Contains(string(respBody), "Inventory matching query does not exist") {
 					// This is likely due to missing or invalid inventory ID
@@ -2393,7 +2770,7 @@ func executeAwxJob(db *gorm.DB) gin.HandlerFunc {
 				} else if strings.Contains(string(respBody), "Unable to add job to queue") {
 					errorMsg = "AWX Error: Unable to add job to queue. The system may be at capacity."
 				}
-				
+
 				fmt.Printf("Error from AWX: %s\n", errorMsg)
 				c.JSON(http.StatusInternalServerError, gin.H{"error": errorMsg})
 				return
@@ -2401,7 +2778,7 @@ func executeAwxJob(db *gorm.DB) gin.HandlerFunc {
 
 			// Create a new reader for the response body for parsing
 			responseBodyReader := bytes.NewReader(respBody)
-			
+
 			// Parse response
 			var responseData map[string]interface{}
 			if err := json.NewDecoder(responseBodyReader).Decode(&responseData); err != nil {
@@ -2411,13 +2788,13 @@ func executeAwxJob(db *gorm.DB) gin.HandlerFunc {
 			}
 
 			fmt.Printf("Job launched successfully: ID=%v, Status=%v\n", responseData["id"], responseData["status"])
-			
+
 			// Return job information
 			c.JSON(http.StatusOK, gin.H{
-				"job_id":     responseData["id"],
-				"status":     responseData["status"],
-				"message":    "Job launched successfully",
-				"host_name":  hostname,
+				"job_id":      responseData["id"],
+				"status":      responseData["status"],
+				"message":     "Job launched successfully",
+				"host_name":   hostname,
 				"job_details": responseData,
 			})
 		}()
@@ -2585,10 +2962,10 @@ func filterLogsForHost(rawLogs string, hostname string) string {
 	inTaskBlock := false
 	inPlayRecap := false
 	addedRecapHeader := false
-	
+
 	for i := 0; i < len(lines); i++ {
 		line := lines[i]
-		
+
 		// Exact match for the "PLAY RECAP" line
 		if strings.HasPrefix(line, "PLAY RECAP") {
 			inPlayRecap = true
@@ -2596,7 +2973,7 @@ func filterLogsForHost(rawLogs string, hostname string) string {
 			// We'll add this line later when we find a matching host
 			continue
 		}
-		
+
 		// Special handling for PLAY RECAP section
 		if inPlayRecap {
 			// If we find the exact hostname followed by a colon (summary line)
@@ -2609,7 +2986,7 @@ func filterLogsForHost(rawLogs string, hostname string) string {
 				// Add the summary line for this host
 				filteredLines = append(filteredLines, line)
 			}
-			
+
 			// If we hit a new section (line starting with uppercase letters followed by a space)
 			if regexp.MustCompile(`^[A-Z]+\s`).MatchString(line) && !strings.HasPrefix(line, "PLAY RECAP") {
 				inPlayRecap = false
@@ -2619,7 +2996,7 @@ func filterLogsForHost(rawLogs string, hostname string) string {
 				continue
 			}
 		}
-		
+
 		// General patterns
 		playPattern := regexp.MustCompile(`PLAY\s+\[.*?\]`)
 		taskPattern := regexp.MustCompile(`TASK\s+\[.*?\]`)
@@ -2627,10 +3004,10 @@ func filterLogsForHost(rawLogs string, hostname string) string {
 		includePattern := regexp.MustCompile(`INCLUDED TASKS|RUNNING HANDLER`)
 		skippingPattern := regexp.MustCompile(`skipping:\s+\[` + regexp.QuoteMeta(hostname) + `\]`)
 		statsPattern := regexp.MustCompile(`STATS|failed=|ok=|changed=|unreachable=`)
-		
+
 		// Always include play headers, task headers, and statistical information
-		if playPattern.MatchString(line) || 
-			taskPattern.MatchString(line) || 
+		if playPattern.MatchString(line) ||
+			taskPattern.MatchString(line) ||
 			includePattern.MatchString(line) ||
 			statsPattern.MatchString(line) {
 			filteredLines = append(filteredLines, line)
@@ -2638,34 +3015,35 @@ func filterLogsForHost(rawLogs string, hostname string) string {
 			keepNextLines = false
 			continue
 		}
-		
+
 		// If the line contains the host name, include it and remember to keep next related lines
 		if hostPattern.MatchString(line) {
 			filteredLines = append(filteredLines, line)
 			keepNextLines = true
 			continue
 		}
-		
+
 		// If we're keeping lines due to a previous host match
 		if keepNextLines {
 			// Keep the line only if it seems to be related (indented or has specific content)
 			if strings.HasPrefix(line, " ") || line == "" || skippingPattern.MatchString(line) {
 				filteredLines = append(filteredLines, line)
+				continue
 			} else {
 				// Stop keeping lines if we hit another content type
 				keepNextLines = false
 			}
 		}
-		
+
 		// If we're in a task block but not keeping specific lines,
 		// add empty spacing where appropriate to maintain structure
-		if inTaskBlock && !keepNextLines && len(filteredLines) > 0 && 
+		if inTaskBlock && !keepNextLines && len(filteredLines) > 0 &&
 			filteredLines[len(filteredLines)-1] != "" && line == "" {
 			filteredLines = append(filteredLines, "")
 			inTaskBlock = false
 		}
 	}
-	
+
 	return strings.Join(filteredLines, "\n")
 }
 
@@ -2677,7 +3055,7 @@ func filterLogsForHost(rawLogs string, hostname string) string {
 // @Produce json
 // @Param name path string true "Host name"
 // @Param service path string true "Service name"
-// @Success 200 {object} map[string]string
+// @Success 200 {object} map[string.string
 // @Router /hosts/{name}/enable/{service} [post]
 func enableComponent(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -2736,7 +3114,7 @@ func enableComponent(db *gorm.DB) gin.HandlerFunc {
 // @Produce json
 // @Param name path string true "Host name"
 // @Param service path string true "Service name"
-// @Success 200 {object} map[string]string
+// @Success 200 {object} map[string.string
 // @Router /hosts/{name}/disable/{service} [post]
 func disableComponent(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -2787,7 +3165,7 @@ func disableComponent(db *gorm.DB) gin.HandlerFunc {
 // @Produce json
 // @Param name path string true "Host name"
 // @Param service path string true "Service name"
-// @Success 200 {object} map[string]string
+// @Success 200 {object} map[string.string
 // @Router /hosts/{name}/{service} [get]
 func getComponentStatus() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -2832,7 +3210,7 @@ func getComponentStatus() gin.HandlerFunc {
 // @Accept json
 // @Produce json
 // @Param log body APILogRequest true "Log entry"
-// @Success 201 {object} map[string]interface{} "Log entry saved response"
+// @Success 201 {object} map[string.interface{} "Log entry saved response"
 // @Failure 400 {object} map[string]string "Bad request error"
 // @Failure 401 {object} map[string]string "Unauthorized error"
 // @Failure 500 {object} map[string]string "Internal server error"
