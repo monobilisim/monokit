@@ -21,7 +21,7 @@ spec:
           containers:
           - name: k8shealth
             image: ghcr.io/monobilisim/monokit
-            command: 
+            command:
             - "monokit"
             - "k8sHealth"
             env:
@@ -38,6 +38,8 @@ spec:
               mountPath: /root/.kube
             - name: etc-mono-dir
               mountPath: /etc/mono
+            - name: tmp-mono
+              mountPath: /tmp/mono
           volumes:
           - name: config-volume
             configMap:
@@ -49,4 +51,7 @@ spec:
             emptyDir: {}
           - name: etc-mono-dir
             emptyDir: {}
+          - name: tmp-mono
+            persistentVolumeClaim:
+              claimName: k8shealth-tmp-mono-pvc
           restartPolicy: OnFailure

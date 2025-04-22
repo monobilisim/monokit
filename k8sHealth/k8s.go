@@ -181,11 +181,20 @@ func podAlarmCheckDown(podName string, namespace string, actualStatus string) {
         common.LogError(err.Error())
     }
 
-    for _, pod := range pods.Items {
-        if pod.Name == podName {
-            podStillExists = true
-        }
-    }
+	// Check if environment variable MONOKIT_POD_NAME is set
+	if os.Getenv("MONOKIT_POD_NAME") != "" {
+		// Check if the pod name includes the MONOKIT_POD_NAME environment variable
+		if strings.Contains(podName, os.Getenv("MONOKIT_POD_NAME")) {
+			// If the pod name includes the MONOKIT_POD_NAME environment variable, set podStillExists to true
+			podStillExists = true
+		}
+	} else {
+    	for _, pod := range pods.Items {
+        	if pod.Name == podName {
+            	podStillExists = true
+        	}
+    	}
+	}
 
     if podStillExists == false {
        common.AlarmCheckUp(namespace + "-" + podName + "_running", "Pod '" + podName + "' from namespace '" + namespace + "' doesn't exist anymore, likely replaced", false)
