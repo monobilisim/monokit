@@ -27,6 +27,10 @@ spec:
             env:
             - name: MONOKIT_NOCOLOR
               value: "true"
+            - name: MONOKIT_POD_NAME
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.name
             volumeMounts:
             - name: config-volume
               mountPath: /etc/mono/k8s.yml
