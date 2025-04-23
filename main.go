@@ -12,13 +12,14 @@ import (
 	news "github.com/monobilisim/monokit/common/redmine/news"
 	verCheck "github.com/monobilisim/monokit/common/versionCheck"
 	"github.com/monobilisim/monokit/daemon"
+	"github.com/monobilisim/monokit/esHealth"
 	"github.com/monobilisim/monokit/k8sHealth"
 	"github.com/monobilisim/monokit/lbPolicy"
 	"github.com/monobilisim/monokit/osHealth"
 	"github.com/monobilisim/monokit/pritunlHealth"
-	"github.com/monobilisim/monokit/esHealth"
 	"github.com/monobilisim/monokit/shutdownNotifier"
 	"github.com/monobilisim/monokit/sshNotifier"
+	ufwApply "github.com/monobilisim/monokit/ufwApply"
 	"github.com/monobilisim/monokit/wppconnectHealth"
 	"github.com/spf13/cobra"
 )
@@ -569,7 +570,10 @@ Supports pagination for large log sets.`,
 	/// WPPConnect
 	RootCmd.AddCommand(wppconnectHealthCmd)
 
-	/// Load Balancer Policy
+	// / UFW Applier
+	RootCmd.AddCommand(ufwApply.UfwCmd) // Add UFW command to root command
+
+	// / Load Balancer Policy
 	RootCmd.AddCommand(lbPolicyCmd)
 
 	lbPolicyCmd.AddCommand(lbPolicySwitchCmd)

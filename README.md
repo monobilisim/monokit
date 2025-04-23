@@ -146,6 +146,11 @@
     - Runs health checks with the specified interval.
     - Config: `/etc/mono/daemon.yaml`
 
+- ufw
+    - Manages UFW rules by downloading and applying IP lists from URLs.
+    - Supports both dynamic URL-based rules and static rules.
+    - Config: `/etc/mono/ufw.yaml`
+
 ---
 
 ## Usage
