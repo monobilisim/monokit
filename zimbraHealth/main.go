@@ -567,9 +567,9 @@ func CheckQueuedMessages() {
     common.PrettyPrint("Queued Messages", "", float64(count), false, false, true, float64(MailHealthConfig.Zimbra.Queue_Limit))
 
     if count > MailHealthConfig.Zimbra.Queue_Limit {
-        common.AlarmCheckDown("mailq", "Mail queue is over the limit", false, "", "")
+        common.AlarmCheckDown("mailq", "Mail queue is over the limit (" + strconv.Itoa(count) + "/" + strconv.Itoa(MailHealthConfig.Zimbra.Queue_Limit) + ")", false, "", "")
     } else {
-        common.AlarmCheckUp("mailq", "Mail queue is under the limit", false)
+        common.AlarmCheckUp("mailq", "Mail queue is under the limit (" + strconv.Itoa(count) + "/" + strconv.Itoa(MailHealthConfig.Zimbra.Queue_Limit) + ")", false)
     }
 }
 
