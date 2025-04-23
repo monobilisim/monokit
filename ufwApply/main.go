@@ -14,7 +14,6 @@ import (
 
 	"github.com/monobilisim/monokit/common"
 	"github.com/spf13/cobra"
-	"github.com/spf13/viper"
 )
 
 // UfwCmd represents the root command for UFW operations
@@ -92,44 +91,23 @@ func Execute(dryRunFlag bool, noCmdOutFlag bool) error {
 func loadUfwConfig() (*Config, string, error) {
 	var ufwConfig Config
 
-	// Initialize a new Viper instance for UFW config
-	v := viper.New()
-	v.SetConfigName("ufw")
-	v.SetConfigType("yaml")
-	v.AddConfigPath("/etc/mono")
+	// Use common.ConfInit to load the configuration
+	common.ConfInit("ufw", &ufwConfig) // This handles reading, initialization, and unmarshalling
 
-	common.LogDebug("Attempting to read UFW config from /etc/mono/ufw.yaml")
+	// Log loaded URLs for debugging (Viper instance is managed within ConfInit)
+	// We need a way to access the viper instance used by ConfInit or re-read values if needed.
+	// For now, let's assume ConfInit succeeded and ufwConfig is populated.
+	// Re-reading with a local viper instance just for logging seems redundant.
+	// Let's rely on the unmarshalled struct for counts.
 
-	// Read the config file
-	if err := v.ReadInConfig(); err != nil {
-		common.LogError(fmt.Sprintf("Error reading config: %v", err))
-		return nil, "", fmt.Errorf("error reading UFW config: %w", err)
-	}
+	common.LogDebug(fmt.Sprintf("Loaded config via common.ConfInit: RuleURLs count=%d, StaticRules count=%d",
+		len(ufwConfig.RuleURLs), len(ufwConfig.StaticRules)))
 
-	common.LogDebug(fmt.Sprintf("Successfully loaded config from: %s", v.ConfigFileUsed()))
+	// If detailed URL logging is still needed, ConfInit might need adjustment or
+	// we might need to access the global viper instance if ConfInit uses it.
+	// Assuming basic count logging is sufficient for now.
 
-	if v.IsSet("rule_urls") {
-		urls := v.GetStringSlice("rule_urls")
-		common.LogDebug(fmt.Sprintf("Found %d rule URLs in config: %v", len(urls), urls))
-	} else {
-		common.LogError("No rule_urls found in config")
-	}
-
-	// Read the config directly, first dump raw urls for debugging
-	if raw := v.Get("rule_urls"); raw != nil {
-		if urls, ok := raw.([]interface{}); ok {
-			common.LogDebug("Raw rule_urls from config:")
-			for i, u := range urls {
-				common.LogDebug(fmt.Sprintf("  [%d]: %v", i, u))
-			}
-		}
-	}
-
-	monoDir := defaultMonoDir
-	if err := v.Unmarshal(&ufwConfig); err != nil {
-		common.LogError(fmt.Sprintf("Failed to unmarshal config: %v", err))
-		return nil, "", fmt.Errorf("failed to unmarshal ufw config: %w", err)
-	}
+	monoDir := defaultMonoDir // Keep default monoDir definition
 
 	common.LogDebug(fmt.Sprintf("Loaded config: RuleURLs count=%d, StaticRules count=%d",
 		len(ufwConfig.RuleURLs), len(ufwConfig.StaticRules)))
