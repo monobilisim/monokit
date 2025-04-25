@@ -16,6 +16,7 @@ import {
 } from '@patternfly/react-core';
 import { EllipsisVIcon, MoonIcon, SunIcon } from '@patternfly/react-icons';
 import Navigation from './components/Navigation.jsx';
+import ErrorBoundary from './components/ErrorBoundary.jsx'; // Import ErrorBoundary
 import Dashboard from './pages/Dashboard.jsx';
 import Hosts from './pages/Hosts.jsx';
 import Users from './pages/Users.jsx';
@@ -236,9 +237,10 @@ function App() {
               boxShadow: theme === 'dark' ? 'none' : '0 2px 4px rgba(0,0,0,0.1)',
               padding: '24px'
             }}>
-              <Routes>
-                <Route path="/" element={<Dashboard onAuthError={handleAuthError} />} />
-                <Route path="/hosts" element={<Hosts onAuthError={handleAuthError} />} />
+              <ErrorBoundary> {/* Wrap Routes with ErrorBoundary */}
+                <Routes>
+                  <Route path="/" element={<Dashboard onAuthError={handleAuthError} />} />
+                  <Route path="/hosts" element={<Hosts onAuthError={handleAuthError} />} />
                 <Route path="/hosts/awx/add" element={<AwxHostAddPage onAuthError={handleAuthError} />} />
                 <Route path="/hosts/:hostname" element={<HostDetails onAuthError={handleAuthError} />} />
                 <Route path="/hosts/:hostname/config" element={<MonokitConfig onAuthError={handleAuthError} />} />
@@ -249,9 +251,10 @@ function App() {
                 <Route path="/users/:username" element={<UserDetails onAuthError={handleAuthError} />} />
                 <Route path="/inventories" element={<Inventories onAuthError={handleAuthError} />} />
                 <Route path="/groups" element={<Groups onAuthError={handleAuthError} />} />
-                <Route path="/logs" element={<Logs onAuthError={handleAuthError} />} />
-                <Route path="*" element={<Navigate to="/" replace />} />
-              </Routes>
+                  <Route path="/logs" element={<Logs onAuthError={handleAuthError} />} />
+                  <Route path="*" element={<Navigate to="/" replace />} />
+                </Routes>
+              </ErrorBoundary> {/* Close ErrorBoundary */}
             </main>
           </div>
         </div>

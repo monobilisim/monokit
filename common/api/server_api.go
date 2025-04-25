@@ -620,30 +620,30 @@ func getAllHosts(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-                currentUser := user.(User)
-                var filteredHosts []Host
+		currentUser := user.(User)
+		var filteredHosts []Host
 
-                // First filter out AWX-only hosts that should not be shown in dashboard
-                var visibleHosts []Host
-                for _, host := range HostsList {
-                        if !host.AwxOnly {
-                                visibleHosts = append(visibleHosts, host)
-                        }
-                }
+		// First filter out AWX-only hosts that should not be shown in dashboard
+		var visibleHosts []Host
+		for _, host := range HostsList {
+			if !host.AwxOnly {
+				visibleHosts = append(visibleHosts, host)
+			}
+		}
 
-                if currentUser.Role == "admin" {
-                        filteredHosts = visibleHosts
-                } else {
-                        for _, host := range visibleHosts {
-                                userInventories := strings.Split(currentUser.Inventories, ",")
-                                for _, inv := range userInventories {
-                                        if host.Inventory == strings.TrimSpace(inv) {
-                                                filteredHosts = append(filteredHosts, host)
-                                                break
-                                        }
-                                }
-                        }
-                }
+		if currentUser.Role == "admin" {
+			filteredHosts = visibleHosts
+		} else {
+			for _, host := range visibleHosts {
+				userInventories := strings.Split(currentUser.Inventories, ",")
+				for _, inv := range userInventories {
+					if host.Inventory == strings.TrimSpace(inv) {
+						filteredHosts = append(filteredHosts, host)
+						break
+					}
+				}
+			}
+		}
 
 		for i := range filteredHosts {
 			isOffline := time.Since(filteredHosts[i].UpdatedAt).Minutes() > 5
@@ -729,13 +729,13 @@ func createAwxHost(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-                // Parse request body
-                var requestData struct {
-                        Name      string                 `json:"name" binding:"required"`
-                        IpAddress string                 `json:"ip_address" binding:"required"`
-                        ExtraVars map[string]interface{} `json:"extra_vars"`
-                        AwxOnly   bool                   `json:"awx_only"`
-                }
+		// Parse request body
+		var requestData struct {
+			Name      string                 `json:"name" binding:"required"`
+			IpAddress string                 `json:"ip_address" binding:"required"`
+			ExtraVars map[string]interface{} `json:"extra_vars"`
+			AwxOnly   bool                   `json:"awx_only"`
+		}
 
 		if err := c.ShouldBindJSON(&requestData); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request: " + err.Error()})
@@ -816,10 +816,29 @@ func createAwxHost(db *gorm.DB) gin.HandlerFunc {
 		// Check response status
 		if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
 			// Read error response for debugging
-			errorBody, _ := io.ReadAll(resp.Body)
-			errorMsg := fmt.Sprintf("AWX API returned status: %d - %s", resp.StatusCode, string(errorBody))
-			fmt.Printf("AWX API error: %s\n", errorMsg)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": errorMsg})
+			errorBody, readErr := io.ReadAll(resp.Body)
+			if readErr != nil {
+				// Handle error reading the body, though unlikely
+				errorMsg := fmt.Sprintf("AWX API returned status: %d, but failed to read error body: %v", resp.StatusCode, readErr)
+				fmt.Printf("AWX API error: %s\n", errorMsg)
+				// Return the original status code even if body reading failed
+				c.JSON(resp.StatusCode, gin.H{"error": errorMsg})
+				return
+			}
+
+			// Log the error
+			fmt.Printf("AWX API error: Status %d - %s\n", resp.StatusCode, string(errorBody))
+
+			// Try to unmarshal the error body as JSON
+			var awxErrorResponse interface{}
+			err := json.Unmarshal(errorBody, &awxErrorResponse)
+			if err == nil {
+				// If unmarshalling is successful, return the JSON error object
+				c.JSON(resp.StatusCode, awxErrorResponse)
+			} else {
+				// If unmarshalling fails, return the raw error string
+				c.JSON(resp.StatusCode, gin.H{"error": string(errorBody)})
+			}
 			return
 		}
 
@@ -839,82 +858,82 @@ func createAwxHost(db *gorm.DB) gin.HandlerFunc {
 			commonPkg.LogDebug(fmt.Sprintf("Warning: Couldn't extract AWX host ID from response: %+v", awxHostResponse))
 		}
 
-            // We always need to create a minimal entry in the local database
-            // This is necessary for the API to find the host for AWX job execution
-            commonPkg.LogDebug(fmt.Sprintf("Creating local database entry for host: %s", requestData.Name))
+		// We always need to create a minimal entry in the local database
+		// This is necessary for the API to find the host for AWX job execution
+		commonPkg.LogDebug(fmt.Sprintf("Creating local database entry for host: %s", requestData.Name))
 
-            // Create the host in the local database
-            localHost := Host{
-                    Name:      requestData.Name,
-                    IpAddress: requestData.IpAddress,
-                    Os:        "Unknown", // This can be updated later
-                    Status:    "Pending",
-                    Inventory: "default",                         // Use default inventory
-                    Groups:    "",                                // Can be populated later
-                    AwxHostId: fmt.Sprintf("%d", int(awxHostID)), // Store the AWX host ID as string
-            }
+		// Create the host in the local database
+		localHost := Host{
+			Name:      requestData.Name,
+			IpAddress: requestData.IpAddress,
+			Os:        "Unknown", // This can be updated later
+			Status:    "Pending",
+			Inventory: "default",                         // Use default inventory
+			Groups:    "",                                // Can be populated later
+			AwxHostId: fmt.Sprintf("%d", int(awxHostID)), // Store the AWX host ID as string
+		}
 
-            // If this is AWX-only, mark it as hidden from dashboard listings
-            if requestData.AwxOnly {
-                    localHost.AwxOnly = true // This field needs to be added to the Host struct
-            }
+		// If this is AWX-only, mark it as hidden from dashboard listings
+		if requestData.AwxOnly {
+			localHost.AwxOnly = true // This field needs to be added to the Host struct
+		}
 
-            // Check if host already exists
-            var existingHost Host
-            result := db.Where("name = ?", localHost.Name).First(&existingHost)
-            if result.Error == nil {
-                    // Host already exists, update it
-                    fmt.Printf("Host already exists in local DB, updating: %s (ID=%d)\n",
-                            existingHost.Name, existingHost.ID)
+		// Check if host already exists
+		var existingHost Host
+		result := db.Where("name = ?", localHost.Name).First(&existingHost)
+		if result.Error == nil {
+			// Host already exists, update it
+			fmt.Printf("Host already exists in local DB, updating: %s (ID=%d)\n",
+				existingHost.Name, existingHost.ID)
 
-                    // Update existing host with new AWX data
-                    existingHost.IpAddress = localHost.IpAddress
-                    existingHost.AwxHostId = localHost.AwxHostId
-                    existingHost.Status = "Pending"
-                    if requestData.AwxOnly {
-                            existingHost.AwxOnly = true
-                    }
+			// Update existing host with new AWX data
+			existingHost.IpAddress = localHost.IpAddress
+			existingHost.AwxHostId = localHost.AwxHostId
+			existingHost.Status = "Pending"
+			if requestData.AwxOnly {
+				existingHost.AwxOnly = true
+			}
 
-                    if err := db.Save(&existingHost).Error; err != nil {
-                            fmt.Printf("Error updating existing host: %v\n", err)
-                            // Don't return error, continue with AWX host creation success
-                    }
-            } else {
-                    // Create new host
-                    if err := db.Create(&localHost).Error; err != nil {
-                            fmt.Printf("Error creating local host entry: %v\n", err)
-                            // Don't return error, still return success for AWX host creation
-                    } else {
-                            fmt.Printf("Created local host entry: %s (ID=%d)\n", localHost.Name, localHost.ID)
+			if err := db.Save(&existingHost).Error; err != nil {
+				fmt.Printf("Error updating existing host: %v\n", err)
+				// Don't return error, continue with AWX host creation success
+			}
+		} else {
+			// Create new host
+			if err := db.Create(&localHost).Error; err != nil {
+				fmt.Printf("Error creating local host entry: %v\n", err)
+				// Don't return error, still return success for AWX host creation
+			} else {
+				fmt.Printf("Created local host entry: %s (ID=%d)\n", localHost.Name, localHost.ID)
 
-                            // Generate an API key for this host
-                            token := generateToken()
-                            hostKey := HostKey{
-                                    Token:    token,
-                                    HostName: localHost.Name,
-                            }
+				// Generate an API key for this host
+				token := generateToken()
+				hostKey := HostKey{
+					Token:    token,
+					HostName: localHost.Name,
+				}
 
-                            if err := db.Create(&hostKey).Error; err != nil {
-                                    fmt.Printf("Error creating host key: %v\n", err)
-                            } else {
-                                    fmt.Printf("Created host key for %s\n", localHost.Name)
+				if err := db.Create(&hostKey).Error; err != nil {
+					fmt.Printf("Error creating host key: %v\n", err)
+				} else {
+					fmt.Printf("Created host key for %s\n", localHost.Name)
 
-                                    // Include the API key in the response
-                                    awxHostResponse["apiKey"] = token
-                            }
-                    }
-            }
+					// Include the API key in the response
+					awxHostResponse["apiKey"] = token
+				}
+			}
+		}
 
-            // Refresh the hosts list
-            if err := db.Find(&HostsList).Error; err != nil {
-                    fmt.Printf("Warning: Error refreshing hosts list: %v\n", err)
-            }
+		// Refresh the hosts list
+		if err := db.Find(&HostsList).Error; err != nil {
+			fmt.Printf("Warning: Error refreshing hosts list: %v\n", err)
+		}
 
-            // Add local host information to response
-            awxHostResponse["localHostRegistered"] = true
-            if requestData.AwxOnly {
-                    awxHostResponse["awxOnly"] = true
-            }
+		// Add local host information to response
+		awxHostResponse["localHostRegistered"] = true
+		if requestData.AwxOnly {
+			awxHostResponse["awxOnly"] = true
+		}
 
 		c.JSON(http.StatusCreated, awxHostResponse)
 	}
