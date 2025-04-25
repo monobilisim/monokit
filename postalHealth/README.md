@@ -1,8 +1,3 @@
-Got it. Here's the `README.md` in English, straight to the point:
-
----
-
-```markdown
 # postalHealth
 
 `postalHealth` is a Go-based health check tool for monitoring the Postal mail server infrastructure. It verifies the status of Docker containers, MySQL databases, service endpoints, and message queues. Useful for alerting, logging, and operational visibility.
