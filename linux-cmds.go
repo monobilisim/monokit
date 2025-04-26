@@ -4,12 +4,12 @@ package main
 
 import (
 	"github.com/monobilisim/monokit/mysqlHealth"
+	"github.com/monobilisim/monokit/pgsqlHealth"
 	"github.com/monobilisim/monokit/pmgHealth"
 	"github.com/monobilisim/monokit/postalHealth"
 	"github.com/monobilisim/monokit/redisHealth"
 	"github.com/monobilisim/monokit/rmqHealth"
 	"github.com/monobilisim/monokit/traefikHealth"
-	"github.com/monobilisim/monokit/pgsqlHealth"
 	"github.com/monobilisim/monokit/zimbraHealth"
 	"github.com/monobilisim/monokit/zimbraLdap"
 	"github.com/spf13/cobra"
@@ -26,32 +26,30 @@ func RedisCommandAdd() {
 }
 
 func ZimbraCommandAdd() {
-    var zimbraHealthCmd = &cobra.Command{
-        Use:   "zimbraHealth",
-        Short: "Zimbra Health",
-        Run:   zimbraHealth.Main,
-    }
+	var zimbraHealthCmd = &cobra.Command{
+		Use:   "zimbraHealth",
+		Short: "Zimbra Health",
+		Run:   zimbraHealth.Main,
+	}
 
-    var zimbraLdapCmd = &cobra.Command{
-        Use:   "zimbraLdap",
-        Short: "Zimbra LDAP",
-        Run:   func(cmd *cobra.Command, args []string) {
-            zimbraLdap.Main()
-        },
-    }
-    
-    RootCmd.AddCommand(zimbraLdapCmd)
-    RootCmd.AddCommand(zimbraHealthCmd)
+	var zimbraLdapCmd = &cobra.Command{
+		Use:   "zimbraLdap",
+		Short: "Zimbra LDAP",
+		Run:   zimbraLdap.Main, // Directly use the Main function which now matches the signature
+	}
+
+	RootCmd.AddCommand(zimbraLdapCmd)
+	RootCmd.AddCommand(zimbraHealthCmd)
 }
 
 func PgsqlCommandAdd() {
-    var pgsqlHealthCmd = &cobra.Command{
-        Use:   "pgsqlHealth",
-        Short: "PostgreSQL Health",
-        Run:   pgsqlHealth.Main,
-    }
+	var pgsqlHealthCmd = &cobra.Command{
+		Use:   "pgsqlHealth",
+		Short: "PostgreSQL Health",
+		Run:   pgsqlHealth.Main,
+	}
 
-    RootCmd.AddCommand(pgsqlHealthCmd)
+	RootCmd.AddCommand(pgsqlHealthCmd)
 }
 
 func MysqlCommandAdd() {

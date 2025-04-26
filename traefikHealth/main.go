@@ -3,17 +3,26 @@
 package traefikHealth
 
 import (
-	"os"
-	"fmt"
-	"time"
 	"bufio"
-	"strings"
-	"io/ioutil"
 	"encoding/json"
-	"github.com/spf13/cobra"
+	"fmt"
+	"io/ioutil"
+	"os"
+	"strings"
+	"time"
+
 	"github.com/monobilisim/monokit/common"
 	api "github.com/monobilisim/monokit/common/api"
+	"github.com/spf13/cobra"
 )
+
+func init() {
+	common.RegisterComponent(common.Component{
+		Name:       "traefikHealth",
+		EntryPoint: Main,
+		Platform:   "linux",
+	})
+}
 
 type TraefikHealth struct {
 	Types_To_Check []string
@@ -40,7 +49,7 @@ func LogChecker(file string, lastRunStr string, currentTimeStr string, typesToCh
 		common.LogError("Error parsing last run time: " + err.Error())
 		return
 	}
-	
+
 	// Parse currentTime
 	currentTime, err := time.Parse("2006-01-02T15:04:05-07:00", currentTimeStr)
 	if err != nil {
@@ -82,8 +91,8 @@ func LogChecker(file string, lastRunStr string, currentTimeStr string, typesToCh
 			if logTime.After(lastRun) && logTime.Before(currentTime) {
 				// Check for error or warning
 				if logJSON["level"] == typeToCheck {
-					common.PrettyPrintStr(logJSON["time"].(string), true, "a/an " + typeToCheck)
-					
+					common.PrettyPrintStr(logJSON["time"].(string), true, "a/an "+typeToCheck)
+
 					extraMsg := ""
 
 					if logJSON["error"] != nil {
@@ -98,7 +107,7 @@ func LogChecker(file string, lastRunStr string, currentTimeStr string, typesToCh
 						extraMsg = extraMsg + " and with domains: " + strings.Replace(logJSON["domains"].(string), "\"", "\"", -1)
 					}
 
-					common.Alarm("[ " + common.ScriptName + " - " + common.Config.Identifier + " ] [:red_circle:] Traefik has had a/an " + typeToCheck + " with message: " + strings.Replace(logJSON["message"].(string), "\"", "'", -1) + extraMsg + " at " + logJSON["time"].(string), "", "", false)
+					common.Alarm("[ "+common.ScriptName+" - "+common.Config.Identifier+" ] [:red_circle:] Traefik has had a/an "+typeToCheck+" with message: "+strings.Replace(logJSON["message"].(string), "\"", "'", -1)+extraMsg+" at "+logJSON["time"].(string), "", "", false)
 				}
 			}
 		}
@@ -114,7 +123,7 @@ func Main(cmd *cobra.Command, args []string) {
 	if common.ConfExists("traefik") {
 		common.ConfInit("traefik", &TraefikHealthConfig)
 	}
-	
+
 	if len(TraefikHealthConfig.Types_To_Check) == 0 {
 		TraefikHealthConfig.Types_To_Check = []string{"error"}
 	}
@@ -122,8 +131,8 @@ func Main(cmd *cobra.Command, args []string) {
 	if len(TraefikHealthConfig.Ports_To_Check) == 0 {
 		TraefikHealthConfig.Ports_To_Check = []uint32{80, 443}
 	}
-    
-    api.WrapperGetServiceStatus("traefikHealth")
+
+	api.WrapperGetServiceStatus("traefikHealth")
 
 	fmt.Println("Traefik Health - v" + version + " - " + time.Now().Format("2006-01-02 15:04:05"))
 
@@ -138,9 +147,9 @@ func Main(cmd *cobra.Command, args []string) {
 	}
 
 	common.SplitSection("Ports")
-	
+
 	ports := common.ConnsByProcMulti("traefik")
-	
+
 	for _, port := range TraefikHealthConfig.Ports_To_Check {
 		if common.ContainsUint32(port, ports) {
 			common.PrettyPrintStr("Port "+fmt.Sprint(port), true, "open")
@@ -157,10 +166,10 @@ func Main(cmd *cobra.Command, args []string) {
 	common.SplitSection("Logcheck")
 
 	// We need to check /var/log/traefik/traefik.log for JSON that came between last run and now
-	
+
 	// Check if last run time file exists
 	if _, err := os.Stat(common.TmpDir + "/lastRun"); os.IsNotExist(err) {
-		common.WriteToFile(common.TmpDir + "/lastRun", currentTime)
+		common.WriteToFile(common.TmpDir+"/lastRun", currentTime)
 		return
 	}
 
@@ -175,5 +184,5 @@ func Main(cmd *cobra.Command, args []string) {
 	LogChecker("/var/log/traefik/traefik.json", string(lastRun), currentTime, TraefikHealthConfig.Types_To_Check)
 
 	// Write currentTime to TmpDir + "/lastRun"
-	common.WriteToFile(common.TmpDir + "/lastRun", currentTime)
+	common.WriteToFile(common.TmpDir+"/lastRun", currentTime)
 }

@@ -1,27 +1,37 @@
 //go:build linux
+
 package zimbraHealth
 
 import (
-    "io"
-    "os"
-    "fmt"
-    "time"
-    "bytes"
-    "bufio"
-    "regexp"
-    "strconv"
-    "os/exec"
-    "strings"
-    "net/http"
-    "io/ioutil"
-    "crypto/tls"
-    "github.com/spf13/cobra"
-    "github.com/monobilisim/monokit/common"
-    api "github.com/monobilisim/monokit/common/api"
-    mail "github.com/monobilisim/monokit/common/mail"
-    ver "github.com/monobilisim/monokit/common/versionCheck"
-    issues "github.com/monobilisim/monokit/common/redmine/issues"
+	"bufio"
+	"bytes"
+	"crypto/tls"
+	"fmt"
+	"io"
+	"io/ioutil"
+	"net/http"
+	"os"
+	"os/exec"
+	"regexp"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/monobilisim/monokit/common"
+	api "github.com/monobilisim/monokit/common/api"
+	mail "github.com/monobilisim/monokit/common/mail"
+	issues "github.com/monobilisim/monokit/common/redmine/issues"
+	ver "github.com/monobilisim/monokit/common/versionCheck"
+	"github.com/spf13/cobra"
 )
+
+func init() {
+	common.RegisterComponent(common.Component{
+		Name:       "zimbraHealth", // Name used in config/daemon loop
+		EntryPoint: Main,
+		Platform:   "linux",
+	})
+}
 
 var MailHealthConfig mail.MailHealth
 var zimbraPath string
@@ -29,50 +39,49 @@ var restartCounter int
 var templateFile string
 
 func Main(cmd *cobra.Command, args []string) {
-    version := "2.2.1"
-    common.ScriptName = "zimbraHealth"
-    common.TmpDir = common.TmpDir + "zimbraHealth"
-    common.Init()
-    common.ConfInit("mail", &MailHealthConfig)
-    api.WrapperGetServiceStatus("zimbraHealth")
+	version := "2.2.1"
+	common.ScriptName = "zimbraHealth"
+	common.TmpDir = common.TmpDir + "zimbraHealth"
+	common.Init()
+	common.ConfInit("mail", &MailHealthConfig)
+	api.WrapperGetServiceStatus("zimbraHealth")
 
-    fmt.Println("Zimbra Health Check REWRITE - v" + version + " - " + time.Now().Format("2006-01-02 15:04:05"))
-    
-    if common.ProcGrep("install.sh", true) {
-        fmt.Println("Installation is running. Exiting.")
-        return
-    }
-    
-    common.SplitSection("Access through IP:")
-    CheckIpAccess()
+	fmt.Println("Zimbra Health Check REWRITE - v" + version + " - " + time.Now().Format("2006-01-02 15:04:05"))
 
-    common.SplitSection("Zimbra Services:")
-    CheckZimbraServices()
+	if common.ProcGrep("install.sh", true) {
+		fmt.Println("Installation is running. Exiting.")
+		return
+	}
 
-    common.SplitSection("Zimbra Version Check:")
-    ver.ZimbraCheck()
+	common.SplitSection("Access through IP:")
+	CheckIpAccess()
 
-    if MailHealthConfig.Zimbra.Z_Url != "" {
-        common.SplitSection("Checking Z-Push:")
-        CheckZPush()
-    }
+	common.SplitSection("Zimbra Services:")
+	CheckZimbraServices()
 
-    common.SplitSection("Queued Messages:")
-    CheckQueuedMessages()
-    
-    if !common.IsEmptyOrWhitespaceStr(MailHealthConfig.Zimbra.Webhook_tail.Logfile) && MailHealthConfig.Zimbra.Webhook_tail.Quota_limit != 0 {
-        TailWebhook(MailHealthConfig.Zimbra.Webhook_tail.Logfile, MailHealthConfig.Zimbra.Webhook_tail.Quota_limit)
-    }
+	common.SplitSection("Zimbra Version Check:")
+	ver.ZimbraCheck()
 
-    date := time.Now().Format("13:04")
-    if date == "01:00" {
-        common.SplitSection("SSL Expiration:")
-        CheckSSL()
+	if MailHealthConfig.Zimbra.Z_Url != "" {
+		common.SplitSection("Checking Z-Push:")
+		CheckZPush()
+	}
 
-        Zmfixperms()
-    }
+	common.SplitSection("Queued Messages:")
+	CheckQueuedMessages()
+
+	if !common.IsEmptyOrWhitespaceStr(MailHealthConfig.Zimbra.Webhook_tail.Logfile) && MailHealthConfig.Zimbra.Webhook_tail.Quota_limit != 0 {
+		TailWebhook(MailHealthConfig.Zimbra.Webhook_tail.Logfile, MailHealthConfig.Zimbra.Webhook_tail.Quota_limit)
+	}
+
+	date := time.Now().Format("13:04")
+	if date == "01:00" {
+		common.SplitSection("SSL Expiration:")
+		CheckSSL()
+
+		Zmfixperms()
+	}
 }
-
 
 func escapeJSON(input string) string {
 	output := bytes.Buffer{}
@@ -90,10 +99,10 @@ func escapeJSON(input string) string {
 }
 
 func TailWebhook(filePath string, quotaLimit int) {
-    // Open the file
+	// Open the file
 	file, err := os.Open(filePath)
 	if err != nil {
-        common.LogError("Error opening file: " + err.Error())
+		common.LogError("Error opening file: " + err.Error())
 	}
 	defer file.Close()
 
@@ -101,135 +110,132 @@ func TailWebhook(filePath string, quotaLimit int) {
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		line := scanner.Text()
-        // Use regex to get the ID from the log line
-        // `- (\d+)\]` matches the ID in the log line
-        re := regexp.MustCompile(`- (\d+)\]`)
-        matches := re.FindStringSubmatch(line)
-        if len(matches) < 2 {
-            common.LogError("Error matching ID in log line: " + line)
-            return
-        }
-        id := matches[1]
+		// Use regex to get the ID from the log line
+		// `- (\d+)\]` matches the ID in the log line
+		re := regexp.MustCompile(`- (\d+)\]`)
+		matches := re.FindStringSubmatch(line)
+		if len(matches) < 2 {
+			common.LogError("Error matching ID in log line: " + line)
+			return
+		}
+		id := matches[1]
 
+		// Add another regex
+		// `quota=([\d.]+)\/([\d.]+) \(([\d.]+)%\)` matches the quota in the log line
+		re = regexp.MustCompile(`quota=([\d.]+)\/([\d.]+) \(([\d.]+)%\)`)
+		matches = re.FindStringSubmatch(line)
+		if len(matches) != 4 {
+			continue
+		}
+		var percentage float64
+		percentage, _ = strconv.ParseFloat(matches[3], 2)
+		quotaLimitFloat, _ := strconv.ParseFloat(strconv.Itoa(quotaLimit), 2)
 
-        // Add another regex
-        // `quota=([\d.]+)\/([\d.]+) \(([\d.]+)%\)` matches the quota in the log line
-        re = regexp.MustCompile(`quota=([\d.]+)\/([\d.]+) \(([\d.]+)%\)`)
-        matches = re.FindStringSubmatch(line)
-        if len(matches) != 4 {
-            continue
-        }
-        var percentage float64
-        percentage, _ = strconv.ParseFloat(matches[3], 2)
-        quotaLimitFloat, _ := strconv.ParseFloat(strconv.Itoa(quotaLimit), 2)
+		if percentage < quotaLimitFloat {
+			continue
+		}
 
-        if percentage < quotaLimitFloat {
-            continue
-        }
-            
-        // Check if the file exists
-        if _, err := os.Stat(common.TmpDir + "/webhook_tail_" + id); os.IsNotExist(err) {
-            // Create the file
-            os.Create(common.TmpDir + "/webhook_tail_" + id)
-                
-            // Send the alarm
-            common.Alarm("[zimbraHealth - " + common.Config.Identifier + "] Quota limit is above " + strconv.Itoa(quotaLimit) + " " + escapeJSON(line), MailHealthConfig.Zimbra.Webhook_tail.Stream, MailHealthConfig.Zimbra.Webhook_tail.Topic, true)
-        }
-    }
+		// Check if the file exists
+		if _, err := os.Stat(common.TmpDir + "/webhook_tail_" + id); os.IsNotExist(err) {
+			// Create the file
+			os.Create(common.TmpDir + "/webhook_tail_" + id)
+
+			// Send the alarm
+			common.Alarm("[zimbraHealth - "+common.Config.Identifier+"] Quota limit is above "+strconv.Itoa(quotaLimit)+" "+escapeJSON(line), MailHealthConfig.Zimbra.Webhook_tail.Stream, MailHealthConfig.Zimbra.Webhook_tail.Topic, true)
+		}
+	}
 
 	if err := scanner.Err(); err != nil {
-        common.LogError("Error reading file: " + err.Error())
+		common.LogError("Error reading file: " + err.Error())
 	}
-}    
-
+}
 
 func Zmfixperms() {
-    // Run zmfixperms
-    _, _ = ExecZimbraCommand("libexec/zmfixperms", true, true)
+	// Run zmfixperms
+	_, _ = ExecZimbraCommand("libexec/zmfixperms", true, true)
 }
 
 func CheckIpAccess() {
-    var productName string
-    var certFile string
-    var keyFile string
-    var message string = "Hello World!"
-    var ipAddress string
-    var regexPattern string
-    var proxyBlock string
-    var output string
+	var productName string
+	var certFile string
+	var keyFile string
+	var message string = "Hello World!"
+	var ipAddress string
+	var regexPattern string
+	var proxyBlock string
+	var output string
 
-    if _, err := os.Stat("/opt/zimbra"); !os.IsNotExist(err) {
-        zimbraPath = "/opt/zimbra"
-        productName = "zimbra"
-    }
+	if _, err := os.Stat("/opt/zimbra"); !os.IsNotExist(err) {
+		zimbraPath = "/opt/zimbra"
+		productName = "zimbra"
+	}
 
-    if _, err := os.Stat("/opt/zextras"); !os.IsNotExist(err) {
-        zimbraPath = "/opt/zextras"
-        productName = "carbonio"
-    }
+	if _, err := os.Stat("/opt/zextras"); !os.IsNotExist(err) {
+		zimbraPath = "/opt/zextras"
+		productName = "carbonio"
+	}
 
-    if zimbraPath == "" {
-        fmt.Println("Zimbra not found in opt, aborting.")
-        os.Exit(1)
-    }
+	if zimbraPath == "" {
+		fmt.Println("Zimbra not found in opt, aborting.")
+		os.Exit(1)
+	}
 
-    templateFile = zimbraPath + "/conf/nginx/templates/nginx.conf.web.https.default.template"
-    certFile = zimbraPath + "/ssl/" + productName + "/server/server.crt"
-    keyFile = zimbraPath + "/ssl/" + productName + "/server/server.key"
+	templateFile = zimbraPath + "/conf/nginx/templates/nginx.conf.web.https.default.template"
+	certFile = zimbraPath + "/ssl/" + productName + "/server/server.crt"
+	keyFile = zimbraPath + "/ssl/" + productName + "/server/server.key"
 
-    if _, err := os.Stat(templateFile); os.IsNotExist(err) {
-        fmt.Println("Nginx template file " + templateFile + " not found, aborting.")
-        os.Exit(1)
-    }
-    
+	if _, err := os.Stat(templateFile); os.IsNotExist(err) {
+		fmt.Println("Nginx template file " + templateFile + " not found, aborting.")
+		os.Exit(1)
+	}
 
-    if _, err := os.Stat(zimbraPath + "/conf/nginx/external_ip.txt"); !os.IsNotExist(err) {
-        // Read file
-        file, err := os.ReadFile(zimbraPath + "/conf/nginx/external_ip.txt")
-        
-        if err != nil {
-            common.LogError("Error reading external_ip.txt: " + err.Error())
-        }
+	if _, err := os.Stat(zimbraPath + "/conf/nginx/external_ip.txt"); !os.IsNotExist(err) {
+		// Read file
+		file, err := os.ReadFile(zimbraPath + "/conf/nginx/external_ip.txt")
 
-        ipAddress = strings.TrimSpace(string(file))
-    } else {
-        // Get IP ifconfig.co
-        resp, err := http.Get("https://ifconfig.co")
-        
-        if err != nil {
-            common.LogError("Error getting external IP: " + err.Error())
-        }
+		if err != nil {
+			common.LogError("Error reading external_ip.txt: " + err.Error())
+		}
 
-        defer resp.Body.Close()
+		ipAddress = strings.TrimSpace(string(file))
+	} else {
+		// Get IP ifconfig.co
+		resp, err := http.Get("https://ifconfig.co")
 
-        respBody, err := io.ReadAll(resp.Body)
-        if err != nil {
-            common.LogError("Error reading external IP: " + err.Error())
-        }
+		if err != nil {
+			common.LogError("Error getting external IP: " + err.Error())
+		}
 
-        ipAddress = strings.TrimSpace(string(respBody))
-    }
+		defer resp.Body.Close()
 
-    ipRegex := `\b[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\b`
+		respBody, err := io.ReadAll(resp.Body)
+		if err != nil {
+			common.LogError("Error reading external IP: " + err.Error())
+		}
 
-    re := regexp.MustCompile(ipRegex)
+		ipAddress = strings.TrimSpace(string(respBody))
+	}
 
-    matches := re.FindAllString(ipAddress, -1)
+	ipRegex := `\b[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+\b`
 
-    if len(matches) == 0 {
-        fmt.Println("External IP not found, aborting.")
-        os.Exit(1)
-    }
+	re := regexp.MustCompile(ipRegex)
 
-    regexPattern = fmt.Sprintf(
-	    `(?m)\n?(server\s+?{\n?\s+listen\s+443\s+ssl\s+http2;\n?\s+server_name\n?\s+%s;\n?\s+ssl_certificate\s+%s;\n?\s+ssl_certificate_key\s+%s;\n?\s+location\s+\/\s+{\n?\s+return\s+200\s+'%s';\n?\s+}\n?})`,
+	matches := re.FindAllString(ipAddress, -1)
+
+	if len(matches) == 0 {
+		fmt.Println("External IP not found, aborting.")
+		os.Exit(1)
+	}
+
+	regexPattern = fmt.Sprintf(
+		`(?m)\n?(server\s+?{\n?\s+listen\s+443\s+ssl\s+http2;\n?\s+server_name\n?\s+%s;\n?\s+ssl_certificate\s+%s;\n?\s+ssl_certificate_key\s+%s;\n?\s+location\s+\/\s+{\n?\s+return\s+200\s+'%s';\n?\s+}\n?})`,
 		ipAddress,
 		certFile,
 		keyFile,
 		message,
 	)
 
-    proxyBlock=fmt.Sprintf(`server {
+	proxyBlock = fmt.Sprintf(`server {
 listen                  443 ssl http2;
 server_name             %s;
 ssl_certificate         %s;
@@ -239,170 +245,168 @@ location / {
 }
 }`, ipAddress, certFile, keyFile, message)
 
+	// Run regexPattern on templateFile
+	file, err := os.ReadFile(templateFile)
 
-    // Run regexPattern on templateFile
-    file, err := os.ReadFile(templateFile)
+	if err != nil {
+		common.LogError("Error reading template file: " + err.Error())
+	}
 
-    if err != nil {
-        common.LogError("Error reading template file: " + err.Error())
-    }
+	re = regexp.MustCompile(regexPattern)
 
-    re = regexp.MustCompile(regexPattern)
+	matches = re.FindAllString(string(file), -1)
 
-    matches = re.FindAllString(string(file), -1)
+	if len(matches) > 0 {
+		output = strings.ReplaceAll(matches[0], "\x00", "\n")
+	}
 
-    if len(matches) > 0 {
-        output = strings.ReplaceAll(matches[0], "\x00", "\n")
-    }
+	if output == "" {
+		fmt.Println("Adding proxy control block in " + templateFile + " file...")
+		file, err := os.OpenFile(templateFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+		if err != nil {
+			fmt.Printf("Error opening file: %v\n", err)
+			return
+		}
+		defer file.Close()
 
-    if output == "" {
-        fmt.Println("Adding proxy control block in " + templateFile + " file...")
-        file, err := os.OpenFile(templateFile, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	    if err != nil {
-		    fmt.Printf("Error opening file: %v\n", err)
-		    return
-	    }
-	    defer file.Close()
+		// Write the content of proxyBlock to the file
+		if _, err := file.WriteString(proxyBlock + "\n"); err != nil {
+			fmt.Printf("Error writing to file: %v\n", err)
+			return
+		}
+		fmt.Println("Proxy control block added to " + templateFile + " file.")
+	}
 
-	    // Write the content of proxyBlock to the file
-	    if _, err := file.WriteString(proxyBlock + "\n"); err != nil {
-		    fmt.Printf("Error writing to file: %v\n", err)
-		    return
-	    }
-        fmt.Println("Proxy control block added to " + templateFile + " file.")
-    }
+	httpClient := &http.Client{
+		Timeout: 10 * time.Second,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+	}
 
-    httpClient := &http.Client{
-        Timeout: 10 * time.Second,
-        Transport: &http.Transport{
-            TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
-        },
-    }
+	req, err := http.NewRequest("GET", "https://"+ipAddress, nil)
 
-    req, err := http.NewRequest("GET", "https://" + ipAddress, nil)
+	if err != nil {
+		common.PrettyPrintStr("Access with IP", false, "accessible")
+		common.AlarmCheckDown("accesswithip", "Can't access to the IP at all: "+ipAddress+" - "+err.Error(), false, "", "")
+		return
+	}
 
-    if err != nil {
-        common.PrettyPrintStr("Access with IP", false, "accessible")
-        common.AlarmCheckDown("accesswithip", "Can't access to the IP at all: " + ipAddress + " - " + err.Error(), false, "", "")
-        return
-    }
+	resp, err := httpClient.Do(req)
 
-    resp, err := httpClient.Do(req)
+	if err != nil {
+		common.PrettyPrintStr("Access with IP", false, "accessible")
+		common.AlarmCheckDown("accesswithip", "Can't access to the IP at all: "+ipAddress+" - "+err.Error(), false, "", "")
+		return
+	}
 
-    if err != nil {
-        common.PrettyPrintStr("Access with IP", false, "accessible")
-        common.AlarmCheckDown("accesswithip", "Can't access to the IP at all: " + ipAddress + " - " + err.Error(), false, "", "")
-        return
-    }
+	defer resp.Body.Close()
 
+	body, err := io.ReadAll(resp.Body)
 
-    defer resp.Body.Close()
+	bodyStr := string(body)
 
-    body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		common.LogError("Error getting response: " + err.Error())
+		common.PrettyPrintStr("Access with IP", false, "accessible")
+		common.AlarmCheckDown("accesswithip", "Can't access to the IP at all: "+ipAddress+" - "+err.Error(), false, "", "")
+		return
+	}
 
-    bodyStr := string(body)
-
-    if err != nil {
-        common.LogError("Error getting response: " + err.Error())
-        common.PrettyPrintStr("Access with IP", false, "accessible")
-        common.AlarmCheckDown("accesswithip", "Can't access to the IP at all: " + ipAddress + " - " + err.Error(), false, "", "")
-        return
-    }
-
-    if ! strings.Contains(bodyStr, message) {
-        common.PrettyPrintStr("Access with IP", true, "accessible")
-        common.AlarmCheckDown("accesswithip", "Can access to zimbra through plain IP: " + ipAddress, false, "", "")
-    } else {
-        common.PrettyPrintStr("Access with IP", true, "not accessible")
-        common.AlarmCheckUp("accesswithip", "Can't access to zimbra through plain IP: " + ipAddress, false)
-    }
+	if !strings.Contains(bodyStr, message) {
+		common.PrettyPrintStr("Access with IP", true, "accessible")
+		common.AlarmCheckDown("accesswithip", "Can access to zimbra through plain IP: "+ipAddress, false, "", "")
+	} else {
+		common.PrettyPrintStr("Access with IP", true, "not accessible")
+		common.AlarmCheckUp("accesswithip", "Can't access to zimbra through plain IP: "+ipAddress, false)
+	}
 }
 
 func RestartZimbraService(service string) {
-    if restartCounter > MailHealthConfig.Zimbra.Restart_Limit {
-        common.AlarmCheckDown(service, "Restart limit reached for " + service, false, "", "")
-        return
-    }
-    
-    _, err := ExecZimbraCommand("zmcontrol start", false, false)
-    
-    if err != nil {
-        common.LogError("Error starting Zimbra service " + service + ": " + err.Error())
-        return
-    }
+	if restartCounter > MailHealthConfig.Zimbra.Restart_Limit {
+		common.AlarmCheckDown(service, "Restart limit reached for "+service, false, "", "")
+		return
+	}
 
-    restartCounter++
+	_, err := ExecZimbraCommand("zmcontrol start", false, false)
 
-    CheckZimbraServices()
+	if err != nil {
+		common.LogError("Error starting Zimbra service " + service + ": " + err.Error())
+		return
+	}
+
+	restartCounter++
+
+	CheckZimbraServices()
 }
 
 func CheckZimbraServices() {
-    var servicesThatDisappearForSomeReason []string
+	var servicesThatDisappearForSomeReason []string
 
-    var zimbraServices []string
-    
-    status, _ := ExecZimbraCommand("zmcontrol status", false, false)
+	var zimbraServices []string
 
-    for _, service := range strings.Split(status, "\n")[1:] {
-        svc := strings.Join(strings.Fields(service), " ")
-        svcSplit := strings.Split(strings.ToLower(svc), "running")
-        
-        if len(svcSplit) < 2 {
-            continue
-        }
+	status, _ := ExecZimbraCommand("zmcontrol status", false, false)
 
-        var serviceName string
-        var serviceStatus string
-        
-        if strings.Contains(svc, "is not running") {
-            serviceName = strings.TrimSpace(strings.ReplaceAll(svcSplit[0], "is not", ""))
-            serviceStatus = "Not Running"
-        } else {
-            serviceName = strings.TrimSpace(svcSplit[0])
-            serviceStatus = "Running"
-        }
+	for _, service := range strings.Split(status, "\n")[1:] {
+		svc := strings.Join(strings.Fields(service), " ")
+		svcSplit := strings.Split(strings.ToLower(svc), "running")
 
-        zimbraServices = append(zimbraServices, serviceName)
+		if len(svcSplit) < 2 {
+			continue
+		}
 
-        if serviceStatus == "Running" {
-            common.PrettyPrintStr(serviceName, true, "Running")
-            common.AlarmCheckUp("service_" + serviceName, serviceName + " is now running", false)
-        } else {
-            common.PrettyPrintStr(serviceName, false, "Running")
-            common.WriteToFile(common.TmpDir + "/" + "zmcontrol_status_" + time.Now().Format("2006-01-02_15:04:05"), status)
-            common.AlarmCheckDown("service_" + serviceName, serviceName + " is not running", false, "", "")
-            if MailHealthConfig.Zimbra.Restart {
-                RestartZimbraService(serviceName)
-            }
-        }
-    }
+		var serviceName string
+		var serviceStatus string
 
-    // For loop on common.TmpDir
-    files, err := ioutil.ReadDir(common.TmpDir)
-    if err != nil {
-        common.LogError("Error reading directory: " + err.Error())
-    }
+		if strings.Contains(svc, "is not running") {
+			serviceName = strings.TrimSpace(strings.ReplaceAll(svcSplit[0], "is not", ""))
+			serviceStatus = "Not Running"
+		} else {
+			serviceName = strings.TrimSpace(svcSplit[0])
+			serviceStatus = "Running"
+		}
 
-    for _, file := range files {
-        // Get all files that start with service_
-        if strings.HasPrefix(file.Name(), "service_") {
-            // Get the service name
-            serviceName := strings.Split(file.Name(), "_")[1]
-            serviceName = strings.ReplaceAll(serviceName, ".log", "")
-            common.LogDebug("Service name: " + serviceName)
-            // Add to servicesThatDisappearForSomeReason if not in zimbraServices
-            if !common.IsInArray(serviceName, zimbraServices) {
-                common.LogDebug("Service " + serviceName + " is not in zimbraServices")
-                servicesThatDisappearForSomeReason = append(servicesThatDisappearForSomeReason, serviceName)
-            }
-        }
-    }
+		zimbraServices = append(zimbraServices, serviceName)
 
-    for _, service := range servicesThatDisappearForSomeReason {
-        common.LogDebug("Service " + service + " is in servicesThatDisappearForSomeReason")
-        common.PrettyPrintStr(service, true, "Running")
-        common.AlarmCheckUp("service_" + service, service + " is now running", false)
-    }
+		if serviceStatus == "Running" {
+			common.PrettyPrintStr(serviceName, true, "Running")
+			common.AlarmCheckUp("service_"+serviceName, serviceName+" is now running", false)
+		} else {
+			common.PrettyPrintStr(serviceName, false, "Running")
+			common.WriteToFile(common.TmpDir+"/"+"zmcontrol_status_"+time.Now().Format("2006-01-02_15:04:05"), status)
+			common.AlarmCheckDown("service_"+serviceName, serviceName+" is not running", false, "", "")
+			if MailHealthConfig.Zimbra.Restart {
+				RestartZimbraService(serviceName)
+			}
+		}
+	}
+
+	// For loop on common.TmpDir
+	files, err := ioutil.ReadDir(common.TmpDir)
+	if err != nil {
+		common.LogError("Error reading directory: " + err.Error())
+	}
+
+	for _, file := range files {
+		// Get all files that start with service_
+		if strings.HasPrefix(file.Name(), "service_") {
+			// Get the service name
+			serviceName := strings.Split(file.Name(), "_")[1]
+			serviceName = strings.ReplaceAll(serviceName, ".log", "")
+			common.LogDebug("Service name: " + serviceName)
+			// Add to servicesThatDisappearForSomeReason if not in zimbraServices
+			if !common.IsInArray(serviceName, zimbraServices) {
+				common.LogDebug("Service " + serviceName + " is not in zimbraServices")
+				servicesThatDisappearForSomeReason = append(servicesThatDisappearForSomeReason, serviceName)
+			}
+		}
+	}
+
+	for _, service := range servicesThatDisappearForSomeReason {
+		common.LogDebug("Service " + service + " is in servicesThatDisappearForSomeReason")
+		common.PrettyPrintStr(service, true, "Running")
+		common.AlarmCheckUp("service_"+service, service+" is now running", false)
+	}
 
 }
 
@@ -414,7 +418,7 @@ func changeImmutable(filePath string, add bool) {
 	cmd := exec.Command("chattr", flag, filePath)
 	err := cmd.Run()
 	if err != nil {
-        common.LogError("Error changing file attributes: " + err.Error())
+		common.LogError("Error changing file attributes: " + err.Error())
 	}
 }
 
@@ -422,14 +426,14 @@ func modifyFile(templateFile string) {
 	// Read the file content
 	content, err := ioutil.ReadFile(templateFile)
 	if err != nil {
-	    common.LogError("Error reading file: " + err.Error())
-    }
+		common.LogError("Error reading file: " + err.Error())
+	}
 
 	text := string(content)
 
-    if strings.Contains(text, "nginx-php-fpm.conf") {
-        return
-    }
+	if strings.Contains(text, "nginx-php-fpm.conf") {
+		return
+	}
 
 	// Define regex patterns and replacements
 	blockRegex := regexp.MustCompile(`(?s)(Microsoft-Server-ActiveSync.*?# For audit)`)
@@ -446,97 +450,96 @@ func modifyFile(templateFile string) {
 
 	// Write the modified content back to the file
 	if err := ioutil.WriteFile(templateFile, []byte(modifiedBlock), 0644); err != nil {
-	    common.LogError("Error writing to file: " + err.Error())
-    }
+		common.LogError("Error writing to file: " + err.Error())
+	}
 
-
-    fmt.Println("Added Z-Push block to " + templateFile + " file, restarting zimbra proxy service...")
-    _, err = ExecZimbraCommand("zmproxyctl restart", false, false)
-    if err != nil {
-        common.LogError("Error restarting zimbra proxy service: " + err.Error())
-    }
+	fmt.Println("Added Z-Push block to " + templateFile + " file, restarting zimbra proxy service...")
+	_, err = ExecZimbraCommand("zmproxyctl restart", false, false)
+	if err != nil {
+		common.LogError("Error restarting zimbra proxy service: " + err.Error())
+	}
 }
 
 func ExecZimbraCommand(command string, fullPath bool, runAsRoot bool) (string, error) {
-    zimbraUser := "zimbra"
+	zimbraUser := "zimbra"
 
-    // Check if zimbra user exists
-    cmd := exec.Command("id", "zimbra")
-    err := cmd.Run()
-    if err != nil {
-        zimbraUser = "zextras"
-    }
+	// Check if zimbra user exists
+	cmd := exec.Command("id", "zimbra")
+	err := cmd.Run()
+	if err != nil {
+		zimbraUser = "zextras"
+	}
 
-    if runAsRoot {
-        zimbraUser = "root"
-    }
-   
-    cmd = nil
+	if runAsRoot {
+		zimbraUser = "root"
+	}
 
-    // Execute command
-    if fullPath {
-        cmd = exec.Command("/bin/su", zimbraUser, "-c", zimbraPath + "/" + command)
-    } else {
-        cmd = exec.Command("/bin/su", zimbraUser, "-c", zimbraPath + "/bin/" + command)
-    }
-    
-    var out bytes.Buffer
+	cmd = nil
+
+	// Execute command
+	if fullPath {
+		cmd = exec.Command("/bin/su", zimbraUser, "-c", zimbraPath+"/"+command)
+	} else {
+		cmd = exec.Command("/bin/su", zimbraUser, "-c", zimbraPath+"/bin/"+command)
+	}
+
+	var out bytes.Buffer
 	cmd.Stdout = &out
-    cmd.Stderr = os.Stderr
-    cmd.Run()
+	cmd.Stderr = os.Stderr
+	cmd.Run()
 
-    if cmd.ProcessState.ExitCode() != 0 {
-        return out.String(), fmt.Errorf("Command failed: " + command + " with stdout: " + out.String())
-    }
+	if cmd.ProcessState.ExitCode() != 0 {
+		return out.String(), fmt.Errorf("Command failed: " + command + " with stdout: " + out.String())
+	}
 
-    return out.String(), nil
+	return out.String(), nil
 }
 
 func CheckZPush() {
-    zpushHeader := false
-    
-    client := &http.Client{
-        Timeout: 10 * time.Second,
-    }
+	zpushHeader := false
 
-    req, err := http.NewRequest("GET", MailHealthConfig.Zimbra.Z_Url, nil)
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
 
-    if err != nil {
-        common.LogError("Error creating request: " + err.Error())
-    }
+	req, err := http.NewRequest("GET", MailHealthConfig.Zimbra.Z_Url, nil)
 
-    resp, err := client.Do(req)
+	if err != nil {
+		common.LogError("Error creating request: " + err.Error())
+	}
 
-    if err != nil {
-        common.LogError("Error getting response: " + err.Error())
-    } else {
-        for key, value := range resp.Header {
-            if strings.Contains(strings.ToLower(key), "zpush") || strings.Contains(strings.ToLower(value[0]), "zpush") {
-                zpushHeader = true
-                break
-            }
-        }
-    }
+	resp, err := client.Do(req)
 
-    if zpushHeader {
-        common.PrettyPrintStr("Z-Push", true, "Running")
-        common.AlarmCheckUp("zpush", "Z-Push is now running", false)
-    } else {
-        common.PrettyPrintStr("Z-Push", false, "Running")
-        common.AlarmCheckDown("zpush", "Z-Push is not running", false, "", "")
-    }
+	if err != nil {
+		common.LogError("Error getting response: " + err.Error())
+	} else {
+		for key, value := range resp.Header {
+			if strings.Contains(strings.ToLower(key), "zpush") || strings.Contains(strings.ToLower(value[0]), "zpush") {
+				zpushHeader = true
+				break
+			}
+		}
+	}
 
-    // Check if /etc/nginx-php-fpm.conf exists
-    if _, err := os.Stat("/etc/nginx-php-fpm.conf"); os.IsNotExist(err) {
-        common.PrettyPrintStr("Z-Push Nginx Config file", false, "found")
-    } else {
-        common.PrettyPrintStr("Z-Push Nginx Config file", true, "found")
-        modifyFile(templateFile)
-    }
+	if zpushHeader {
+		common.PrettyPrintStr("Z-Push", true, "Running")
+		common.AlarmCheckUp("zpush", "Z-Push is now running", false)
+	} else {
+		common.PrettyPrintStr("Z-Push", false, "Running")
+		common.AlarmCheckDown("zpush", "Z-Push is not running", false, "", "")
+	}
+
+	// Check if /etc/nginx-php-fpm.conf exists
+	if _, err := os.Stat("/etc/nginx-php-fpm.conf"); os.IsNotExist(err) {
+		common.PrettyPrintStr("Z-Push Nginx Config file", false, "found")
+	} else {
+		common.PrettyPrintStr("Z-Push Nginx Config file", true, "found")
+		modifyFile(templateFile)
+	}
 }
 
 func CheckQueuedMessages() {
-    cmd := exec.Command(zimbraPath + "/common/sbin/mailq")
+	cmd := exec.Command(zimbraPath + "/common/sbin/mailq")
 	var out bytes.Buffer
 	cmd.Stdout = &out
 
@@ -564,60 +567,60 @@ func CheckQueuedMessages() {
 		return
 	}
 
-    common.PrettyPrint("Queued Messages", "", float64(count), false, false, true, float64(MailHealthConfig.Zimbra.Queue_Limit))
+	common.PrettyPrint("Queued Messages", "", float64(count), false, false, true, float64(MailHealthConfig.Zimbra.Queue_Limit))
 
-    if count > MailHealthConfig.Zimbra.Queue_Limit {
-        common.AlarmCheckDown("mailq", "Mail queue is over the limit (" + strconv.Itoa(count) + "/" + strconv.Itoa(MailHealthConfig.Zimbra.Queue_Limit) + ")", false, "", "")
-    } else {
-        common.AlarmCheckUp("mailq", "Mail queue is under the limit (" + strconv.Itoa(count) + "/" + strconv.Itoa(MailHealthConfig.Zimbra.Queue_Limit) + ")", false)
-    }
+	if count > MailHealthConfig.Zimbra.Queue_Limit {
+		common.AlarmCheckDown("mailq", "Mail queue is over the limit ("+strconv.Itoa(count)+"/"+strconv.Itoa(MailHealthConfig.Zimbra.Queue_Limit)+")", false, "", "")
+	} else {
+		common.AlarmCheckUp("mailq", "Mail queue is under the limit ("+strconv.Itoa(count)+"/"+strconv.Itoa(MailHealthConfig.Zimbra.Queue_Limit)+")", false)
+	}
 }
 
 func CheckSSL() {
-    var mailHost string
-    zmHostname, err := ExecZimbraCommand("zmhostname", false, false)
-    if err != nil {
-        common.LogError("Error getting zimbra hostname: " + err.Error())
-    }
-    mailHost1, err := ExecZimbraCommand("zmprov gs " + zmHostname, false, false)
-    if err != nil {
-        common.LogError("Error getting mail host: " + err.Error())
-    }
-    for _, mailHost1 := range strings.Split(mailHost1, "\n") {
-        if strings.Contains(mailHost1, "zimbraServiceHostname: ") {
-            mailHost = strings.Split(mailHost1, "zimbraServiceHostname: ")[1]
-            break
-        }
-    }
+	var mailHost string
+	zmHostname, err := ExecZimbraCommand("zmhostname", false, false)
+	if err != nil {
+		common.LogError("Error getting zimbra hostname: " + err.Error())
+	}
+	mailHost1, err := ExecZimbraCommand("zmprov gs "+zmHostname, false, false)
+	if err != nil {
+		common.LogError("Error getting mail host: " + err.Error())
+	}
+	for _, mailHost1 := range strings.Split(mailHost1, "\n") {
+		if strings.Contains(mailHost1, "zimbraServiceHostname: ") {
+			mailHost = strings.Split(mailHost1, "zimbraServiceHostname: ")[1]
+			break
+		}
+	}
 
-    if mailHost == "" {
-        common.LogError("Mail host not found")
-    }
-    
-    conn, err := tls.Dial("tcp", mailHost + ":443", &tls.Config{InsecureSkipVerify: true})
+	if mailHost == "" {
+		common.LogError("Mail host not found")
+	}
 
-    if err != nil {
-        common.LogError("Error connecting to mail host: " + err.Error())
-    }
-    defer conn.Close()
+	conn, err := tls.Dial("tcp", mailHost+":443", &tls.Config{InsecureSkipVerify: true})
 
-    certs := conn.ConnectionState().PeerCertificates
-    if len(certs) == 0 {
-        common.LogError("No certificates found")
-    }
-    
-    cert := certs[0]
+	if err != nil {
+		common.LogError("Error connecting to mail host: " + err.Error())
+	}
+	defer conn.Close()
 
-    // Get days until notAfter
-    days := int(cert.NotAfter.Sub(time.Now()).Hours() / 24)
-    if days < 10 {
-        common.PrettyPrintStr("SSL Certificate", true, fmt.Sprintf("expiring in %d days", days))
-        common.AlarmCheckDown("sslcert", "SSL Certificate is expiring in " + fmt.Sprintf("%d days", days), false, "", "")
-        viewDeployedCert, _ := ExecZimbraCommand("zmcertmgr viewdeployedcrt", false, false)
-        issues.CheckDown("sslcert", common.Config.Identifier + " sunucusunun SSL sertifikası bitimine " + fmt.Sprintf("%d gün kaldı", days), "```json\n" + viewDeployedCert + "\n```", false, 0)
-    } else {
-        common.PrettyPrintStr("SSL Certificate", true, fmt.Sprintf("expiring in %d days", days))
-        common.AlarmCheckUp("sslcert", "SSL Certificate is expiring in " + fmt.Sprintf("%d days", days), false)
-        issues.CheckUp("sslcert", "SSL  sertifikası artık " + fmt.Sprintf("%d gün sonra sona erecek şekilde güncellendi", days))
-    }
+	certs := conn.ConnectionState().PeerCertificates
+	if len(certs) == 0 {
+		common.LogError("No certificates found")
+	}
+
+	cert := certs[0]
+
+	// Get days until notAfter
+	days := int(cert.NotAfter.Sub(time.Now()).Hours() / 24)
+	if days < 10 {
+		common.PrettyPrintStr("SSL Certificate", true, fmt.Sprintf("expiring in %d days", days))
+		common.AlarmCheckDown("sslcert", "SSL Certificate is expiring in "+fmt.Sprintf("%d days", days), false, "", "")
+		viewDeployedCert, _ := ExecZimbraCommand("zmcertmgr viewdeployedcrt", false, false)
+		issues.CheckDown("sslcert", common.Config.Identifier+" sunucusunun SSL sertifikası bitimine "+fmt.Sprintf("%d gün kaldı", days), "```json\n"+viewDeployedCert+"\n```", false, 0)
+	} else {
+		common.PrettyPrintStr("SSL Certificate", true, fmt.Sprintf("expiring in %d days", days))
+		common.AlarmCheckUp("sslcert", "SSL Certificate is expiring in "+fmt.Sprintf("%d days", days), false)
+		issues.CheckUp("sslcert", "SSL  sertifikası artık "+fmt.Sprintf("%d gün sonra sona erecek şekilde güncellendi", days))
+	}
 }

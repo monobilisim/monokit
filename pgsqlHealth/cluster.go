@@ -1,3 +1,5 @@
+//go:build linux
+
 // This file implements PostgreSQL cluster health monitoring functionality using Patroni
 //
 // It provides functions to:
@@ -24,6 +26,7 @@ import (
 	"time"
 
 	"github.com/monobilisim/monokit/common"
+	db "github.com/monobilisim/monokit/common/db"
 	issues "github.com/monobilisim/monokit/common/redmine/issues"
 )
 
@@ -34,16 +37,16 @@ import (
 // 4. Checks for changes in the cluster roles
 // 5. Checks the state of each cluster member
 // 6. Saves the current cluster status to a JSON file for future comparison
-func clusterStatus() {
+func clusterStatus(patroniApiUrl string, dbConfig db.DbHealth) { // Added parameters
 	checkPatroniService()
 
-	result, oldResult := getClusterStatus()
+	result, oldResult := getClusterStatus(patroniApiUrl) // Pass patroniApiUrl
 	if result == nil {
 		return
 	}
 
 	checkThisNodeRole(result)
-	checkClusterRoleChanges(result, oldResult)
+	checkClusterRoleChanges(result, oldResult, dbConfig) // Pass dbConfig
 	checkClusterStates(result)
 
 	// Save current state for future comparison
@@ -64,9 +67,9 @@ func checkPatroniService() {
 
 // getClusterStatus retrieves the cluster status from the Patroni API
 // and returns the current and previous cluster statuses
-func getClusterStatus() (*Response, *Response) {
+func getClusterStatus(patroniApiUrl string) (*Response, *Response) { // Added parameter
 	client := &http.Client{Timeout: time.Second * 10}
-	clusterURL := "http://" + patroniApiUrl + "/cluster"
+	clusterURL := "http://" + patroniApiUrl + "/cluster" // Use passed parameter
 
 	resp, err := client.Get(clusterURL)
 	if err != nil {
@@ -124,8 +127,8 @@ func checkThisNodeRole(result *Response) {
 
 // handleLeaderSwitch handles the leader switch event
 // by running the leader switch hook if it is configured
-func handleLeaderSwitch(member Member, client *http.Client) {
-	if DbHealthConfig.Postgres.Leader_switch_hook == "" {
+func handleLeaderSwitch(member Member, client *http.Client, dbConfig db.DbHealth) { // Added dbConfig parameter
+	if dbConfig.Postgres.Leader_switch_hook == "" { // Use passed dbConfig
 		return
 	}
 
@@ -152,13 +155,13 @@ func handleLeaderSwitch(member Member, client *http.Client) {
 		runLeaderSwitchHook()
 	}*/
 
-	runLeaderSwitchHook()
+	runLeaderSwitchHook(dbConfig) // Pass dbConfig
 }
 
 // runLeaderSwitchHook runs the leader switch hook
 // and logs the result
-func runLeaderSwitchHook() {
-	cmd := exec.Command("sh", "-c", DbHealthConfig.Postgres.Leader_switch_hook)
+func runLeaderSwitchHook(dbConfig db.DbHealth) { // Added dbConfig parameter
+	cmd := exec.Command("sh", "-c", dbConfig.Postgres.Leader_switch_hook) // Use passed dbConfig
 	if err := cmd.Run(); err != nil {
 		common.LogError(fmt.Sprintf("Error running leader switch hook: %v\n", err))
 		common.Alarm("[ Patroni - "+common.Config.Identifier+" ] [:red_circle:] Error running leader switch hook: "+err.Error(), "", "", false)
@@ -169,7 +172,7 @@ func runLeaderSwitchHook() {
 
 // checkClusterRoleChanges checks for changes in the cluster roles
 // and logs the changes
-func checkClusterRoleChanges(result, oldResult *Response) {
+func checkClusterRoleChanges(result, oldResult *Response, dbConfig db.DbHealth) { // Added dbConfig parameter
 	common.SplitSection("Cluster Roles:")
 	for _, member := range result.Members {
 		common.PrettyPrintStr(member.Name, true, member.Role)
@@ -185,7 +188,10 @@ func checkClusterRoleChanges(result, oldResult *Response) {
 					}
 					if member.Role == "leader" {
 						common.Alarm("[ Patroni - "+common.Config.Identifier+" ] [:check:] "+member.Name+" is now the leader!", "", "", false)
-						handleLeaderSwitch(member, &http.Client{})
+						// Need dbConfig here, but checkClusterRoleChanges doesn't have it yet.
+						// This will be fixed in the next step by adding dbConfig to checkClusterRoleChanges.
+						// Pass the actual dbConfig received by this function
+						handleLeaderSwitch(member, &http.Client{}, dbConfig)
 					}
 				}
 			}

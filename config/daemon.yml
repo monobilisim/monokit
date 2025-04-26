@@ -1,9 +1,9 @@
 frequency: 60 # Frequency to run health checks in seconds
 debug: false # Enable debug logging
 health_checks:
-  - name: mysqld
+  - name: mysqlHealth
     enabled: true
-  - name: traefik
+  - name: traefikHealth
     enabled: true
-  - name: k8s
+  - name: k8sHealth
     enabled: true

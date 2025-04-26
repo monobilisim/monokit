@@ -18,6 +18,30 @@ var rdb *redis.Client
 var ctx context.Context
 var RedisMaster bool
 
+func DetectRedis() bool {
+	// Check if Redis service is running
+	if !common.SystemdUnitActive("redis.service") && !common.SystemdUnitActive("redis-server.service") {
+		return false
+	}
+
+	// Try to initialize Redis connection
+	tempRdb := redis.NewClient(&redis.Options{
+		Addr:       "localhost:6379",
+		Password:   "",
+		DB:         0,
+		MaxRetries: 1,
+	})
+
+	tempCtx := context.Background()
+	ping, err := tempRdb.Ping(tempCtx).Result()
+	if err == nil && ping == "PONG" {
+		tempRdb.Close()
+		return true
+	}
+	tempRdb.Close()
+	return false
+}
+
 func RedisInit() {
 	rdb = redis.NewClient(&redis.Options{
 		Addr:       "localhost:" + fmt.Sprint(common.ConnsByProc("redis-server")),
@@ -163,24 +187,24 @@ func RedisIsMaster() bool {
 func RedisReadWriteTest(isSentinel bool) {
 	err := rdb.Set(ctx, "redisHealth_foo", "bar", 0).Err()
 
-    if err != nil && strings.Contains(err.Error(), "MOVED") {
-        common.LogDebug("MOVED request, trying to get the new address")
-        // Get the new address
-        newAddr := strings.Split(err.Error(), " ")[2]
-        common.LogDebug("MOVED request, new address: " + newAddr)
+	if err != nil && strings.Contains(err.Error(), "MOVED") {
+		common.LogDebug("MOVED request, trying to get the new address")
+		// Get the new address
+		newAddr := strings.Split(err.Error(), " ")[2]
+		common.LogDebug("MOVED request, new address: " + newAddr)
 
-        // Reinitialize the client
-        rdb = redis.NewClient(&redis.Options{
-            Addr:       newAddr,
-            Password:   RedisHealthConfig.Password,
-            DB:         0,
-            MaxRetries: 5,
-        })
-        
-        // Run function again
-        RedisReadWriteTest(isSentinel)
-        return
-    }
+		// Reinitialize the client
+		rdb = redis.NewClient(&redis.Options{
+			Addr:       newAddr,
+			Password:   RedisHealthConfig.Password,
+			DB:         0,
+			MaxRetries: 5,
+		})
+
+		// Run function again
+		RedisReadWriteTest(isSentinel)
+		return
+	}
 
 	if err != nil {
 		if isSentinel {

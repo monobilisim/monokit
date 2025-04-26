@@ -11,9 +11,11 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/go-ini/ini"
-	_ "github.com/go-sql-driver/mysql"
+	_ "github.com/go-sql-driver/mysql"      // Keep anonymous import for side effects
+	_mysql "github.com/go-sql-driver/mysql" // Import with alias
 	"github.com/monobilisim/monokit/common"
 	issues "github.com/monobilisim/monokit/common/redmine/issues"
 )
@@ -56,103 +58,176 @@ func FindMyCnf() []string {
 func ParseMyCnfAndConnect(profile string) (string, error) {
 	var host, port, dbname, user, password, socket string
 	var found bool
+	var finalConn string
+	var lastErr error // Store the last connection/ping error
 
-    var finalConn string
+	// Close any lingering global connection before starting
+	if Connection != nil {
+		Connection.Close()
+		Connection = nil
+	}
 
-	for _, path := range FindMyCnf() {
+	cnfPaths := FindMyCnf()
+	if cnfPaths == nil || len(cnfPaths) == 0 {
+		return "", fmt.Errorf("could not find any my.cnf paths")
+	}
+
+	for _, path := range cnfPaths {
 		if _, err := os.Stat(path); err == nil {
 			cfg, err := ini.LoadSources(ini.LoadOptions{AllowBooleanKeys: true}, path)
 			if err != nil {
-				return "", fmt.Errorf("error loading config file %s: %w", path, err)
+				// Log or store this error, but continue trying other paths
+				common.LogDebug(fmt.Sprintf("Error loading config file %s: %v", path, err))
+				lastErr = fmt.Errorf("error loading config file %s: %w", path, err)
+				continue
 			}
 
 			for _, s := range cfg.Sections() {
-                if profile != "" && !strings.Contains(s.Name(), profile) {
+				// Ensure section name matches the requested profile exactly or is the default "[client]" if profile is "client"
+				// Allow broader matching if profile is empty (though current usage specifies "client")
+				sectionName := s.Name()
+				isMatch := false
+				if profile == "" {
+					isMatch = true // Match any section if profile is empty
+				} else if sectionName == profile {
+					isMatch = true // Exact match
+				} else if profile == "client" && sectionName == "client" {
+					isMatch = true // Specific case for default client profile
+				} else if strings.HasPrefix(sectionName, profile) && sectionName != "DEFAULT" {
+					// Optional: Allow prefix matching if needed, but exact match is safer
+					// isMatch = true
+				}
+
+				if !isMatch {
 					continue
 				}
 
-                if host == "" {
-				    host = s.Key("host").String()
-                }
+				// Reset vars for each profile attempt
+				host = s.Key("host").String()
+				port = s.Key("port").String()
+				// dbname = s.Key("database").String() // Standard key is 'database' not 'dbname'
+				dbname = s.Key("database").String()
+				user = s.Key("user").String()
+				password = s.Key("password").String()
+				socket = s.Key("socket").String()
+				currentConnStr := "" // Use a local var for the connection string attempt
 
-                if port == "" {
-				    port = s.Key("port").String()
-                }
+				// Construct DSN (Data Source Name)
+				// Format: username:password@protocol(address)/dbname?param=value
+				// Reference: https://github.com/go-sql-driver/mysql#dsn-data-source-name
+				config := _mysql.NewConfig()                     // Use imported driver's config struct for correctness
+				config.Net = "tcp"                               // Default to TCP
+				config.Addr = fmt.Sprintf("%s:%s", host, "3306") // Default port
+				config.User = user
+				config.Passwd = password
+				config.DBName = dbname
+				config.AllowNativePasswords = true // Often needed
 
-                if dbname == "" {
-				    dbname = s.Key("dbname").String()
-                }
+				if socket != "" {
+					config.Net = "unix"
+					config.Addr = socket
+					// User/Password/DBName already set
+				} else if host != "" {
+					config.Net = "tcp"
+					if port != "" {
+						config.Addr = fmt.Sprintf("%s:%s", host, port)
+					} else {
+						config.Addr = fmt.Sprintf("%s:%s", host, "3306") // Use default port if not specified
+					}
+					// User/Password/DBName already set
+				} else {
+					// Neither socket nor host defined for this profile section, skip
+					common.LogDebug(fmt.Sprintf("Skipping profile [%s] in %s: missing host or socket", s.Name(), path))
+					continue
+				}
 
-                if user == "" {
-				    user = s.Key("user").String()
-                }
+				// Validate required fields before attempting connection
+				if config.User == "" {
+					common.LogDebug(fmt.Sprintf("Skipping profile [%s] in %s: missing user", s.Name(), path))
+					continue
+				}
 
-                if password == "" {
-				    password = s.Key("password").String()
-                }
+				currentConnStr = config.FormatDSN()
 
-                if socket == "" {
-				    socket = s.Key("socket").String()
-                }
-                
-                if socket != "" {
+				// Attempt to connect and ping with the current profile's details
+				tempDb, err := sql.Open("mysql", currentConnStr)
+				if err != nil {
+					lastErr = fmt.Errorf("error opening connection for profile [%s] in %s (DSN: %s): %w", s.Name(), path, currentConnStr, err)
+					common.LogDebug(lastErr.Error())
+					if tempDb != nil {
+						tempDb.Close()
+					} // Close if open failed but returned a non-nil db
+					continue // Try next profile
+				}
 
-                    if user == "" {
-                        user = "root"
-                    }
-                    if password == "" {
-                        finalConn = fmt.Sprintf("%s@unix(%s)/%s", user, socket, dbname)
-                    } else {
-                        finalConn = fmt.Sprintf("%s:%s@unix(%s)/%s", user, password, socket, dbname)
-                    }
-                } else {
-                    if port == "" {
-                        port = "3306"
-                    }
-                    finalConn = fmt.Sprintf("%s:%s@tcp(%s:%s)/%s", user, password, host, port, dbname)
-                }
-                
-                err = Connect(finalConn)
+				// Set connection timeouts before pinging
+				tempDb.SetConnMaxLifetime(time.Minute * 3)
+				tempDb.SetMaxOpenConns(10)
+				tempDb.SetMaxIdleConns(10)
 
-                if err == nil {
-                    err = Connection.Ping()
-                    if err == nil {
-                        if os.Getenv("MONOKIT_DEBUG") == "1" || os.Getenv("MONOKIT_DEBUG") == "true" { 
-                            fmt.Println("Connected to MySQL with profile: " + s.Name())
-                            fmt.Println("Connection string: " + finalConn)
-                            fmt.Println("MyCnf path: " + path)
-                        }
-				        found = true
-                        break
-                    } else {
-                        if os.Getenv("MONOKIT_DEBUG") == "1" || os.Getenv("MONOKIT_DEBUG") == "true" {
-                            fmt.Println("Error pinging MySQL with profile: " + s.Name())
-                            fmt.Println("Connection string: " + finalConn)
-                            fmt.Println("MyCnf path: " + path)
-                            fmt.Println("Error: " + err.Error())
-                        }
-                    }
-                }
+				pingErr := tempDb.Ping()
+				if pingErr == nil {
+					// Success! Assign to global Connection and return.
+					if Connection != nil { // Close previous successful connection if any (shouldn't happen with break)
+						Connection.Close()
+					}
+					Connection = tempDb // Assign the successful connection
+					finalConn = currentConnStr
+					found = true
+					if os.Getenv("MONOKIT_DEBUG") == "1" || os.Getenv("MONOKIT_DEBUG") == "true" {
+						fmt.Println("Connected and pinged MySQL successfully with profile: " + s.Name())
+						fmt.Println("Connection string: " + finalConn) // DSN format doesn't include password here
+						fmt.Println("MyCnf path: " + path)
+					}
+					break // Exit inner loop (sections)
+				} else {
+					// Ping failed, store error, close temp connection, continue loop
+					// Log the DSN directly; FormatDSN generally avoids embedding the password.
+					lastErr = fmt.Errorf("error pinging connection for profile [%s] in %s (DSN: %s): %w", s.Name(), path, currentConnStr, pingErr)
+					common.LogDebug(lastErr.Error())
+					tempDb.Close() // Close the connection that failed to ping
+					// Continue to the next section
+				}
+			} // End sections loop
+
+			if found {
+				break // Exit outer loop (paths)
 			}
+		} else {
+			// Log if file doesn't exist, might be ignorable depending on FindMyCnf behavior
+			// common.LogDebug(fmt.Sprintf("Config file not found or not accessible: %s", path))
 		}
-	}
+	} // End paths loop
 
 	if !found {
-		return "", fmt.Errorf("no matching entry found for profile %s", profile)
+		// If no connection succeeded, return the last error encountered, or a generic one
+		if lastErr != nil {
+			// Prepend a generic message to the last specific error
+			return "", fmt.Errorf("failed to connect and ping any MySQL profile '%s': %w", profile, lastErr)
+		}
+		// If lastErr is nil, it means no profiles were even attempted (e.g., FindMyCnf returned empty, or no sections matched)
+		return "", fmt.Errorf("no suitable MySQL profile '%s' found or connection failed", profile)
 	}
 
-    return finalConn, nil
+	// Success
+	return finalConn, nil
 }
 
+// Connect function is now redundant as ParseMyCnfAndConnect handles setting the global Connection
+/*
 func Connect(connStr string) error {
 	db, err := sql.Open("mysql", connStr)
 	if err != nil {
 		return err
 	}
-
+	// Set connection pool settings
+	db.SetConnMaxLifetime(time.Minute * 3)
+	db.SetMaxOpenConns(10)
+	db.SetMaxIdleConns(10)
 	Connection = db
-    return nil
+	return nil
 }
+*/
 
 func SelectNow() {
 	// Simple query to check if the connection is working
@@ -270,7 +345,7 @@ func CheckClusterStatus() {
 	var varname string
 	var cluster_size int
 
-    rows := Connection.QueryRow("SHOW STATUS WHERE Variable_name = 'wsrep_cluster_size'")
+	rows := Connection.QueryRow("SHOW STATUS WHERE Variable_name = 'wsrep_cluster_size'")
 
 	if err := rows.Scan(&varname, &cluster_size); err != nil {
 		common.LogError("Error querying database for cluster size: " + err.Error())
@@ -393,14 +468,14 @@ func CheckCertificationWaiting() {
 	for rows.Next() {
 		var user, host, db, state, info sql.NullString
 		var time int
-		
+
 		if err := rows.Scan(&user, &host, &db, &state, &info, &time); err != nil {
 			common.LogError("Error scanning row: " + err.Error())
 			continue
 		}
-		
+
 		waitingCount++
-		processInfo := fmt.Sprintf("User: %s, Host: %s, DB: %s, Time: %d seconds", 
+		processInfo := fmt.Sprintf("User: %s, Host: %s, DB: %s, Time: %d seconds",
 			user.String, host.String, db.String, time)
 		waitingProcesses = append(waitingProcesses, processInfo)
 	}
@@ -408,14 +483,14 @@ func CheckCertificationWaiting() {
 	if waitingCount > 0 {
 		message := fmt.Sprintf("Found %d processes waiting for certification for more than 60 seconds", waitingCount)
 		common.AlarmCheckDown("certification_waiting", message, false, "", "")
-		
+
 		common.PrettyPrintStr("Long waiting certification processes", false, fmt.Sprintf("%d", waitingCount))
-		
+
 		// Log all waiting processes to the error log
 		for _, process := range waitingProcesses {
 			common.LogError("Process waiting for certification: " + process)
 		}
-		
+
 		// Show first few processes in the output
 		for i := 0; i < len(waitingProcesses) && i < 3; i++ {
 			common.PrettyPrintStr(fmt.Sprintf("- Process %d", i+1), false, waitingProcesses[i])

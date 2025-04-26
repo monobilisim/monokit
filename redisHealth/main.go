@@ -5,10 +5,20 @@ package redisHealth
 import (
 	"fmt"
 	"time"
-	"github.com/spf13/cobra"
+
 	"github.com/monobilisim/monokit/common"
 	api "github.com/monobilisim/monokit/common/api"
+	"github.com/spf13/cobra"
 )
+
+func init() {
+	common.RegisterComponent(common.Component{
+		Name:       "redisHealth",
+		EntryPoint: Main,
+		Platform:   "linux",
+		AutoDetect: DetectRedis,
+	})
+}
 
 var RedisHealthConfig struct {
 	Port        string
@@ -21,16 +31,16 @@ func Main(cmd *cobra.Command, args []string) {
 	common.ScriptName = "redisHealth"
 	common.TmpDir = common.TmpDir + "redisHealth"
 	common.Init()
-    
-    if common.ConfExists("redis") {
-	    common.ConfInit("redis", &RedisHealthConfig)
-    }
+
+	if common.ConfExists("redis") {
+		common.ConfInit("redis", &RedisHealthConfig)
+	}
 
 	if RedisHealthConfig.Port == "" {
 		RedisHealthConfig.Port = "6379"
 	}
 
-    api.WrapperGetServiceStatus("redisHealth")
+	api.WrapperGetServiceStatus("redisHealth")
 
 	fmt.Println("Redis Health - v" + version + " - " + time.Now().Format("2006-01-02 15:04:05"))
 
@@ -65,5 +75,4 @@ func Main(cmd *cobra.Command, args []string) {
 	}
 
 	RedisReadWriteTest(IsSentinel)
-
 }

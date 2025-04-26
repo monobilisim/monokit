@@ -13,10 +13,45 @@ import (
 	"time"
 
 	"github.com/monobilisim/monokit/common"
-	versionCheck "github.com/monobilisim/monokit/common/versionCheck"
 	db "github.com/monobilisim/monokit/common/db"
+	versionCheck "github.com/monobilisim/monokit/common/versionCheck"
 	"github.com/spf13/cobra"
 )
+
+func DetectPostgres() bool {
+	// Check if running as postgres user
+	if os.Getenv("USER") != "postgres" {
+		common.LogDebug("PostgreSQL check skipped: not running as postgres user")
+		return false
+	}
+
+	// Check if PostgreSQL service is running
+	if !common.SystemdUnitActive("postgresql.service") &&
+		!common.SystemdUnitActive("postgresql@13-main.service") &&
+		!common.SystemdUnitActive("postgresql@14-main.service") &&
+		!common.SystemdUnitActive("postgresql@15-main.service") {
+		return false
+	}
+
+	// Try to connect
+	err := Connect()
+	if err != nil {
+		common.LogDebug("PostgreSQL detection failed: " + err.Error())
+		return false
+	}
+	defer Connection.Close()
+
+	return true
+}
+
+func init() {
+	common.RegisterComponent(common.Component{
+		Name:       "pgsqlHealth",
+		EntryPoint: Main,
+		Platform:   "linux", // Specific to Linux due to user check and patroni path
+		AutoDetect: DetectPostgres,
+	})
+}
 
 var DbHealthConfig db.DbHealth
 var patroniApiUrl string
@@ -44,7 +79,7 @@ func Main(cmd *cobra.Command, args []string) {
 			return
 		}
 	}
-    
+
 	fmt.Println("PostgreSQL Health Check REWRITE - v" + version + " - " + time.Now().Format("2006-01-02 15:04:05"))
 
 	common.SplitSection("PostgreSQL Access:")
@@ -71,8 +106,8 @@ func Main(cmd *cobra.Command, args []string) {
 	common.SplitSection("Active Connections:")
 	activeConnections()
 
-    common.SplitSection("Version Check:")
-    versionCheck.PostgresCheck()
+	common.SplitSection("Version Check:")
+	versionCheck.PostgresCheck()
 
 	common.SplitSection("Running Queries:")
 	runningQueries()
@@ -91,7 +126,7 @@ func Main(cmd *cobra.Command, args []string) {
 	// Check if patroni is installed
 	if _, err := os.Stat("/etc/patroni/patroni.yml"); !errors.Is(err, os.ErrNotExist) {
 		common.SplitSection("Cluster Status:")
-		clusterStatus()
+		clusterStatus(patroniApiUrl, DbHealthConfig) // Pass variables
 		// curl -s patroniApiUrl | jq -r .role
 		patroniRole, err := http.Get("http://" + patroniApiUrl + "/patroni")
 		if err != nil {

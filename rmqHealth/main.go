@@ -3,16 +3,25 @@
 package rmqHealth
 
 import (
-	"os"
 	"fmt"
 	"net"
-	"time"
+	"os"
 	"strings"
-	"github.com/spf13/cobra"
+	"time"
+
+	rabbithole "github.com/michaelklishin/rabbit-hole/v2"
 	"github.com/monobilisim/monokit/common"
-    "github.com/michaelklishin/rabbit-hole/v2"
 	api "github.com/monobilisim/monokit/common/api"
+	"github.com/spf13/cobra"
 )
+
+func init() {
+	common.RegisterComponent(common.Component{
+		Name:       "rmqHealth", // Name used in config/daemon loop
+		EntryPoint: Main,
+		Platform:   "linux",
+	})
+}
 
 var Config struct {
 	User     string
@@ -22,62 +31,62 @@ var Config struct {
 var rabbitmqClient *rabbithole.Client
 
 func newRabbitMQClient() {
-    var err error
-    rabbitmqClient, err = rabbithole.NewClient("http://localhost:15672", Config.User, Config.Password)
-    if err != nil {
-        common.PrettyPrintStr("Management API", false, "reachable")
-        common.AlarmCheckDown("rabbitmq_management_api", "Failed to create RabbitMQ client; \n```" + err.Error() + "\n```", false, "", "")
-    } else {
-        common.PrettyPrintStr("Management API", true, "reachable")
-        common.AlarmCheckUp("rabbitmq_management_api", "RabbitMQ management API is now reachable", false)
-    }
+	var err error
+	rabbitmqClient, err = rabbithole.NewClient("http://localhost:15672", Config.User, Config.Password)
+	if err != nil {
+		common.PrettyPrintStr("Management API", false, "reachable")
+		common.AlarmCheckDown("rabbitmq_management_api", "Failed to create RabbitMQ client; \n```"+err.Error()+"\n```", false, "", "")
+	} else {
+		common.PrettyPrintStr("Management API", true, "reachable")
+		common.AlarmCheckUp("rabbitmq_management_api", "RabbitMQ management API is now reachable", false)
+	}
 }
 
 func overviewCheck() {
-    _, err := rabbitmqClient.Overview()
-    if err != nil {
-        common.PrettyPrintStr("Overview", false, "reachable")
-        common.AlarmCheckDown("rabbitmq_overview", "Failed to get RabbitMQ overview; \n```" + err.Error() + "\n```", false, "", "")
-    } else {
-        common.PrettyPrintStr("Overview", true, "reachable")
-        common.AlarmCheckUp("rabbitmq_overview", "RabbitMQ overview is now reachable", false)
-    }
+	_, err := rabbitmqClient.Overview()
+	if err != nil {
+		common.PrettyPrintStr("Overview", false, "reachable")
+		common.AlarmCheckDown("rabbitmq_overview", "Failed to get RabbitMQ overview; \n```"+err.Error()+"\n```", false, "", "")
+	} else {
+		common.PrettyPrintStr("Overview", true, "reachable")
+		common.AlarmCheckUp("rabbitmq_overview", "RabbitMQ overview is now reachable", false)
+	}
 }
 
 func serviceCheck() {
-    common.SplitSection("Service")
+	common.SplitSection("Service")
 
-    if common.SystemdUnitActive("rabbitmq-server.service") == false {
-        common.PrettyPrintStr("rabbitmq-server", false, "active")
-        common.AlarmCheckDown("rabbitmq_server", "Service rabbitmq-server is not active", false, "", "")
-    } else {
-        common.PrettyPrintStr("rabbitmq-server", true, "active")
-        common.AlarmCheckUp("rabbitmq_server", "Service rabbitmq-server is now active", false)
-    }
+	if common.SystemdUnitActive("rabbitmq-server.service") == false {
+		common.PrettyPrintStr("rabbitmq-server", false, "active")
+		common.AlarmCheckDown("rabbitmq_server", "Service rabbitmq-server is not active", false, "", "")
+	} else {
+		common.PrettyPrintStr("rabbitmq-server", true, "active")
+		common.AlarmCheckUp("rabbitmq_server", "Service rabbitmq-server is now active", false)
+	}
 }
 
 func clusterCheck() {
-    common.SplitSection("Cluster")
-    
-    nodeList, err := rabbitmqClient.ListNodes()
+	common.SplitSection("Cluster")
 
-    if err != nil {
-        common.PrettyPrintStr("Node list", false, "reachable")
-        common.AlarmCheckDown("rabbitmq_nodelist", "Failed to get RabbitMQ cluster node list; \n```" + err.Error() + "\n```", false, "", "")
-    } else {
-        common.PrettyPrintStr("Node list", true, "reachable")
-        common.AlarmCheckUp("rabbitmq_nodelist", "RabbitMQ cluster node list is now reachable", false)
-    }
+	nodeList, err := rabbitmqClient.ListNodes()
 
-    for _, node := range nodeList {
-        if node.IsRunning {
-            common.PrettyPrintStr("Node "+node.Name, true, "active")
-            common.AlarmCheckUp("rabbitmq_node_"+node.Name, "Node "+node.Name+" is now active", false)
-        } else {
-            common.PrettyPrintStr("Node "+node.Name, false, "active")
-            common.AlarmCheckDown("rabbitmq_node_"+node.Name, "Node "+node.Name+" is not active", false, "", "")
-        }
-    }
+	if err != nil {
+		common.PrettyPrintStr("Node list", false, "reachable")
+		common.AlarmCheckDown("rabbitmq_nodelist", "Failed to get RabbitMQ cluster node list; \n```"+err.Error()+"\n```", false, "", "")
+	} else {
+		common.PrettyPrintStr("Node list", true, "reachable")
+		common.AlarmCheckUp("rabbitmq_nodelist", "RabbitMQ cluster node list is now reachable", false)
+	}
+
+	for _, node := range nodeList {
+		if node.IsRunning {
+			common.PrettyPrintStr("Node "+node.Name, true, "active")
+			common.AlarmCheckUp("rabbitmq_node_"+node.Name, "Node "+node.Name+" is now active", false)
+		} else {
+			common.PrettyPrintStr("Node "+node.Name, false, "active")
+			common.AlarmCheckDown("rabbitmq_node_"+node.Name, "Node "+node.Name+" is not active", false, "", "")
+		}
+	}
 }
 
 func Main(cmd *cobra.Command, args []string) {
@@ -86,32 +95,31 @@ func Main(cmd *cobra.Command, args []string) {
 	common.TmpDir = common.TmpDir + "rmqHealth"
 	common.Init()
 
-    if common.ConfExists("rabbitmq") {
-        common.ConfInit("rabbitmq", &Config)
-    }
+	if common.ConfExists("rabbitmq") {
+		common.ConfInit("rabbitmq", &Config)
+	}
 
-    if Config.User == "" {
-        Config.User = "guest"
-    }
+	if Config.User == "" {
+		Config.User = "guest"
+	}
 
-    if Config.Password == "" {
-        Config.Password = "guest"
-    }
+	if Config.Password == "" {
+		Config.Password = "guest"
+	}
 
 	fmt.Println("RabbitMQ Health - v" + version + " - " + time.Now().Format("2006-01-02 15:04:05"))
-    api.WrapperGetServiceStatus("rmqHealth")
+	api.WrapperGetServiceStatus("rmqHealth")
 
-    serviceCheck()
-    
+	serviceCheck()
 
 	common.SplitSection("Sanity checks")
 	checkPort("5672")
 	checkEnabledPlugins()
-    newRabbitMQClient()
-    
-    common.SplitSection("API")
-    overviewCheck()
-    clusterCheck()
+	newRabbitMQClient()
+
+	common.SplitSection("API")
+	overviewCheck()
+	clusterCheck()
 
 }
 

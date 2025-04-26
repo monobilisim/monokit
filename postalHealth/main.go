@@ -22,6 +22,14 @@ import (
 	"github.com/spf13/viper"
 )
 
+func init() {
+	common.RegisterComponent(common.Component{
+		Name:       "postalHealth",
+		EntryPoint: Main,
+		Platform:   "linux",
+	})
+}
+
 var MailHealthConfig mail.MailHealth
 var MainDB *sql.DB
 var MessageDB *sql.DB

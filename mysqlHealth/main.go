@@ -5,11 +5,48 @@ package mysqlHealth
 import (
 	"fmt"
 	"time"
-	"github.com/spf13/cobra"
+
 	"github.com/monobilisim/monokit/common"
-	db "github.com/monobilisim/monokit/common/db"
 	api "github.com/monobilisim/monokit/common/api"
+	db "github.com/monobilisim/monokit/common/db"
+	"github.com/spf13/cobra"
+	// NOTE: Removed viper import as it's not directly used here anymore
 )
+
+func DetectMySQL() bool {
+	// Auto-detection relies solely on finding valid client credentials
+	// in standard my.cnf locations and successfully connecting/pinging.
+	// The presence of /etc/mono/db.yaml is not required for detection,
+	// only for the full execution of the health check.
+
+	// ParseMyCnfAndConnect implicitly tests the connection.
+	_, err := ParseMyCnfAndConnect("client")
+	if err != nil {
+		common.LogDebug(fmt.Sprintf("mysqlHealth auto-detection failed: ParseMyCnfAndConnect error: %v", err))
+		// Close the connection if ParseMyCnfAndConnect partially succeeded before erroring
+		if Connection != nil {
+			Connection.Close()
+		}
+		return false
+	}
+
+	// If ParseMyCnfAndConnect succeeded, MySQL is considered detectable.
+	// Close the connection opened during detection.
+	if Connection != nil {
+		Connection.Close()
+	}
+	common.LogDebug("mysqlHealth auto-detected successfully.")
+	return true
+}
+
+func init() {
+	common.RegisterComponent(common.Component{
+		Name:       "mysqlHealth",
+		EntryPoint: Main,
+		Platform:   "linux",
+		AutoDetect: DetectMySQL,
+	})
+}
 
 var DbHealthConfig db.DbHealth
 
@@ -25,25 +62,33 @@ func Main(cmd *cobra.Command, args []string) {
 		DbHealthConfig.Mysql.Cluster.Check_table_hour = "05:00"
 	}
 
-    api.WrapperGetServiceStatus("mysqlHealth")
+	api.WrapperGetServiceStatus("mysqlHealth")
 
 	fmt.Println("MySQL Health Check REWRITE - v" + version + " - " + time.Now().Format("2006-01-02 15:04:05"))
-    
-    finalConnStr, err := ParseMyCnfAndConnect("client")
+
+	// ParseMyCnfAndConnect now handles setting the global Connection on success.
+	// We don't need the returned connection string here anymore.
+	_, err := ParseMyCnfAndConnect("client")
 
 	if err != nil {
-		common.LogError("Can't ping MySQL connection. err: " + err.Error())
-		common.AlarmCheckDown("ping", "Can't ping MySQL connection. err: "+err.Error(), false, "", "")
-    }
+		// Log the specific error from ParseMyCnfAndConnect
+		errMsg := fmt.Sprintf("Failed to establish initial MySQL connection: %s", err.Error())
+		common.LogError(errMsg)
+		// Use the specific error for the alarm
+		common.AlarmCheckDown("ping", errMsg, false, "", "")
+		// Exit or handle the failure appropriately - cannot proceed without a connection
+		fmt.Println("Error: Could not connect to MySQL. Aborting health check.")
+		// Consider os.Exit(1) or returning an error if this function could return one
+		return // Stop execution if connection fails initially
+	}
 
-    if Connect(finalConnStr) != nil {
-        common.LogError("Can't connect to a MySQL connection. err: " + err.Error())
-        common.AlarmCheckDown("ping", "Can't connect to a MySQL connection. err: "+err.Error(), false, "", "")
-    }
-
+	// If we reach here, ParseMyCnfAndConnect succeeded and set the global Connection.
+	common.LogDebug("Initial MySQL connection and ping successful.")
+	// The defer Connection.Close() should be placed *after* successful connection.
 	defer Connection.Close()
-	
-    //common.AlarmCheckUp("ping", "MySQL ping returns no error.", false)
+
+	// Initial connection successful, clear any previous down alarm for ping.
+	common.AlarmCheckUp("ping", "Established initial MySQL connection", false)
 
 	common.SplitSection("MySQL Access:")
 
@@ -52,9 +97,9 @@ func Main(cmd *cobra.Command, args []string) {
 	common.SplitSection("Number of Processes:")
 
 	CheckProcessCount()
-	
+
 	common.SplitSection("Certification Waiting Processes:")
-	
+
 	CheckCertificationWaiting()
 
 	if DbHealthConfig.Mysql.Cluster.Enabled {
