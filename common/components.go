@@ -2,6 +2,7 @@ package common
 
 import (
 	"fmt"
+	"runtime" // Added import
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -81,59 +82,82 @@ func GetInstalledComponents() string {
 			}
 		}
 	} else {
-		// Config file exists: Load and process it
+		// Config file exists: Load config to check for disabled components
 		var config DaemonConfig
 		ConfInit("daemon", &config) // Load config using common function
-
-		LogDebug("Processing daemon config file.")
+		disabledComponents := make(map[string]bool)
 		for _, check := range config.HealthChecks {
-			if check.Enabled {
-				if comp, exists := ComponentRegistry[check.Name]; exists && comp.AutoDetect != nil {
-					// Run auto-detection for components that support it and are enabled
-					if comp.AutoDetect() {
-						LogDebug(fmt.Sprintf("Component %s auto-detected and enabled (config).", check.Name))
-						enabled = append(enabled, check.Name)
-					} else {
-						LogDebug(fmt.Sprintf("Component %s configured but failed auto-detection (config).", check.Name))
-					}
-				} else if exists {
-					// For components without auto-detect, use config value (if enabled)
-					LogDebug(fmt.Sprintf("Component %s enabled via config (no auto-detect).", check.Name))
-					enabled = append(enabled, check.Name)
+			if !check.Enabled {
+				disabledComponents[check.Name] = true
+				LogDebug(fmt.Sprintf("Component %s explicitly disabled in config.", check.Name))
+			}
+		}
+
+		LogDebug("Processing components with config file present.")
+
+		// Always consider osHealth unless explicitly disabled
+		if _, isDisabled := disabledComponents["osHealth"]; !isDisabled {
+			if comp, exists := ComponentRegistry["osHealth"]; exists {
+				// Check platform compatibility for osHealth
+				if comp.Platform == "any" || comp.Platform == runtime.GOOS {
+					LogDebug("Including osHealth (config exists, not disabled, platform matches).")
+					enabled = append(enabled, "osHealth")
 				} else {
-					LogDebug(fmt.Sprintf("Component %s configured but not found in registry.", check.Name))
+					LogDebug("Skipping osHealth (config exists, not disabled, platform mismatch).")
 				}
 			} else {
-				LogDebug(fmt.Sprintf("Component %s disabled in config.", check.Name))
+				LogDebug("osHealth component not found in registry, but expected.")
 			}
+		} else {
+			LogDebug("Skipping osHealth (explicitly disabled in config).")
 		}
-		// Ensure osHealth is always included if config exists but doesn't mention it or disables it
-		osHealthFound := false
-		for _, name := range enabled {
+
+		// Iterate through all other registered components
+		for name, comp := range ComponentRegistry {
 			if name == "osHealth" {
-				osHealthFound = true
-				break
+				continue // Already handled
 			}
-		}
-		if !osHealthFound {
-			LogDebug("osHealth not found in enabled list from config, adding it by default.")
-			// Check if osHealth is explicitly disabled in config
-			osHealthDisabled := false
-			for _, check := range config.HealthChecks {
-				if check.Name == "osHealth" && !check.Enabled {
-					osHealthDisabled = true
-					LogDebug("osHealth is explicitly disabled in config.")
-					break
+
+			// 1. Check if explicitly disabled
+			if _, isDisabled := disabledComponents[name]; isDisabled {
+				LogDebug(fmt.Sprintf("Component %s skipped (disabled in config).", name))
+				continue
+			}
+
+			// 2. Check platform compatibility
+			if !(comp.Platform == "any" || comp.Platform == runtime.GOOS) {
+				LogDebug(fmt.Sprintf("Component %s skipped (platform mismatch).", name))
+				continue
+			}
+
+			// 3. Perform auto-detection if available
+			if comp.AutoDetect != nil {
+				LogDebug(fmt.Sprintf("Performing auto-detection for component %s (config exists).", name))
+				if comp.AutoDetect() {
+					LogDebug(fmt.Sprintf("Component %s included (passed auto-detection with config).", name))
+					enabled = append(enabled, name)
+				} else {
+					LogDebug(fmt.Sprintf("Component %s skipped (failed auto-detection with config).", name))
 				}
-			}
-			if !osHealthDisabled {
-				enabled = append([]string{"osHealth"}, enabled...) // Prepend osHealth
+			} else {
+				// No auto-detect: Skip by default, even if config exists (consistent behavior)
+				LogDebug(fmt.Sprintf("Component %s skipped (no auto-detect function).", name))
 			}
 		}
 	}
 
-	if len(enabled) > 0 {
-		return strings.Join(enabled, "::")
+	// Remove duplicates just in case (e.g., if osHealth logic somehow added it twice)
+	uniqueEnabled := make(map[string]bool)
+	finalEnabled := []string{}
+	for _, name := range enabled {
+		if !uniqueEnabled[name] {
+			uniqueEnabled[name] = true
+			finalEnabled = append(finalEnabled, name)
+		}
+	}
+
+	if len(finalEnabled) > 0 {
+		return strings.Join(finalEnabled, "::")
 	}
 
 	// Fallback if absolutely nothing is enabled (should ideally not happen with osHealth default)

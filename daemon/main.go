@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
-	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -46,7 +45,7 @@ func Main(cmd *cobra.Command, args []string) {
 	}
 
 	if listComponents {
-		fmt.Print(common.GetInstalledComponents())
+		fmt.Print(common.GetInstalledComponents()) // Note: GetInstalledComponents might need adjustment depending on its intended use now
 		common.RemoveLockfile()
 		os.Exit(0)
 	}
@@ -102,58 +101,34 @@ func RunAll() {
 		recordUpdateCheck(lastUpdateCheckFile)
 	}
 
-	// Run OS Health check always (assuming osHealth is registered)
-	if comp, exists := common.GetComponent("osHealth"); exists {
-		fmt.Println("Running component: osHealth")
-		if comp.EntryPoint != nil {
-			// If osHealth uses a cobra command structure
-			cmd := &cobra.Command{
-				Use:                comp.Name,
-				Run:                comp.EntryPoint,
-				DisableFlagParsing: true, // Avoid flag conflicts within the daemon loop
-			}
-			cmd.ExecuteC() // Use ExecuteC to avoid os.Exit on error
-		} else if comp.ExecuteFunc != nil {
-			// If osHealth uses a simple execute function
-			comp.ExecuteFunc()
-		}
-	} else {
-		fmt.Println("Warning: osHealth component not found in registry, but expected to run.")
+	// --- Get the list of components to run from the centralized function ---
+	componentsToRunStr := common.GetInstalledComponents()
+	if componentsToRunStr == "" {
+		fmt.Println("No components determined to run in this cycle.")
+		fmt.Println("Finished component checks for this cycle.")
+		return // Nothing to do
 	}
+	componentsToRun := strings.Split(componentsToRunStr, "::")
+	fmt.Printf("Components determined to run: %v\n", componentsToRun)
 
-	// Run checks based on installed components from config
-	installed := strings.Split(common.GetInstalledComponents(), "::")
-	fmt.Printf("Installed components to check: %v\n", installed) // Debugging output
-
-	for _, compName := range installed {
-		if compName == "osHealth" {
-			continue // Already ran osHealth
-		}
-
+	// --- Iterate through the determined components and execute them ---
+	for _, compName := range componentsToRun {
 		if comp, exists := common.GetComponent(compName); exists {
-			// Check platform compatibility
-			if comp.Platform == "any" || comp.Platform == runtime.GOOS {
-				fmt.Printf("Running component: %s\n", compName)
-				if comp.EntryPoint != nil {
-					// Execute cobra command based component
-					cmd := &cobra.Command{
-						Use:                comp.Name,
-						Run:                comp.EntryPoint,
-						DisableFlagParsing: true,
-					}
-					// Pass through relevant flags if needed, or handle config within the component
-					cmd.ExecuteC()
-				} else if comp.ExecuteFunc != nil {
-					// Execute simple function based component
-					comp.ExecuteFunc()
-				} else {
-					fmt.Printf("Warning: Component %s has no execution method defined.\n", compName)
-				}
+			// Platform/disabled checks are already handled by GetInstalledComponents
+			fmt.Printf("Running component: %s\n", compName)
+			if comp.EntryPoint != nil {
+				cmd := &cobra.Command{Use: comp.Name, Run: comp.EntryPoint, DisableFlagParsing: true}
+				cmd.ExecuteC()
+			} else if comp.ExecuteFunc != nil {
+				comp.ExecuteFunc()
 			} else {
-				// fmt.Printf("Skipping component %s: Platform mismatch (requires %s, running on %s)\n", compName, comp.Platform, runtime.GOOS) // Optional debug
+				fmt.Printf("Warning: Component %s determined to run but has no execution method defined.\n", compName)
 			}
 		} else {
-			fmt.Printf("Warning: Component %s listed as installed but not found in registry.\n", compName)
+			// This should ideally not happen if GetInstalledComponents is correct
+			fmt.Printf("Warning: Component %s was listed to run but not found in registry.\n", compName)
 		}
-	}
+	} // End of component loop
+
+	fmt.Println("Finished component checks for this cycle.")
 }
