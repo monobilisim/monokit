@@ -1,16 +1,39 @@
 package esHealth
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
 	"time"
-	"crypto/tls"
+
 	"github.com/monobilisim/monokit/common"
 	api "github.com/monobilisim/monokit/common/api"
 	"github.com/spf13/cobra"
 )
+
+// DetectElasticsearch checks if the Elasticsearch configuration file exists.
+// It returns true if 'es.yaml' or 'es.yml' is found in /etc/mono/, false otherwise.
+func DetectElasticsearch() bool {
+	common.LogFunctionEntry()
+	exists := common.ConfExists("es")
+	if exists {
+		common.LogDebug("esHealth auto-detected successfully (config file found).")
+	} else {
+		common.LogDebug("esHealth auto-detection failed (config file not found).")
+	}
+	return exists
+}
+
+func init() {
+	common.RegisterComponent(common.Component{
+		Name:       "esHealth",
+		EntryPoint: Main,
+		// Platform:   "", // Specify platform if needed, e.g., "linux"
+		AutoDetect: DetectElasticsearch,
+	})
+}
 
 var Config struct {
 	Api_url  string
@@ -117,13 +140,13 @@ func checkElasticsearchHealth() {
 
 	// Check status code
 	if resp.StatusCode == 200 {
-        common.PrettyPrintStr("Elasticsearch Health", true, "good, status code: 200")
+		common.PrettyPrintStr("Elasticsearch Health", true, "good, status code: 200")
 		common.AlarmCheckUp("elasticsearch_health",
 			"Elasticsearch cluster is healthy", false)
 	} else {
 		common.LogError("Elasticsearch health check failed with status code: " +
 			fmt.Sprintf("%d", resp.StatusCode))
-        common.PrettyPrintStr("Elasticsearch Health", false, "good, status code: "+fmt.Sprintf("%d", resp.StatusCode))
+		common.PrettyPrintStr("Elasticsearch Health", false, "good, status code: "+fmt.Sprintf("%d", resp.StatusCode))
 		common.AlarmCheckDown("elasticsearch_health",
 			fmt.Sprintf("Elasticsearch health check failed with status code %d: %s",
 				resp.StatusCode, string(body)), false, "", "")
