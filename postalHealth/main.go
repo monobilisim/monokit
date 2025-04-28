@@ -26,12 +26,14 @@ import (
 // It first checks if the postal.service systemd unit is active,
 // then checks for the config file and running postal containers via Docker.
 func DetectPostal() bool {
-	// 1. Check if postal.service is active
-	if !common.SystemdUnitActive("postal.service") {
-		common.LogDebug("postalHealth auto-detection failed: postal.service is not active.")
+	// 1. Check if postal.service exists
+	if !common.SystemdUnitExists("postal.service") {
+		common.LogDebug("postalHealth auto-detection failed: postal.service unit file not found.")
 		return false
+
 	}
-	common.LogDebug("postalHealth auto-detection: postal.service is active.")
+
+	common.LogDebug("postalHealth auto-detection: postal.service exists.")
 
 	// 2. Check for Postal config file
 	viper.SetConfigName("postal")
