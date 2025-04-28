@@ -12,6 +12,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
+func init() {
+	common.RegisterComponent(common.Component{
+		Name:       "versionCheck",
+		EntryPoint: VersionCheck,
+		Platform:   "any", // Assuming it can run anywhere to check external versions
+	})
+}
+
 func StoreVersion(service string, version string) {
 	common.WriteToFile(common.TmpDir+"/"+service+".version", version)
 }

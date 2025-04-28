@@ -101,10 +101,25 @@ func RunAll() {
 		recordUpdateCheck(lastUpdateCheckFile)
 	}
 
-	// --- Get the list of components to run from the centralized function ---
-	componentsToRunStr := common.GetInstalledComponents()
+	// --- Run versionCheck unconditionally ---
+	fmt.Println("Running version checks...")
+	if vcComp, vcExists := common.GetComponent("versionCheck"); vcExists {
+		if vcComp.EntryPoint != nil {
+			vcCmd := &cobra.Command{Use: vcComp.Name, Run: vcComp.EntryPoint, DisableFlagParsing: true}
+			vcCmd.ExecuteC()
+		} else if vcComp.ExecuteFunc != nil {
+			vcComp.ExecuteFunc()
+		} else {
+			fmt.Printf("Warning: Component versionCheck has no execution method defined.\n")
+		}
+	} else {
+		fmt.Println("Warning: versionCheck component not found in registry.")
+	}
+	fmt.Println("Finished version checks.")
+	// --- Get the list of *other* components to run from the centralized function ---
+	componentsToRunStr := common.GetInstalledComponents() // This might need adjustment if versionCheck is included here
 	if componentsToRunStr == "" {
-		fmt.Println("No components determined to run in this cycle.")
+		fmt.Println("No other components determined to run in this cycle.")
 		fmt.Println("Finished component checks for this cycle.")
 		return // Nothing to do
 	}
