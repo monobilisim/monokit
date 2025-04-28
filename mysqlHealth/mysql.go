@@ -31,10 +31,20 @@ func mariadbOrMysql() string {
 }
 
 func FindMyCnf() []string {
-	cmd := exec.Command("/usr/sbin/"+mariadbOrMysql()+"d", "--verbose", "--help")
+	daemonBinary := "/usr/sbin/" + mariadbOrMysql() + "d"
+	// Check if the daemon binary exists before trying to execute it
+	_, err := exec.LookPath(daemonBinary)
+	if err != nil {
+		// Log as debug because this is expected on systems without MySQL/MariaDB server installed
+		common.LogDebug(fmt.Sprintf("Daemon binary %s not found, cannot determine config paths via --help. Error: %v", daemonBinary, err))
+		return nil // Cannot proceed without the daemon binary
+	}
+
+	cmd := exec.Command(daemonBinary, "--verbose", "--help")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		common.LogError("Error running " + "/usr/sbin/" + mariadbOrMysql() + "d command:" + err.Error())
+		// Log as error here because LookPath succeeded but execution failed
+		common.LogError(fmt.Sprintf("Error running %s command: %v", daemonBinary, err))
 		return nil
 	}
 
