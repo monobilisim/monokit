@@ -7,9 +7,13 @@ import (
 	"os"
 	"os/exec"
 	"strings"
+
+	"github.com/monobilisim/monokit/common"
 )
 
-func ZimbraCheck() {
+// ZimbraCheck detects the installed Zimbra/Zextras version, compares it with the previously stored version,
+// potentially creates a Redmine news item, stores the current version, and returns the current version string.
+func ZimbraCheck() (string, error) {
 	var zimbraPath string
 	var zimbraUser string
 
@@ -23,33 +27,44 @@ func ZimbraCheck() {
 		zimbraUser = "zextras"
 	}
 
-	// Get the version of Zimbra
+	// Get the version of Zimbra/Zextras
 	cmd := exec.Command("/bin/su", zimbraUser, "-c", zimbraPath+"/bin/zmcontrol -v")
 	out, err := cmd.Output()
 	if err != nil {
-		fmt.Println("Error getting Zimbra version.")
-		return
+		errMsg := "Error getting Zimbra/Zextras version: " + err.Error()
+		common.LogError(errMsg)
+		return "", fmt.Errorf(errMsg)
 	}
 
 	// Parse the version
+	// Example output: Release 8.8.15_GA_3869.UBUNTU18.64 UBUNTU18_64 FOSS edition.
+	// Example output: Release 10.0.7_GA_0005.RHEL8_64 RHEL8_64 NETWORK edition.
 	// Eg. output
 	// Release 8.8.15_GA_3869.UBUNTU18.64 UBUNTU18_64 FOSS edition.
-	version := strings.Split(string(out), " ")[1]
-	version = strings.Split(version, "_GA_")[0]
+	versionParts := strings.Fields(string(out))
+	if len(versionParts) < 2 {
+		errMsg := "Unexpected output format from zmcontrol -v: " + string(out)
+		common.LogError(errMsg)
+		return "", fmt.Errorf(errMsg)
+	}
+	version := strings.Split(versionParts[1], "_GA_")[0] // Extract version like "8.8.15" or "10.0.7"
 
-	fmt.Println("Zimbra version:", version)
+	common.LogDebug("Detected Zimbra/Zextras version: " + version)
 
-	oldVersion := GatherVersion("zimbra")
+	oldVersion := GatherVersion("zimbra") // Use "zimbra" key for both Zimbra and Zextras
 
 	if oldVersion != "" && oldVersion == version {
-		fmt.Println("Zimbra is not updated yet.")
-		return
+		common.LogDebug("Zimbra/Zextras version unchanged.")
 	} else if oldVersion != "" && oldVersion != version {
-		fmt.Println("Zimbra has been updated.")
-		fmt.Println("Old version:", oldVersion)
-		fmt.Println("New version:", version)
-		CreateNews("Zimbra", oldVersion, version, false)
+		common.LogInfo("Zimbra/Zextras has been updated.")
+		common.LogInfo("Old version: " + oldVersion)
+		common.LogInfo("New version: " + version)
+		CreateNews("Zimbra/Zextras", oldVersion, version, false) // Update news title
+	} else {
+		common.LogInfo("Storing initial Zimbra/Zextras version: " + version)
 	}
 
-	StoreVersion("zimbra", version)
+	StoreVersion("zimbra", version) // Store the detected version
+
+	return version, nil // Return the detected version string
 }
