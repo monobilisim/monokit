@@ -25,11 +25,28 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// DetectZimbra checks for the presence of Zimbra installation directories.
+func DetectZimbra() bool {
+	// Check for standard Zimbra path
+	if _, err := os.Stat("/opt/zimbra"); !os.IsNotExist(err) {
+		common.LogDebug("Zimbra detected at /opt/zimbra.")
+		return true
+	}
+	// Check for Carbonio/Zextras path
+	if _, err := os.Stat("/opt/zextras"); !os.IsNotExist(err) {
+		common.LogDebug("Zextras/Carbonio detected at /opt/zextras.")
+		return true
+	}
+	common.LogDebug("Neither /opt/zimbra nor /opt/zextras found. Zimbra not detected.")
+	return false
+}
+
 func init() {
 	common.RegisterComponent(common.Component{
 		Name:       "zimbraHealth", // Name used in config/daemon loop
 		EntryPoint: Main,
 		Platform:   "linux",
+		AutoDetect: DetectZimbra, // Use the new DetectZimbra function
 	})
 }
 
