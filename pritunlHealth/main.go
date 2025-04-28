@@ -9,17 +9,74 @@ import (
 
 	"github.com/monobilisim/monokit/common"
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper" // Import viper for config reading in detection
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 	"go.mongodb.org/mongo-driver/v2/mongo/readpref"
 )
 
+// DetectPritunl checks if the Pritunl service seems to be configured and reachable via MongoDB.
+func DetectPritunl() bool {
+	// 1. Try to load the configuration
+	var tempConfig struct {
+		Url string
+	}
+	// Use viper directly to avoid initializing the full common stack just for detection
+	viper.SetConfigName("pritunl")
+	viper.AddConfigPath("/etc/mono") // Assuming standard config path
+	err := viper.ReadInConfig()
+	if err != nil {
+		common.LogDebug(fmt.Sprintf("pritunlHealth auto-detection failed: Cannot read config file: %v", err))
+		return false
+	}
+	err = viper.Unmarshal(&tempConfig)
+	if err != nil {
+		common.LogDebug(fmt.Sprintf("pritunlHealth auto-detection failed: Cannot unmarshal config: %v", err))
+		return false
+	}
+
+	// 2. Check if essential config values are present
+	pritunlURL := tempConfig.Url
+	if pritunlURL == "" {
+		// Default URL if not specified in config, consistent with Main function logic
+		pritunlURL = "mongodb://localhost:27017"
+		common.LogDebug("pritunlHealth auto-detection: Using default MongoDB URL: " + pritunlURL)
+	} else {
+		common.LogDebug("pritunlHealth auto-detection: Found MongoDB URL in config: " + pritunlURL)
+	}
+
+	// 3. Attempt to connect and ping MongoDB
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second) // Short timeout for detection
+	defer cancel()                                                          // Keep context for Ping and Disconnect
+
+	clientOptions := options.Client().ApplyURI(pritunlURL)
+	// Remove ctx from Connect call
+	client, err := mongo.Connect(clientOptions)
+	if err != nil {
+		common.LogDebug(fmt.Sprintf("pritunlHealth auto-detection failed: Cannot connect to MongoDB at %s: %v", pritunlURL, err))
+		return false
+	}
+	// Ensure disconnection even if ping fails
+	defer client.Disconnect(ctx)
+
+	err = client.Ping(ctx, readpref.Primary())
+	if err != nil {
+		common.LogDebug(fmt.Sprintf("pritunlHealth auto-detection failed: Cannot ping MongoDB at %s: %v", pritunlURL, err))
+		return false
+	}
+
+	common.LogDebug(fmt.Sprintf("pritunlHealth auto-detection: Successfully connected and pinged MongoDB at %s.", pritunlURL))
+	common.LogDebug("pritunlHealth auto-detected successfully.")
+	return true
+}
+
 func init() {
 	common.RegisterComponent(common.Component{
 		Name:       "pritunlHealth",
 		EntryPoint: Main,
-		Platform:   "any", // Connects to MongoDB, platform-agnostic
+		Platform:   "any",         // Connects to MongoDB, platform-agnostic
+		AutoDetect: DetectPritunl, // Add the auto-detect function
 	})
 }
 
@@ -41,17 +98,21 @@ func Main(cmd *cobra.Command, args []string) {
 	common.TmpDir = common.TmpDir + "pritunlHealth"
 	common.Init()
 
+	// Load config after common.Init
 	if common.ConfExists("pritunl") {
 		common.ConfInit("pritunl", &PritunlHealthConfig)
 	}
 
+	// Apply default URL after attempting to load config
 	if PritunlHealthConfig.Url == "" {
 		PritunlHealthConfig.Url = "mongodb://localhost:27017"
 	}
 
 	fmt.Println("Pritunl Health Check - v" + version + " - " + time.Now().Format("2006-01-02 15:04:05"))
 
-	client, err := mongo.Connect(options.Client().ApplyURI(PritunlHealthConfig.Url))
+	// Connect call does not use context in this driver version
+	clientOptions := options.Client().ApplyURI(PritunlHealthConfig.Url)
+	client, err := mongo.Connect(clientOptions)
 	if err != nil {
 		common.LogError("Couldn't connect to the server: " + err.Error())
 		common.AlarmCheckDown("pritunl_connect", "Couldn't connect to the server: "+err.Error(), false, "", "")
@@ -60,15 +121,21 @@ func Main(cmd *cobra.Command, args []string) {
 		common.AlarmCheckUp("pritunl_connect", "Server is now connected", false)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	// Use a separate context for operations after connection
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second) // Longer timeout for operations
 	defer cancel()
 
 	defer func() {
-		if err = client.Disconnect(ctx); err != nil {
-			panic(err)
+		// Use a separate context for disconnection
+		ctxDisconnect, cancelDisconnect := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancelDisconnect()
+		if err = client.Disconnect(ctxDisconnect); err != nil {
+			// Log error instead of panic
+			common.LogError(fmt.Sprintf("Error disconnecting from MongoDB: %v", err))
 		}
 	}()
 
+	// Use the operation context for ping
 	err = client.Ping(ctx, readpref.Primary())
 	if err != nil {
 		common.LogError("Couldn't ping the server: " + err.Error())
@@ -108,17 +175,27 @@ func ClientUpCheck(userIdActual bson.ObjectID, ctx context.Context, db *mongo.Da
 		var result bson.M
 		err := cursor.Decode(&result)
 		if err != nil {
-			fmt.Println("Error: " + err.Error())
-			return []Client{}
+			common.LogError(fmt.Sprintf("Error decoding client document: %v", err))
+			continue // Skip this document on error
 		}
 
 		var userId bson.ObjectID
+		var ipAddr string
 
-		// Get user_id
-		userId = result["user_id"].(bson.ObjectID)
+		// Safely access fields with type assertion
+		if userIDVal, ok := result["user_id"].(bson.ObjectID); ok {
+			userId = userIDVal
+		} else {
+			common.LogDebug(fmt.Sprintf("Skipping client document due to missing or invalid 'user_id': %v", result["_id"]))
+			continue
+		}
 
-		// Get IP address
-		ipAddr := result["real_address"].(string)
+		if ipAddrVal, ok := result["real_address"].(string); ok {
+			ipAddr = ipAddrVal
+		} else {
+			common.LogDebug(fmt.Sprintf("Skipping client document due to missing or invalid 'real_address': %v", result["_id"]))
+			continue
+		}
 
 		if userId == userIdActual {
 			res = append(res, Client{userId, ipAddr})
@@ -148,19 +225,27 @@ func OrgCheck(orgIdActual bson.ObjectID, ctx context.Context, db *mongo.Database
 		var result bson.M
 		err := cursor.Decode(&result)
 		if err != nil {
-			fmt.Println("Error: " + err.Error())
-			return false
+			common.LogError(fmt.Sprintf("Error decoding organization document: %v", err))
+			continue // Skip this document on error
 		}
 
-		if result["name"] == nil || result["_id"] == nil {
+		var id bson.ObjectID
+		var name string
+
+		// Safely access fields
+		if idVal, ok := result["_id"].(bson.ObjectID); ok {
+			id = idVal
+		} else {
+			common.LogDebug("Skipping organization document due to missing or invalid '_id'")
 			continue
 		}
 
-		// Get id
-		id := result["_id"]
-
-		// Get name
-		name := result["name"].(string)
+		if nameVal, ok := result["name"].(string); ok {
+			name = nameVal
+		} else {
+			common.LogDebug(fmt.Sprintf("Skipping organization document due to missing or invalid 'name': %v", id))
+			continue
+		}
 
 		if name == "" || name == "undefined" {
 			continue
@@ -203,42 +288,61 @@ func UsersStatus(ctx context.Context, db *mongo.Database) {
 		var result bson.M
 		err := cursor.Decode(&result)
 		if err != nil {
-			fmt.Println("Error: " + err.Error())
-			return
+			common.LogError(fmt.Sprintf("Error decoding user document: %v", err))
+			continue // Skip this document on error
 		}
 
-		name := result["name"].(string)
+		var name string
+		var orgIdActual bson.ObjectID
+		var userIdActual bson.ObjectID
+
+		// Safely access fields
+		if nameVal, ok := result["name"].(string); ok {
+			name = nameVal
+		} else {
+			common.LogDebug(fmt.Sprintf("Skipping user document due to missing or invalid 'name': %v", result["_id"]))
+			continue
+		}
+
 		if name == "" || name == "undefined" {
 			continue
 		}
 
-		// get org_id
-		orgId := OrgCheck(result["org_id"].(bson.ObjectID), ctx, db)
-
-		if orgId == false {
+		if orgIDVal, ok := result["org_id"].(bson.ObjectID); ok {
+			orgIdActual = orgIDVal
+		} else {
+			common.LogDebug(fmt.Sprintf("Skipping user '%s' due to missing or invalid 'org_id'", name))
 			continue
 		}
 
-		// Get id
-		isUp := ClientUpCheck(result["_id"].(bson.ObjectID), ctx, db)
+		if userIDVal, ok := result["_id"].(bson.ObjectID); ok {
+			userIdActual = userIDVal
+		} else {
+			common.LogDebug(fmt.Sprintf("Skipping user '%s' due to missing or invalid '_id'", name))
+			continue
+		}
+
+		// Check organization validity
+		orgIsValid := OrgCheck(orgIdActual, ctx, db)
+		if !orgIsValid {
+			continue
+		}
+
+		// Check client status
+		connectedClients := ClientUpCheck(userIdActual, ctx, db)
 
 		var addresses []string
-		var addressesStr string
-
-		for _, realAddr := range isUp {
-			addresses = append(addresses, realAddr.Real_address)
+		for _, client := range connectedClients {
+			addresses = append(addresses, client.Real_address)
 		}
+		addressesStr := strings.Join(addresses, ", ")
 
-		if len(addresses) > 0 {
-			addressesStr = strings.Join(addresses, ", ")
-		}
-
-		if len(isUp) == 0 {
+		if len(connectedClients) == 0 {
 			fmt.Println(common.Blue + "User " + name + " is " + common.Fail + "offline" + common.Reset)
 			common.AlarmCheckDown("user_"+name, "User "+name+" is offline, no client is connected", false, "", "")
 		} else {
 			common.PrettyPrintStr("User "+name, true, "online")
-			common.AlarmCheckUp("user_"+name, "User "+name+" is now online, "+fmt.Sprint(len(isUp))+" client(s) is/are connected with IP(s): "+addressesStr, false)
+			common.AlarmCheckUp("user_"+name, "User "+name+" is now online, "+fmt.Sprint(len(connectedClients))+" client(s) is/are connected with IP(s): "+addressesStr, false)
 		}
 	}
 
@@ -266,19 +370,34 @@ func ServerStatus(ctx context.Context, db *mongo.Database) {
 		var result bson.M
 		err := cursor.Decode(&result)
 		if err != nil {
-			fmt.Println("Error: " + err.Error())
-			return
+			common.LogError(fmt.Sprintf("Error decoding server document: %v", err))
+			continue // Skip this document on error
 		}
 
-		// Get status
-		status := result["status"].(string)
+		var status string
+		var name string
+
+		// Safely access fields
+		if statusVal, ok := result["status"].(string); ok {
+			status = statusVal
+		} else {
+			common.LogDebug(fmt.Sprintf("Skipping server document due to missing or invalid 'status': %v", result["_id"]))
+			continue
+		}
+
+		if nameVal, ok := result["name"].(string); ok {
+			name = nameVal
+		} else {
+			common.LogDebug(fmt.Sprintf("Skipping server document due to missing or invalid 'name': %v", result["_id"]))
+			continue
+		}
 
 		if status != "online" {
-			common.PrettyPrintStr("Server "+result["name"].(string), false, "online")
-			common.AlarmCheckDown("server_"+result["name"].(string), "Server "+result["name"].(string)+" is down, status '"+status+"'", false, "", "")
+			common.PrettyPrintStr("Server "+name, false, "online")
+			common.AlarmCheckDown("server_"+name, "Server "+name+" is down, status '"+status+"'", false, "", "")
 		} else {
-			common.PrettyPrintStr("Server "+result["name"].(string), true, "online")
-			common.AlarmCheckUp("server_"+result["name"].(string), "Server "+result["name"].(string)+" is now up, status '"+status+"'", false)
+			common.PrettyPrintStr("Server "+name, true, "online")
+			common.AlarmCheckUp("server_"+name, "Server "+name+" is now up, status '"+status+"'", false)
 		}
 	}
 }

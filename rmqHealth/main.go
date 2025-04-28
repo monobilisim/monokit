@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"os/exec" // Import os/exec for command checks
 	"strings"
 	"time"
 
@@ -15,11 +16,40 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// DetectRmq checks if RabbitMQ seems to be installed.
+// It looks for the rabbitmqctl command and the rabbitmq-server service.
+func DetectRmq() bool {
+	// 1. Check for rabbitmqctl command
+	if _, err := exec.LookPath("rabbitmqctl"); err != nil {
+		common.LogDebug("rmqHealth auto-detection failed: 'rabbitmqctl' command not found in PATH.")
+		return false
+	}
+	common.LogDebug("rmqHealth auto-detection: 'rabbitmqctl' command found.")
+
+	// 2. Check for /etc/rabbitmq directory
+	if _, err := os.Stat("/etc/rabbitmq"); os.IsNotExist(err) {
+		common.LogDebug("rmqHealth auto-detection failed: '/etc/rabbitmq' directory not found.")
+		return false
+	}
+	common.LogDebug("rmqHealth auto-detection: '/etc/rabbitmq' directory found.")
+
+	// 3. Check if rabbitmq-server service exists (using common function)
+	if !common.SystemdUnitExists("rabbitmq-server.service") {
+		common.LogDebug("rmqHealth auto-detection failed: 'rabbitmq-server.service' systemd unit not found.")
+		return false
+	}
+	common.LogDebug("rmqHealth auto-detection: 'rabbitmq-server.service' systemd unit found.")
+
+	common.LogDebug("rmqHealth auto-detected successfully.")
+	return true
+}
+
 func init() {
 	common.RegisterComponent(common.Component{
 		Name:       "rmqHealth", // Name used in config/daemon loop
 		EntryPoint: Main,
 		Platform:   "linux",
+		AutoDetect: DetectRmq, // Add the auto-detect function
 	})
 }
 

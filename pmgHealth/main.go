@@ -5,6 +5,7 @@ package pmgHealth
 import (
 	"bytes"
 	"fmt"
+	"os" // Import os for file checks
 	"os/exec"
 	"regexp"
 	"strconv"
@@ -17,11 +18,41 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// DetectPmg checks if Proxmox Mail Gateway seems to be installed.
+// It looks for the pmgversion command and the pmgproxy service.
+func DetectPmg() bool {
+	// 1. Check for pmgversion command
+	if _, err := exec.LookPath("pmgversion"); err != nil {
+		common.LogDebug("pmgHealth auto-detection failed: 'pmgversion' command not found in PATH.")
+		return false
+	}
+	common.LogDebug("pmgHealth auto-detection: 'pmgversion' command found.")
+
+	// 2. Check for /etc/pmg directory
+	if _, err := os.Stat("/etc/pmg"); os.IsNotExist(err) {
+		common.LogDebug("pmgHealth auto-detection failed: '/etc/pmg' directory not found.")
+		return false
+	}
+	common.LogDebug("pmgHealth auto-detection: '/etc/pmg' directory found.")
+
+	// 3. Check if pmgproxy service exists/is active (using common function)
+	// We can just check for one key service. If pmgproxy is there, it's likely PMG.
+	if !common.SystemdUnitExists("pmgproxy.service") {
+		common.LogDebug("pmgHealth auto-detection failed: 'pmgproxy.service' systemd unit not found.")
+		return false
+	}
+	common.LogDebug("pmgHealth auto-detection: 'pmgproxy.service' systemd unit found.")
+
+	common.LogDebug("pmgHealth auto-detected successfully.")
+	return true
+}
+
 func init() {
 	common.RegisterComponent(common.Component{
 		Name:       "pmgHealth",
 		EntryPoint: Main,
 		Platform:   "linux",
+		AutoDetect: DetectPmg, // Add the auto-detect function
 	})
 }
 
@@ -84,7 +115,7 @@ func QueuedMessages() {
 		common.PrettyPrintStr("Number of queued messages", true, strconv.Itoa(count)+"/"+strconv.Itoa(MailHealthConfig.Pmg.Queue_Limit))
 	} else {
 		common.AlarmCheckDown("queued_msg", "Number of queued messages is above limit - "+strconv.Itoa(count)+"/"+strconv.Itoa(MailHealthConfig.Pmg.Queue_Limit), false, "", "")
-		common.PrettyPrintStr("PMG Queue", true, strconv.Itoa(count)+"/"+strconv.Itoa(MailHealthConfig.Pmg.Queue_Limit))
+		common.PrettyPrintStr("Number of queued messages", false, strconv.Itoa(count)+"/"+strconv.Itoa(MailHealthConfig.Pmg.Queue_Limit))
 	}
 }
 
