@@ -22,11 +22,71 @@ import (
 	"github.com/spf13/viper"
 )
 
+// DetectPostal checks if Postal seems to be installed and running.
+// It first checks if the postal.service systemd unit is active,
+// then checks for the config file and running postal containers via Docker.
+func DetectPostal() bool {
+	// 1. Check if postal.service is active
+	if !common.SystemdUnitActive("postal.service") {
+		common.LogDebug("postalHealth auto-detection failed: postal.service is not active.")
+		return false
+	}
+	common.LogDebug("postalHealth auto-detection: postal.service is active.")
+
+	// 2. Check for Postal config file
+	viper.SetConfigName("postal")
+	viper.AddConfigPath("/opt/postal/config")
+	err := viper.ReadInConfig()
+	if err != nil {
+		common.LogDebug(fmt.Sprintf("postalHealth auto-detection failed: Cannot read /opt/postal/config/postal.yml: %v", err))
+		return false
+	}
+	common.LogDebug("postalHealth auto-detection: Found /opt/postal/config/postal.yml.")
+
+	// 2. Check Docker connection and look for postal containers
+	apiClient, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
+	if err != nil {
+		common.LogDebug(fmt.Sprintf("postalHealth auto-detection failed: Cannot connect to Docker API: %v", err))
+		return false // Cannot detect without Docker access
+	}
+	defer apiClient.Close()
+	common.LogDebug("postalHealth auto-detection: Connected to Docker API.")
+
+	containers, err := apiClient.ContainerList(context.Background(), container.ListOptions{All: true})
+	if err != nil {
+		common.LogDebug(fmt.Sprintf("postalHealth auto-detection failed: Cannot list Docker containers: %v", err))
+		return false // Cannot detect if listing fails
+	}
+
+	foundPostalContainer := false
+	for _, container := range containers {
+		for _, name := range container.Names {
+			if strings.Contains(name, "postal") {
+				common.LogDebug(fmt.Sprintf("postalHealth auto-detection: Found postal container: %s (State: %s)", name, container.State))
+				foundPostalContainer = true
+				break // Found one, no need to check others for detection purposes
+			}
+		}
+		if foundPostalContainer {
+			break
+		}
+	}
+
+	if !foundPostalContainer {
+		common.LogDebug("postalHealth auto-detection failed: No containers with 'postal' in the name found.")
+		return false
+	}
+
+	common.LogDebug("postalHealth auto-detected successfully (config file found and at least one postal container exists).")
+	return true
+}
+
 func init() {
 	common.RegisterComponent(common.Component{
 		Name:       "postalHealth",
 		EntryPoint: Main,
 		Platform:   "linux",
+		AutoDetect: DetectPostal, // Add the auto-detect function here
 	})
 }
 
