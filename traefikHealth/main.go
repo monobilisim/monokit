@@ -16,11 +16,34 @@ import (
 	"github.com/spf13/cobra"
 )
 
+// DetectTraefik checks if Traefik seems to be installed.
+// It checks for the systemd service unit file and log directory.
+func DetectTraefik() bool {
+	// 1. Check if traefik.service unit file exists
+	if !common.SystemdUnitExists("traefik.service") {
+		common.LogDebug("traefikHealth auto-detection failed: traefik.service unit file not found.")
+		return false
+	}
+	common.LogDebug("traefikHealth auto-detection: traefik.service unit file found.")
+
+	// 2. Check for Traefik log directory
+	logDir := "/var/log/traefik"
+	if _, err := os.Stat(logDir); os.IsNotExist(err) {
+		common.LogDebug(fmt.Sprintf("traefikHealth auto-detection failed: Log directory not found at %s", logDir))
+		return false
+	}
+	common.LogDebug(fmt.Sprintf("traefikHealth auto-detection: Found log directory: %s", logDir))
+
+	common.LogDebug("traefikHealth auto-detected successfully (service active and log directory exists).")
+	return true
+}
+
 func init() {
 	common.RegisterComponent(common.Component{
 		Name:       "traefikHealth",
 		EntryPoint: Main,
 		Platform:   "linux",
+		AutoDetect: DetectTraefik, // Add the auto-detect function here
 	})
 }
 
