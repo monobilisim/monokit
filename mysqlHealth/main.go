@@ -19,7 +19,13 @@ func DetectMySQL() bool {
 	// The presence of /etc/mono/db.yaml is not required for detection,
 	// only for the full execution of the health check.
 
-	// Load minimal necessary config for detection
+	// First, check if the db config file exists. Detection shouldn't proceed if it doesn't.
+	if !common.ConfExists("db") {
+		common.LogDebug("mysqlHealth auto-detection skipped: db config file not found in /etc/mono.")
+		return false
+	}
+
+	// Load minimal necessary config for detection only if the config file exists
 	var detectConf db.DbHealth         // Use a local variable to avoid side effects on the global DbHealthConfig
 	common.ConfInit("db", &detectConf) // Initialize config needed by ParseMyCnfAndConnect
 
