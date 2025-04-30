@@ -19,28 +19,27 @@ import (
 )
 
 func DetectPostgres() bool {
-	// Check if running as postgres user
-	if os.Getenv("USER") != "postgres" {
-		common.LogDebug("PostgreSQL check skipped: not running as postgres user")
+	// Check if any common PostgreSQL service unit file exists
+	postgresServiceExists := common.SystemdUnitExists("postgresql.service") ||
+		common.SystemdUnitExists("postgresql@.service") || // Check for template unit
+		common.SystemdUnitExists("postgresql@13-main.service") ||
+		common.SystemdUnitExists("postgresql@14-main.service") ||
+		common.SystemdUnitExists("postgresql@15-main.service")
+
+	if !postgresServiceExists {
+		common.LogDebug("PostgreSQL detection failed: No common postgresql systemd unit file found.")
 		return false
 	}
 
-	// Check if PostgreSQL service is running
-	if !common.SystemdUnitActive("postgresql.service") &&
-		!common.SystemdUnitActive("postgresql@13-main.service") &&
-		!common.SystemdUnitActive("postgresql@14-main.service") &&
-		!common.SystemdUnitActive("postgresql@15-main.service") {
-		return false
-	}
-
-	// Try to connect
-	err := Connect()
+	// Check if psql binary exists
+	_, err := exec.LookPath("psql")
 	if err != nil {
-		common.LogDebug("PostgreSQL detection failed: " + err.Error())
+		common.LogDebug("PostgreSQL detection failed: psql binary not found in PATH")
 		return false
 	}
-	defer Connection.Close()
 
+	// If service unit exists and binary exists, assume PostgreSQL is present
+	common.LogDebug("PostgreSQL detected: Service unit file exists and psql binary found.")
 	return true
 }
 
@@ -50,6 +49,7 @@ func init() {
 		EntryPoint: Main,
 		Platform:   "linux", // Specific to Linux due to user check and patroni path
 		AutoDetect: DetectPostgres,
+		RunAsUser:  "postgres", // Specify the user to run this component as
 	})
 }
 

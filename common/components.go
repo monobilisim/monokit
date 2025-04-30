@@ -16,6 +16,7 @@ type Component struct {
 	CobraCmd    *cobra.Command                          // Pre-configured cobra command if needed
 	ExecuteFunc func()                                  // Alternative simpler execution function
 	AutoDetect  func() bool                             // Function to detect if component should be enabled
+	RunAsUser   string                                  // User to run this component as (e.g., "postgres")
 }
 
 // DaemonConfig represents the daemon configuration structure.
@@ -69,16 +70,28 @@ func GetInstalledComponents() string {
 			if name == "osHealth" { // Already added
 				continue
 			}
-			if comp.AutoDetect != nil {
+
+			// Perform auto-detection if available.
+			// Detection logic should handle user context internally if needed.
+			shouldPerformAutoDetect := comp.AutoDetect != nil
+			LogDebug(fmt.Sprintf("Component %s: AutoDetect != nil: %t, RunAsUser: '%s', GOOS: %s, ShouldPerformAutoDetect: %t",
+				name, comp.AutoDetect != nil, comp.RunAsUser, runtime.GOOS, shouldPerformAutoDetect)) // <-- Updated log context
+
+			if shouldPerformAutoDetect {
+				LogDebug(fmt.Sprintf("Performing auto-detection for component %s (no config)...", name)) // Simplified log
 				if comp.AutoDetect() {
-					LogDebug(fmt.Sprintf("Component %s auto-detected and enabled (no config).", name))
+					LogDebug(fmt.Sprintf("Component %s included (passed auto-detection, no config).", name))
 					enabled = append(enabled, name)
 				} else {
-					LogDebug(fmt.Sprintf("Component %s failed auto-detection (no config).", name))
+					LogDebug(fmt.Sprintf("Component %s skipped (failed auto-detection, no config).", name))
 				}
+			} else if comp.RunAsUser != "" && runtime.GOOS == "linux" {
+				// Include components meant to run as another user on Linux, skipping AutoDetect here.
+				LogDebug(fmt.Sprintf("Component %s included tentatively (RunAsUser set, Linux, no config). Auto-detection deferred.", name))
+				enabled = append(enabled, name)
 			} else {
-				// Components without auto-detect are not enabled by default without config
-				LogDebug(fmt.Sprintf("Component %s skipped (no config, no auto-detect).", name))
+				// No auto-detect and not RunAsUser on Linux: Skip by default
+				LogDebug(fmt.Sprintf("Component %s skipped (no auto-detect function or RunAsUser condition not met, no config).", name))
 			}
 		}
 	} else {
@@ -130,18 +143,27 @@ func GetInstalledComponents() string {
 				continue
 			}
 
-			// 3. Perform auto-detection if available
-			if comp.AutoDetect != nil {
-				LogDebug(fmt.Sprintf("Performing auto-detection for component %s (config exists).", name))
+			//  3. Perform auto-detection if available.
+			//     Detection logic should handle user context internally if needed.
+			shouldPerformAutoDetect := comp.AutoDetect != nil
+			LogDebug(fmt.Sprintf("Component %s: AutoDetect != nil: %t, RunAsUser: '%s', GOOS: %s, ShouldPerformAutoDetect: %t",
+				name, comp.AutoDetect != nil, comp.RunAsUser, runtime.GOOS, shouldPerformAutoDetect)) // <-- Updated log context
+
+			if shouldPerformAutoDetect {
+				LogDebug(fmt.Sprintf("Performing auto-detection for component %s (config exists)...", name)) // Simplified log
 				if comp.AutoDetect() {
 					LogDebug(fmt.Sprintf("Component %s included (passed auto-detection with config).", name))
 					enabled = append(enabled, name)
 				} else {
 					LogDebug(fmt.Sprintf("Component %s skipped (failed auto-detection with config).", name))
 				}
+			} else if comp.RunAsUser != "" && runtime.GOOS == "linux" {
+				// Include components meant to run as another user on Linux, skipping AutoDetect here.
+				LogDebug(fmt.Sprintf("Component %s included tentatively (RunAsUser set, Linux). Auto-detection deferred.", name))
+				enabled = append(enabled, name)
 			} else {
-				// No auto-detect: Skip by default, even if config exists (consistent behavior)
-				LogDebug(fmt.Sprintf("Component %s skipped (no auto-detect function).", name))
+				// No auto-detect and not RunAsUser on Linux: Skip by default
+				LogDebug(fmt.Sprintf("Component %s skipped (no auto-detect function or RunAsUser condition not met).", name))
 			}
 		}
 	}

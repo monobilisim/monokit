@@ -176,7 +176,8 @@ func checkClusterRoleChanges(result, oldResult *Response, dbConfig db.DbHealth) 
 	common.SplitSection("Cluster Roles:")
 	for _, member := range result.Members {
 		common.PrettyPrintStr(member.Name, true, member.Role)
-		if reflect.DeepEqual(*oldResult, (Response{})) {
+		// Check if oldResult is nil before dereferencing
+		if oldResult == nil || reflect.DeepEqual(*oldResult, Response{}) {
 			continue
 		}
 		for _, oldMember := range oldResult.Members {

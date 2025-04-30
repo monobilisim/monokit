@@ -27,6 +27,15 @@ import (
 var RootCmd = &cobra.Command{
 	Use:     "monokit",
 	Version: common.MonokitVersion,
+	PersistentPreRun: func(cmd *cobra.Command, args []string) {
+		// This function runs before any command's Run function.
+		// Cobra automatically binds the flag value to the variable via PersistentFlags().
+	},
+}
+
+func init() {
+	// Define persistent flags in init() so they are available early.
+	RootCmd.PersistentFlags().BoolVar(&common.IgnoreLockfile, "ignore-lockfile", false, "Ignore lockfile check during initialization")
 }
 
 func main() {

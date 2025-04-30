@@ -8,12 +8,14 @@ import (
 	"path/filepath"
 	"strings"
 	"unicode"
-    "github.com/sirupsen/logrus"
+
+	"github.com/sirupsen/logrus"
 )
 
 var Config Common
 var TmpPath string
 var MonokitVersion = "devel"
+var IgnoreLockfile bool // Flag to ignore lockfile check
 
 func SplitSection(section string) {
 	fmt.Println("\n" + section)
@@ -101,26 +103,40 @@ func Init() {
 		if !ProcGrep("monokit", true) {
 			// Remove lockfile
 			os.Remove(TmpDir + "/monokit.lock")
+			LogDebug("Removed stale lockfile: " + TmpDir + "/monokit.lock")
 		} else {
-			fmt.Println("Monokit is already running, exiting...")
-			os.Exit(1)
+			if !IgnoreLockfile { // Check the flag before exiting
+				fmt.Println("Monokit is already running (lockfile exists), exiting...")
+				os.Exit(1)
+			} else {
+				LogDebug("Ignoring existing lockfile due to --ignore-lockfile flag.")
+			}
 		}
 	}
 
-	// Create lockfile
-	os.Create(TmpDir + "/monokit.lock")
+	// Create lockfile only if not ignoring
+	if !IgnoreLockfile {
+		file, err := os.Create(TmpDir + "/monokit.lock")
+		if err != nil {
+			LogError("Failed to create lockfile: " + err.Error())
+			// Decide if we should exit here or just warn
+		} else {
+			file.Close() // Close the file immediately after creation
+			LogDebug("Created lockfile: " + TmpDir + "/monokit.lock")
+		}
+	}
 
-    lvl, ok := os.LookupEnv("MONOKIT_LOGLEVEL")
-    if !ok {
-        os.Setenv("MONOKIT_LOGLEVEL", "info")
-    }
+	lvl, ok := os.LookupEnv("MONOKIT_LOGLEVEL")
+	if !ok {
+		os.Setenv("MONOKIT_LOGLEVEL", "info")
+	}
 
-    ll, err := logrus.ParseLevel(lvl)
-    if err != nil {
-        ll = logrus.InfoLevel
-    }
-    
-    logrus.SetLevel(ll)
+	ll, err := logrus.ParseLevel(lvl)
+	if err != nil {
+		ll = logrus.InfoLevel
+	}
+
+	logrus.SetLevel(ll)
 
 	// Check if env variable MONOKIT_NOCOLOR is set to true
 	if os.Getenv("MONOKIT_NOCOLOR") == "true" || os.Getenv("MONOKIT_NOCOLOR") == "1" {
