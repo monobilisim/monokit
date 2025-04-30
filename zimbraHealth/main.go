@@ -484,6 +484,9 @@ func CheckZimbraServices() []ServiceInfo {
 		if strings.Contains(svc, "Running") {
 			isRunning = true
 			serviceName = strings.TrimSpace(strings.Split(svc, "Running")[0])
+		} else if strings.Contains(svc, "Stopped") { // Handle "Stopped" status
+			isRunning = false
+			serviceName = strings.TrimSpace(strings.Split(svc, "Stopped")[0])
 		} else if strings.Contains(svc, "is not running") {
 			isRunning = false
 			serviceName = strings.TrimSpace(strings.Split(svc, "is not running")[0])
