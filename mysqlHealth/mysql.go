@@ -137,7 +137,12 @@ func ParseMyCnfAndConnect(profile string) (string, error) {
 					config.Net = "unix"
 					config.Addr = socket
 					// User/Password/DBName already set
-				} else if host != "" {
+				} else { // No socket defined, try host
+					if host == "" { // Host is also empty, default it
+						host = "127.0.0.1"
+						common.LogDebug(fmt.Sprintf("Host not specified for profile [%s] in %s, defaulting to %s", s.Name(), path, host))
+					}
+					// Now host is guaranteed to be non-empty (either original or defaulted)
 					config.Net = "tcp"
 					if port != "" {
 						config.Addr = fmt.Sprintf("%s:%s", host, port)
@@ -145,10 +150,6 @@ func ParseMyCnfAndConnect(profile string) (string, error) {
 						config.Addr = fmt.Sprintf("%s:%s", host, "3306") // Use default port if not specified
 					}
 					// User/Password/DBName already set
-				} else {
-					// Neither socket nor host defined for this profile section, skip
-					common.LogDebug(fmt.Sprintf("Skipping profile [%s] in %s: missing host or socket", s.Name(), path))
-					continue
 				}
 
 				// Validate required fields before attempting connection

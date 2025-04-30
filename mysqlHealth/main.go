@@ -19,6 +19,10 @@ func DetectMySQL() bool {
 	// The presence of /etc/mono/db.yaml is not required for detection,
 	// only for the full execution of the health check.
 
+	// Load minimal necessary config for detection
+	var detectConf db.DbHealth         // Use a local variable to avoid side effects on the global DbHealthConfig
+	common.ConfInit("db", &detectConf) // Initialize config needed by ParseMyCnfAndConnect
+
 	// ParseMyCnfAndConnect implicitly tests the connection.
 	_, err := ParseMyCnfAndConnect("client")
 	if err != nil {
