@@ -4,6 +4,10 @@ metadata:
   name: k8shealth-cronjob
 spec:
   schedule: "*/2 * * * *"  # Run every 2 minutes
+  concurrencyPolicy: Forbid
+  failedJobsHistoryLimit: 2
+  successfulJobsHistoryLimit: 1
+  startingDeadlineSeconds: 60
   jobTemplate:
     spec:
       template:
