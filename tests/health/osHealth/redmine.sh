@@ -1,6 +1,8 @@
 #!/bin/sh
 set -e
 
+export MONOKIT_LOGLEVEL=debug
+
 # Run it first
 ./bin/monokit osHealth
 
