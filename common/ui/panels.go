@@ -1,8 +1,10 @@
 package ui
 
 import (
-	"fmt"
-	"strings"
+"fmt"
+"strings"
+
+"github.com/charmbracelet/lipgloss" // Added import
 )
 
 // StatsPanel represents a box containing a collection of key-value statistics
@@ -189,4 +191,38 @@ func (p *TablePanel) Render() string {
 	}
 
 	return RenderBox(sb.String())
+}
+
+// ServiceStatusListItem formats a status list item specifically for running/not running services.
+// Example: "• ServiceName is Running" (green) or "• ServiceName is not Running" (Running in red)
+func ServiceStatusListItem(label string, isRunning bool) string {
+var statusText string
+prefix := "is " // Keep the "is" prefix consistent
+
+if isRunning {
+statusText = FormatStatusText("Running", true) // Green "Running"
+} else {
+// Construct "not Running" with "Running" in red
+statusText = fmt.Sprintf("not %s", FormatStatusText("Running", false))
+}
+
+// Use styles consistent with other list items if possible, or define locally
+	// Assuming a simple bullet point format similar to common.SimpleStatusListItem
+// but using styles defined within this 'ui' package.
+itemStyle := lipgloss.NewStyle().Foreground(NormalTextColor) // Use NormalTextColor from styles.go
+
+// Add padding consistent with SimpleStatusListItem in common/display.go
+contentStyle := lipgloss.NewStyle().
+Align(lipgloss.Left).
+PaddingLeft(8)
+
+// Format: "• label                is Running" or "• label                is not Running" (Aligned)
+// Using 20 padding for the label part for consistency.
+line := fmt.Sprintf("•  %-20s %s%s",
+label,
+prefix,
+statusText)
+
+// Apply the content style with padding
+return contentStyle.Render(itemStyle.Render(line))
 }

@@ -1,10 +1,11 @@
 package zimbraHealth
 
 import (
-	"fmt"
-	"strings"
+"fmt"
+"strings"
 
-	"github.com/monobilisim/monokit/common"
+"github.com/monobilisim/monokit/common"
+ui "github.com/monobilisim/monokit/common/ui" // Import the ui package
 )
 
 // RenderAll renders all Zimbra health data as a single string for box display.
@@ -40,17 +41,13 @@ func (h *ZimbraHealthData) RenderAll() string {
 	sb.WriteString("\n")
 	sb.WriteString(common.SectionTitle("Zimbra Services"))
 	sb.WriteString("\n")
-	if len(h.Services) > 0 {
-		for _, service := range h.Services {
-			// Use the new SimpleStatusListItem for a cleaner "is Running" or "is Stopped" display
-			sb.WriteString(common.SimpleStatusListItem(
-				service.Name,
-				"Running", // Expected state when successful
-				service.Running,
-			))
-			sb.WriteString("\n")
-		}
-	} else {
+if len(h.Services) > 0 {
+for _, service := range h.Services {
+// Use the ServiceStatusListItem from the ui package
+sb.WriteString(ui.ServiceStatusListItem(service.Name, service.Running))
+sb.WriteString("\n")
+}
+} else {
 		sb.WriteString("  No service status information available.\n")
 	}
 
