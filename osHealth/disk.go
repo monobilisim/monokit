@@ -105,26 +105,40 @@ func DiskUsage() {
 
 	exceededParts, allParts := analyzeDiskPartitions(diskPartitions)
 
-	if len(exceededParts) > 0 {
-		fullMsg, tableOnly := createExceededTable(exceededParts)
-		issues.CheckDown("disk", common.Config.Identifier+" için disk doluluk seviyesi %"+strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64)+" üstüne çıktı", tableOnly, false, 0)
+if len(exceededParts) > 0 {
+	fullMsg, tableOnly := createExceededTable(exceededParts)
+	subject := common.Config.Identifier + " için disk doluluk seviyesi %" + strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64) + " üstüne çıktı"
 
-		// Create redmine issue if it doesn't exist
-		// If it exists, update it
-		id := issues.Show("disk")
-		if id == "" {
-			common.AlarmCheckDown("disk_redmineissue", "Redmine issue could not be created for disk usage", false, "", "")
-			common.AlarmCheckDown("disk", fullMsg, false, "", "")
-		} else {
-			common.AlarmCheckUp("disk_redmineissue", "Redmine issue has been created for disk usage", false)
-			fullMsg = fullMsg + "\n\n" + "Redmine Issue: " + common.Config.Redmine.Url + "/issues/" + id
-			common.AlarmCheckDown("disk", fullMsg, false, "", "")
-		}
+// This handles interval-based creation/update attempts via Redmine
+issues.CheckDown("disk", subject, tableOnly, false, 0)
 
-	} else {
-		// Close redmine issue if it exists
-		fullMsg, tableOnly := createNormalTable(allParts)
-		common.AlarmCheckUp("disk", fullMsg, false)
-		issues.CheckUp("disk", common.Config.Identifier+" için bütün disk bölümleri "+strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64)+"% altına indi, kapatılıyor."+"\n\n"+tableOnly)
-	}
+// Attempt to get the Redmine issue ID associated with the 'disk' service.
+// issues.Show reads the log file managed by CheckDown/CheckUp/Create/Close.
+id := issues.Show("disk")
+
+// Check if we got a valid ID.
+if id != "" {
+// ID exists, append the Redmine link to the alarm message.
+fullMsg = fullMsg + "\n\n" + "Redmine Issue: " + common.Config.Redmine.Url + "/issues/" + id
+common.AlarmCheckUp("disk_redmineissue", "Redmine issue exists for disk usage", false) // Clear any previous "creation failed" alarm
+} else {
+// ID is empty. This could be because CheckDown's interval hasn't passed yet,
+// or there was an issue communicating with Redmine during CheckDown or Show.
+// Do not log a separate "redmine issue creation failed" alarm here.
+// Just proceed with the standard disk alarm without the Redmine link.
+common.LogDebug("osHealth/disk.go: issues.Show(\"disk\") returned empty. Proceeding without Redmine link in alarm.")
+// Optional: We could potentially still log a specific failure if needed, but avoiding disk_redmineissue alarm as requested.
+// common.AlarmCheckDown("disk_redmine_lookup_failed", "Could not retrieve Redmine issue ID for disk usage", false, "", "")
+}
+
+// Always send the standard disk alarm, with or without the Redmine link included in fullMsg.
+common.AlarmCheckDown("disk", fullMsg, false, "", "")
+
+} else {
+// Disk usage is normal, close the Redmine issue if it exists.
+fullMsg, tableOnly := createNormalTable(allParts) // Regenerate tableOnly for CheckUp message
+common.AlarmCheckUp("disk", fullMsg, false)       // Clear the standard disk alarm
+issues.CheckUp("disk", common.Config.Identifier+" için bütün disk bölümleri "+strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64)+"% altına indi, kapatılıyor."+"\n\n"+tableOnly)
+common.AlarmCheckUp("disk_redmineissue", "Disk usage normal, clearing any Redmine issue creation failure alarm", false) // Also clear the specific failure alarm if it existed
+}
 }
