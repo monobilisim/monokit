@@ -6,7 +6,6 @@ namespace: monitoring
 resources:
 - namespace.yaml
 - rbac.yaml
-- pv.yaml
 - pvc.yaml
 - configmap.yaml
 - global-configmap.yaml
