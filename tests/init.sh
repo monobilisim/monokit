@@ -1,8 +1,6 @@
 #!/bin/sh
 set -e
 
-export MONOKIT_LOGLEVEL=debug
-
 cd tests 
 
 docker compose up db -d
