@@ -98,8 +98,6 @@ func displayBoxUI(healthData *HealthData) {
 
 // Helper function to collect disk information and handle alarms/issues
 func collectDiskInfo() []DiskInfo {
-	common.SplitSection("Disk Usage") // Moved from old DiskUsage func
-
 	gopsutilDiskPartitions, err := disk.Partitions(false) // Using gopsutil/disk directly
 	if err != nil {
 		common.LogError("An error occurred while fetching disk partitions\n" + err.Error())

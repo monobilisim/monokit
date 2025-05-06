@@ -49,10 +49,10 @@ func analyzeDiskPartitions(diskPartitions []disk.PartitionStat) ([]DiskInfo, []D
 		allDIs = append(allDIs, currentDiskInfo)
 
 		if usage.UsedPercent > OsHealthConfig.Part_use_limit {
-			common.PrettyPrint("Disk usage at "+partition.Mountpoint, common.Fail+" more than "+strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64)+"%", usage.UsedPercent, true, false, false, 0)
+			// common.PrettyPrint("Disk usage at "+partition.Mountpoint, common.Fail+" more than "+strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64)+"%", usage.UsedPercent, true, false, false, 0)
 			exceededDIs = append(exceededDIs, currentDiskInfo)
 		} else {
-			common.PrettyPrint("Disk usage at "+partition.Mountpoint, common.Green+" less than "+strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64)+"%", usage.UsedPercent, true, false, false, 0)
+			// common.PrettyPrint("Disk usage at "+partition.Mountpoint, common.Green+" less than "+strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64)+"%", usage.UsedPercent, true, false, false, 0)
 		}
 	}
 	return exceededDIs, allDIs
