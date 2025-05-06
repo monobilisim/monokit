@@ -4,9 +4,12 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"strconv"
 	"time"
 
 	"github.com/monobilisim/monokit/common"
+	issues "github.com/monobilisim/monokit/common/redmine/issues"
+	"github.com/shirou/gopsutil/v4/disk" // For GetDiskPartitions
 	"github.com/spf13/cobra"
 )
 
@@ -93,34 +96,44 @@ func displayBoxUI(healthData *HealthData) {
 	fmt.Println(renderedBox)
 }
 
-// Helper function to collect disk information
+// Helper function to collect disk information and handle alarms/issues
 func collectDiskInfo() []DiskInfo {
-	var diskInfoList []DiskInfo
+	common.SplitSection("Disk Usage") // Moved from old DiskUsage func
 
-	diskPartitions, err := GetDiskPartitions(false)
+	gopsutilDiskPartitions, err := disk.Partitions(false) // Using gopsutil/disk directly
 	if err != nil {
-		return diskInfoList
+		common.LogError("An error occurred while fetching disk partitions\n" + err.Error())
+		return []DiskInfo{} // Return empty list on error
 	}
 
-	for _, partition := range diskPartitions {
-		usage, err := GetDiskUsage(partition.Mountpoint)
-		if err != nil {
-			continue
-		}
+	// analyzeDiskPartitions now returns []DiskInfo, []DiskInfo
+	exceededDIs, allDIs := analyzeDiskPartitions(gopsutilDiskPartitions)
 
-		diskInfo := DiskInfo{
-			Device:     partition.Device,
-			Mountpoint: partition.Mountpoint,
-			Used:       common.ConvertBytes(usage.Used),
-			Total:      common.ConvertBytes(usage.Total),
-			UsedPct:    usage.UsedPercent,
-			Fstype:     partition.Fstype,
-		}
+	// Alarm and Redmine logic integrated here
+	if len(exceededDIs) > 0 {
+		fullMsg, tableOnly := createExceededTable(exceededDIs) // createExceededTable now takes []DiskInfo
+		subject := common.Config.Identifier + " için disk doluluk seviyesi %" + strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64) + " üstüne çıktı"
 
-		diskInfoList = append(diskInfoList, diskInfo)
+		issues.CheckDown("disk", subject, tableOnly, false, 0)
+		id := issues.Show("disk")
+
+		if id != "" {
+			fullMsg = fullMsg + "\n\n" + "Redmine Issue: " + common.Config.Redmine.Url + "/issues/" + id
+			common.AlarmCheckUp("disk_redmineissue", "Redmine issue exists for disk usage", false)
+		} else {
+			common.LogDebug("osHealth/main.go: issues.Show(\"disk\") returned empty. Proceeding without Redmine link in alarm.")
+		}
+		common.AlarmCheckDown("disk", fullMsg, false, "", "")
+
+	} else {
+		fullMsg, tableOnly := createNormalTable(allDIs) // createNormalTable now takes []DiskInfo
+		common.AlarmCheckUp("disk", fullMsg, false)
+		issues.CheckUp("disk", common.Config.Identifier+" için bütün disk bölümleri "+strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64)+"% altına indi, kapatılıyor."+"\n\n"+tableOnly)
+		common.AlarmCheckUp("disk_redmineissue", "Disk usage normal, clearing any Redmine issue creation failure alarm", false)
 	}
 
-	return diskInfoList
+	// The function now returns allDIs which is []DiskInfo, suitable for the UI
+	return allDIs
 }
 
 // Helper function to collect memory information
