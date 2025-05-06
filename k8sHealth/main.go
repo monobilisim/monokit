@@ -3,7 +3,6 @@ package k8sHealth
 import (
 	"fmt"
 	"os" // Import the os package
-	"time"
 
 	"github.com/monobilisim/monokit/common"
 	api "github.com/monobilisim/monokit/common/api"
@@ -11,6 +10,9 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 )
+
+// K8sHealthConfig is now defined in k8sHealth/types.go and initialized here.
+// var K8sHealthConfig K8sHealth // This line is removed as K8sHealthConfig is in types.go and used directly
 
 // getKubeconfigPath determines the correct kubeconfig path to use based on priority:
 // 1. Explicit flag value (if provided)
@@ -92,53 +94,128 @@ type K8sHealth struct {
 	}
 }
 
-var K8sHealthConfig K8sHealth
+var K8sHealthConfig K8sHealth // This remains for ConfInit
 
 func Main(cmd *cobra.Command, args []string) {
-	version := "2.0.0"
+	version := "2.1.0" // Updated version due to refactor
 	common.ScriptName = "k8sHealth"
 	common.TmpDir = common.TmpDir + "k8sHealth"
 	common.Init()
-	common.ConfInit("k8s", &K8sHealthConfig)
+	common.ConfInit("k8s", &K8sHealthConfig) // K8sHealthConfig is from this file
+
+	api.WrapperGetServiceStatus("k8sHealth") // Keep this for service status reporting
 
 	// Get kubeconfig path from flag using the shared logic
 	kubeconfigFlagValue, _ := cmd.Flags().GetString("kubeconfig")
 	kubeconfigPath := getKubeconfigPath(kubeconfigFlagValue)
 
-	api.WrapperGetServiceStatus("k8sHealth")
+	// Initialize the Kubernetes clientset
+	InitClientset(kubeconfigPath) // clientset is a global in k8s.go
 
-	fmt.Println("K8s Health Check REWRITE - v" + version + " - " + time.Now().Format("2006-01-02 15:04:05"))
+	// Collect health data
+	healthData := collectK8sHealthData() // This function will orchestrate calls to k8s.go
 
-	InitClientset(kubeconfigPath) // Initialize the global clientset using the determined path
+	// Display as a nice box UI
+	displayBoxUI(healthData, version)
+}
 
-	// Check if clientset was initialized successfully
+// collectK8sHealthData gathers all Kubernetes health information.
+// This function will call the refactored check functions from k8s.go
+func collectK8sHealthData() *K8sHealthData {
+	healthData := NewK8sHealthData() // From ui.go
+
 	if clientset == nil {
-		// InitClientset already logs specific errors.
-		common.LogError("Failed to initialize Kubernetes clientset. Aborting checks.")
-		// os.Exit(1) // Or return an error if Main could return one
-		return // Stop execution if clientset is nil
+		errMsg := "Failed to initialize Kubernetes clientset. Aborting checks."
+		healthData.AddError(errMsg)
+		common.LogError(errMsg)
+		// Consider an alarm for k8s client initialization failure
+		common.AlarmCheckDown("kubernetes_client_init", errMsg, false, "", "")
+		return healthData
+	}
+	common.AlarmCheckUp("kubernetes_client_init", "Kubernetes clientset initialized successfully.", false)
+
+	// Placeholder for calling refactored check functions.
+	// These will populate healthData.
+	// Example:
+	// healthData.Nodes = CollectNodeHealth()
+	// healthData.Pods = CollectPodHealth()
+	// healthData.Rke2IngressNginx = CollectRke2IngressNginxHealth()
+	// healthData.CertManager = CollectCertManagerHealth()
+	// healthData.KubeVip = CollectKubeVipHealth()
+	var err error // Declare error variable to reuse
+
+	// Collect Node Health
+	healthData.Nodes, err = CollectNodeHealth()
+	if err != nil {
+		errMsg := fmt.Sprintf("Error collecting node health: %v", err)
+		healthData.AddError(errMsg)
+		common.LogError(errMsg)
+		// Specific alarm for node health collection failure can be added if desired
 	}
 
-	// Only run checks if clientset is not nil
-	CheckPodRunningLogs()
+	// Collect Pod Health
+	healthData.Pods, err = CollectPodHealth()
+	if err != nil {
+		errMsg := fmt.Sprintf("Error collecting pod health: %v", err)
+		healthData.AddError(errMsg)
+		common.LogError(errMsg)
+	}
 
-	common.SplitSection("Master Node(s):")
-	CheckNodes(true)
+	// Collect RKE2 Ingress Nginx Health
+	healthData.Rke2IngressNginx, err = CollectRke2IngressNginxHealth()
+	if err != nil {
+		errMsg := fmt.Sprintf("Error collecting RKE2 Ingress Nginx health: %v", err)
+		healthData.AddError(errMsg)
+		common.LogError(errMsg)
+		// Note: CollectRke2IngressNginxHealth itself might set healthData.Rke2IngressNginx.Error for some cases
+	}
 
-	common.SplitSection("Worker Node(s):")
-	CheckNodes(false)
+	// Collect Cert-Manager Health
+	healthData.CertManager, err = CollectCertManagerHealth()
+	if err != nil {
+		errMsg := fmt.Sprintf("Error collecting Cert-Manager health: %v", err)
+		healthData.AddError(errMsg)
+		common.LogError(errMsg)
+		// Note: CollectCertManagerHealth itself might set healthData.CertManager.Error
+	}
 
-	common.SplitSection("RKE2 Ingress Nginx:")
-	CheckRke2IngressNginx()
+	// Collect Kube-VIP Health
+	healthData.KubeVip, err = CollectKubeVipHealth()
+	if err != nil {
+		errMsg := fmt.Sprintf("Error collecting Kube-VIP health: %v", err)
+		healthData.AddError(errMsg)
+		common.LogError(errMsg)
+		// Note: CollectKubeVipHealth itself might set healthData.KubeVip.Error
+	}
 
-	CheckPods()
+	// Collect Cluster API Cert Health
+	healthData.ClusterApiCert, err = CollectClusterApiCertHealth()
+	if err != nil {
+		errMsg := fmt.Sprintf("Error collecting Cluster API Cert health: %v", err)
+		healthData.AddError(errMsg)
+		common.LogError(errMsg)
+		// Note: CollectClusterApiCertHealth itself might set healthData.ClusterApiCert.Error
+	}
 
-	common.SplitSection("Cert Manager:")
-	CheckCertManager()
+	// Pod Running Log Checks are being removed as per user request.
+	// healthData.PodRunningLogChecks, err = CollectPodRunningLogChecks()
+	// if err != nil {
+	// errMsg := fmt.Sprintf("Error collecting pod running log checks: %v", err)
+	// healthData.AddError(errMsg)
+	// common.LogError(errMsg)
+	// }
 
-	common.SplitSection("Kube-VIP:")
-	CheckKubeVip()
+	// The individual check functions handle their specific alarms.
+	// General alarms or summary alarms can be placed here based on aggregated healthData.
 
-	common.SplitSection("Cluster API Cert:")
-	CheckClusterApiCert()
+	return healthData
+}
+
+// displayBoxUI displays the health data in a nice box UI.
+func displayBoxUI(healthData *K8sHealthData, version string) {
+	title := fmt.Sprintf("monokit k8sHealth v%s", version)
+	content := healthData.RenderAll() // From ui.go
+
+	renderedBox := common.DisplayBox(title, content)
+	fmt.Println(renderedBox)
 }
