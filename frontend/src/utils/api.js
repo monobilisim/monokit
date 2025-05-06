@@ -294,7 +294,7 @@ export const forceDeleteHost = async (hostname) => {
     const response = await api.delete(`/hosts/${hostname}/force`);
     return response;
   } catch (error) {
-    console.error(`Error force deleting host ${hostname}:`, error);
+    console.error('Error force deleting host %s:', hostname, error);
     throw error;
   }
 };
