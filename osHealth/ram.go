@@ -1,40 +1,9 @@
-// This file implements RAM usage monitoring functionality
+// This file previously implemented RAM usage monitoring functionality.
+// The RamUsage() function, which checked RAM usage and generated alerts,
+// has been integrated into the collectMemoryInfo() function in main.go
+// as of version 2.3.1 (or the relevant version of this refactor).
 //
-// It provides functions to:
-// - Check RAM usage
-// - Generate alerts for RAM usage
-//
-// The main functions are:
-// - RamUsage(): Checks RAM usage and generates alerts
-
+// Package osHealth still handles RAM monitoring as part of its core data collection.
 package osHealth
 
-import (
-	"strconv"
-
-	"github.com/monobilisim/monokit/common"
-	issues "github.com/monobilisim/monokit/common/redmine/issues"
-	"github.com/shirou/gopsutil/v4/mem"
-)
-
-// RamUsage analyzes the RAM usage and sends the results to redmine
-func RamUsage() {
-	virtualMemory, err := mem.VirtualMemory()
-
-	if err != nil {
-		common.LogError(err.Error())
-		return
-	}
-
-	ramLimit := OsHealthConfig.Ram_Limit
-
-	if virtualMemory.UsedPercent > ramLimit {
-		common.PrettyPrint("RAM Usage", common.Fail+" more than "+strconv.FormatFloat(ramLimit, 'f', 0, 64)+"%", virtualMemory.UsedPercent, true, false, false, 0)
-		common.AlarmCheckDown("ram", "RAM usage limit has exceeded "+strconv.FormatFloat(ramLimit, 'f', 0, 64)+"% (Current: "+strconv.FormatFloat(virtualMemory.UsedPercent, 'f', 0, 64)+"%)", false, "", "")
-		issues.CheckDown("ram", common.Config.Identifier+" için hafıza kullanımı %"+strconv.FormatFloat(ramLimit, 'f', 0, 64)+" üstüne çıktı", "Hafıza kullanımı: "+strconv.FormatFloat(virtualMemory.UsedPercent, 'f', 0, 64)+"%\n Hafıza limiti: "+strconv.FormatFloat(ramLimit, 'f', 0, 64)+"%", false, 0)
-	} else {
-		common.PrettyPrint("RAM Usage", common.Green+" less than "+strconv.FormatFloat(ramLimit, 'f', 0, 64)+"%", virtualMemory.UsedPercent, true, false, false, 0)
-		common.AlarmCheckUp("ram", "RAM usage went below "+strconv.FormatFloat(ramLimit, 'f', 0, 64)+"% (Current: "+strconv.FormatFloat(virtualMemory.UsedPercent, 'f', 0, 64)+"%)", false)
-		issues.CheckUp("ram", common.Config.Identifier+" için hafıza kullanımı %"+strconv.FormatFloat(ramLimit, 'f', 0, 64)+" altına düştü")
-	}
-}
+// No functions remain in this file.

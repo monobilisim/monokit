@@ -140,15 +140,28 @@ func collectMemoryInfo() MemoryInfo {
 		Limit: OsHealthConfig.Ram_Limit,
 	}
 
-	virtualMemory, err := GetVirtualMemory()
+	virtualMemory, err := GetVirtualMemory() // from osHealth/utils.go
 	if err != nil {
+		common.LogError("Error getting virtual memory stats: " + err.Error())
+		// memInfo will have default (zero) values and Exceeded will be false.
 		return memInfo
 	}
 
 	memInfo.Used = common.ConvertBytes(virtualMemory.Used)
 	memInfo.Total = common.ConvertBytes(virtualMemory.Total)
 	memInfo.UsedPct = virtualMemory.UsedPercent
-	memInfo.Exceeded = virtualMemory.UsedPercent > OsHealthConfig.Ram_Limit
+	memInfo.Exceeded = virtualMemory.UsedPercent > OsHealthConfig.Ram_Limit // For UI
+
+	// Integrated Alarm and Redmine Logic from RamUsage()
+	ramLimit := OsHealthConfig.Ram_Limit // This is memInfo.Limit
+
+	if virtualMemory.UsedPercent > ramLimit {
+		common.AlarmCheckDown("ram", "RAM usage limit has exceeded "+strconv.FormatFloat(ramLimit, 'f', 0, 64)+"% (Current: "+strconv.FormatFloat(virtualMemory.UsedPercent, 'f', 0, 64)+"%)", false, "", "")
+		issues.CheckDown("ram", common.Config.Identifier+" için hafıza kullanımı %"+strconv.FormatFloat(ramLimit, 'f', 0, 64)+" üstüne çıktı", "Hafıza kullanımı: "+strconv.FormatFloat(virtualMemory.UsedPercent, 'f', 0, 64)+"%\n Hafıza limiti: "+strconv.FormatFloat(ramLimit, 'f', 0, 64)+"%", false, 0)
+	} else {
+		common.AlarmCheckUp("ram", "RAM usage went below "+strconv.FormatFloat(ramLimit, 'f', 0, 64)+"% (Current: "+strconv.FormatFloat(virtualMemory.UsedPercent, 'f', 0, 64)+"%)", false)
+		issues.CheckUp("ram", common.Config.Identifier+" için hafıza kullanımı %"+strconv.FormatFloat(ramLimit, 'f', 0, 64)+" altına düştü")
+	}
 
 	return memInfo
 }
