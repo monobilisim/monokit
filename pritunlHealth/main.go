@@ -108,7 +108,9 @@ func Main(cmd *cobra.Command, args []string) {
 		PritunlHealthConfig.Url = "mongodb://localhost:27017"
 	}
 
-	fmt.Println("Pritunl Health Check - v" + version + " - " + time.Now().Format("2006-01-02 15:04:05"))
+	// Create health data structure
+	healthData := NewPritunlHealthData()
+	healthData.Version = version
 
 	// Connect call does not use context in this driver version
 	clientOptions := options.Client().ApplyURI(PritunlHealthConfig.Url)
@@ -116,6 +118,8 @@ func Main(cmd *cobra.Command, args []string) {
 	if err != nil {
 		common.LogError("Couldn't connect to the server: " + err.Error())
 		common.AlarmCheckDown("pritunl_connect", "Couldn't connect to the server: "+err.Error(), false, "", "")
+		healthData.IsHealthy = false
+		fmt.Println(healthData.RenderAll())
 		return
 	} else {
 		common.AlarmCheckUp("pritunl_connect", "Server is now connected", false)
@@ -140,6 +144,8 @@ func Main(cmd *cobra.Command, args []string) {
 	if err != nil {
 		common.LogError("Couldn't ping the server: " + err.Error())
 		common.AlarmCheckDown("pritunl_ping", "Couldn't ping the server: "+err.Error(), false, "", "")
+		healthData.IsHealthy = false
+		fmt.Println(healthData.RenderAll())
 		return
 	} else {
 		common.AlarmCheckUp("pritunl_ping", "Server is now pingable", false)
@@ -148,12 +154,260 @@ func Main(cmd *cobra.Command, args []string) {
 	// Get to the pritunl database
 	db := client.Database("pritunl")
 
-	ServerStatus(ctx, db)
-	UsersStatus(ctx, db)
+	// Collect server status
+	collectServerStatus(ctx, db, healthData)
+
+	// Collect user status
+	collectUserStatus(ctx, db, healthData)
+
+	// Collect organization status
+	collectOrganizationStatus(ctx, db, healthData)
+
+	// Set overall health status
+	healthData.IsHealthy = true
+	for _, server := range healthData.Servers {
+		if !server.IsHealthy {
+			healthData.IsHealthy = false
+			break
+		}
+	}
+
+	// Display the health data
+	fmt.Println(healthData.RenderAll())
+}
+
+func collectServerStatus(ctx context.Context, db *mongo.Database, healthData *PritunlHealthData) {
+	// Get to the servers collection
+	collection := db.Collection("servers")
+
+	// make a for loop to get all the servers
+	cursor, err := collection.Find(ctx, bson.D{})
+	if err != nil {
+		common.LogError("Couldn't get the collection: " + err.Error())
+		common.AlarmCheckDown("pritunl", "Couldn't get the collection: "+err.Error(), false, "", "")
+		return
+	} else {
+		common.AlarmCheckUp("pritunl", "Collection is now available", false)
+	}
+
+	defer cursor.Close(ctx)
+
+	for cursor.Next(ctx) {
+		var result bson.M
+		err := cursor.Decode(&result)
+		if err != nil {
+			common.LogError(fmt.Sprintf("Error decoding server document: %v", err))
+			continue // Skip this document on error
+		}
+
+		var status string
+		var name string
+
+		// Safely access fields
+		if statusVal, ok := result["status"].(string); ok {
+			status = statusVal
+		} else {
+			common.LogDebug(fmt.Sprintf("Skipping server document due to missing or invalid 'status': %v", result["_id"]))
+			continue
+		}
+
+		if nameVal, ok := result["name"].(string); ok {
+			name = nameVal
+		} else {
+			common.LogDebug(fmt.Sprintf("Skipping server document due to missing or invalid 'name': %v", result["_id"]))
+			continue
+		}
+
+		isHealthy := status == "online"
+		serverInfo := ServerInfo{
+			Name:      name,
+			Status:    status,
+			IsHealthy: isHealthy,
+		}
+
+		healthData.Servers = append(healthData.Servers, serverInfo)
+
+		if !isHealthy {
+			common.AlarmCheckDown("server_"+name, "Server "+name+" is down, status '"+status+"'", false, "", "")
+		} else {
+			common.AlarmCheckUp("server_"+name, "Server "+name+" is now up, status '"+status+"'", false)
+		}
+	}
+}
+
+func collectUserStatus(ctx context.Context, db *mongo.Database, healthData *PritunlHealthData) {
+	// Get to the users collection
+	collection := db.Collection("users")
+
+	// make a for loop to get all the users
+	cursor, err := collection.Find(ctx, bson.D{})
+	if err != nil {
+		common.LogError("Couldn't get the collection: " + err.Error())
+		common.AlarmCheckDown("pritunl_users", "Couldn't get the users collection: "+err.Error(), false, "", "")
+		return
+	} else {
+		common.AlarmCheckUp("pritunl_users", "Users collection is now available", false)
+	}
+
+	defer cursor.Close(ctx)
+
+	for cursor.Next(ctx) {
+		var result bson.M
+		err := cursor.Decode(&result)
+		if err != nil {
+			common.LogError(fmt.Sprintf("Error decoding user document: %v", err))
+			continue // Skip this document on error
+		}
+
+		var name string
+		var orgIdActual bson.ObjectID
+		var userIdActual bson.ObjectID
+
+		// Safely access fields
+		if nameVal, ok := result["name"].(string); ok {
+			name = nameVal
+		} else {
+			common.LogDebug(fmt.Sprintf("Skipping user document due to missing or invalid 'name': %v", result["_id"]))
+			continue
+		}
+
+		if name == "" || name == "undefined" {
+			continue
+		}
+
+		if orgIDVal, ok := result["org_id"].(bson.ObjectID); ok {
+			orgIdActual = orgIDVal
+		} else {
+			common.LogDebug(fmt.Sprintf("Skipping user '%s' due to missing or invalid 'org_id'", name))
+			continue
+		}
+
+		if userIDVal, ok := result["_id"].(bson.ObjectID); ok {
+			userIdActual = userIDVal
+		} else {
+			common.LogDebug(fmt.Sprintf("Skipping user '%s' due to missing or invalid '_id'", name))
+			continue
+		}
+
+		// Check organization validity
+		orgIsValid := OrgCheck(orgIdActual, ctx, db)
+		if !orgIsValid {
+			continue
+		}
+
+		// Get organization name
+		orgName := getOrganizationName(ctx, db, orgIdActual)
+		if orgName == "" {
+			orgName = "Unknown Organization"
+		}
+
+		// Check client status
+		connectedClients := ClientUpCheck(userIdActual, ctx, db)
+
+		// Create user info
+		userInfo := UserInfo{
+			Name:             name,
+			Organization:     orgName,
+			Status:           "offline",
+			ConnectedClients: []ClientInfo{},
+			IsHealthy:        false,
+		}
+
+		if len(connectedClients) > 0 {
+			userInfo.Status = "online"
+			userInfo.IsHealthy = true
+			for _, client := range connectedClients {
+				userInfo.ConnectedClients = append(userInfo.ConnectedClients, ClientInfo{
+					IPAddress: client.Real_address,
+				})
+			}
+		}
+
+		healthData.Users = append(healthData.Users, userInfo)
+
+		if len(connectedClients) == 0 {
+			common.AlarmCheckDown("user_"+name, "User "+name+" is offline, no client is connected", false, "", "")
+		} else {
+			var addresses []string
+			for _, client := range connectedClients {
+				addresses = append(addresses, client.Real_address)
+			}
+			addressesStr := strings.Join(addresses, ", ")
+			common.AlarmCheckUp("user_"+name, "User "+name+" is now online, "+fmt.Sprint(len(connectedClients))+" client(s) is/are connected with IP(s): "+addressesStr, false)
+		}
+	}
+}
+
+func collectOrganizationStatus(ctx context.Context, db *mongo.Database, healthData *PritunlHealthData) {
+	// Get to the organizations collection
+	collection := db.Collection("organizations")
+
+	// make a for loop to get all the organizations
+	cursor, err := collection.Find(ctx, bson.D{})
+	if err != nil {
+		common.LogError("Couldn't get the collection: " + err.Error())
+		common.AlarmCheckDown("pritunl_organizations", "Couldn't get the organizations collection: "+err.Error(), false, "", "")
+		return
+	} else {
+		common.AlarmCheckUp("pritunl_organizations", "Organizations collection is now available", false)
+	}
+
+	defer cursor.Close(ctx)
+
+	for cursor.Next(ctx) {
+		var result bson.M
+		err := cursor.Decode(&result)
+		if err != nil {
+			common.LogError(fmt.Sprintf("Error decoding organization document: %v", err))
+			continue // Skip this document on error
+		}
+
+		var name string
+
+		// Safely access fields
+		if nameVal, ok := result["name"].(string); ok {
+			name = nameVal
+		} else {
+			common.LogDebug("Skipping organization document due to missing or invalid 'name'")
+			continue
+		}
+
+		if name == "" || name == "undefined" {
+			continue
+		}
+
+		// Check if name is in the allowed_orgs
+		if len(PritunlHealthConfig.Allowed_orgs) > 0 {
+			if !slices.Contains(PritunlHealthConfig.Allowed_orgs, name) {
+				continue
+			}
+		}
+
+		orgInfo := OrganizationInfo{
+			Name:     name,
+			IsActive: true, // Organizations are considered active if they exist and are allowed
+		}
+
+		healthData.Organizations = append(healthData.Organizations, orgInfo)
+	}
+}
+
+func getOrganizationName(ctx context.Context, db *mongo.Database, orgID bson.ObjectID) string {
+	collection := db.Collection("organizations")
+	var result bson.M
+	err := collection.FindOne(ctx, bson.M{"_id": orgID}).Decode(&result)
+	if err != nil {
+		common.LogDebug(fmt.Sprintf("Error getting organization name for ID %v: %v", orgID, err))
+		return ""
+	}
+
+	if name, ok := result["name"].(string); ok {
+		return name
+	}
+	return ""
 }
 
 func ClientUpCheck(userIdActual bson.ObjectID, ctx context.Context, db *mongo.Database) []Client {
-
 	// Get to the clients collection
 	collection := db.Collection("clients")
 
@@ -264,140 +518,4 @@ func OrgCheck(orgIdActual bson.ObjectID, ctx context.Context, db *mongo.Database
 	}
 
 	return false
-}
-
-func UsersStatus(ctx context.Context, db *mongo.Database) {
-	// Get to the users collection
-	collection := db.Collection("users")
-
-	common.SplitSection("User Status")
-
-	// make a for loop to get all the users
-	cursor, err := collection.Find(ctx, bson.D{})
-	if err != nil {
-		common.LogError("Couldn't get the collection: " + err.Error())
-		common.AlarmCheckDown("pritunl_users", "Couldn't get the users collection: "+err.Error(), false, "", "")
-		return
-	} else {
-		common.AlarmCheckUp("pritunl_users", "Users collection is now available", false)
-	}
-
-	defer cursor.Close(ctx)
-
-	for cursor.Next(ctx) {
-		var result bson.M
-		err := cursor.Decode(&result)
-		if err != nil {
-			common.LogError(fmt.Sprintf("Error decoding user document: %v", err))
-			continue // Skip this document on error
-		}
-
-		var name string
-		var orgIdActual bson.ObjectID
-		var userIdActual bson.ObjectID
-
-		// Safely access fields
-		if nameVal, ok := result["name"].(string); ok {
-			name = nameVal
-		} else {
-			common.LogDebug(fmt.Sprintf("Skipping user document due to missing or invalid 'name': %v", result["_id"]))
-			continue
-		}
-
-		if name == "" || name == "undefined" {
-			continue
-		}
-
-		if orgIDVal, ok := result["org_id"].(bson.ObjectID); ok {
-			orgIdActual = orgIDVal
-		} else {
-			common.LogDebug(fmt.Sprintf("Skipping user '%s' due to missing or invalid 'org_id'", name))
-			continue
-		}
-
-		if userIDVal, ok := result["_id"].(bson.ObjectID); ok {
-			userIdActual = userIDVal
-		} else {
-			common.LogDebug(fmt.Sprintf("Skipping user '%s' due to missing or invalid '_id'", name))
-			continue
-		}
-
-		// Check organization validity
-		orgIsValid := OrgCheck(orgIdActual, ctx, db)
-		if !orgIsValid {
-			continue
-		}
-
-		// Check client status
-		connectedClients := ClientUpCheck(userIdActual, ctx, db)
-
-		var addresses []string
-		for _, client := range connectedClients {
-			addresses = append(addresses, client.Real_address)
-		}
-		addressesStr := strings.Join(addresses, ", ")
-
-		if len(connectedClients) == 0 {
-			fmt.Println(common.Blue + "User " + name + " is " + common.Fail + "offline" + common.Reset)
-			common.AlarmCheckDown("user_"+name, "User "+name+" is offline, no client is connected", false, "", "")
-		} else {
-			common.PrettyPrintStr("User "+name, true, "online")
-			common.AlarmCheckUp("user_"+name, "User "+name+" is now online, "+fmt.Sprint(len(connectedClients))+" client(s) is/are connected with IP(s): "+addressesStr, false)
-		}
-	}
-
-}
-
-func ServerStatus(ctx context.Context, db *mongo.Database) {
-	// Get to the servers collection
-	collection := db.Collection("servers")
-
-	common.SplitSection("Server Status")
-
-	// make a for loop to get all the servers
-	cursor, err := collection.Find(ctx, bson.D{})
-	if err != nil {
-		common.LogError("Couldn't get the collection: " + err.Error())
-		common.AlarmCheckDown("pritunl", "Couldn't get the collection: "+err.Error(), false, "", "")
-		return
-	} else {
-		common.AlarmCheckUp("pritunl", "Collection is now available", false)
-	}
-
-	defer cursor.Close(ctx)
-
-	for cursor.Next(ctx) {
-		var result bson.M
-		err := cursor.Decode(&result)
-		if err != nil {
-			common.LogError(fmt.Sprintf("Error decoding server document: %v", err))
-			continue // Skip this document on error
-		}
-
-		var status string
-		var name string
-
-		// Safely access fields
-		if statusVal, ok := result["status"].(string); ok {
-			status = statusVal
-		} else {
-			common.LogDebug(fmt.Sprintf("Skipping server document due to missing or invalid 'status': %v", result["_id"]))
-			continue
-		}
-
-		if nameVal, ok := result["name"].(string); ok {
-			name = nameVal
-		} else {
-			common.LogDebug(fmt.Sprintf("Skipping server document due to missing or invalid 'name': %v", result["_id"]))
-			continue
-		}
-
-		if status != "online" {
-			common.PrettyPrintStr("Server "+name, false, "online")
-			common.AlarmCheckDown("server_"+name, "Server "+name+" is down, status '"+status+"'", false, "", "")
-		} else {
-			common.PrettyPrintStr("Server "+name, true, "online")
-			common.AlarmCheckUp("server_"+name, "Server "+name+" is now up, status '"+status+"'", false)
-		}
-	}
 }
