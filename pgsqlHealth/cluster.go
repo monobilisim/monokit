@@ -30,6 +30,14 @@ import (
 	issues "github.com/monobilisim/monokit/common/redmine/issues"
 )
 
+// ClusterStatusData holds information about the PostgreSQL cluster status
+type ClusterStatusData struct {
+	Status       string
+	IsHealthy    bool
+	IsReplicated bool
+	Nodes        []Member
+}
+
 // clusterStatus performs the following steps:
 // 1. Checks if the Patroni service is running
 // 2. Retrieves the current and previous cluster statuses
@@ -37,30 +45,64 @@ import (
 // 4. Checks for changes in the cluster roles
 // 5. Checks the state of each cluster member
 // 6. Saves the current cluster status to a JSON file for future comparison
-func clusterStatus(patroniApiUrl string, dbConfig db.DbHealth) { // Added parameters
-	checkPatroniService()
+func clusterStatus(patroniApiUrl string, dbConfig db.DbHealth) (*ClusterStatusData, error) { // Added parameters and return type
+	// Remove direct console output from checkPatroniService and call it internally
+	isPatroniRunning := common.SystemdUnitActive("patroni.service")
+	if isPatroniRunning {
+		common.AlarmCheckUp("patroni_service", "Patroni service is now accessible", false)
+	} else {
+		common.AlarmCheckDown("patroni_service", "Patroni service is not accessible", false, "", "")
+	}
 
 	result, oldResult := getClusterStatus(patroniApiUrl) // Pass patroniApiUrl
 	if result == nil {
-		return
+		return nil, fmt.Errorf("failed to get cluster status")
 	}
 
-	checkThisNodeRole(result)
-	checkClusterRoleChanges(result, oldResult, dbConfig) // Pass dbConfig
-	checkClusterStates(result)
+	clusterData := &ClusterStatusData{
+		Nodes: result.Members,
+	}
+
+	// Check this node's role
+	for _, member := range result.Members {
+		if member.Name == nodeName {
+			// No direct console output
+			break
+		}
+	}
+
+	// Check for role changes
+	checkClusterRoleChanges(result, oldResult, dbConfig, false) // Add param to skip console output
+
+	// Check states and update health data
+	runningNodes, stoppedNodes := checkClusterStates(result, false) // Add param to skip console output
+
+	clusterData.IsReplicated = len(runningNodes) > 1
+	clusterData.IsHealthy = len(stoppedNodes) == 0
+
+	// Determine overall status
+	if clusterData.IsHealthy {
+		clusterData.Status = "Healthy"
+	} else {
+		clusterData.Status = "Unhealthy"
+	}
 
 	// Save current state for future comparison
 	saveOutputJSON(result)
+
+	return clusterData, nil
 }
 
 // checkPatroniService checks if the Patroni service is running
 // and updates the alarm status accordingly
 func checkPatroniService() {
 	if common.SystemdUnitActive("patroni.service") {
-		common.PrettyPrintStr("Patroni Service", true, "accessible")
+		// No direct console output
+		// common.PrettyPrintStr("Patroni Service", true, "accessible")
 		common.AlarmCheckUp("patroni_service", "Patroni service is now accessible", false)
 	} else {
-		common.PrettyPrintStr("Patroni Service", false, "accessible")
+		// No direct console output
+		// common.PrettyPrintStr("Patroni Service", false, "accessible")
 		common.AlarmCheckDown("patroni_service", "Patroni service is not accessible", false, "", "")
 	}
 }
@@ -74,16 +116,19 @@ func getClusterStatus(patroniApiUrl string) (*Response, *Response) { // Added pa
 	resp, err := client.Get(clusterURL)
 	if err != nil {
 		common.LogError(fmt.Sprintf("Error executing query: %s - Error: %v\n", clusterURL, err))
-		common.PrettyPrintStr("Patroni API", false, "accessible")
+		// Remove direct console output
+		// common.PrettyPrintStr("Patroni API", false, "accessible")
 		return nil, nil
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
-		common.PrettyPrintStr("Patroni API", false, "accessible")
+		// Remove direct console output
+		// common.PrettyPrintStr("Patroni API", false, "accessible")
 		return nil, nil
 	}
-	common.PrettyPrintStr("Patroni API", true, "accessible")
+	// Remove direct console output
+	// common.PrettyPrintStr("Patroni API", true, "accessible")
 
 	var result Response
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
@@ -119,7 +164,7 @@ func loadOldResult() *Response {
 func checkThisNodeRole(result *Response) {
 	for _, member := range result.Members {
 		if member.Name == nodeName {
-			common.PrettyPrintStr("This node", true, member.Role)
+			// No direct console output
 			break
 		}
 	}
@@ -172,10 +217,15 @@ func runLeaderSwitchHook(dbConfig db.DbHealth) { // Added dbConfig parameter
 
 // checkClusterRoleChanges checks for changes in the cluster roles
 // and logs the changes
-func checkClusterRoleChanges(result, oldResult *Response, dbConfig db.DbHealth) { // Added dbConfig parameter
-	common.SplitSection("Cluster Roles:")
+func checkClusterRoleChanges(result, oldResult *Response, dbConfig db.DbHealth, skipOutput bool) { // Added skipOutput parameter
+	// Don't output section headers
+	// if !skipOutput {
+	//     common.SplitSection("Cluster Roles:")
+	// }
+
 	for _, member := range result.Members {
-		common.PrettyPrintStr(member.Name, true, member.Role)
+		// Already commented out PrettyPrintStr calls
+
 		// Check if oldResult is nil before dereferencing
 		if oldResult == nil || reflect.DeepEqual(*oldResult, Response{}) {
 			continue
@@ -183,15 +233,13 @@ func checkClusterRoleChanges(result, oldResult *Response, dbConfig db.DbHealth) 
 		for _, oldMember := range oldResult.Members {
 			if oldMember.Name == member.Name {
 				if oldMember.Role != member.Role {
-					common.PrettyPrintStr(member.Name, true, oldMember.Role+" -> "+member.Role)
+					// Already commented out PrettyPrintStr calls
+
 					if oldMember.Name == nodeName {
 						common.Alarm("[ Patroni - "+common.Config.Identifier+" ] [:info:] Role of "+member.Name+" has changed! Old: **"+oldMember.Role+"** New: **"+member.Role+"**", "", "", false)
 					}
 					if member.Role == "leader" {
 						common.Alarm("[ Patroni - "+common.Config.Identifier+" ] [:check:] "+member.Name+" is now the leader!", "", "", false)
-						// Need dbConfig here, but checkClusterRoleChanges doesn't have it yet.
-						// This will be fixed in the next step by adding dbConfig to checkClusterRoleChanges.
-						// Pass the actual dbConfig received by this function
 						handleLeaderSwitch(member, &http.Client{}, dbConfig)
 					}
 				}
@@ -202,23 +250,35 @@ func checkClusterRoleChanges(result, oldResult *Response, dbConfig db.DbHealth) 
 
 // checkClusterStates checks the state of each cluster member
 // and logs the results
-func checkClusterStates(result *Response) {
+func checkClusterStates(result *Response, skipOutput bool) ([]Member, []Member) {
 	oldOutputFile := common.TmpDir + "/old_raw_output.json"
 
-	common.SplitSection("Cluster States:")
+	// Don't output section headers
+	// if !skipOutput {
+	//     common.SplitSection("Cluster States:")
+	// }
+
 	var runningClusters []Member
 	var stoppedClusters []Member
+
 	for _, member := range result.Members {
 		if member.State == "running" || member.State == "streaming" {
-			common.PrettyPrintStr(member.Name, true, member.State)
+			if !skipOutput {
+				// No direct console output
+				// common.PrettyPrintStr(member.Name, true, member.State)
+			}
 			common.AlarmCheckUp("patroni_size", "Node "+member.Name+" state: "+member.State, false)
 			runningClusters = append(runningClusters, member)
 		} else {
-			fmt.Println(common.Blue + member.Name + common.Reset + " is " + common.Fail + member.State + common.Reset)
+			if !skipOutput {
+				// No direct console output
+				// fmt.Println(common.Blue + member.Name + common.Reset + " is " + common.Fail + member.State + common.Reset)
+			}
 			common.AlarmCheckDown("patroni_size", "Node "+member.Name+" state: "+member.State, false, "", "")
 			stoppedClusters = append(stoppedClusters, member)
 		}
 	}
+
 	rcLen := strconv.Itoa(len(runningClusters))
 	cmd := exec.Command("patronictl", "list")
 	out, listErr := cmd.Output()
@@ -236,7 +296,7 @@ func checkClusterStates(result *Response) {
 		oldOutput, err := os.ReadFile(oldOutputFile)
 		if err != nil {
 			common.LogError(fmt.Sprintf("Error reading file: %v\n", err))
-			return
+			return runningClusters, stoppedClusters
 		}
 		err = json.Unmarshal(oldOutput, &oldResult)
 		clusterLen := strconv.Itoa(len(oldResult.Members))
@@ -266,7 +326,7 @@ func checkClusterStates(result *Response) {
 			f, err := os.Create(oldOutputFile)
 			if err != nil {
 				common.LogError(fmt.Sprintf("Error creating file: %v\n", err))
-				return
+				return runningClusters, stoppedClusters
 			}
 			defer f.Close()
 			encoder := json.NewEncoder(f)
@@ -277,6 +337,8 @@ func checkClusterStates(result *Response) {
 			issues.CheckDown("cluster_size_issue", "Patroni Cluster Size: "+rcLen+"/"+clusterLen, "Patroni cluster size: "+rcLen+"/"+clusterLen+"\n"+listTable, false, 0)
 		}
 	}
+
+	return runningClusters, stoppedClusters
 }
 
 // saveOutputJSON saves the current cluster status to a JSON file

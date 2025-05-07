@@ -12,6 +12,7 @@
 package pgsqlHealth
 
 import (
+	"database/sql"
 	"fmt"
 	"os"
 	"strconv"
@@ -19,7 +20,27 @@ import (
 	"time"
 
 	"github.com/monobilisim/monokit/common"
+	db "github.com/monobilisim/monokit/common/db"
 )
+
+// ConnectionsData holds information about PostgreSQL connections
+type ConnectionsData struct {
+	Active    int
+	Limit     int
+	UsageRate float64
+}
+
+// QueryData holds information about a running PostgreSQL query
+type QueryData struct {
+	PID             int
+	Username        string
+	ClientAddr      string
+	Duration        string
+	DurationSeconds float64
+	Query           string
+	State           string
+	Database        string
+}
 
 // writeActiveConnections queries and logs current active database connections
 // to a rotating daily log file with details like PID, user, client address,
@@ -76,9 +97,10 @@ func writeActiveConnections() {
 
 // activeConnections checks the current number of active connections
 // and compares it to the maximum allowed connections
-func activeConnections() {
+func activeConnections(dbConfig db.DbHealth) (*ConnectionsData, error) {
 	var maxConn, used, increase int
 	aboveLimitFile := common.TmpDir + "/last-connection-above-limit.txt"
+	connectionsData := &ConnectionsData{}
 
 	query := `
 		SELECT max_conn, used FROM (SELECT COUNT(*) used
@@ -87,12 +109,16 @@ func activeConnections() {
 	err := Connection.QueryRow(query).Scan(&maxConn, &used)
 	if err != nil {
 		common.LogError(fmt.Sprintf("Error executing query: %s - Error: %v\n", query, err))
-		common.PrettyPrintStr("PostgreSQL active connections", false, "accessible")
 		common.AlarmCheckDown("postgres_active_conn", "An error occurred while checking active connections: "+err.Error(), false, "", "")
-		return
+		return nil, err
 	} else {
 		common.AlarmCheckUp("postgres_active_conn", "Active connections are now accessible", false)
 	}
+
+	// Set connection data
+	connectionsData.Active = used
+	connectionsData.Limit = maxConn
+	connectionsData.UsageRate = float64(used) / float64(maxConn)
 
 	usedPercent := (used * 100) / maxConn
 
@@ -108,26 +134,21 @@ func activeConnections() {
 		increase = int(content[0])
 	}
 
-	if usedPercent >= DbHealthConfig.Postgres.Limits.Conn_percent {
+	if usedPercent >= dbConfig.Postgres.Limits.Conn_percent {
 		if _, err := os.Stat(aboveLimitFile); os.IsNotExist(err) {
 			writeActiveConnections()
-
 		}
-		common.PrettyPrintStr("Number of active connections", true, fmt.Sprintf("%d/%d and above %d", used, maxConn, DbHealthConfig.Postgres.Limits.Conn_percent))
-		common.AlarmCheckDown("postgres_num_active_conn", fmt.Sprintf("Number of active connections: %d/%d and above %d", used, maxConn, DbHealthConfig.Postgres.Limits.Conn_percent), false, "", "")
+		common.AlarmCheckDown("postgres_num_active_conn", fmt.Sprintf("Number of active connections: %d/%d and above %d", used, maxConn, dbConfig.Postgres.Limits.Conn_percent), false, "", "")
 		difference := (used - maxConn) / 10
 		if difference > increase {
 			writeActiveConnections()
 			increase = difference + 1
 		}
-		fmt.Println("-----------------", increase)
-		fmt.Println("-----------------", []byte{byte(increase)})
 		err = os.WriteFile(aboveLimitFile, []byte(strconv.Itoa(increase)), 0644)
 		if err != nil {
 			common.LogError(fmt.Sprintf("Error writing file: %v\n", err))
 		}
 	} else {
-		common.PrettyPrintStr("Number of active connections", true, fmt.Sprintf("%d/%d", used, maxConn))
 		common.AlarmCheckUp("postgres_num_active_conn", fmt.Sprintf("Number of active connections is now: %d/%d", used, maxConn), false)
 		if _, err := os.Stat(aboveLimitFile); err == nil {
 			err := os.Remove(aboveLimitFile)
@@ -136,29 +157,81 @@ func activeConnections() {
 			}
 		}
 	}
+
+	return connectionsData, nil
 }
 
 // runningQueries checks the current number of running queries
 // and compares it to the maximum allowed queries
-func runningQueries() {
-	query := `SELECT COUNT(*) AS active_queries_count FROM pg_stat_activity WHERE state = 'active';`
+func runningQueries(dbConfig db.DbHealth) ([]QueryData, error) {
+	// First get total count for the pretty print output
+	countQuery := `SELECT COUNT(*) AS active_queries_count FROM pg_stat_activity WHERE state = 'active';`
 
 	var activeQueriesCount int
-	err := Connection.QueryRow(query).Scan(&activeQueriesCount)
+	err := Connection.QueryRow(countQuery).Scan(&activeQueriesCount)
 	if err != nil {
-		common.LogError(fmt.Sprintf("Error executing query: %s - Error: %v\n", query, err))
-		common.PrettyPrintStr("Number of running queries", false, "accessible")
+		common.LogError(fmt.Sprintf("Error executing query: %s - Error: %v\n", countQuery, err))
+		// Already commented out console output
 		common.AlarmCheckDown("postgres_running_queries", "An error occurred while checking running queries: "+err.Error(), false, "", "")
-		return
+		return nil, err
 	} else {
 		common.AlarmCheckUp("postgres_running_queries", "Running queries are now accessible", false)
 	}
 
-	if activeQueriesCount > DbHealthConfig.Postgres.Limits.Query {
-		common.PrettyPrintStr("Number of running queries", true, fmt.Sprintf("%d/%d", activeQueriesCount, DbHealthConfig.Postgres.Limits.Query))
-		common.AlarmCheckDown("postgres_num_running_queries", fmt.Sprintf("Number of running queries: %d/%d", activeQueriesCount, DbHealthConfig.Postgres.Limits.Query), false, "", "")
-	} else {
-		common.PrettyPrintStr("Number of running queries", true, fmt.Sprintf("%d/%d", activeQueriesCount, DbHealthConfig.Postgres.Limits.Query))
-		common.AlarmCheckUp("postgres_num_running_queries", fmt.Sprintf("Number of running queries is now: %d/%d", activeQueriesCount, DbHealthConfig.Postgres.Limits.Query), false)
+	// Now get detailed information about running queries
+	detailQuery := `
+		SELECT pid, usename, datname, 
+		       extract(epoch from (now() - query_start)) as duration_seconds,
+		       to_char(now() - query_start, 'HH24:MI:SS') as duration, 
+		       state, query, client_addr
+		FROM pg_stat_activity 
+		WHERE state = 'active' AND query != '<IDLE>' AND usename != 'postgres'
+		ORDER BY duration_seconds DESC;
+	`
+
+	rows, err := Connection.Query(detailQuery)
+	if err != nil {
+		common.LogError(fmt.Sprintf("Error executing query: %s - Error: %v\n", detailQuery, err))
+		return nil, err
 	}
+	defer rows.Close()
+
+	queries := []QueryData{}
+	for rows.Next() {
+		var q QueryData
+		var clientAddr sql.NullString
+
+		err := rows.Scan(
+			&q.PID,
+			&q.Username,
+			&q.Database,
+			&q.DurationSeconds,
+			&q.Duration,
+			&q.State,
+			&q.Query,
+			&clientAddr)
+
+		if err != nil {
+			common.LogError("Failed to scan query row: " + err.Error())
+			continue
+		}
+
+		if clientAddr.Valid {
+			q.ClientAddr = clientAddr.String
+		} else {
+			q.ClientAddr = "local"
+		}
+
+		queries = append(queries, q)
+	}
+
+	// Neither of these blocks should be printing to the console anymore
+	// We already commented these out, but let's make extra sure there's no output
+	if activeQueriesCount > dbConfig.Postgres.Limits.Query {
+		common.AlarmCheckDown("postgres_num_running_queries", fmt.Sprintf("Number of running queries: %d/%d", activeQueriesCount, dbConfig.Postgres.Limits.Query), false, "", "")
+	} else {
+		common.AlarmCheckUp("postgres_num_running_queries", fmt.Sprintf("Number of running queries is now: %d/%d", activeQueriesCount, dbConfig.Postgres.Limits.Query), false)
+	}
+
+	return queries, nil
 }
