@@ -82,19 +82,18 @@ var Config struct {
 }
 
 func GetStatus(session string, token string) string {
-	// Authorization: Bearer token
 	client := &http.Client{}
 	req, err := http.NewRequest("GET", Config.Wpp.Url+"/api/"+session+"/check-connection-session", nil)
 	if err != nil {
 		common.LogError("Error while checking connection: " + err.Error())
-		os.Exit(1)
+		return "Error"
 	}
 
 	req.Header.Add("Authorization", "Bearer "+token)
 	resp, err := client.Do(req)
 	if err != nil {
 		common.LogError("Error while checking connection: " + err.Error())
-		os.Exit(1)
+		return "Error"
 	}
 
 	defer resp.Body.Close()
@@ -102,7 +101,6 @@ func GetStatus(session string, token string) string {
 	var result map[string]interface{}
 	json.NewDecoder(resp.Body).Decode(&result)
 
-	// Handle potential nil map or missing key gracefully
 	message := "Unknown"
 	if msg, ok := result["message"].(string); ok {
 		message = msg
@@ -114,26 +112,23 @@ func GetStatus(session string, token string) string {
 }
 
 func GetContactName(session string, token string) string {
-	// Authorization: Bearer
 	client := &http.Client{}
 	req, err := http.NewRequest("GET", Config.Wpp.Url+"/api/"+session+"/contact/"+session, nil)
-
 	if err != nil {
 		common.LogError("Error while getting contact name: " + err.Error())
-		os.Exit(1)
+		return "Error"
 	}
 
 	req.Header.Add("Authorization", "Bearer "+token)
 	resp, err := client.Do(req)
 	if err != nil {
 		common.LogError("Error while getting contact name: " + err.Error())
-		os.Exit(1)
+		return "Error"
 	}
 
 	defer resp.Body.Close()
 
 	var result map[string]interface{}
-
 	err = json.NewDecoder(resp.Body).Decode(&result)
 	if err != nil {
 		common.LogError(fmt.Sprintf("Error decoding contact name response for session %s: %v", session, err))
@@ -141,8 +136,6 @@ func GetContactName(session string, token string) string {
 	}
 
 	var contactName string
-
-	// More robust checking for nested map structure and keys
 	if responseMap, ok := result["response"].(map[string]interface{}); ok {
 		if name, ok := responseMap["name"].(string); ok && name != "" {
 			contactName = name
@@ -163,14 +156,14 @@ func GetToken(session string) string {
 	req, err := http.NewRequest("POST", Config.Wpp.Url+"/api/"+session+"/"+Config.Wpp.Secret+"/generate-token", nil)
 	if err != nil {
 		common.LogError("Error while generating token: " + err.Error())
-		os.Exit(1)
+		return ""
 	}
 
 	req.Header.Add("Content-Type", "application/json")
 	resp, err := client.Do(req)
 	if err != nil {
 		common.LogError("Error while generating token: " + err.Error())
-		os.Exit(1)
+		return ""
 	}
 
 	defer resp.Body.Close()
@@ -179,7 +172,7 @@ func GetToken(session string) string {
 	err = json.NewDecoder(resp.Body).Decode(&token)
 	if err != nil {
 		common.LogError(fmt.Sprintf("Error decoding token response for session %s: %v", session, err))
-		return "" // Return empty string on error
+		return ""
 	}
 
 	tokenStr := ""
@@ -191,41 +184,49 @@ func GetToken(session string) string {
 	return tokenStr
 }
 
-func WppCheck() {
-	// GET request to Config.Wpp.Url + "/api/" + Config.Wpp.Secret + "/show-all-sessions"
+func WppCheck() *WppConnectHealthData {
+	healthData := &WppConnectHealthData{
+		Healthy: true,
+	}
+
 	url := Config.Wpp.Url + "/api/" + Config.Wpp.Secret + "/show-all-sessions"
 	resp, err := http.Get(url)
 	if err != nil {
 		common.LogError("Error while getting sessions: " + err.Error())
-		os.Exit(1)
+		healthData.Healthy = false
+		return healthData
 	}
 	defer resp.Body.Close()
 
-	// Check if the response is 200
 	if resp.StatusCode != 200 {
 		common.LogError("Error while getting sessions: Status " + resp.Status)
-		os.Exit(1)
+		healthData.Healthy = false
+		return healthData
 	}
 
-	// Read the response
 	var result map[string]interface{}
 	err = json.NewDecoder(resp.Body).Decode(&result)
 	if err != nil {
 		common.LogError(fmt.Sprintf("Error decoding show-all-sessions response: %v", err))
-		os.Exit(1)
+		healthData.Healthy = false
+		return healthData
 	}
 
-	// Check if "response" key exists and is an array
 	sessionsInterface, ok := result["response"]
 	if !ok {
 		common.LogError("wppconnectHealth: Missing 'response' key in show-all-sessions result.")
-		os.Exit(1)
+		healthData.Healthy = false
+		return healthData
 	}
 	sessions, ok := sessionsInterface.([]interface{})
 	if !ok {
 		common.LogError("wppconnectHealth: 'response' key is not an array in show-all-sessions result.")
-		os.Exit(1)
+		healthData.Healthy = false
+		return healthData
 	}
+
+	healthData.TotalCount = len(sessions)
+	healthData.HealthyCount = 0
 
 	for _, sessionInterface := range sessions {
 		session, ok := sessionInterface.(string)
@@ -237,40 +238,54 @@ func WppCheck() {
 		token := GetToken(session)
 		if token == "" {
 			common.LogError(fmt.Sprintf("wppconnectHealth: Could not get token for session %s, skipping status check.", session))
-			continue // Skip if token generation failed
+			continue
 		}
+
 		status := GetStatus(session, token)
 		contactName := GetContactName(session, token)
+		isHealthy := status == "Connected"
 
-		if status == "Connected" {
-			fmt.Println(common.Blue + contactName + ", Session " + session + " " + common.Green + status + common.Reset)
+		sessionData := WppConnectData{
+			Session:     session,
+			ContactName: contactName,
+			Status:      status,
+			Healthy:     isHealthy,
+		}
+
+		healthData.Sessions = append(healthData.Sessions, sessionData)
+
+		if isHealthy {
+			healthData.HealthyCount++
 			common.AlarmCheckUp(session, "Session "+session+", named '"+contactName+"', is now "+status, false)
 		} else {
-			fmt.Println(common.Blue + contactName + ", Session " + session + " " + common.Fail + status + common.Reset)
+			healthData.Healthy = false
 			common.AlarmCheckDown(session, "Session "+session+", named '"+contactName+"', is "+status, false, "", "")
 		}
 	}
+
+	return healthData
 }
 
 func Main(cmd *cobra.Command, args []string) {
 	version := "2.0.0"
 	common.ScriptName = "wppconnectHealth"
-	common.TmpDir = common.TmpDir + "Health" // Note: This might collide with other health checks if not unique
+	common.TmpDir = common.TmpDir + "Health"
 	common.Init()
-	// Load config here, after common.Init which sets up viper paths
 	common.ConfInit("wppconnect", &Config)
 
 	// Check essential config after loading
 	if Config.Wpp.Url == "" || Config.Wpp.Secret == "" {
 		common.LogError("wppconnectHealth: Missing Wpp.Url or Wpp.Secret in configuration. Cannot proceed.")
 		fmt.Println("Error: Missing Wpp.Url or Wpp.Secret in configuration.")
-		os.Exit(1) // Exit if essential config is missing
+		os.Exit(1)
 	}
 
 	api.WrapperGetServiceStatus("wppconnectHealth")
 
-	fmt.Println("WPPConnect Health REWRITE - v" + version + " - " + time.Now().Format("2006-01-02 15:04:05") + "\n")
+	// Collect health data
+	healthData := WppCheck()
+	healthData.Version = version
 
-	WppCheck()
-
+	// Render the health data using our UI system
+	RenderWppConnectHealth(healthData)
 }
