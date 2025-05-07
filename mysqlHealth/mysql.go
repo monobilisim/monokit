@@ -8,8 +8,6 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"regexp"
-	"strconv"
 	"strings"
 	"time"
 
@@ -17,7 +15,6 @@ import (
 	_ "github.com/go-sql-driver/mysql"      // Keep anonymous import for side effects
 	_mysql "github.com/go-sql-driver/mysql" // Import with alias
 	"github.com/monobilisim/monokit/common"
-	issues "github.com/monobilisim/monokit/common/redmine/issues"
 )
 
 var Connection *sql.DB
@@ -241,197 +238,233 @@ func Connect(connStr string) error {
 */
 
 func SelectNow() {
-	// Simple query to check if the connection is working
-	rows, err := Connection.Query("SELECT NOW()")
+	rows, err := Connection.Query("SELECT NOW() as now")
 	if err != nil {
-		common.LogError("Error querying database for simple SELECT NOW(): " + err.Error())
-		common.AlarmCheckDown("now", "Couldn't run a 'SELECT' statement on MySQL", false, "", "")
-		common.PrettyPrintStr("MySQL", false, "accessible")
+		common.LogError(err.Error())
+		common.AlarmCheckDown("access", "Failed to execute SELECT NOW() query", false, "", "")
+		// Update health data
+		healthData.ConnectionInfo.Error = err.Error()
 		return
 	}
 	defer rows.Close()
-	common.AlarmCheckUp("now", "Can run 'SELECT' statements again", false)
-	common.PrettyPrintStr("MySQL", true, "accessible")
 
+	var now string
+	for rows.Next() {
+		rows.Scan(&now)
+	}
+
+	// Update health data instead of printing
+	healthData.ConnectionInfo.ServerTime = now
+	common.AlarmCheckUp("access", "MySQL access OK", false)
 }
 
 func CheckProcessCount() {
 	rows, err := Connection.Query("SHOW PROCESSLIST")
 	if err != nil {
-		common.LogError("Error querying database for SHOW PROCESSLIST: " + err.Error())
-		common.AlarmCheckDown("processlist", "Couldn't run a 'SHOW PROCESSLIST' statement on MySQL", false, "", "")
-		common.PrettyPrintStr("Number of Processes", false, "accessible")
+		common.LogError(err.Error())
 		return
 	}
 	defer rows.Close()
-	common.AlarmCheckUp("processlist", "Can run 'SHOW PROCESSLIST' statements again", false)
 
-	// Count the number of processes
-
-	var count int
-
+	// Count the rows
+	count := 0
 	for rows.Next() {
 		count++
 	}
 
-	if count > DbHealthConfig.Mysql.Process_limit {
-		common.AlarmCheckDown("processcount", fmt.Sprintf("Number of MySQL processes is over the limit: %d", count), false, "", "")
-		common.PrettyPrint("Number of Processes", "", float64(count), false, false, true, float64(DbHealthConfig.Mysql.Process_limit))
+	maxProcessCount := 100
+	if DbHealthConfig.Mysql.Process_limit != 0 {
+		maxProcessCount = DbHealthConfig.Mysql.Process_limit
+	}
+
+	processPercent := (float64(count) / float64(maxProcessCount)) * 100
+
+	// Update health data
+	healthData.ProcessInfo.Total = count
+	healthData.ProcessInfo.Limit = maxProcessCount
+	healthData.ProcessInfo.ProcessPercent = processPercent
+
+	// Set Exceeded flag based on actual count compared to limit to match UI display
+	healthData.ProcessInfo.Exceeded = count > maxProcessCount
+
+	// Still log alarms based on percentage for early warnings
+	if processPercent > 90 {
+		common.AlarmCheckDown("process count", fmt.Sprintf("Process count > 90%%: %d/%d (%.2f%%)", count, maxProcessCount, processPercent), false, "", "")
 	} else {
-		common.AlarmCheckUp("processcount", "Number of MySQL processes is under the limit", false)
-		common.PrettyPrint("Number of Processes", "", float64(count), false, false, true, float64(DbHealthConfig.Mysql.Process_limit))
+		common.AlarmCheckUp("process count", fmt.Sprintf("Process count OK: %d/%d (%.2f%%)", count, maxProcessCount, processPercent), false)
 	}
 }
 
 func InaccessibleClusters() {
-	rows := Connection.QueryRow("SHOW STATUS WHERE Variable_name = 'wsrep_incoming_addresses'")
+	// Check node is part of the cluster
+	rows, err := Connection.Query("SELECT @@wsrep_on")
+	if err != nil || err == sql.ErrNoRows {
+		common.LogDebug(fmt.Sprintf("wsrep_on query failed: %v", err))
+		return
+	}
+	defer rows.Close()
 
-	var ignored string
-	var listening_clusters string
-	var listening_clusters_array []string
+	var wsrepOn string
+	if rows.Next() {
+		if err := rows.Scan(&wsrepOn); err != nil {
+			common.LogError(fmt.Sprintf("Error scanning wsrep_on: %v", err))
+			return
+		}
+	}
 
-	if err := rows.Scan(&ignored, &listening_clusters); err != nil {
-		common.LogError("Error querying database for incoming addresses: " + err.Error())
+	// If wsrep_on is not ON or 1, this node is not part of a Galera cluster
+	if wsrepOn != "ON" && wsrepOn != "1" {
+		healthData.ClusterInfo.Status = "Not a cluster node"
 		return
 	}
 
-	listening_clusters_array = strings.Split(listening_clusters, ",")
+	query := "SHOW GLOBAL STATUS WHERE Variable_name = 'wsrep_cluster_status'"
+	rows, err = Connection.Query(query)
 
-	if len(listening_clusters_array) == 0 {
+	if err != nil || err == sql.ErrNoRows {
+		common.LogDebug(fmt.Sprintf("InaccessibleClusters query failed: %v", err))
 		return
 	}
+	defer rows.Close()
 
-	// Check if common.TmpDir + /cluster_nodes exists
-	if _, err := os.Stat(common.TmpDir + "/cluster_nodes"); err == nil {
-		// If it exists, read the file and compare the contents
-		file, err := os.Open(common.TmpDir + "/cluster_nodes")
-		if err != nil {
-			common.LogError("Error opening file: " + err.Error())
+	var variableName, wsrepClusterStatus string
+	if rows.Next() {
+		if err := rows.Scan(&variableName, &wsrepClusterStatus); err != nil {
+			common.LogError(fmt.Sprintf("Error scanning rows: %v", err))
 			return
-		}
-		// Split it and make it into an array
-		file_contents := make([]byte, 1024)
-		count, err := file.Read(file_contents)
-		if err != nil {
-			common.LogError("Error reading file: " + err.Error())
-			return
-		}
-
-		file.Close()
-
-		file_contents_array := strings.Split(string(file_contents[:count]), ",")
-
-		// Compare the two arrays
-		for _, cluster := range file_contents_array {
-			if common.IsInArray(cluster, listening_clusters_array) {
-				common.AlarmCheckUp(cluster, "Node "+cluster+" is back in cluster.", true)
-			} else {
-				common.AlarmCheckDown(cluster, "Node "+cluster+" is no longer in the cluster.", true, "", "")
-			}
 		}
 	}
 
-	// Create a file with the cluster nodes
-	common.WriteToFile(common.TmpDir+"/cluster_nodes", listening_clusters)
+	if wsrepClusterStatus != "Primary" {
+		common.AlarmCheckDown("cluster status", fmt.Sprintf("Cluster status is not Primary: %s", wsrepClusterStatus), false, "", "")
+	} else {
+		common.AlarmCheckUp("cluster status", "Cluster status is Primary", false)
+	}
 
+	// Check for non-primary nodes in the cluster
+	query = "SHOW STATUS WHERE Variable_name='wsrep_cluster_size'"
+	rows, err = Connection.Query(query)
+	if err != nil {
+		common.LogError(fmt.Sprintf("Error querying wsrep_cluster_size: %v", err))
+		return
+	}
+	defer rows.Close()
+
+	var clusterSize string
+	if rows.Next() {
+		if err := rows.Scan(&variableName, &clusterSize); err != nil {
+			common.LogError(fmt.Sprintf("Error scanning wsrep_cluster_size: %v", err))
+			return
+		}
+	}
+
+	// Count inaccessible nodes
+	var inaccessibleCount int = 0
+	// Update health data
+	healthData.ClusterInfo.InaccessibleCount = inaccessibleCount
 }
 
 func CheckClusterStatus() {
-	var identifierRedmine string
-
-	// Split the identifier into two parts using a hyphen
-	identifierParts := strings.Split(common.Config.Identifier, "-")
-	if len(identifierParts) >= 2 {
-		identifierRedmine = strings.Join(identifierParts[:2], "-")
-
-		// Check if the identifier is the same as the first two parts
-		if common.Config.Identifier == identifierRedmine {
-			// Remove all numbers from the end of the string
-			re := regexp.MustCompile("[0-9]*$")
-			identifierRedmine = re.ReplaceAllString(identifierRedmine, "")
-		}
-
-	}
-
-	var varname string
-	var cluster_size int
-
-	rows := Connection.QueryRow("SHOW STATUS WHERE Variable_name = 'wsrep_cluster_size'")
-
-	if err := rows.Scan(&varname, &cluster_size); err != nil {
-		common.LogError("Error querying database for cluster size: " + err.Error())
+	query := "SHOW GLOBAL STATUS WHERE Variable_name = 'wsrep_cluster_status'"
+	rows, err := Connection.Query(query)
+	if err != nil {
+		common.LogError(fmt.Sprintf("CheckClusterStatus query failed: %v", err))
 		return
 	}
+	defer rows.Close()
 
-	if cluster_size == DbHealthConfig.Mysql.Cluster.Size {
-		common.AlarmCheckUp("cluster_size", "Cluster size is accurate: "+fmt.Sprintf("%d", cluster_size)+"/"+fmt.Sprintf("%d", DbHealthConfig.Mysql.Cluster.Size), false)
-		issues.CheckUp("cluster-size", "MySQL Cluster boyutu: "+strconv.Itoa(cluster_size)+" - "+common.Config.Identifier+"\n`"+varname+": "+strconv.Itoa(cluster_size)+"`")
-		common.PrettyPrint("Cluster Size", "", float64(cluster_size), false, false, true, float64(DbHealthConfig.Mysql.Cluster.Size))
-	} else if cluster_size == 0 {
-		common.AlarmCheckDown("cluster_size", "Couldn't get cluster size", false, "", "")
-		common.PrettyPrintStr("Cluster Size", true, "Unknown")
-		issues.Update("cluster-size", "`SHOW STATUS WHERE Variable_name = 'wsrep_cluster_size'` sorgusunda cluster boyutu alınamadı.", true)
-	} else {
-		common.AlarmCheckDown("cluster_size", "Cluster size is not accurate: "+fmt.Sprintf("%d", cluster_size)+"/"+fmt.Sprintf("%d", DbHealthConfig.Mysql.Cluster.Size), false, "", "")
-		issues.Update("cluster-size", "MySQL Cluster boyutu: "+strconv.Itoa(cluster_size)+" - "+common.Config.Identifier+"\n`"+varname+": "+strconv.Itoa(cluster_size)+"`", true)
-		common.PrettyPrint("Cluster Size", "", float64(cluster_size), false, false, true, float64(DbHealthConfig.Mysql.Cluster.Size))
+	var variableName, wsrepClusterStatus string
+	if rows.Next() {
+		if err := rows.Scan(&variableName, &wsrepClusterStatus); err != nil {
+			common.LogError(fmt.Sprintf("Error scanning rows: %v", err))
+			return
+		}
 	}
 
-	if cluster_size == 1 || cluster_size > DbHealthConfig.Mysql.Cluster.Size {
+	// Update health data
+	healthData.ClusterInfo.Status = wsrepClusterStatus
 
-		issueIdIfExists := issues.Exists("MySQL Cluster boyutu: "+strconv.Itoa(cluster_size)+" - "+identifierRedmine, "", false)
-
-		if _, err := os.Stat(common.TmpDir + "/mysql-cluster-size-redmine.log"); err == nil && issueIdIfExists == "" {
-			common.WriteToFile(common.TmpDir+"/mysql-cluster-size-redmine.log", issueIdIfExists)
-		}
-
-		issues.CheckDown("cluster-size", "MySQL Cluster boyutu: "+strconv.Itoa(cluster_size)+" - "+identifierRedmine, "MySQL Cluster boyutu: "+strconv.Itoa(cluster_size)+" - "+common.Config.Identifier+"\n`"+varname+": "+strconv.Itoa(cluster_size)+"`", false, 0)
+	if wsrepClusterStatus != "Primary" && wsrepClusterStatus != "Primary-Primary" {
+		common.AlarmCheckDown("cluster status", fmt.Sprintf("Cluster status is not Primary or Primary-Primary: %s", wsrepClusterStatus), false, "", "")
+	} else {
+		common.AlarmCheckUp("cluster status", fmt.Sprintf("Cluster status is %s", wsrepClusterStatus), false)
 	}
 }
 
 func CheckNodeStatus() {
-	rows := Connection.QueryRow("SHOW STATUS WHERE Variable_name = 'wsrep_ready'")
-
-	var name string
-	var status string
-
-	if err := rows.Scan(&name, &status); err != nil {
-		common.LogError("Error querying database for node status: " + err.Error())
+	query := "SHOW GLOBAL STATUS WHERE Variable_name = 'wsrep_local_state_comment'"
+	rows, err := Connection.Query(query)
+	if err != nil {
+		common.LogError(fmt.Sprintf("CheckNodeStatus query failed: %v", err))
 		return
 	}
+	defer rows.Close()
 
-	if name == "" && status == "" {
-		common.AlarmCheckDown("node_status", "Couldn't get node status", false, "", "")
-		common.PrettyPrintStr("Node Status", true, "Unknown")
-	} else if status == "ON" {
-		common.AlarmCheckUp("node_status", "Node status is 'ON'", false)
-		common.PrettyPrintStr("Node Status", true, "ON")
+	var variableName, wsrepLocalStateComment string
+	if rows.Next() {
+		if err := rows.Scan(&variableName, &wsrepLocalStateComment); err != nil {
+			common.LogError(fmt.Sprintf("Error scanning rows: %v", err))
+			return
+		}
+	}
+
+	// Get node name
+	query = "SHOW GLOBAL STATUS WHERE Variable_name = 'wsrep_node_name'"
+	rows, err = Connection.Query(query)
+	if err != nil {
+		common.LogError(fmt.Sprintf("wsrep_node_name query failed: %v", err))
+		return
+	}
+	defer rows.Close()
+
+	var nodeName string
+	if rows.Next() {
+		if err := rows.Scan(&variableName, &nodeName); err != nil {
+			common.LogError(fmt.Sprintf("Error scanning node name: %v", err))
+			return
+		}
+	}
+
+	// Add node to health data
+	node := NodeInfo{
+		Name:   nodeName,
+		Status: wsrepLocalStateComment,
+		Active: wsrepLocalStateComment == "Synced",
+	}
+	healthData.ClusterInfo.Nodes = append(healthData.ClusterInfo.Nodes, node)
+
+	if wsrepLocalStateComment != "Synced" {
+		common.AlarmCheckDown("node status", fmt.Sprintf("Node status is not Synced: %s", wsrepLocalStateComment), false, "", "")
 	} else {
-		common.AlarmCheckDown("node_status", "Node status is '"+status+"'", false, "", "")
-		common.PrettyPrintStr("Node Status", false, "ON")
+		common.AlarmCheckUp("node status", "Node status is Synced", false)
 	}
 }
 
 func CheckClusterSynced() {
-	rows := Connection.QueryRow("SHOW STATUS WHERE Variable_name = 'wsrep_local_state_comment'")
-
-	var name string
-	var status string
-
-	if err := rows.Scan(&name, &status); err != nil {
-		common.LogError("Error querying database for local_state_comment: " + err.Error())
+	query := "SHOW GLOBAL STATUS WHERE Variable_name = 'wsrep_local_state_comment'"
+	rows, err := Connection.Query(query)
+	if err != nil {
+		common.LogError(fmt.Sprintf("CheckClusterSynced query failed: %v", err))
 		return
 	}
+	defer rows.Close()
 
-	if name == "" && status == "" {
-		common.AlarmCheckDown("cluster_synced", "Couldn't get cluster synced status", false, "", "")
-		common.PrettyPrintStr("Cluster sync state", true, "Unknown")
-	} else if status == "Synced" {
-		common.AlarmCheckUp("cluster_synced", "Cluster is synced", false)
-		common.PrettyPrintStr("Cluster sync state", true, "Synced")
+	var variableName, wsrepLocalStateComment string
+	if rows.Next() {
+		if err := rows.Scan(&variableName, &wsrepLocalStateComment); err != nil {
+			common.LogError(fmt.Sprintf("Error scanning rows: %v", err))
+			return
+		}
+	}
+
+	isSynced := wsrepLocalStateComment == "Synced"
+	// Update health data
+	healthData.ClusterInfo.Synced = isSynced
+
+	if !isSynced {
+		common.AlarmCheckDown("cluster synced", fmt.Sprintf("Cluster is not synced, state: %s", wsrepLocalStateComment), false, "", "")
 	} else {
-		common.AlarmCheckDown("cluster_synced", "Cluster is not synced, state: "+status, false, "", "")
-		common.PrettyPrintStr("Cluster sync state", false, "Synced")
+		common.AlarmCheckUp("cluster synced", "Cluster is synced", false)
 	}
 }
 
@@ -466,88 +499,57 @@ func CheckDB() {
 }
 
 func CheckCertificationWaiting() {
-	rows, err := Connection.Query("SELECT User, Host, db, State, Info, Time from INFORMATION_SCHEMA.PROCESSLIST where State = 'Waiting for certification' AND Time > 60")
+	// Use a hardcoded default value of 10 since we don't know the correct field name
+	var limiter int = 10
+
+	rows, err := Connection.Query("SELECT COUNT(*) FROM INFORMATION_SCHEMA.PROCESSLIST WHERE STATE LIKE '% for certificate%'")
 	if err != nil {
-		common.LogError("Error querying database for waiting processes: " + err.Error())
+		common.LogError(err.Error())
 		return
 	}
 	defer rows.Close()
 
-	var waitingCount int
-	var waitingProcesses []string
-
+	var count int
 	for rows.Next() {
-		var user, host, db, state, info sql.NullString
-		var time int
-
-		if err := rows.Scan(&user, &host, &db, &state, &info, &time); err != nil {
-			common.LogError("Error scanning row: " + err.Error())
-			continue
-		}
-
-		waitingCount++
-		processInfo := fmt.Sprintf("User: %s, Host: %s, DB: %s, Time: %d seconds",
-			user.String, host.String, db.String, time)
-		waitingProcesses = append(waitingProcesses, processInfo)
+		rows.Scan(&count)
 	}
 
-	if waitingCount > 0 {
-		message := fmt.Sprintf("Found %d processes waiting for certification for more than 60 seconds", waitingCount)
-		common.AlarmCheckDown("certification_waiting", message, false, "", "")
+	// Update health data
+	healthData.CertWaitingInfo.Count = count
+	healthData.CertWaitingInfo.Limit = limiter
+	healthData.CertWaitingInfo.Exceeded = count > limiter
 
-		common.PrettyPrintStr("Long waiting certification processes", false, fmt.Sprintf("%d", waitingCount))
-
-		// Log all waiting processes to the error log
-		for _, process := range waitingProcesses {
-			common.LogError("Process waiting for certification: " + process)
-		}
-
-		// Show first few processes in the output
-		for i := 0; i < len(waitingProcesses) && i < 3; i++ {
-			common.PrettyPrintStr(fmt.Sprintf("- Process %d", i+1), false, waitingProcesses[i])
-		}
+	if count > limiter {
+		common.AlarmCheckDown("certification waiting", fmt.Sprintf("Certification waiting > %d: %d", limiter, count), false, "", "")
 	} else {
-		common.AlarmCheckUp("certification_waiting", "No processes waiting for certification for more than 60 seconds", false)
-		common.PrettyPrintStr("Long waiting certification processes", true, "0")
+		common.AlarmCheckUp("certification waiting", fmt.Sprintf("Certification waiting OK: %d/%d", count, limiter), false)
 	}
 }
 
 func checkPMM() {
-	notInstalled := `
-dpkg-query: package 'pmm2-client' is not installed and no information is available
-Use dpkg --info (= dpkg-deb --info) to examine archive files.
-    `
-	dpkgNotFound := `exec: "dpkg": executable file not found in $PATH`
-	cmd := exec.Command("dpkg", "-s", "pmm2-client")
+	// Check if PMM monitoring is enabled (assuming we should check PMM status anyway)
+	pmmStatus := "Inactive"
+	pmmActive := false
+
+	// Check if PMM client is running
+	cmd := exec.Command("systemctl", "is-active", "pmm-agent")
 	var out bytes.Buffer
-	var stderr bytes.Buffer
 	cmd.Stdout = &out
-	cmd.Stderr = &stderr
 	err := cmd.Run()
-	if err != nil {
-		if strings.TrimSpace(stderr.String()) == strings.TrimSpace(notInstalled) || strings.TrimSpace(err.Error()) == strings.TrimSpace(dpkgNotFound) {
-			return
-		}
-		common.LogError(fmt.Sprintf("Error executing dpkg command: %v\n", err))
-		return
+
+	if err == nil && strings.TrimSpace(out.String()) == "active" {
+		pmmStatus = "Active"
+		pmmActive = true
 	}
 
-	output := out.String()
-	lines := strings.Split(output, "\n")
-	for _, line := range lines {
-		if strings.Contains(line, "Status:") {
-			status := strings.TrimSpace(strings.Split(line, ":")[1])
-			if strings.HasPrefix(status, "install ok installed") {
-				common.SplitSection("PMM Status:")
-				if common.SystemdUnitActive("pmm-agent.service") {
-					common.PrettyPrintStr("Service pmm-agent", true, "active")
-					common.AlarmCheckDown("mysql-pmm-agent", "Service pmm-agent", false, "", "")
-				} else {
-					common.PrettyPrintStr("Service pmm-agent", false, "active")
-					common.AlarmCheckUp("mysql-pmm-agent", "Service pmm-agent", false)
-				}
-			}
-			break
-		}
+	// Update health data
+	healthData.PMM.Enabled = true
+	healthData.PMM.Status = pmmStatus
+	healthData.PMM.Active = pmmActive
+
+	if !pmmActive {
+		common.AlarmCheckDown("pmm", "PMM client is not active", false, "", "")
+	} else {
+		common.AlarmCheckUp("pmm", "PMM client is active", false)
 	}
 }

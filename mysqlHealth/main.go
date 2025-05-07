@@ -59,6 +59,7 @@ func init() {
 }
 
 var DbHealthConfig db.DbHealth
+var healthData *MySQLHealthData
 
 func Main(cmd *cobra.Command, args []string) {
 	version := "3.1.0"
@@ -67,14 +68,19 @@ func Main(cmd *cobra.Command, args []string) {
 	common.Init()
 	common.ConfInit("db", &DbHealthConfig)
 
+	// Initialize health data structure
+	healthData = NewMySQLHealthData()
+	healthData.Version = version
+
 	if DbHealthConfig.Mysql.Cluster.Enabled && (DbHealthConfig.Mysql.Cluster.Check_table_day == "" || DbHealthConfig.Mysql.Cluster.Check_table_hour == "") {
 		DbHealthConfig.Mysql.Cluster.Check_table_day = "Sun"
 		DbHealthConfig.Mysql.Cluster.Check_table_hour = "05:00"
 	}
 
-	api.WrapperGetServiceStatus("mysqlHealth")
+	// Set cluster enabled status in health data
+	healthData.ClusterInfo.Enabled = DbHealthConfig.Mysql.Cluster.Enabled
 
-	fmt.Println("MySQL Health Check REWRITE - v" + version + " - " + time.Now().Format("2006-01-02 15:04:05"))
+	api.WrapperGetServiceStatus("mysqlHealth")
 
 	// ParseMyCnfAndConnect now handles setting the global Connection on success.
 	// We don't need the returned connection string here anymore.
@@ -86,8 +92,13 @@ func Main(cmd *cobra.Command, args []string) {
 		common.LogError(errMsg)
 		// Use the specific error for the alarm
 		common.AlarmCheckDown("ping", errMsg, false, "", "")
+		// Update health data with connection failure
+		healthData.ConnectionInfo.Connected = false
+		healthData.ConnectionInfo.Error = errMsg
 		// Exit or handle the failure appropriately - cannot proceed without a connection
 		fmt.Println("Error: Could not connect to MySQL. Aborting health check.")
+		// Render the health data even on failure
+		fmt.Println(healthData.RenderAll())
 		// Consider os.Exit(1) or returning an error if this function could return one
 		return // Stop execution if connection fails initially
 	}
@@ -100,23 +111,30 @@ func Main(cmd *cobra.Command, args []string) {
 	// Initial connection successful, clear any previous down alarm for ping.
 	common.AlarmCheckUp("ping", "Established initial MySQL connection", false)
 
-	common.SplitSection("MySQL Access:")
+	// Update health data with successful connection
+	healthData.ConnectionInfo.Connected = true
 
+	// Perform checks but don't output directly to console
+	// MySQL access check
 	SelectNow()
 
-	common.SplitSection("Number of Processes:")
-
+	// Process count check
 	CheckProcessCount()
 
-	common.SplitSection("Certification Waiting Processes:")
-
+	// Certification waiting processes check
 	CheckCertificationWaiting()
 
 	if DbHealthConfig.Mysql.Cluster.Enabled {
-		common.SplitSection("Cluster Status:")
+		// Check for inaccessible clusters
 		InaccessibleClusters()
+
+		// Check cluster overall status
 		CheckClusterStatus()
+
+		// Check individual node status
 		CheckNodeStatus()
+
+		// Check if cluster is synced
 		CheckClusterSynced()
 	}
 
@@ -125,5 +143,9 @@ func Main(cmd *cobra.Command, args []string) {
 		CheckDB()
 	}
 
+	// Check PMM status if configured
 	checkPMM()
+
+	// Render and display the health data only once at the end
+	fmt.Println(healthData.RenderAll())
 }

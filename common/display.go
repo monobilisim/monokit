@@ -90,7 +90,7 @@ func StatusListItem(label string, statusPrefix string, limits string, current st
 	itemStyle := lipgloss.NewStyle().
 		Foreground(NormalTextColor)
 
-	line := fmt.Sprintf("•  %-12s  %s %s (%s)",
+	line := fmt.Sprintf("•  %-20s %s %s (%s)",
 		label,
 		statusStyle.Render(statusText),
 		limits,
