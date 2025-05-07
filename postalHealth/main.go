@@ -30,7 +30,6 @@ func DetectPostal() bool {
 	if !common.SystemdUnitExists("postal.service") {
 		common.LogDebug("postalHealth auto-detection failed: postal.service unit file not found.")
 		return false
-
 	}
 
 	common.LogDebug("postalHealth auto-detection: postal.service exists.")
@@ -88,13 +87,98 @@ func init() {
 		Name:       "postalHealth",
 		EntryPoint: Main,
 		Platform:   "linux",
-		AutoDetect: DetectPostal, // Add the auto-detect function here
+		AutoDetect: DetectPostal,
 	})
 }
 
 var MailHealthConfig mail.MailHealth
 var MainDB *sql.DB
 var MessageDB *sql.DB
+
+// CheckPostalHealth performs all Postal health checks and returns a data structure with the results
+func CheckPostalHealth(skipOutput bool) *PostalHealthData {
+	data := &PostalHealthData{
+		IsHealthy:     true, // Start with assumption it's healthy
+		Services:      make(map[string]bool),
+		Containers:    make(map[string]ContainerStatus),
+		MySQLStatus:   make(map[string]bool),
+		ServiceStatus: make(map[string]bool),
+	}
+
+	// Check Postal services
+	data.Services = CheckServices(skipOutput)
+
+	// Check Docker containers
+	data.Containers = CheckContainers(skipOutput)
+
+	// Check MySQL connections
+	MainDB = MySQLConnect("main_db", "postal", skipOutput)
+	defer MySQLDisconnect(MainDB)
+	data.MySQLStatus["main_db"] = MainDB != nil
+
+	MessageDB = MySQLConnect("message_db", "postal", skipOutput)
+	defer MySQLDisconnect(MessageDB)
+	data.MySQLStatus["message_db"] = MessageDB != nil
+
+	// Check service health
+	data.ServiceStatus = CheckServiceHealth(skipOutput)
+
+	// Check message queues if enabled
+	if MailHealthConfig.Postal.Check_Message {
+		data.MessageQueue = GetMessageQueue(skipOutput)
+		data.HeldMessages = GetHeldMessages(skipOutput)
+	}
+
+	// Determine overall health
+	for _, serviceStatus := range data.Services {
+		if !serviceStatus {
+			data.IsHealthy = false
+			break
+		}
+	}
+
+	for _, container := range data.Containers {
+		if !container.IsRunning {
+			data.IsHealthy = false
+			break
+		}
+	}
+
+	for _, mysqlStatus := range data.MySQLStatus {
+		if !mysqlStatus {
+			data.IsHealthy = false
+			break
+		}
+	}
+
+	for _, serviceStatus := range data.ServiceStatus {
+		if !serviceStatus {
+			data.IsHealthy = false
+			break
+		}
+	}
+
+	if data.MessageQueue.Limit > 0 && !data.MessageQueue.IsHealthy {
+		data.IsHealthy = false
+	}
+
+	// Check if any server has unhealthy held messages
+	for _, server := range data.HeldMessages {
+		if !server.IsHealthy {
+			data.IsHealthy = false
+			break
+		}
+	}
+
+	// Set overall status
+	if data.IsHealthy {
+		data.Status = "Healthy"
+	} else {
+		data.Status = "Unhealthy"
+	}
+
+	return data
+}
 
 func Main(cmd *cobra.Command, args []string) {
 	version := "3.1.0"
@@ -106,119 +190,137 @@ func Main(cmd *cobra.Command, args []string) {
 
 	api.WrapperGetServiceStatus("postalHealth")
 
-	fmt.Println("Postal Health Check REWRITE - v" + version + " - " + time.Now().Format("2006-01-02 15:04:05"))
+	// Collect all health data with skipOutput=true since we'll use our UI rendering
+	healthData := CheckPostalHealth(true)
 
-	common.SplitSection("Postal Status:")
-	Services()
+	// Create a title for the box
+	title := fmt.Sprintf("Postal Health Check v%s - %s", version, time.Now().Format("2006-01-02 15:04:05"))
 
-	common.SplitSection("Service Status:")
-	RequestCheck()
+	// Generate content using our UI renderer
+	content := healthData.RenderCompact()
 
-	common.SplitSection("MySQL Status:")
-	MainDB = MySQLConnect("main_db", "postal", true)
-	defer MySQLDisconnect(MainDB)
-
-	MessageDB = MySQLConnect("message_db", "postal", true)
-	defer MySQLDisconnect(MessageDB)
-
-	if MailHealthConfig.Postal.Check_Message {
-		common.SplitSection("Message Queue:")
-		GetMessageQueue()
-
-		common.SplitSection("Held Messages:")
-		GetHeldMessages()
-	}
+	// Display the rendered box
+	renderedBox := common.DisplayBox(title, content)
+	fmt.Println(renderedBox)
 }
 
-func RequestCheck() {
-	// Check localhost:5000/login (health-web), localhost:9090/health (health-worker), localhost:9091/health (health-smtp)
+// CheckServices checks the status of Postal services and returns a map of service statuses
+func CheckServices(skipOutput bool) map[string]bool {
+	services := make(map[string]bool)
+	isActive := common.SystemdUnitActive("postal.service")
+	services["postal.service"] = isActive
 
-	services := []string{"web::5000/login", "worker::9090/health", "smtp::9091/health"}
-	for _, service := range services {
-		split := strings.Split(service, "::")
-		service := split[0]
-		port := split[1]
-
-		sendAlarm := false
-
-		// Make a request to the service
-		resp, err := http.Get("http://localhost:" + port)
-		if err != nil {
-			sendAlarm = true
-		}
-
-		if resp.StatusCode != 200 {
-			sendAlarm = true
-		}
-
-		if !sendAlarm {
-			common.PrettyPrintStr("Service "+service, true, "running")
-			common.AlarmCheckUp("service_"+service, "Service health-"+service+" is running", false)
+	if !skipOutput {
+		if isActive {
+			common.PrettyPrintStr("Postal service", true, "active")
 		} else {
-			common.PrettyPrintStr("Service "+service, false, "running")
-			common.AlarmCheckDown("service_"+service, "Service health-"+service+" is not running", false, "", "")
+			common.PrettyPrintStr("Postal service", false, "active")
 		}
 	}
+
+	if isActive {
+		common.AlarmCheckUp("postal", "Postal service is active", false)
+	} else {
+		common.AlarmCheckDown("postal", "Postal service is not active", false, "", "")
+	}
+
+	return services
 }
 
-func Services() {
+// CheckContainers checks the status of Postal Docker containers
+func CheckContainers(skipOutput bool) map[string]ContainerStatus {
+	containers := make(map[string]ContainerStatus)
 	apiClient, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
-	defer apiClient.Close()
-	if common.SystemdUnitActive("postal.service") {
-		if err != nil {
+	if err != nil {
+		if !skipOutput {
 			common.LogError("Couldn't connect to Docker API: " + err.Error())
 			common.AlarmCheckDown("docker", "Couldn't connect to Docker API: "+err.Error(), false, "", "")
 			common.PrettyPrintStr("Docker API", false, "connected")
 		}
+		return containers
+	}
+	defer apiClient.Close()
 
-		common.AlarmCheckUp("docker", "Docker API is up", false)
-		common.AlarmCheckUp("postal", "Postal service is active", false)
+	common.AlarmCheckUp("docker", "Docker API is up", false)
 
-		containers, err := apiClient.ContainerList(context.Background(), container.ListOptions{All: true})
-		if err != nil {
+	containerList, err := apiClient.ContainerList(context.Background(), container.ListOptions{All: true})
+	if err != nil {
+		if !skipOutput {
 			common.LogError("Couldn't list containers: " + err.Error())
 			common.AlarmCheckDown("docker", "Couldn't list containers: "+err.Error(), false, "", "")
 			common.PrettyPrintStr("Docker containers", false, "listed")
 		}
+		return containers
+	}
 
-		postalServicesExist := false
+	for _, container := range containerList {
+		for _, name := range container.Names {
+			if strings.Contains(name, "postal") {
+				// Remove / from the beginning of the name
+				name = strings.TrimPrefix(name, "/")
+				isRunning := container.State == "running"
+				containers[name] = ContainerStatus{
+					Name:      name,
+					IsRunning: isRunning,
+					State:     container.State,
+				}
 
-		for _, container := range containers {
-			for _, name := range container.Names {
-				if strings.Contains(name, "postal") {
-					// Remove / from the beginning of the name
-					name = strings.TrimPrefix(name, "/")
-					if container.State == "running" {
-						common.AlarmCheckUp("docker_"+name, "Postal container "+name+" is running", false)
-						postalServicesExist = true
+				if !skipOutput {
+					if isRunning {
 						common.PrettyPrintStr("Postal container "+name, true, "running")
 					} else {
-						common.AlarmCheckDown("docker_"+name, "Postal container "+name+" is not running, state: "+container.State, false, "", "")
-						postalServicesExist = true
 						common.PrettyPrintStr("Postal container "+name, false, "running")
 					}
 				}
+
+				if isRunning {
+					common.AlarmCheckUp("docker_"+name, "Postal container "+name+" is running", false)
+				} else {
+					common.AlarmCheckDown("docker_"+name, "Postal container "+name+" is not running, state: "+container.State, false, "", "")
+				}
 			}
 		}
-
-		if !postalServicesExist {
-			common.AlarmCheckDown("postal_containers", "Couldn't find any running Postal containers", false, "", "")
-			common.PrettyPrintStr("Postal service", false, "running")
-		}
-	} else {
-		common.AlarmCheckDown("postal", "Postal service is not active", false, "", "")
-		common.PrettyPrintStr("Postal service", false, "active")
 	}
+
+	return containers
 }
 
-func MySQLConnect(dbName string, dbPath string, doPrint bool) *sql.DB {
-	// Get info out of /opt/postal/config/postal.yml
+// CheckServiceHealth checks the health of Postal services
+func CheckServiceHealth(skipOutput bool) map[string]bool {
+	services := make(map[string]bool)
+	serviceChecks := []string{"web::5000/login", "worker::9090/health", "smtp::9091/health"}
+
+	for _, service := range serviceChecks {
+		split := strings.Split(service, "::")
+		serviceName := split[0]
+		port := split[1]
+
+		resp, err := http.Get("http://localhost:" + port)
+		isHealthy := err == nil && resp.StatusCode == 200
+		services[serviceName] = isHealthy
+
+		if !skipOutput {
+			if isHealthy {
+				common.PrettyPrintStr("Service "+serviceName, true, "running")
+				common.AlarmCheckUp("service_"+serviceName, "Service health-"+serviceName+" is running", false)
+			} else {
+				common.PrettyPrintStr("Service "+serviceName, false, "running")
+				common.AlarmCheckDown("service_"+serviceName, "Service health-"+serviceName+" is not running", false, "", "")
+			}
+		}
+	}
+
+	return services
+}
+
+func MySQLConnect(dbName string, dbPath string, skipOutput bool) *sql.DB {
 	viper.SetConfigName("postal")
 	viper.AddConfigPath("/opt/postal/config")
 	err := viper.ReadInConfig()
 	if err != nil {
 		common.LogError("Couldn't read Postal config file: " + err.Error())
 		common.AlarmCheckDown("mysql", "Couldn't read Postal config file: "+err.Error(), false, "", "")
+		return nil
 	}
 
 	dbHost := viper.GetString(dbName + ".host")
@@ -231,90 +333,128 @@ func MySQLConnect(dbName string, dbPath string, doPrint bool) *sql.DB {
 
 	db, err := sql.Open("mysql", dbUser+":"+dbPass+"@tcp("+dbHost+":"+dbPort+")/"+dbPath)
 	if err != nil {
-		if doPrint {
-			common.PrettyPrintStr("MySQL connection for "+dbName, false, "connected")
-		}
 		common.LogError("Couldn't connect to MySQL for " + dbName + ": " + err.Error())
 		common.AlarmCheckDown("mysql_"+dbName, "Couldn't connect to MySQL for "+dbName+": "+err.Error(), false, "", "")
 		issue.CheckDown("mysql_"+dbName, common.Config.Identifier+" sunucusunda "+dbName+" veritabanına bağlanılamadı", "Bağlantı hatası: "+err.Error(), false, 0)
-	} else {
-		if doPrint {
-			common.PrettyPrintStr("MySQL connection for "+dbName, true, "connected")
-		}
-		common.AlarmCheckUp("mysql_"+dbName, "MySQL connection for "+dbName+" is up", false)
-		issue.CheckUp("mysql_"+dbName, "Bağlantı başarılı bir şekilde kuruldu, kapatılıyor")
+		return nil
 	}
+
+	common.AlarmCheckUp("mysql_"+dbName, "MySQL connection for "+dbName+" is up", false)
+	issue.CheckUp("mysql_"+dbName, "Bağlantı başarılı bir şekilde kuruldu, kapatılıyor")
 
 	return db
 }
 
 func MySQLDisconnect(db *sql.DB) {
-	db.Close()
+	if db != nil {
+		db.Close()
+	}
 }
 
-func GetMessageQueue() {
+// GetMessageQueue checks the message queue status
+func GetMessageQueue(skipOutput bool) QueueStatus {
+	status := QueueStatus{
+		Limit: MailHealthConfig.Postal.Message_Threshold,
+	}
+
+	if MessageDB == nil {
+		return status
+	}
+
 	rows, err := MessageDB.Query("SELECT COUNT(*) FROM postal.queued_messages")
 	if err != nil {
 		common.LogError("Couldn't get message queue count: " + err.Error())
 		common.AlarmCheckDown("mysql_queue", "Couldn't get message queue count from database message_db: "+err.Error(), false, "", "")
+		return status
 	}
+	defer rows.Close()
 
 	var count int
 	for rows.Next() {
 		rows.Scan(&count)
 	}
 
-	if count >= MailHealthConfig.Postal.Message_Threshold {
-		fmt.Println(common.Blue + "Message queue count" + common.Reset + " is " + common.Fail + strconv.Itoa(count) + "/" + strconv.Itoa(MailHealthConfig.Postal.Message_Threshold) + common.Reset)
-		common.AlarmCheckDown("mysql_queue_limit", "Message queue at or above limit: "+strconv.Itoa(count)+"/"+strconv.Itoa(MailHealthConfig.Postal.Message_Threshold), false, "", "")
-	} else {
-		common.PrettyPrintStr("Message queue count", true, fmt.Sprintf("%d", count))
-		common.AlarmCheckUp("mysql_queue_limit", "Message queue below limit: "+strconv.Itoa(count)+"/"+strconv.Itoa(MailHealthConfig.Postal.Message_Threshold), false)
+	status.Count = count
+	status.IsHealthy = count < status.Limit
+
+	if !skipOutput {
+		if count >= MailHealthConfig.Postal.Message_Threshold {
+			common.AlarmCheckDown("mysql_queue_limit", "Message queue at or above limit: "+strconv.Itoa(count)+"/"+strconv.Itoa(MailHealthConfig.Postal.Message_Threshold), false, "", "")
+		} else {
+			common.AlarmCheckUp("mysql_queue_limit", "Message queue below limit: "+strconv.Itoa(count)+"/"+strconv.Itoa(MailHealthConfig.Postal.Message_Threshold), false)
+		}
 	}
+
+	return status
 }
 
-func GetHeldMessages() {
-	// select id, permalink from postal.servers
+// GetHeldMessages checks the held messages status for each server
+func GetHeldMessages(skipOutput bool) map[string]ServerHeldMessages {
+	servers := make(map[string]ServerHeldMessages)
+
+	if MessageDB == nil {
+		return servers
+	}
+
+	// Get all servers
 	rows, err := MessageDB.Query("SELECT id, permalink FROM postal.servers")
 	if err != nil {
 		common.LogError("Couldn't get held messages: " + err.Error())
 		common.AlarmCheckDown("mysql_held", "Couldn't get held messages from database message_db: "+err.Error(), false, "", "")
-	} else {
-		common.AlarmCheckUp("mysql_held", "Can get Held messages count again", false)
+		return servers
 	}
+	defer rows.Close()
+
+	common.AlarmCheckUp("mysql_held", "Can get Held messages count again", false)
 
 	for rows.Next() {
 		var id int
 		var name string
 
-		rows.Scan(&id, &name)
+		err := rows.Scan(&id, &name)
+		if err != nil {
+			common.LogError("Error scanning server row: " + err.Error())
+			continue
+		}
 
 		variable := "postal-server-" + strconv.Itoa(id)
-
 		dbTemp := MySQLConnect("message_db", variable, false)
+		if dbTemp == nil {
+			continue
+		}
 
 		dbMessageHeld, err := dbTemp.Query("SELECT COUNT(id) FROM messages WHERE status = 'Held'")
 		if err != nil {
 			common.LogError("Couldn't get held messages: " + err.Error())
 			common.AlarmCheckDown("mysql_held", "Couldn't get held messages from database message_db: "+err.Error(), false, "", "")
-		} else {
-			common.AlarmCheckUp("mysql_held", "Can get Held messages count again", false)
+			MySQLDisconnect(dbTemp)
+			continue
 		}
+		common.AlarmCheckUp("mysql_held", "Can get Held messages count again", false)
 
 		var count int
 		for dbMessageHeld.Next() {
 			count++
 		}
+		dbMessageHeld.Close()
 
-		if count < MailHealthConfig.Postal.Held_Threshold {
-			common.PrettyPrintStr("Held messages for "+name+" ("+variable+")", true, fmt.Sprintf("%d", count))
+		servers[variable] = ServerHeldMessages{
+			ServerName: name,
+			ServerID:   id,
+			Count:      count,
+			IsHealthy:  count < MailHealthConfig.Postal.Held_Threshold,
+		}
 
-			common.AlarmCheckUp("mysql_held_"+variable, "Held messages for "+name+" is below threshold", false)
-		} else {
-			common.PrettyPrintStr("Held messages for "+name+" ("+variable+")", true, fmt.Sprintf("%d", count))
-			common.AlarmCheckDown("mysql_held_"+variable, "Held messages for "+name+" is above threshold", false, "", "")
+		if !skipOutput {
+			if count < MailHealthConfig.Postal.Held_Threshold {
+				common.AlarmCheckUp("mysql_held_"+variable, "Held messages for "+name+" is below threshold", false)
+			} else {
+				common.AlarmCheckDown("mysql_held_"+variable, "Held messages for "+name+" is above threshold", false, "", "")
+			}
 		}
 
 		MySQLDisconnect(dbTemp)
 	}
+
+	return servers
 }
