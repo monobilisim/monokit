@@ -17,6 +17,7 @@ import (
 var rdb *redis.Client
 var ctx context.Context
 var RedisMaster bool
+var healthData *RedisHealthData
 
 func DetectRedis() bool {
 	// Check if Redis service is running
@@ -67,11 +68,11 @@ func RedisInit() {
 
 	if ping != "PONG" || pingerr != nil {
 		common.LogError("Error while trying to ping Redis: " + pingerr.Error() + "\n" + "Tried ports: " + fmt.Sprint(common.ConnsByProc("redis-server")) + " and " + RedisHealthConfig.Port)
-		common.PrettyPrintStr("Redis", false, "pingable")
 		common.AlarmCheckDown("redis_ping", "Trying to ping Redis failed", false, "", "")
+		healthData.Connection.Pingable = false
 	} else {
-		common.PrettyPrintStr("Redis", true, "pingable")
 		common.AlarmCheckUp("redis_ping", "Redis is pingable again", false)
+		healthData.Connection.Pingable = true
 	}
 }
 
@@ -171,11 +172,9 @@ func RedisIsMaster() bool {
 	}
 
 	if scanner.Text() == "role:master" {
-		common.PrettyPrintStr("Role", true, "master")
 		redisAlarmRoleChange(true)
 		return true
 	} else if scanner.Text() == "role:slave" {
-		common.PrettyPrintStr("Role", true, "slave")
 		redisAlarmRoleChange(false)
 		return false
 	}
@@ -211,41 +210,43 @@ func RedisReadWriteTest(isSentinel bool) {
 			// Check if its master
 			if RedisMaster {
 				common.LogError("Can't Write to Redis (sentinel): " + err.Error())
-				common.PrettyPrintStr("Redis", false, "writeable")
 				common.AlarmCheckDown("redis_write", "Trying to write a string to Redis failed", false, "", "")
+				healthData.Connection.Writeable = false
 				return
 			} else {
 				// It is a worker node, so we can't write to it
+				healthData.Connection.Writeable = false
 				return
 			}
 		} else {
 			common.LogError("Can't Write to Redis: " + err.Error())
-			common.PrettyPrintStr("Redis", false, "writeable")
 			common.AlarmCheckDown("redis_write", "Trying to write a string to Redis failed", false, "", "")
+			healthData.Connection.Writeable = false
 			return
 		}
 	} else {
-		common.PrettyPrintStr("Redis", true, "writeable")
 		common.AlarmCheckUp("redis_write", "Redis is writeable again", false)
+		healthData.Connection.Writeable = true
 	}
 
 	val, err := rdb.Get(ctx, "redisHealth_foo").Result()
 
 	if err != nil {
 		common.LogError("Can't Read what is written to Redis: " + err.Error())
-		common.PrettyPrintStr("Redis", false, "readable")
 		common.AlarmCheckDown("redis_read", "Trying to read string from Redis failed", false, "", "")
+		healthData.Connection.Readable = false
 		return
 	} else {
 		common.AlarmCheckUp("redis_read", "Successfully read string from Redis", false)
+		healthData.Connection.Readable = true
 	}
 
 	if val != "bar" {
-		common.PrettyPrintStr("Redis", false, "readable")
 		common.AlarmCheckDown("redis_read_value", "The string that is read from Redis doesn't match the expected value", false, "", "")
+		healthData.Connection.Readable = false
 	} else {
-		common.PrettyPrintStr("Redis", true, "readable")
 		common.AlarmCheckUp("redis_read_value", "The Redis value now matches with the expected value", false)
+		healthData.Connection.Readable = true
 	}
 }
 
