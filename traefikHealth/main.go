@@ -53,8 +53,9 @@ type TraefikHealth struct {
 }
 
 var TraefikHealthConfig TraefikHealth
+var healthData *TraefikHealthData
 
-func LogChecker(file string, lastRunStr string, currentTimeStr string, typesToCheck []string) {
+func checkLogs(file string, lastRunStr string, currentTimeStr string, typesToCheck []string) {
 	// Get logs between last run and now using ioutil and json.Unmarshal
 	// Read file
 	logs, err := os.Open(file)
@@ -62,6 +63,7 @@ func LogChecker(file string, lastRunStr string, currentTimeStr string, typesToCh
 		common.LogError("Error reading file: " + err.Error())
 		return
 	}
+	defer logs.Close()
 
 	// Read logs
 	logsScanner := bufio.NewScanner(logs)
@@ -89,60 +91,162 @@ func LogChecker(file string, lastRunStr string, currentTimeStr string, typesToCh
 			continue
 		}
 
-		// Check if log is between lastRun and currentTime
-		// If so, parse JSON and check for error or warning
-
 		// Parse JSON
 		var logJSON map[string]interface{}
-
 		err := json.Unmarshal([]byte(log), &logJSON)
-
 		if err != nil {
-			fmt.Println(log)
 			common.LogError("Error parsing JSON: " + err.Error())
 			continue
 		}
 
+		// Check if time field exists
+		timeValue, exists := logJSON["time"]
+		if !exists || timeValue == nil {
+			common.LogError("Log entry missing 'time' field")
+			continue
+		}
+
+		// Check if time field is a string
+		timeStr, ok := timeValue.(string)
+		if !ok {
+			common.LogError("Log 'time' field is not a string")
+			continue
+		}
+
 		// Check if log is between lastRun and currentTime
-		logTime, err := time.Parse("2006-01-02T15:04:05-07:00", logJSON["time"].(string))
+		logTime, err := time.Parse("2006-01-02T15:04:05-07:00", timeStr)
 		if err != nil {
 			common.LogError("Error parsing log time: " + err.Error())
 			continue
 		}
 
 		for _, typeToCheck := range typesToCheck {
+			levelValue, levelExists := logJSON["level"]
+			if !levelExists || levelValue == nil {
+				continue
+			}
+
+			level, ok := levelValue.(string)
+			if !ok || level != typeToCheck {
+				continue
+			}
+
 			if logTime.After(lastRun) && logTime.Before(currentTime) {
-				// Check for error or warning
-				if logJSON["level"] == typeToCheck {
-					common.PrettyPrintStr(logJSON["time"].(string), true, "a/an "+typeToCheck)
+				// Create a log entry
+				entry := LogEntry{
+					Time:  timeStr,
+					Level: level,
+				}
 
-					extraMsg := ""
-
-					if logJSON["error"] != nil {
-						extraMsg = ", with error message: " + strings.Replace(logJSON["error"].(string), "\"", "'", -1)
+				// Check if message exists and is not empty
+				hasValidMessage := false
+				if messageValue, exists := logJSON["message"]; exists && messageValue != nil {
+					if messageStr, ok := messageValue.(string); ok && messageStr != "" {
+						entry.Message = messageStr
+						hasValidMessage = true
+					} else {
+						entry.Message = "Unknown message"
 					}
+				} else {
+					entry.Message = "No message"
+				}
 
-					if logJSON["providerName"] != nil {
-						extraMsg = extraMsg + " and with provider name: " + strings.Replace(logJSON["providerName"].(string), "\"", "'", -1)
+				// Skip entries without meaningful messages
+				if !hasValidMessage {
+					continue
+				}
+
+				// Add error message if it exists
+				if errorValue, exists := logJSON["error"]; exists && errorValue != nil {
+					if errorStr, ok := errorValue.(string); ok {
+						entry.Error = errorStr
 					}
+				}
 
-					if logJSON["domains"] != nil {
-						extraMsg = extraMsg + " and with domains: " + strings.Replace(logJSON["domains"].(string), "\"", "\"", -1)
+				// Add provider name if it exists
+				if providerValue, exists := logJSON["providerName"]; exists && providerValue != nil {
+					if providerStr, ok := providerValue.(string); ok {
+						entry.Provider = providerStr
 					}
+				}
 
-					common.Alarm("[ "+common.ScriptName+" - "+common.Config.Identifier+" ] [:red_circle:] Traefik has had a/an "+typeToCheck+" with message: "+strings.Replace(logJSON["message"].(string), "\"", "'", -1)+extraMsg+" at "+logJSON["time"].(string), "", "", false)
+				// Add domains if they exist
+				if domainsValue, exists := logJSON["domains"]; exists && domainsValue != nil {
+					if domainsStr, ok := domainsValue.(string); ok {
+						entry.Domains = domainsStr
+					}
+				}
+
+				// Add to appropriate list and update health data
+				extraMsg := ""
+				if entry.Error != "" {
+					extraMsg = ", with error message: " + strings.Replace(entry.Error, "\"", "'", -1)
+				}
+				if entry.Provider != "" {
+					extraMsg = extraMsg + " and with provider name: " + strings.Replace(entry.Provider, "\"", "'", -1)
+				}
+				if entry.Domains != "" {
+					extraMsg = extraMsg + " and with domains: " + strings.Replace(entry.Domains, "\"", "\"", -1)
+				}
+
+				// Send alarm
+				common.Alarm("[ "+common.ScriptName+" - "+common.Config.Identifier+" ] [:red_circle:] Traefik has had a/an "+typeToCheck+" with message: "+strings.Replace(entry.Message, "\"", "'", -1)+extraMsg+" at "+entry.Time, "", "", false)
+
+				// Store in appropriate list
+				if typeToCheck == "error" {
+					healthData.Logs.Errors = append(healthData.Logs.Errors, entry)
+					healthData.IsHealthy = false
+					healthData.Logs.HasIssues = true
+				} else if typeToCheck == "warning" {
+					healthData.Logs.Warnings = append(healthData.Logs.Warnings, entry)
+					healthData.Logs.HasIssues = true
 				}
 			}
 		}
 	}
 }
 
+func checkService() {
+	serviceActive := common.SystemdUnitActive("traefik.service")
+	healthData.Service.Active = serviceActive
+
+	if !serviceActive {
+		common.AlarmCheckDown("traefik_svc", "Service traefik is not active", false, "", "")
+		healthData.IsHealthy = false
+	} else {
+		common.AlarmCheckUp("traefik_svc", "Service traefik is now active", false)
+	}
+}
+
+func checkPorts() {
+	ports := common.ConnsByProcMulti("traefik")
+	healthData.Ports.AllPortsOK = true
+
+	for _, port := range TraefikHealthConfig.Ports_To_Check {
+		portOpen := common.ContainsUint32(port, ports)
+		healthData.Ports.PortStatus[port] = portOpen
+
+		if portOpen {
+			common.AlarmCheckUp("traefik_port_"+fmt.Sprint(port), "Port "+fmt.Sprint(port)+" is open", false)
+		} else {
+			common.AlarmCheckDown("traefik_port_"+fmt.Sprint(port), "Port "+fmt.Sprint(port)+" is closed", false, "", "")
+			healthData.Ports.AllPortsOK = false
+			healthData.IsHealthy = false
+		}
+	}
+}
+
 func Main(cmd *cobra.Command, args []string) {
-	version := "0.1.0"
+	version := "0.2.0" // Updated version number
 	common.ScriptName = "traefikHealth"
 	common.TmpDir = common.TmpDir + "traefikHealth"
 	common.Init()
 
+	// Initialize health data
+	healthData = NewTraefikHealthData()
+	healthData.Version = version
+
+	// Initialize config
 	if common.ConfExists("traefik") {
 		common.ConfInit("traefik", &TraefikHealthConfig)
 	}
@@ -157,55 +261,33 @@ func Main(cmd *cobra.Command, args []string) {
 
 	api.WrapperGetServiceStatus("traefikHealth")
 
-	fmt.Println("Traefik Health - v" + version + " - " + time.Now().Format("2006-01-02 15:04:05"))
+	// Check service status
+	checkService()
 
-	common.SplitSection("Service")
-
-	if !common.SystemdUnitActive("traefik.service") {
-		common.PrettyPrintStr("Service traefik", false, "active")
-		common.AlarmCheckDown("traefik_svc", "Service traefik is not active", false, "", "")
-	} else {
-		common.PrettyPrintStr("Service traefik", true, "active")
-		common.AlarmCheckUp("traefik_svc", "Service traefik is now active", false)
-	}
-
-	common.SplitSection("Ports")
-
-	ports := common.ConnsByProcMulti("traefik")
-
-	for _, port := range TraefikHealthConfig.Ports_To_Check {
-		if common.ContainsUint32(port, ports) {
-			common.PrettyPrintStr("Port "+fmt.Sprint(port), true, "open")
-			common.AlarmCheckUp("traefik_port_"+fmt.Sprint(port), "Port "+fmt.Sprint(port)+" is open", false)
-		} else {
-			common.PrettyPrintStr("Port "+fmt.Sprint(port), false, "closed")
-			common.AlarmCheckDown("traefik_port_"+fmt.Sprint(port), "Port "+fmt.Sprint(port)+" is closed", false, "", "")
-		}
-	}
+	// Check port status
+	checkPorts()
 
 	// Format current time for logcheck
 	currentTime := time.Now().Format("2006-01-02T15:04:05-07:00")
-
-	common.SplitSection("Logcheck")
-
-	// We need to check /var/log/traefik/traefik.log for JSON that came between last run and now
+	healthData.Logs.LastChecked = currentTime
 
 	// Check if last run time file exists
 	if _, err := os.Stat(common.TmpDir + "/lastRun"); os.IsNotExist(err) {
 		common.WriteToFile(common.TmpDir+"/lastRun", currentTime)
-		return
+	} else {
+		// Read last run time from TmpDir + "/lastRun"
+		lastRun, err := ioutil.ReadFile(common.TmpDir + "/lastRun")
+		if err != nil {
+			common.LogError("Error reading last run time: " + err.Error())
+		} else {
+			// Get logs between last run and now
+			checkLogs("/var/log/traefik/traefik.json", string(lastRun), currentTime, TraefikHealthConfig.Types_To_Check)
+		}
 	}
-
-	// Read last run time from TmpDir + "/lastRun"
-	lastRun, err := ioutil.ReadFile(common.TmpDir + "/lastRun")
-	if err != nil {
-		common.LogError("Error reading last run time: " + err.Error())
-		return
-	}
-
-	// Get logs between last run and now using ioutil and json.Unmarshal
-	LogChecker("/var/log/traefik/traefik.json", string(lastRun), currentTime, TraefikHealthConfig.Types_To_Check)
 
 	// Write currentTime to TmpDir + "/lastRun"
 	common.WriteToFile(common.TmpDir+"/lastRun", currentTime)
+
+	// Render the health data
+	fmt.Println(healthData.RenderAll())
 }
