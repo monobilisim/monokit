@@ -42,3 +42,14 @@ sudo apt-get install -y erlang-base \
 
 ## Install rabbitmq-server and its dependencies
 sudo apt-get install rabbitmq-server -y --fix-missing
+
+## Create enabled_plugins file and enable management plugin
+sudo mkdir -p /etc/rabbitmq
+echo '[rabbitmq_management].' | sudo tee /etc/rabbitmq/enabled_plugins
+
+## Start and enable RabbitMQ service
+sudo systemctl enable rabbitmq-server
+sudo systemctl start rabbitmq-server
+
+## Wait for RabbitMQ to be fully started
+sleep 10
