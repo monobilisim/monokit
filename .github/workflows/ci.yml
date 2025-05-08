@@ -5,7 +5,12 @@ permissions:
 
 on:
   push:
-  ci:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@main
