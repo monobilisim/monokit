@@ -59,72 +59,87 @@ var Config struct {
 }
 
 var rabbitmqClient *rabbithole.Client
+var healthData *RmqHealthData
 
-func newRabbitMQClient() {
+func checkRabbitMQClient() {
 	var err error
 	rabbitmqClient, err = rabbithole.NewClient("http://localhost:15672", Config.User, Config.Password)
 	if err != nil {
-		common.PrettyPrintStr("Management API", false, "reachable")
 		common.AlarmCheckDown("rabbitmq_management_api", "Failed to create RabbitMQ client; \n```"+err.Error()+"\n```", false, "", "")
+		healthData.API.Connected = false
 	} else {
-		common.PrettyPrintStr("Management API", true, "reachable")
 		common.AlarmCheckUp("rabbitmq_management_api", "RabbitMQ management API is now reachable", false)
+		healthData.API.Connected = true
 	}
 }
 
-func overviewCheck() {
+func checkOverview() {
 	_, err := rabbitmqClient.Overview()
 	if err != nil {
-		common.PrettyPrintStr("Overview", false, "reachable")
 		common.AlarmCheckDown("rabbitmq_overview", "Failed to get RabbitMQ overview; \n```"+err.Error()+"\n```", false, "", "")
+		healthData.API.OverviewOK = false
 	} else {
-		common.PrettyPrintStr("Overview", true, "reachable")
 		common.AlarmCheckUp("rabbitmq_overview", "RabbitMQ overview is now reachable", false)
+		healthData.API.OverviewOK = true
 	}
 }
 
-func serviceCheck() {
-	common.SplitSection("Service")
+func checkService() {
+	serviceActive := common.SystemdUnitActive("rabbitmq-server.service")
+	healthData.Service.Active = serviceActive
 
-	if common.SystemdUnitActive("rabbitmq-server.service") == false {
-		common.PrettyPrintStr("rabbitmq-server", false, "active")
+	if !serviceActive {
 		common.AlarmCheckDown("rabbitmq_server", "Service rabbitmq-server is not active", false, "", "")
+		healthData.IsHealthy = false
 	} else {
-		common.PrettyPrintStr("rabbitmq-server", true, "active")
 		common.AlarmCheckUp("rabbitmq_server", "Service rabbitmq-server is now active", false)
 	}
 }
 
-func clusterCheck() {
-	common.SplitSection("Cluster")
-
+func checkCluster() {
 	nodeList, err := rabbitmqClient.ListNodes()
 
 	if err != nil {
-		common.PrettyPrintStr("Node list", false, "reachable")
 		common.AlarmCheckDown("rabbitmq_nodelist", "Failed to get RabbitMQ cluster node list; \n```"+err.Error()+"\n```", false, "", "")
+		healthData.IsHealthy = false
+		return
 	} else {
-		common.PrettyPrintStr("Node list", true, "reachable")
 		common.AlarmCheckUp("rabbitmq_nodelist", "RabbitMQ cluster node list is now reachable", false)
 	}
 
+	// Reset the cluster nodes
+	healthData.Cluster.Nodes = []NodeInfo{}
+	allNodesHealthy := true
+
 	for _, node := range nodeList {
+		nodeInfo := NodeInfo{
+			Name:      node.Name,
+			IsRunning: node.IsRunning,
+		}
+
+		healthData.Cluster.Nodes = append(healthData.Cluster.Nodes, nodeInfo)
+
 		if node.IsRunning {
-			common.PrettyPrintStr("Node "+node.Name, true, "active")
 			common.AlarmCheckUp("rabbitmq_node_"+node.Name, "Node "+node.Name+" is now active", false)
 		} else {
-			common.PrettyPrintStr("Node "+node.Name, false, "active")
 			common.AlarmCheckDown("rabbitmq_node_"+node.Name, "Node "+node.Name+" is not active", false, "", "")
+			allNodesHealthy = false
 		}
+	}
+
+	healthData.Cluster.IsHealthy = allNodesHealthy
+	if !allNodesHealthy {
+		healthData.IsHealthy = false
 	}
 }
 
 func Main(cmd *cobra.Command, args []string) {
-	version := "0.1.0"
+	version := "0.2.0" // Updated version number
 	common.ScriptName = "rmqHealth"
 	common.TmpDir = common.TmpDir + "rmqHealth"
 	common.Init()
 
+	// Initialize config
 	if common.ConfExists("rabbitmq") {
 		common.ConfInit("rabbitmq", &Config)
 	}
@@ -137,58 +152,83 @@ func Main(cmd *cobra.Command, args []string) {
 		Config.Password = "guest"
 	}
 
-	fmt.Println("RabbitMQ Health - v" + version + " - " + time.Now().Format("2006-01-02 15:04:05"))
+	// Initialize health data
+	healthData = NewRmqHealthData()
+	healthData.Version = version
+
 	api.WrapperGetServiceStatus("rmqHealth")
 
-	serviceCheck()
+	// Check service status
+	checkService()
 
-	common.SplitSection("Sanity checks")
-	checkPort("5672")
+	// Check ports
+	checkPort("5672", true) // AMQP port
+
+	// Check management plugin and port
 	checkEnabledPlugins()
-	newRabbitMQClient()
 
-	common.SplitSection("API")
-	overviewCheck()
-	clusterCheck()
+	// Check management API if plugin is enabled
+	if healthData.Management.Enabled {
+		checkRabbitMQClient()
 
+		// Only check API functionality if we successfully connected
+		if healthData.API.Connected {
+			checkOverview()
+			checkCluster()
+		}
+	}
+
+	// Render the health data
+	fmt.Println(healthData.RenderAll())
 }
 
-func checkPort(port string) {
+func checkPort(port string, isAMQP bool) {
 	conn, err := net.DialTimeout("tcp", net.JoinHostPort("localhost", port), 5*time.Second)
+	portOpen := err == nil
+
 	if err != nil {
-		common.PrettyPrintStr("Port "+port, false, "active")
 		common.AlarmCheckDown("rabbitmq_port_"+port, "Port "+port+" is not active", false, "", "")
-		return
+		healthData.IsHealthy = false
+	} else {
+		_ = conn.Close()
+		common.AlarmCheckUp("rabbitmq_port_"+port, "Port "+port+" is now active", false)
 	}
-	_ = conn.Close()
-	common.PrettyPrintStr("Port "+port, true, "active")
-	common.AlarmCheckUp("rabbitmq_port_"+port, "Port "+port+" is now active", false)
+
+	// Update the appropriate port status
+	if isAMQP {
+		healthData.Ports.AMQP = portOpen
+	} else if port == "15672" {
+		healthData.Ports.Management = portOpen
+	} else {
+		healthData.Ports.OtherPorts[port] = portOpen
+	}
 }
 
 func checkEnabledPlugins() {
-	common.SplitSection("Management")
-
 	filePath := "/etc/rabbitmq/enabled_plugins"
 	searchString := "[rabbitmq_management]."
 
 	content, err := os.ReadFile(filePath)
 	if err != nil {
-		fmt.Printf("Failed to read file %s: %v", filePath, err)
+		common.LogError(fmt.Sprintf("Failed to read file %s: %v", filePath, err))
+		healthData.Management.Enabled = false
+		healthData.IsHealthy = false
 		return
 	}
 
 	fileContent := string(content)
-
 	found := strings.Contains(fileContent, searchString)
+	healthData.Management.Enabled = found
 
 	if found {
-		message := fmt.Sprintf("Found '%s' in file %s\n", searchString, filePath)
-		common.PrettyPrintStr("Management", true, "active")
+		message := fmt.Sprintf("Found '%s' in file %s", searchString, filePath)
 		common.AlarmCheckUp("rabbitmq_management", message, false)
-		checkPort("15672")
+		// Check management port
+		checkPort("15672", false)
+		healthData.Management.Active = healthData.Ports.Management
 	} else {
-		message := fmt.Sprintf("Did not find '%s' in file %s\n", searchString, filePath)
-		common.PrettyPrintStr("Management", false, "active")
+		message := fmt.Sprintf("Did not find '%s' in file %s", searchString, filePath)
 		common.AlarmCheckDown("rabbitmq_management", message, false, "", "")
+		healthData.IsHealthy = false
 	}
 }
