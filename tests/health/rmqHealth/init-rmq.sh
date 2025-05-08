@@ -49,7 +49,19 @@ echo '[rabbitmq_management].' | sudo tee /etc/rabbitmq/enabled_plugins
 
 ## Start and enable RabbitMQ service
 sudo systemctl enable rabbitmq-server
+sudo systemctl stop rabbitmq-server || true
 sudo systemctl start rabbitmq-server
 
 ## Wait for RabbitMQ to be fully started
 sleep 10
+
+## Enable management plugin
+sudo rabbitmq-plugins enable rabbitmq_management
+
+## Create default user if it doesn't exist
+sudo rabbitmqctl add_user guest guest || true
+sudo rabbitmqctl set_user_tags guest administrator || true
+sudo rabbitmqctl set_permissions -p / guest ".*" ".*" ".*" || true
+
+## Wait for management plugin to be ready
+sleep 5
