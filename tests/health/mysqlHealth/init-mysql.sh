@@ -10,10 +10,8 @@ sudo apt install -y mysql-server
 echo "Starting MySQL service..."
 sudo systemctl start mysql
 
-# Secure the MySQL installation
-echo "Securing MySQL installation..."
-# Set root password to 'test_password'
-sudo mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY 'test_password';"
+# On Ubuntu, MySQL is typically set up to use auth_socket plugin for root
+# We need to use sudo to run MySQL commands as the system root user
 
 # Create test database and user
 echo "Setting up test database and user..."
