@@ -17,8 +17,11 @@ check_grep() {
     fi
 }
 
-check_grep "Master Nodes Ready.*less than"
-check_grep "Ingress Nginx Config.*not available"
-check_grep "the server could not find the requested resource"
-check_grep "Kube-VIP.*not available"
-check_grep "Cluster API Certificate.*not available"
+check_grep "Master Nodes Ready.*less than 1"
+check_grep "Worker Nodes Ready.*more than 0"
+check_grep "Manifest Dir.*is Not Found"
+check_grep "Cert-Manager Check.*is Error"
+check_grep "cert-manager namespace not found"
+check_grep "Kube-VIP Pods.*is Not Detected"
+check_grep "API Certificate Check is Error"
+check_grep "Cluster API server certificate file not found"
