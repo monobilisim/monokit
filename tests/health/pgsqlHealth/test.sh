@@ -5,7 +5,7 @@ sudo mkdir -p /etc/mono
 sudo touch /etc/mono/pgsql.yaml
 export MONOKIT_NOCOLOR=1
 
-./bin/monokit pgsqlHealth > out.log
+su postgres -c  "./bin/monokit pgsqlHealth > out.log"
 
 # Function to check grep and show output on failure
 check_grep() {
