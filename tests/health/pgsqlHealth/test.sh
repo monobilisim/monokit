@@ -1,17 +1,25 @@
 #!/bin/sh
 set -e
 
-
 sudo mkdir -p /etc/mono
-sudo cp ./config/db.yml /etc/mono/db.yml
+sudo touch /etc/mono/pgsql.yaml
+export MONOKIT_NOCOLOR=1
 
-sudo -u postgres /bin/sh -c "MONOKIT_NOCOLOR=1 ./bin/monokit pgsqlHealth" > out.log
+./bin/monokit pgsqlHealth > out.log
 
-echo "=== Output ==="
-cat out.log
-echo "=== End of Output ==="
+# Function to check grep and show output on failure
+check_grep() {
+    if ! cat out.log | grep "$1" > /dev/null; then
+        echo "Failed to find: $1"
+        echo "Full output:"
+        cat out.log
+        exit 1
+    fi
+}
 
-grep -q "PostgreSQL is accessible" out.log
-grep -q "PostgreSQL uptime is 0d" out.log
-grep -q "Number of active connections is 6/100" out.log
-grep -q "Number of running queries is 1/25" out.log
+check_grep "Connection.*is Connected"
+check_grep "Active Connections.*within limit"
+check_grep "PostgreSQL Version.*is.*"
+check_grep "Updates.*is Up-to-date"
+check_grep "Running Queries.*within limit"
+check_grep "Long Running Queries.*is None"
