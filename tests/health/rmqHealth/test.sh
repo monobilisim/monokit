@@ -17,4 +17,4 @@ check_grep() {
 check_grep "RabbitMQ Service.*active"
 check_grep "AMQP Port (5672).*open"
 check_grep "Overview API.*reachable"
-check_grep "RabbitMQ cluster node list is now reachable"
+check_grep "Node.*is running"
