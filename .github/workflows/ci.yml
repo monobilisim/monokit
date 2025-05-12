@@ -148,6 +148,20 @@ jobs:
             exit 1
           fi
 
+      - name: health/mysqlHealth/init-mysql.sh
+        run: |
+          if ! sudo bash -xe tests/health/mysqlHealth/init-mysql.sh; then
+            cat /var/log/monokit.log
+            exit 1
+          fi
+
+      - name: health/mysqlHealth/test.sh
+        run: |
+          if ! sudo bash -xe tests/health/mysqlHealth/test.sh; then
+            cat /var/log/monokit.log
+            exit 1
+          fi
+
       - name: api/init.sh
         run: |
           if ! sudo bash -xe tests/api/init.sh; then
