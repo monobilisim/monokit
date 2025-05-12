@@ -1,65 +1,65 @@
 package sshNotifier
 
 import (
-    "os"
-    "time"
-	"io/fs"
-    "bufio"
+	"bufio"
 	"bytes"
-	"slices"
-	"os/exec"
-	"strconv"
-    "strings"
-	"net/http"
-	"io/ioutil"
-	"path/filepath"
 	"encoding/json"
-    "github.com/spf13/cobra"
-    "github.com/spf13/viper"
-    "github.com/monobilisim/monokit/common"
+	"io/fs"
+	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"slices"
+	"strconv"
+	"strings"
+	"time"
+
+	"github.com/monobilisim/monokit/common"
+	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 )
 
 var SSHNotifierConfig struct {
-    Exclude struct {
+	Exclude struct {
 		Domains []string
-    	IPs []string
-    	Users []string
+		IPs     []string
+		Users   []string
 	}
 
-    Server struct {
-        Os_Type string
-        Address string
-    }
+	Server struct {
+		Os_Type string
+		Address string
+	}
 
-    Ssh_Post_Url string
-    Ssh_Post_Url_Backup string
+	Ssh_Post_Url        string
+	Ssh_Post_Url_Backup string
 
-    Webhook struct {
-        Modify_Stream bool
-        Stream string
-    }
+	Webhook struct {
+		Modify_Stream bool
+		Stream        string
+	}
 }
 
 type LoginInfoOutput struct {
-    Username string `json:"username"`
-    Fingerprint string `json:"fingerprint"`
-    Server string `json:"server"`
-    RemoteIp string `json:"remote_ip"`
-    Date string `json:"date"`
-    Type string `json:"type"`
-    LoginMethod string `json:"login_method"`
-	Ppid string `json:"ppid"`
-	PamUser string `json:"pam_user"`
+	Username    string `json:"username"`
+	Fingerprint string `json:"fingerprint"`
+	Server      string `json:"server"`
+	RemoteIp    string `json:"remote_ip"`
+	Date        string `json:"date"`
+	Type        string `json:"type"`
+	LoginMethod string `json:"login_method"`
+	Ppid        string `json:"ppid"`
+	PamUser     string `json:"pam_user"`
 }
 
 type DatabaseRequest struct {
-	Ppid string `json:"PPID"`
-	LinuxUser string `json:"linux_user"`
-	Type string `json:"type"`
-	KeyComment string `json:"key_comment"`
-	Host string `json:"host"`
+	Ppid          string `json:"PPID"`
+	LinuxUser     string `json:"linux_user"`
+	Type          string `json:"type"`
+	KeyComment    string `json:"key_comment"`
+	Host          string `json:"host"`
 	ConnectedFrom string `json:"connected_from"`
-	LoginType string `json:"login_type"`
+	LoginType     string `json:"login_type"`
 }
 
 func Grep(pattern string, contents string) string {
@@ -73,129 +73,135 @@ func Grep(pattern string, contents string) string {
 }
 
 func GetLoginInfo(customType string) LoginInfoOutput {
-    var logFile string
+	common.LogDebug("Getting login info with custom type: " + customType)
+	var logFile string
 	var loginMethod string
-    var keyword string
-    var fingerprint string
-    var ppid string
-    var authorizedKeys string
+	var keyword string
+	var fingerprint string
+	var ppid string
+	var authorizedKeys string
 	var username string
 
-    ppid = strconv.Itoa(os.Getppid())
+	ppid = strconv.Itoa(os.Getppid())
+	common.LogDebug("PPID: " + ppid)
 
-    // Check if /var/log/secure exists
-    if _, err := os.Stat("/var/log/secure"); os.IsNotExist(err) {
-        logFile = "/var/log/auth.log"
-    } else {
-        logFile = "/var/log/secure"
-    }
+	// Check if /var/log/secure exists
+	if _, err := os.Stat("/var/log/secure"); os.IsNotExist(err) {
+		logFile = "/var/log/auth.log"
+		common.LogDebug("Using auth.log as log file")
+	} else {
+		logFile = "/var/log/secure"
+		common.LogDebug("Using secure as log file")
+	}
 
-    if SSHNotifierConfig.Server.Os_Type == "RHEL6" {
-        keyword = "Found matching"
-    } else {
-        keyword = "Accepted publickey"
-    }
+	if SSHNotifierConfig.Server.Os_Type == "RHEL6" {
+		keyword = "Found matching"
+	} else {
+		keyword = "Accepted publickey"
+	}
+	common.LogDebug("Using keyword: " + keyword + " for OS type: " + SSHNotifierConfig.Server.Os_Type)
 
-    if _, err := os.Stat(logFile); os.IsNotExist(err) {
-        common.LogError("Logfile " + logFile + " does not exist, aborting.")
-        return LoginInfoOutput{}
-    }
+	if _, err := os.Stat(logFile); os.IsNotExist(err) {
+		common.LogError("Logfile " + logFile + " does not exist, aborting.")
+		return LoginInfoOutput{}
+	}
 
-    // Read the log file
-    file, err := ioutil.ReadFile(logFile)
-    if err != nil {
-        common.LogError("Error opening file: " + err.Error())
-        return LoginInfoOutput{}
-    }
+	// Read the log file
+	file, err := os.ReadFile(logFile)
+	if err != nil {
+		common.LogError("Error opening file: " + err.Error())
+		return LoginInfoOutput{}
+	}
 
 	fileArray := strings.Split(string(file), "\n")
 
-
-    for i := len(fileArray)-1; i >= 0; i-- {
-        // Check if the line contains the keyword
-        if strings.Contains(fileArray[i], keyword) {
-            // Check if the line contains the PPID
-            if strings.Contains(fileArray[i], ppid) {
-                // Get the fingerprint, split the line and get the last part
+	for i := len(fileArray) - 1; i >= 0; i-- {
+		// Check if the line contains the keyword
+		if strings.Contains(fileArray[i], keyword) {
+			// Check if the line contains the PPID
+			if strings.Contains(fileArray[i], ppid) {
+				// Get the fingerprint, split the line and get the last part
 				// buggy atm: todo fix
 				tmp := strings.Split(Grep(ppid, fileArray[i]), "\n")
 				tmp = strings.Split(tmp[len(tmp)-1], " ")
 				fingerprint = tmp[len(tmp)-1]
-                break
-            }
-        }
-    }
-    
-    pamUser := os.Getenv("PAM_USER")
+				break
+			}
+		}
+	}
 
-    if pamUser == "root" {
-        authorizedKeys = "/root/.ssh/authorized_keys"
-    } else {
-        authorizedKeys = "/home/" + pamUser + "/.ssh/authorized_keys"
-    }
+	pamUser := os.Getenv("PAM_USER")
+	common.LogDebug("PAM_USER: " + pamUser)
 
-    if _, err := os.Stat(authorizedKeys); err == nil {
-        if SSHNotifierConfig.Server.Os_Type == "RHEL6" {
+	if pamUser == "root" {
+		authorizedKeys = "/root/.ssh/authorized_keys"
+	} else {
+		authorizedKeys = "/home/" + pamUser + "/.ssh/authorized_keys"
+	}
+	common.LogDebug("Looking for authorized keys in: " + authorizedKeys)
+
+	if _, err := os.Stat(authorizedKeys); err == nil {
+		if SSHNotifierConfig.Server.Os_Type == "RHEL6" {
+			os.MkdirAll("/tmp/ssh_keys", 0755)
 			sshKeysCmdOut, _ := os.ReadFile(authorizedKeys)
 			sshKeys := strings.Split(string(sshKeysCmdOut), "\n")
-            
-            var comment string
+
+			var comment string
 
 			for _, key := range sshKeys {
-                comment_multi := strings.Split(key, " ")
-                
-                if len(comment_multi) >= 2 {
-                    comment = comment_multi[2]
-                } else {  
-                    comment = ""
-                }
+				comment_multi := strings.Split(key, " ")
+
+				if len(comment_multi) >= 2 {
+					comment = comment_multi[2]
+				} else {
+					comment = ""
+				}
 
 				if comment == "" {
 					comment = "empty_comment"
 				}
-				common.WriteToFile(key, "/tmp/ssh_keys/" + comment)
+				common.WriteToFile(key, "/tmp/ssh_keys/"+comment)
 			}
 
-
-			items, _ := ioutil.ReadDir("/tmp/ssh_keys")
-    		for _, item := range items {
+			items, _ := os.ReadDir("/tmp/ssh_keys")
+			for _, item := range items {
 				// Run ssh-keygen -lf on the key
-				keysOut, err := exec.Command("/usr/bin/ssh-keygen", "-lf", "/tmp/ssh_keys/" + item.Name()).Output()
-					
+				keysOut, err := exec.Command("/usr/bin/ssh-keygen", "-lf", "/tmp/ssh_keys/"+item.Name()).Output()
+
 				if err != nil {
 					common.LogError("Error getting keys: " + err.Error())
 					return LoginInfoOutput{}
 				}
 
-				if fingerprint != "" && strings.Contains(string(keysOut), fingerprint) { 
+				if fingerprint != "" && strings.Contains(string(keysOut), fingerprint) {
 					username = item.Name()
 					loginMethod = "ssh-key"
 					break
 				}
 			}
 
-            if username == "" {
-                username = pamUser
-            }
-			
+			if username == "" {
+				username = pamUser
+			}
+
 			// Remove directory
 			os.RemoveAll("/tmp/ssh_keys")
-        } else if SSHNotifierConfig.Server.Os_Type == "GENERIC" {
-            keysOut, err := exec.Command("/usr/bin/ssh-keygen", "-lf", authorizedKeys).Output()
-            if err != nil {
+		} else if SSHNotifierConfig.Server.Os_Type == "GENERIC" {
+			keysOut, err := exec.Command("/usr/bin/ssh-keygen", "-lf", authorizedKeys).Output()
+			if err != nil {
 				common.LogError("Error getting keys: " + err.Error())
-                return LoginInfoOutput{}
-            }
-            keysOutSplit := strings.Split(string(keysOut), "\n")
-            for _, key := range keysOutSplit {
-                if fingerprint != "" && strings.Contains(key, fingerprint) {
-                    username = strings.Split(key, " ")[2]
-                    loginMethod = "ssh-key"
-                    break
-                }
-            }
-        }
-    } else {
+				return LoginInfoOutput{}
+			}
+			keysOutSplit := strings.Split(string(keysOut), "\n")
+			for _, key := range keysOutSplit {
+				if fingerprint != "" && strings.Contains(key, fingerprint) {
+					username = strings.Split(key, " ")[2]
+					loginMethod = "ssh-key"
+					break
+				}
+			}
+		}
+	} else {
 		username = pamUser
 	}
 
@@ -210,7 +216,7 @@ func GetLoginInfo(customType string) LoginInfoOutput {
 		if strings.Contains(userTmp, "@") {
 			userTmp = strings.Split(userTmp, "@")[0]
 		}
-		
+
 		if userTmp == excludeUser {
 			return LoginInfoOutput{}
 		}
@@ -231,6 +237,7 @@ func GetLoginInfo(customType string) LoginInfoOutput {
 	if loginMethod == "" {
 		loginMethod = "password"
 	}
+	common.LogDebug("Login method determined as: " + loginMethod)
 
 	var pamType string
 	if customType != "" {
@@ -238,17 +245,18 @@ func GetLoginInfo(customType string) LoginInfoOutput {
 	} else {
 		pamType = os.Getenv("PAM_TYPE")
 	}
+	common.LogDebug("PAM type: " + pamType)
 
 	return LoginInfoOutput{
-		Username: username,
+		Username:    username,
 		Fingerprint: fingerprint,
-		Server: pamUser + "@" + common.Config.Identifier,
-		RemoteIp: os.Getenv("PAM_RHOST"),
-		Date: time.Now().Format("02.01.2006 15:04:05"),
-		Type: pamType,
+		Server:      pamUser + "@" + common.Config.Identifier,
+		RemoteIp:    os.Getenv("PAM_RHOST"),
+		Date:        time.Now().Format("02.01.2006 15:04:05"),
+		Type:        pamType,
 		LoginMethod: loginMethod,
-		Ppid: ppid,
-		PamUser: pamUser,
+		Ppid:        ppid,
+		PamUser:     pamUser,
 	}
 
 }
@@ -259,77 +267,91 @@ func listFiles(dir string) []string {
 		return []string{}
 	}
 
-    var files []string
+	var files []string
 
-    err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
-       if !d.IsDir() && (filepath.Ext(path) == ".log") {
-          files = append(files, path)
-       }
-       return nil
-    })
-    if err != nil {
+	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
+		if !d.IsDir() && (filepath.Ext(path) == ".log") {
+			files = append(files, path)
+		}
+		return nil
+	})
+	if err != nil {
 		common.LogError("Error walking the path: " + err.Error())
-    }
+	}
 
-    return files
+	return files
 }
 
 func PostToDb(postUrl string, dbReq DatabaseRequest) error {
+	common.LogDebug("Posting to database URL: " + postUrl)
 	// Marshal the struct to JSON
 	jsonReq, err := json.Marshal(dbReq)
 	if err != nil {
+		common.LogDebug("Error marshaling request: " + err.Error())
 		return err
 	}
 
 	req, err := http.NewRequest("POST", postUrl, bytes.NewBuffer(jsonReq))
-	if err != nil  {
+	if err != nil {
+		common.LogDebug("Error creating request: " + err.Error())
 		return err
 	}
 
 	req.Header.Set("Content-Type", "application/json")
-	
+
 	client := &http.Client{
 		Timeout: time.Second,
 	}
 	resp, err := client.Do(req)
 	if err != nil {
+		common.LogDebug("Error making request: " + err.Error())
 		return err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != 200 {
+		common.LogDebug("Received non-200 status code: " + strconv.Itoa(resp.StatusCode))
 		return err
 	}
 
+	common.LogDebug("Successfully posted to database")
 	return nil
 }
 
 func NotifyAndSave(loginInfo LoginInfoOutput) {
+	common.LogDebug("Starting notification and save process")
 	var message string
 
 	if loginInfo.Type == "open_session" {
 		message = "[ " + common.Config.Identifier + " ] " + "[ :green: Login ] { " + loginInfo.Username + "@" + loginInfo.RemoteIp + " } >> { " + SSHNotifierConfig.Server.Address + " - " + loginInfo.Ppid + " }"
+		common.LogDebug("Processing login event")
 	} else {
-		message = "[ " + common.Config.Identifier + " ] " + "[ :red_circle: Logout ] { " + loginInfo.Username + "@" + loginInfo.RemoteIp + " } << { " + SSHNotifierConfig.Server.Address + " - " + loginInfo.Ppid + " }"
+		message = "[ " + common.Config.Identifier + " ] " + "[ :red_circle: Logout ] { " + loginInfo.Username + "@" + loginInfo.RemoteIp + " } << { " + SSHNotifierConfig.Server.Address + " - " + loginInfo.Ppid + " }"
+		common.LogDebug("Processing logout event")
 	}
-	
+
 	if strings.Contains(loginInfo.Username, "@") {
 		loginInfo.Username = strings.Split(loginInfo.Username, "@")[0]
+		common.LogDebug("Cleaned username: " + loginInfo.Username)
 	}
 
 	fileList := slices.Concat(listFiles("/tmp/mono"), listFiles("/tmp/mono.sh"))
+	common.LogDebug("Found " + strconv.Itoa(len(fileList)) + " files in monitoring directories")
 
 	if len(fileList) == 0 {
-        if !SSHNotifierConfig.Webhook.Modify_Stream {
-            common.Alarm(message, "", "", false)
-        } else {
-		    common.Alarm(message, SSHNotifierConfig.Webhook.Stream, loginInfo.Username, true)
-        }
+		common.LogDebug("No files found, using webhook configuration")
+		if !SSHNotifierConfig.Webhook.Modify_Stream {
+			common.Alarm(message, "", "", false)
+		} else {
+			common.Alarm(message, SSHNotifierConfig.Webhook.Stream, loginInfo.Username, true)
+		}
 	} else {
+		common.LogDebug("Files found, sending standard alarm")
 		common.Alarm(message, "", "", false)
 	}
 
 	var dbReq DatabaseRequest
+	common.LogDebug("Preparing database request")
 
 	dbReq.Ppid = "'" + loginInfo.Ppid + "'"
 	dbReq.LinuxUser = "'" + loginInfo.PamUser + "'"
@@ -341,19 +363,23 @@ func NotifyAndSave(loginInfo LoginInfoOutput) {
 
 	err := PostToDb(SSHNotifierConfig.Ssh_Post_Url, dbReq)
 	if err != nil {
+		common.LogDebug("Primary database post failed, trying backup URL")
 		err = PostToDb(SSHNotifierConfig.Ssh_Post_Url_Backup, dbReq)
 		if err != nil {
 			common.LogError("Error posting to db: " + err.Error())
 		}
 	}
 }
-        
+
 func Main(cmd *cobra.Command, args []string) {
-    common.ScriptName = "sshNotifier"
-    common.Init()
-    viper.SetDefault("webhook.modify_stream", true)
-    viper.SetDefault("webhook.stream", "ssh")
-    common.ConfInit("ssh-notifier", &SSHNotifierConfig)
+	common.ScriptName = "sshNotifier"
+	common.Init()
+	common.LogDebug("Initializing SSH notifier")
+
+	viper.SetDefault("webhook.modify_stream", true)
+	viper.SetDefault("webhook.stream", "ssh")
+	common.ConfInit("ssh-notifier", &SSHNotifierConfig)
+	common.LogDebug("Configuration loaded")
 
 	var customType string
 	login, _ := cmd.Flags().GetBool("login")
@@ -361,11 +387,15 @@ func Main(cmd *cobra.Command, args []string) {
 
 	if login {
 		customType = "open_session"
+		common.LogDebug("Login event detected")
 	} else if logout {
 		customType = "close_session"
+		common.LogDebug("Logout event detected")
 	}
 
-    time.Sleep(1 * time.Second) // Wait for PAM to finish
+	common.LogDebug("Waiting for PAM to finish")
+	time.Sleep(1 * time.Second) // Wait for PAM to finish
 
 	NotifyAndSave(GetLoginInfo(customType))
+	common.LogDebug("SSH notifier process completed")
 }
