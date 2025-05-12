@@ -14,9 +14,9 @@ check_grep() {
     fi
 }
 
-check_grep "MySQL Service.*is active"
-check_grep "MySQL Connection.*is connected"
-check_grep "MySQL Writeable.*is writeable"
-check_grep "MySQL Readable.*is readable"
+check_grep "Connection.*is Connected"
+check_grep "Process Count.*within limit"
+check_grep "Waiting Processes.*within limit"
+check_grep "PMM Status.*is Inactive"
 
 echo "All MySQL health checks passed!" 
