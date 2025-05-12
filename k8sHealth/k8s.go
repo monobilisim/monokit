@@ -463,7 +463,7 @@ func CollectCertManagerHealth() (*CertManagerHealth, error) {
 		if strings.Contains(err.Error(), "not found") {
 			health.NamespaceAvailable = false
 			health.Error = "cert-manager namespace not found. Cert-manager might not be installed."
-			common.LogWarn(health.Error)
+			//common.LogWarn(health.Error)
 			// This is not necessarily a critical error for the whole k8s check,
 			// but cert-manager specific checks cannot proceed.
 			common.AlarmCheckDown("cert_manager_namespace", health.Error, false, "", "")
@@ -602,7 +602,7 @@ func CollectKubeVipHealth() (*KubeVipHealth, error) {
 			common.LogDebug("No Kube-VIP Floating IPs configured to check.")
 		}
 	} else {
-		common.LogInfo("Kube-VIP pods not detected in kube-system.")
+		common.LogDebug("Kube-VIP pods not detected in kube-system.")
 		common.AlarmCheckDown("kube_vip_pods", "Kube-VIP pods not detected in kube-system. This might be normal if Kube-VIP is not used.", false, "", "")
 	}
 	return health, nil // Return health, error primarily for client init or major issues

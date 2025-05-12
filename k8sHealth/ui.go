@@ -276,9 +276,13 @@ func (khd *K8sHealthData) RenderCompact() string {
 			sb.WriteString(common.SimpleStatusListItem("Kube-VIP Check", "Error", false))
 			sb.WriteString(fmt.Sprintf("\n    └─ Error: %s\n", khd.KubeVip.Error))
 		} else {
+			status := "Not Detected"
+			if khd.KubeVip.PodsAvailable {
+				status = "Detected"
+			}
 			sb.WriteString(common.SimpleStatusListItem(
 				"Kube-VIP Pods",
-				"Detected", // Value if PodsAvailable is true
+				status, // Value based on PodsAvailable
 				khd.KubeVip.PodsAvailable,
 			))
 			sb.WriteString("\n")
