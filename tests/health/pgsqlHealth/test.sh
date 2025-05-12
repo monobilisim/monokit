@@ -2,7 +2,7 @@
 set -e
 
 sudo mkdir -p /etc/mono
-sudo touch /etc/mono/pgsql.yaml
+sudo touch /etc/mono/db.yaml
 export MONOKIT_NOCOLOR=1
 
 su postgres -c "./bin/monokit pgsqlHealth" > out.log
