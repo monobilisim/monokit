@@ -10,11 +10,16 @@ sudo apt install -y mysql-server
 echo "Starting MySQL service..."
 sudo systemctl start mysql
 
+# Set root password
+echo "Setting root password..."
+sudo mysql -e "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY 'root';"
+
 # Create a MySQL config file in home directory
 echo "Creating MySQL configuration file..."
 cat > ~/.my.cnf << EOF
 [client]
 user=root
+password=root
 socket=/var/run/mysqld/mysqld.sock
 EOF
 
