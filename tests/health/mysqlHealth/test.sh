@@ -1,7 +1,8 @@
 #!/bin/sh
 set -e
 
-MONOKIT_NOCOLOR=1 ./bin/monokit mysqlHealth > out.log
+# Run MySQL health check as root
+sudo MONOKIT_NOCOLOR=1 ./bin/monokit mysqlHealth > out.log
 
 # Function to check grep and show output on failure
 check_grep() {
