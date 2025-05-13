@@ -3,7 +3,10 @@ package sshNotifier
 import (
 	"bufio"
 	"bytes"
+	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io/fs"
 	"net/http"
 	"os"
@@ -17,6 +20,7 @@ import (
 	"github.com/monobilisim/monokit/common"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+	"golang.org/x/crypto/ssh"
 )
 
 var SSHNotifierConfig struct {
@@ -46,7 +50,7 @@ type LoginInfoOutput struct {
 	Server      string `json:"server"`
 	RemoteIp    string `json:"remote_ip"`
 	Date        string `json:"date"`
-	Type        string `json:"type"`
+	EventType   string `json:"event_type"`
 	LoginMethod string `json:"login_method"`
 	Ppid        string `json:"ppid"`
 	PamUser     string `json:"pam_user"`
@@ -72,20 +76,33 @@ func Grep(pattern string, contents string) string {
 	return ""
 }
 
-func GetLoginInfo(customType string) LoginInfoOutput {
-	common.LogDebug("Getting login info with custom type: " + customType)
-	var logFile string
-	var loginMethod string
-	var keyword string
-	var fingerprint string
-	var ppid string
-	var authorizedKeys string
-	var username string
+func getSHA256Fingerprint(rawKey string) string {
+	// Parse the public key
+	pubKey, _, _, _, err := ssh.ParseAuthorizedKey([]byte(rawKey))
+	if err != nil {
+		common.LogError("Error parsing key: " + err.Error())
+		return ""
+	}
 
-	ppid = strconv.Itoa(os.Getppid())
-	common.LogDebug("PPID: " + ppid)
+	// Get the raw key bytes
+	keyBytes := pubKey.Marshal()
 
+	// Calculate SHA256 hash
+	hash := sha256.Sum256(keyBytes)
+
+	// Convert to base64
+	b64Hash := base64.StdEncoding.EncodeToString(hash[:])
+
+	// Remove padding characters
+	b64Hash = strings.TrimRight(b64Hash, "=")
+
+	// Format with SHA256: prefix
+	return "SHA256:" + b64Hash
+}
+
+func getFingerprintFromAuthLog(ppid string) string {
 	// Check if /var/log/secure exists
+	var logFile string
 	if _, err := os.Stat("/var/log/secure"); os.IsNotExist(err) {
 		logFile = "/var/log/auth.log"
 		common.LogDebug("Using auth.log as log file")
@@ -94,40 +111,96 @@ func GetLoginInfo(customType string) LoginInfoOutput {
 		common.LogDebug("Using secure as log file")
 	}
 
-	if SSHNotifierConfig.Server.Os_Type == "RHEL6" {
-		keyword = "Found matching"
-	} else {
-		keyword = "Accepted publickey"
-	}
-	common.LogDebug("Using keyword: " + keyword + " for OS type: " + SSHNotifierConfig.Server.Os_Type)
+	keyword := "Accepted publickey"
+	common.LogDebug("Using keyword: " + keyword)
 
 	if _, err := os.Stat(logFile); os.IsNotExist(err) {
 		common.LogError("Logfile " + logFile + " does not exist, aborting.")
-		return LoginInfoOutput{}
+		return ""
 	}
 
 	// Read the log file
 	file, err := os.ReadFile(logFile)
 	if err != nil {
 		common.LogError("Error opening file: " + err.Error())
-		return LoginInfoOutput{}
+		return ""
 	}
 
-	fileArray := strings.Split(string(file), "\n")
+	// Extract fingerprint from log file similar to: grep "$keyword" "$logfile" | grep $PPID | tail -n 1 | awk '{print $NF}'
+	lines := strings.Split(string(file), "\n")
+	var matchingLines []string
 
-	for i := len(fileArray) - 1; i >= 0; i-- {
-		// Check if the line contains the keyword
-		if strings.Contains(fileArray[i], keyword) {
-			// Check if the line contains the PPID
-			if strings.Contains(fileArray[i], ppid) {
-				// Get the fingerprint, split the line and get the last part
-				// buggy atm: todo fix
-				tmp := strings.Split(Grep(ppid, fileArray[i]), "\n")
-				tmp = strings.Split(tmp[len(tmp)-1], " ")
-				fingerprint = tmp[len(tmp)-1]
-				break
-			}
+	// Find lines containing both keyword and PPID
+	for _, line := range lines {
+		if strings.Contains(line, keyword) && strings.Contains(line, ppid) {
+			matchingLines = append(matchingLines, line)
 		}
+	}
+
+	// Get the last matching line if any found
+	if len(matchingLines) > 0 {
+		lastLine := matchingLines[len(matchingLines)-1]
+		// Extract the last field (equivalent to awk '{print $NF}')
+		fields := strings.Fields(lastLine)
+		if len(fields) > 0 {
+			fingerprint := fields[len(fields)-1]
+			common.LogDebug("Extracted fingerprint from log file: " + fingerprint)
+			return fingerprint
+		}
+	}
+
+	return ""
+}
+
+func GetLoginInfo(customType string) LoginInfoOutput {
+	var eventType string
+
+	// If no eventType provided, determine it from PAM_TYPE environment variable
+	if customType == "" {
+		eventType = os.Getenv("PAM_TYPE")
+		common.LogDebug("PAM_TYPE from environment: " + customType)
+	} else {
+		eventType = customType
+	}
+
+	// Ensure eventType is set to a default if it's still empty
+	if eventType == "" {
+		common.LogDebug("Event type is empty, defaulting to 'unknown'")
+		eventType = "unknown"
+	}
+
+	common.LogDebug("Getting login info with event type: " + eventType)
+
+	var loginMethod string
+	var fingerprint string
+	var ppid string
+	var authorizedKeys string
+	var username string
+
+	ppid = strconv.Itoa(os.Getppid())
+	common.LogDebug("PPID: " + ppid)
+
+	// First try to get fingerprint from SSH_AUTH_INFO_0 environment variable
+	sshAuthInfo := os.Getenv("SSH_AUTH_INFO_0")
+	if sshAuthInfo != "" {
+		// Trim any whitespace and newlines
+		sshAuthInfo = strings.TrimSpace(sshAuthInfo)
+		common.LogDebug("Found SSH_AUTH_INFO_0: " + sshAuthInfo)
+		// SSH_AUTH_INFO_0 format: "publickey ssh-ed25519 key"
+		fields := strings.Fields(sshAuthInfo)
+		if len(fields) >= 3 {
+			fingerprint = getSHA256Fingerprint(sshAuthInfo) // Pass the full key string
+			common.LogDebug("Converted raw key to SHA256 fingerprint: " + fingerprint)
+		}
+	}
+
+	// If no fingerprint from SSH_AUTH_INFO_0, try auth.log
+	if fingerprint == "" {
+		fingerprint = getFingerprintFromAuthLog(ppid)
+	}
+
+	if fingerprint == "" {
+		common.LogDebug("No fingerprint found, trying to match by PAM_USER")
 	}
 
 	pamUser := os.Getenv("PAM_USER")
@@ -140,64 +213,43 @@ func GetLoginInfo(customType string) LoginInfoOutput {
 	}
 	common.LogDebug("Looking for authorized keys in: " + authorizedKeys)
 
+	// Try first to determine if this is an SSH key login by checking logs for fingerprint
+	var sshKeyLogin bool = false
+
 	if _, err := os.Stat(authorizedKeys); err == nil {
-		if SSHNotifierConfig.Server.Os_Type == "RHEL6" {
-			os.MkdirAll("/tmp/ssh_keys", 0755)
-			sshKeysCmdOut, _ := os.ReadFile(authorizedKeys)
-			sshKeys := strings.Split(string(sshKeysCmdOut), "\n")
-
-			var comment string
-
-			for _, key := range sshKeys {
-				comment_multi := strings.Split(key, " ")
-
-				if len(comment_multi) >= 2 {
-					comment = comment_multi[2]
-				} else {
-					comment = ""
-				}
-
-				if comment == "" {
-					comment = "empty_comment"
-				}
-				common.WriteToFile(key, "/tmp/ssh_keys/"+comment)
-			}
-
-			items, _ := os.ReadDir("/tmp/ssh_keys")
-			for _, item := range items {
-				// Run ssh-keygen -lf on the key
-				keysOut, err := exec.Command("/usr/bin/ssh-keygen", "-lf", "/tmp/ssh_keys/"+item.Name()).Output()
-
-				if err != nil {
-					common.LogError("Error getting keys: " + err.Error())
-					return LoginInfoOutput{}
-				}
-
-				if fingerprint != "" && strings.Contains(string(keysOut), fingerprint) {
-					username = item.Name()
-					loginMethod = "ssh-key"
-					break
-				}
-			}
-
-			if username == "" {
-				username = pamUser
-			}
-
-			// Remove directory
-			os.RemoveAll("/tmp/ssh_keys")
-		} else if SSHNotifierConfig.Server.Os_Type == "GENERIC" {
+		if SSHNotifierConfig.Server.Os_Type == "GENERIC" {
 			keysOut, err := exec.Command("/usr/bin/ssh-keygen", "-lf", authorizedKeys).Output()
 			if err != nil {
 				common.LogError("Error getting keys: " + err.Error())
 				return LoginInfoOutput{}
 			}
+			common.LogDebug("ssh-keygen output: " + string(keysOut))
+
+			// Split output into lines
 			keysOutSplit := strings.Split(string(keysOut), "\n")
-			for _, key := range keysOutSplit {
-				if fingerprint != "" && strings.Contains(key, fingerprint) {
-					username = strings.Split(key, " ")[2]
-					loginMethod = "ssh-key"
-					break
+
+			// Check each line for fingerprint match
+			if fingerprint != "" {
+				common.LogDebug("Searching for fingerprint: " + fingerprint)
+				for _, key := range keysOutSplit {
+					if len(key) == 0 {
+						continue
+					}
+
+					if strings.Contains(key, fingerprint) {
+						common.LogDebug("Found key with matching fingerprint: " + key)
+						// Extract the third field (username)
+						fields := strings.Fields(key)
+						common.LogDebug("Fields: " + fmt.Sprintf("%+v", fields))
+						if len(fields) >= 3 {
+							username = fields[2]
+							common.LogDebug("Username: " + username)
+							loginMethod = "ssh-key"
+							sshKeyLogin = true
+							common.LogDebug("Found key with matching fingerprint, username: " + username)
+							break
+						}
+					}
 				}
 			}
 		}
@@ -218,47 +270,52 @@ func GetLoginInfo(customType string) LoginInfoOutput {
 		}
 
 		if userTmp == excludeUser {
+			common.LogDebug("Excluding user: " + excludeUser)
 			return LoginInfoOutput{}
 		}
 	}
 
 	for _, excludeIp := range SSHNotifierConfig.Exclude.IPs {
 		if os.Getenv("PAM_RHOST") == excludeIp && os.Getenv("PAM_RHOST") != "" {
+			common.LogDebug("Excluding IP: " + os.Getenv("PAM_RHOST"))
 			return LoginInfoOutput{}
 		}
 	}
 
 	for _, excludeDomain := range SSHNotifierConfig.Exclude.Domains {
 		if strings.Contains(userTmp, excludeDomain) && userTmp != "" {
+			common.LogDebug("Excluding domain: " + excludeDomain)
 			return LoginInfoOutput{}
 		}
 	}
 
-	if loginMethod == "" {
-		loginMethod = "password"
-	}
-	common.LogDebug("Login method determined as: " + loginMethod)
-
-	var pamType string
-	if customType != "" {
-		pamType = customType
+	// Set login method based on our determination
+	if sshKeyLogin {
+		loginMethod = "ssh-key"
+		common.LogDebug("Login method set to: " + loginMethod)
 	} else {
-		pamType = os.Getenv("PAM_TYPE")
+		loginMethod = "password"
+		common.LogDebug("Login method set to: " + loginMethod)
 	}
-	common.LogDebug("PAM type: " + pamType)
 
-	return LoginInfoOutput{
+	common.LogDebug("Final event type: " + eventType)
+
+	result := LoginInfoOutput{
 		Username:    username,
 		Fingerprint: fingerprint,
 		Server:      pamUser + "@" + common.Config.Identifier,
 		RemoteIp:    os.Getenv("PAM_RHOST"),
 		Date:        time.Now().Format("02.01.2006 15:04:05"),
-		Type:        pamType,
+		EventType:   eventType,
 		LoginMethod: loginMethod,
 		Ppid:        ppid,
 		PamUser:     pamUser,
 	}
 
+	// Double check the struct value before returning
+	common.LogDebug("Full struct: " + fmt.Sprintf("%+v", result))
+
+	return result
 }
 
 func listFiles(dir string) []string {
@@ -319,11 +376,18 @@ func PostToDb(postUrl string, dbReq DatabaseRequest) error {
 }
 
 func NotifyAndSave(loginInfo LoginInfoOutput) {
+	if loginInfo.EventType == "" {
+		common.LogDebug("Event type is empty, skipping notification and save process")
+		return
+	}
+
 	common.LogDebug("Starting notification and save process")
+	common.LogDebug("Event type received: " + loginInfo.EventType)
+
 	var message string
 
-	if loginInfo.Type == "open_session" {
-		message = "[ " + common.Config.Identifier + " ] " + "[ :green: Login ] { " + loginInfo.Username + "@" + loginInfo.RemoteIp + " } >> { " + SSHNotifierConfig.Server.Address + " - " + loginInfo.Ppid + " }"
+	if loginInfo.EventType == "open_session" {
+		message = "[ " + common.Config.Identifier + " ] " + "[ :green_circle: Login ] { " + loginInfo.Username + "@" + loginInfo.RemoteIp + " } >> { " + SSHNotifierConfig.Server.Address + " - " + loginInfo.Ppid + " }"
 		common.LogDebug("Processing login event")
 	} else {
 		message = "[ " + common.Config.Identifier + " ] " + "[ :red_circle: Logout ] { " + loginInfo.Username + "@" + loginInfo.RemoteIp + " } << { " + SSHNotifierConfig.Server.Address + " - " + loginInfo.Ppid + " }"
@@ -355,7 +419,7 @@ func NotifyAndSave(loginInfo LoginInfoOutput) {
 
 	dbReq.Ppid = "'" + loginInfo.Ppid + "'"
 	dbReq.LinuxUser = "'" + loginInfo.PamUser + "'"
-	dbReq.Type = "'" + loginInfo.Type + "'"
+	dbReq.Type = "'" + loginInfo.EventType + "'"
 	dbReq.KeyComment = "'" + loginInfo.Username + "'"
 	dbReq.Host = "'" + loginInfo.Server + "'"
 	dbReq.ConnectedFrom = "'" + loginInfo.RemoteIp + "'"
@@ -381,21 +445,6 @@ func Main(cmd *cobra.Command, args []string) {
 	common.ConfInit("ssh-notifier", &SSHNotifierConfig)
 	common.LogDebug("Configuration loaded")
 
-	var customType string
-	login, _ := cmd.Flags().GetBool("login")
-	logout, _ := cmd.Flags().GetBool("logout")
-
-	if login {
-		customType = "open_session"
-		common.LogDebug("Login event detected")
-	} else if logout {
-		customType = "close_session"
-		common.LogDebug("Logout event detected")
-	}
-
-	common.LogDebug("Waiting for PAM to finish")
-	time.Sleep(1 * time.Second) // Wait for PAM to finish
-
-	NotifyAndSave(GetLoginInfo(customType))
+	NotifyAndSave(GetLoginInfo(""))
 	common.LogDebug("SSH notifier process completed")
 }
