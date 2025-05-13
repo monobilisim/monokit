@@ -414,7 +414,7 @@ func NotifyAndSave(loginInfo LoginInfoOutput) {
 		common.LogDebug("Cleaned username: " + loginInfo.Username)
 	}
 
-	fileList := listFiles("/tmp/mono", SSHNotifierConfig.SkippedDirectories
+	fileList := listFiles("/tmp/mono", SSHNotifierConfig.SkippedDirectories)
 	common.LogDebug("Found " + strconv.Itoa(len(fileList)) + " files in monitoring directories")
 
 	if len(fileList) == 0 {
