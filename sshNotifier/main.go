@@ -12,7 +12,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -415,10 +414,7 @@ func NotifyAndSave(loginInfo LoginInfoOutput) {
 		common.LogDebug("Cleaned username: " + loginInfo.Username)
 	}
 
-	fileList := slices.Concat(
-		listFiles("/tmp/mono", SSHNotifierConfig.SkippedDirectories),
-		listFiles("/tmp/mono.sh", SSHNotifierConfig.SkippedDirectories),
-	)
+	fileList := listFiles("/tmp/mono", SSHNotifierConfig.SkippedDirectories
 	common.LogDebug("Found " + strconv.Itoa(len(fileList)) + " files in monitoring directories")
 
 	if len(fileList) == 0 {
