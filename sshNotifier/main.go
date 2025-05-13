@@ -39,8 +39,7 @@ var SSHNotifierConfig struct {
 	Ssh_Post_Url_Backup string
 
 	Webhook struct {
-		Modify_Stream bool
-		Stream        string
+		Stream string
 	}
 }
 
@@ -404,7 +403,7 @@ func NotifyAndSave(loginInfo LoginInfoOutput) {
 
 	if len(fileList) == 0 {
 		common.LogDebug("No files found, using webhook configuration")
-		if !SSHNotifierConfig.Webhook.Modify_Stream {
+		if SSHNotifierConfig.Webhook.Stream == "" {
 			common.Alarm(message, "", "", false)
 		} else {
 			var usernameOnStream string
