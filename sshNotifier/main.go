@@ -41,6 +41,8 @@ var SSHNotifierConfig struct {
 	Webhook struct {
 		Stream string
 	}
+
+	SkippedDirectories []string
 }
 
 type LoginInfoOutput struct {
@@ -317,7 +319,7 @@ func GetLoginInfo(customType string) LoginInfoOutput {
 	return result
 }
 
-func listFiles(dir string) []string {
+func listFiles(dir string, ignoredDirectories []string) []string {
 	// Check if the directory exists
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		return []string{}
@@ -326,7 +328,22 @@ func listFiles(dir string) []string {
 	var files []string
 
 	err := filepath.WalkDir(dir, func(path string, d fs.DirEntry, err error) error {
-		if !d.IsDir() && (filepath.Ext(path) == ".log") {
+		if err != nil {
+			return err
+		}
+
+		// Skip ignored directories
+		if d.IsDir() {
+			for _, ignoredDir := range ignoredDirectories {
+				if strings.Contains(path, ignoredDir) {
+					return filepath.SkipDir
+				}
+			}
+			return nil
+		}
+
+		// Only include files with .log extension
+		if filepath.Ext(path) == ".log" {
 			files = append(files, path)
 		}
 		return nil
@@ -398,7 +415,10 @@ func NotifyAndSave(loginInfo LoginInfoOutput) {
 		common.LogDebug("Cleaned username: " + loginInfo.Username)
 	}
 
-	fileList := slices.Concat(listFiles("/tmp/mono"), listFiles("/tmp/mono.sh"))
+	fileList := slices.Concat(
+		listFiles("/tmp/mono", SSHNotifierConfig.SkippedDirectories),
+		listFiles("/tmp/mono.sh", SSHNotifierConfig.SkippedDirectories),
+	)
 	common.LogDebug("Found " + strconv.Itoa(len(fileList)) + " files in monitoring directories")
 
 	if len(fileList) == 0 {
@@ -446,8 +466,8 @@ func Main(cmd *cobra.Command, args []string) {
 	common.Init()
 	common.LogDebug("Initializing SSH notifier")
 
-	viper.SetDefault("webhook.modify_stream", true)
 	viper.SetDefault("webhook.stream", "ssh")
+	viper.SetDefault("skipped_directories", []string{})
 	common.ConfInit("ssh-notifier", &SSHNotifierConfig)
 	common.LogDebug("Configuration loaded")
 
