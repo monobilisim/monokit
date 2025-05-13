@@ -407,7 +407,14 @@ func NotifyAndSave(loginInfo LoginInfoOutput) {
 		if !SSHNotifierConfig.Webhook.Modify_Stream {
 			common.Alarm(message, "", "", false)
 		} else {
-			common.Alarm(message, SSHNotifierConfig.Webhook.Stream, loginInfo.Username, true)
+			var usernameOnStream string
+			if strings.Contains(loginInfo.Username, "@") {
+				usernameOnStream = strings.Split(loginInfo.Username, "@")[0]
+			} else {
+				usernameOnStream = loginInfo.Username
+			}
+
+			common.Alarm(message, SSHNotifierConfig.Webhook.Stream, usernameOnStream, true)
 		}
 	} else {
 		common.LogDebug("Files found, sending standard alarm")
