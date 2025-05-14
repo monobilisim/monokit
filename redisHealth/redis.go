@@ -122,6 +122,15 @@ func redisAlarmRoleChange(isMaster bool) {
 		// Return
 		return
 	} else {
+
+		// Remove the file common.TmpDir + "/redis_role.log" if it exists
+		if _, err := os.Stat(common.TmpDir + "/redis_role.log"); err == nil {
+			err := os.Remove(common.TmpDir + "/redis_role.log")
+			if err != nil {
+				common.LogError("Error while removing redis_role.log: " + err.Error())
+			}
+		}
+
 		// File exists, read the role
 		data, err := os.ReadFile(common.TmpDir + "/redis_role")
 		if err != nil {
@@ -143,9 +152,11 @@ func redisAlarmRoleChange(isMaster bool) {
 			}
 
 			if isMaster {
-				common.AlarmCheckUp("redis_role", "Redis role changed to master", false)
+				message := "[" + common.ScriptName + " - " + common.Config.Identifier + "] [:check:] Redis role changed to master"
+				common.Alarm(message, "", "", false)
 			} else {
-				common.AlarmCheckDown("redis_role", "Redis role changed to slave", false, "", "")
+				message := "[" + common.ScriptName + " - " + common.Config.Identifier + "] [:red_circle:] Redis role changed to slave"
+				common.Alarm(message, "", "", false)
 			}
 			return
 		}
