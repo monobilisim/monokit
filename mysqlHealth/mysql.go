@@ -527,6 +527,13 @@ func CheckCertificationWaiting() {
 }
 
 func checkPMM() {
+	// Check if PMM monitoring is enabled in config (default: enabled)
+	if DbHealthConfig.Mysql.Pmm_enabled != nil && !*DbHealthConfig.Mysql.Pmm_enabled {
+		// PMM check is explicitly disabled in config
+		healthData.PMM.Enabled = false
+		return
+	}
+
 	// Check if PMM monitoring is enabled (assuming we should check PMM status anyway)
 	pmmStatus := "Inactive"
 	pmmActive := false

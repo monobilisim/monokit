@@ -2,6 +2,7 @@ package common
 
 type Mysql struct {
 	Process_limit int
+	Pmm_enabled   *bool `json:"pmm_enabled,omitempty"`
 	Cluster       struct {
 		Enabled          bool
 		Size             int
@@ -23,7 +24,7 @@ type Postgres struct {
 		Enabled bool
 	}
 
-    Wal_g_verify_hour string
+	Wal_g_verify_hour string
 
 	Leader_switch_hook string
 }
