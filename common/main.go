@@ -66,13 +66,26 @@ func isWhitespace(text string) bool {
 
 func ConvertBytes(bytes uint64) string {
 	var sizes = []string{"B", "KB", "MB", "GB", "TB", "EB"}
-	var i int
 
-	for i = 0; bytes >= 1024 && i < len(sizes); i++ {
-		bytes /= 1024
+	if bytes == 0 {
+		return "0 B"
 	}
 
-	return fmt.Sprintf("%d %s", bytes, sizes[i])
+	// Convert to float64 to preserve decimal precision
+	floatBytes := float64(bytes)
+	var i int
+
+	for i = 0; floatBytes >= 1024 && i < len(sizes)-1; i++ {
+		floatBytes /= 1024
+	}
+
+	// Format with 2 decimal places for units >= MB
+	if i >= 2 {
+		return fmt.Sprintf("%.2f %s", floatBytes, sizes[i])
+	}
+
+	// For smaller units, use integer format
+	return fmt.Sprintf("%d %s", int(floatBytes), sizes[i])
 }
 
 func RemoveLockfile() {

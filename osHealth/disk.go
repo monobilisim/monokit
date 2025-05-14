@@ -38,6 +38,10 @@ func analyzeDiskPartitions(diskPartitions []disk.PartitionStat) ([]DiskInfo, []D
 			continue
 		}
 
+		common.LogDebug("usage.Used: " + strconv.FormatUint(usage.Used, 10))
+		common.LogDebug("usage.Total: " + strconv.FormatUint(usage.Total, 10))
+		common.LogDebug("usage.UsedPercent: " + strconv.FormatFloat(usage.UsedPercent, 'f', 0, 64))
+
 		currentDiskInfo := DiskInfo{ // DiskInfo is from osHealth/ui.go (same package)
 			Device:     partition.Device,
 			Mountpoint: partition.Mountpoint,
