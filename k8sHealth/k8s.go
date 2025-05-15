@@ -8,6 +8,7 @@ import (
 	"fmt" // Added fmt for error handling
 	"net/http"
 	"os"
+	"path/filepath"
 
 	// "path/filepath" // Removed as it's unused after recent refactoring
 	"strings"
@@ -665,4 +666,127 @@ func CollectClusterApiCertHealth() (*ClusterApiCertHealth, error) {
 	}
 
 	return health, nil
+}
+
+// CleanupOrphanedAlarms removes alarm log files for pods and containers that no longer exist.
+// This helps keep the alarms clean and prevents false alerts for pods that have been replaced.
+func CleanupOrphanedAlarms() error {
+	common.LogFunctionEntry()
+
+	if clientset == nil {
+		return fmt.Errorf("kubernetes clientset is not initialized")
+	}
+
+	// Get all current pods
+	pods, err := clientset.CoreV1().Pods("").List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		common.LogError("Error listing pods: " + err.Error())
+		return fmt.Errorf("error listing pods: %w", err)
+	}
+
+	// Create maps to track existing pods and containers
+	existingPods := make(map[string]bool)
+	existingContainers := make(map[string]bool)
+	existingNamespacedContainers := make(map[string]bool)
+
+	// Populate maps with current pods and containers
+	for _, pod := range pods.Items {
+		// Track pod
+		podKey := fmt.Sprintf("%s-%s_pod_status", pod.Namespace, pod.Name)
+		existingPods[podKey] = true
+
+		// Track regular containers
+		for _, cs := range pod.Status.ContainerStatuses {
+			containerKey := fmt.Sprintf("%s-%s-%s_container_status", pod.Namespace, pod.Name, cs.Name)
+			existingContainers[containerKey] = true
+
+			// Also track for simpler container logs without _status
+			simpleContainerKey := fmt.Sprintf("%s-%s-%s_container", pod.Namespace, pod.Name, cs.Name)
+			existingNamespacedContainers[simpleContainerKey] = true
+		}
+
+		// Track init containers
+		for _, ics := range pod.Status.InitContainerStatuses {
+			initContainerKey := fmt.Sprintf("%s-%s-%s_init_container_status", pod.Namespace, pod.Name, ics.Name)
+			existingContainers[initContainerKey] = true
+
+			// Also track for simpler container logs without _status
+			simpleInitContainerKey := fmt.Sprintf("%s-%s-%s_container", pod.Namespace, pod.Name, ics.Name)
+			existingNamespacedContainers[simpleInitContainerKey] = true
+		}
+	}
+
+	// Check tmp dir where alarm logs are stored
+	tmpDir := common.TmpDir
+	files, err := os.ReadDir(tmpDir)
+	if err != nil {
+		common.LogError(fmt.Sprintf("Error reading tmp directory %s: %v", tmpDir, err))
+		return fmt.Errorf("error reading tmp directory: %w", err)
+	}
+
+	var podLogsCleaned int
+	var containerLogsCleaned int
+	var simpleContainerLogsCleaned int
+
+	// Look for log files that match our patterns but are no longer current
+	for _, file := range files {
+		fileName := file.Name()
+
+		// Skip if not a log file
+		if !strings.HasSuffix(fileName, ".log") {
+			continue
+		}
+
+		// Extract the service name from the filename
+		serviceName := strings.TrimSuffix(fileName, ".log")
+		filePath := filepath.Join(tmpDir, fileName)
+
+		// Pod status logs
+		if strings.Contains(serviceName, "_pod_status") {
+			if !existingPods[serviceName] {
+				// Pod no longer exists, delete the log file
+				err := os.Remove(filePath)
+				if err != nil {
+					common.LogError(fmt.Sprintf("Error removing orphaned pod log file %s: %v", filePath, err))
+				} else {
+					common.LogDebug(fmt.Sprintf("Removed orphaned pod log file: %s", filePath))
+					podLogsCleaned++
+				}
+			}
+			continue
+		}
+
+		// Container status logs (both regular and init)
+		if strings.Contains(serviceName, "_container_status") {
+			if !existingContainers[serviceName] {
+				// Container no longer exists, delete the log file
+				err := os.Remove(filePath)
+				if err != nil {
+					common.LogError(fmt.Sprintf("Error removing orphaned container log file %s: %v", filePath, err))
+				} else {
+					common.LogDebug(fmt.Sprintf("Removed orphaned container log file: %s", filePath))
+					containerLogsCleaned++
+				}
+			}
+			continue
+		}
+
+		// Simple container logs (without _status)
+		if strings.Contains(serviceName, "_container") && !strings.Contains(serviceName, "_container_status") && !strings.Contains(serviceName, "_init_container_status") {
+			if !existingNamespacedContainers[serviceName] {
+				// Container no longer exists, delete the log file
+				err := os.Remove(filePath)
+				if err != nil {
+					common.LogError(fmt.Sprintf("Error removing orphaned simple container log file %s: %v", filePath, err))
+				} else {
+					common.LogDebug(fmt.Sprintf("Removed orphaned simple container log file: %s", filePath))
+					simpleContainerLogsCleaned++
+				}
+			}
+		}
+	}
+
+	common.LogInfo(fmt.Sprintf("Cleanup complete. Removed %d orphaned pod logs, %d orphaned container status logs, and %d orphaned simple container logs.",
+		podLogsCleaned, containerLogsCleaned, simpleContainerLogsCleaned))
+	return nil
 }

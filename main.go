@@ -603,6 +603,7 @@ Supports pagination for large log sets.`,
 	}
 
 	k8sHealthCmd.Flags().StringP("kubeconfig", "k", kubeconfig, "Kubeconfig file")
+	k8sHealthCmd.Flags().Bool("disable-cleanup-orphaned-alarms", false, "Don't clean up alarm logs for pods and containers that no longer exist")
 
 	c := make(chan os.Signal, 1)
 	signal.Notify(c, os.Interrupt, syscall.SIGTERM)

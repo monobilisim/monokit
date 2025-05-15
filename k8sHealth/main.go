@@ -94,7 +94,8 @@ type K8sHealth struct {
 	}
 }
 
-var K8sHealthConfig K8sHealth // This remains for ConfInit
+var K8sHealthConfig K8sHealth  // This remains for ConfInit
+var cleanupOrphanedAlarms bool // Flag to control orphaned alarm cleanup
 
 func Main(cmd *cobra.Command, args []string) {
 	version := "2.1.0" // Updated version due to refactor
@@ -108,6 +109,9 @@ func Main(cmd *cobra.Command, args []string) {
 	// Get kubeconfig path from flag using the shared logic
 	kubeconfigFlagValue, _ := cmd.Flags().GetString("kubeconfig")
 	kubeconfigPath := getKubeconfigPath(kubeconfigFlagValue)
+
+	// Get cleanup flag
+	cleanupOrphanedAlarms, _ = cmd.Flags().GetBool("disable-cleanup-orphaned-alarms")
 
 	// Initialize the Kubernetes clientset
 	InitClientset(kubeconfigPath) // clientset is a global in k8s.go
@@ -204,6 +208,18 @@ func collectK8sHealthData() *K8sHealthData {
 	// healthData.AddError(errMsg)
 	// common.LogError(errMsg)
 	// }
+
+	// Clean up orphaned alarm logs for pods and containers that no longer exist
+	if !cleanupOrphanedAlarms {
+		common.LogInfo("Cleaning up orphaned alarm logs...")
+		if err := CleanupOrphanedAlarms(); err != nil {
+			errMsg := fmt.Sprintf("Error cleaning up orphaned alarms: %v", err)
+			healthData.AddError(errMsg)
+			common.LogError(errMsg)
+		}
+	} else {
+		common.LogDebug("Skipping orphaned alarm cleanup (disabled by flag)")
+	}
 
 	// The individual check functions handle their specific alarms.
 	// General alarms or summary alarms can be placed here based on aggregated healthData.
