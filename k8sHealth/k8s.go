@@ -786,7 +786,7 @@ func CleanupOrphanedAlarms() error {
 		}
 	}
 
-	common.LogInfo(fmt.Sprintf("Cleanup complete. Removed %d orphaned pod logs, %d orphaned container status logs, and %d orphaned simple container logs.",
+	common.LogDebug(fmt.Sprintf("Cleanup complete. Removed %d orphaned pod logs, %d orphaned container status logs, and %d orphaned simple container logs.",
 		podLogsCleaned, containerLogsCleaned, simpleContainerLogsCleaned))
 	return nil
 }
