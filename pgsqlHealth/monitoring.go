@@ -200,11 +200,12 @@ func runningQueries(dbConfig db.DbHealth) ([]QueryData, error) {
 	for rows.Next() {
 		var q QueryData
 		var clientAddr sql.NullString
+		var datname sql.NullString
 
 		err := rows.Scan(
 			&q.PID,
 			&q.Username,
-			&q.Database,
+			&datname,
 			&q.DurationSeconds,
 			&q.Duration,
 			&q.State,
@@ -214,6 +215,12 @@ func runningQueries(dbConfig db.DbHealth) ([]QueryData, error) {
 		if err != nil {
 			common.LogError("Failed to scan query row: " + err.Error())
 			continue
+		}
+
+		if datname.Valid {
+			q.Database = datname.String
+		} else {
+			q.Database = "unknown"
 		}
 
 		if clientAddr.Valid {
