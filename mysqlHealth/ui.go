@@ -44,6 +44,7 @@ type CertificationWaitingInfo struct {
 type ClusterInfo struct {
 	Enabled           bool
 	InaccessibleCount int
+	ClusterSize       int
 	Status            string
 	Nodes             []NodeInfo
 	Synced            bool
@@ -121,6 +122,7 @@ func (m *MySQLHealthData) RenderCompact() string {
 		fmt.Sprintf("%d", m.CertWaitingInfo.Limit),
 		fmt.Sprintf("%d", m.CertWaitingInfo.Count),
 		isCertOK))
+	sb.WriteString("\n")
 
 	// Cluster Status section (if enabled)
 	if m.ClusterInfo.Enabled {
@@ -162,10 +164,10 @@ func (m *MySQLHealthData) RenderCompact() string {
 			isInaccessibleOK))
 
 		// Add cluster size display with custom color logic
-		clusterSize := len(m.ClusterInfo.Nodes)
+		clusterSize := m.ClusterInfo.ClusterSize
 		sb.WriteString("\n")
 
-		// Create custom status item with yellow (warning) color for cluster size > 0
+		// Create custom status item with green (success) color for cluster size
 		contentStyle := lipgloss.NewStyle().
 			Align(lipgloss.Left).
 			PaddingLeft(8)
@@ -174,37 +176,11 @@ func (m *MySQLHealthData) RenderCompact() string {
 			Foreground(common.NormalTextColor)
 
 		statusStyle := lipgloss.NewStyle().Foreground(common.SuccessColor)
-		if clusterSize > 0 {
-			statusStyle = lipgloss.NewStyle().Foreground(common.WarningColor)
-		}
 
 		sizeStatus := fmt.Sprintf("%d Nodes", clusterSize)
 		line := fmt.Sprintf("•  %-20s is %s", "Cluster Size", statusStyle.Render(sizeStatus))
 		sb.WriteString(contentStyle.Render(itemStyle.Render(line)))
 
-		// List nodes if available
-		if len(m.ClusterInfo.Nodes) > 0 {
-			sb.WriteString("\n\n")
-			sb.WriteString(common.SectionTitle("Nodes"))
-			sb.WriteString("\n")
-
-			for i, node := range m.ClusterInfo.Nodes {
-				// Ensure name isn't empty
-				nodeName := node.Name
-				if nodeName == "" {
-					nodeName = fmt.Sprintf("Node %d", i+1)
-				}
-
-				sb.WriteString(common.SimpleStatusListItem(
-					nodeName,
-					node.Status,
-					node.Active))
-
-				if i < len(m.ClusterInfo.Nodes)-1 {
-					sb.WriteString("\n")
-				}
-			}
-		}
 	}
 
 	// PMM Status section (if enabled)

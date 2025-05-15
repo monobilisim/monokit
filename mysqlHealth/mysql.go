@@ -358,6 +358,11 @@ func InaccessibleClusters() {
 		}
 	}
 
+	// Parse and store the cluster size
+	clusterSizeInt := 0
+	fmt.Sscanf(clusterSize, "%d", &clusterSizeInt)
+	healthData.ClusterInfo.ClusterSize = clusterSizeInt
+
 	// Count inaccessible nodes
 	var inaccessibleCount int = 0
 	// Update health data
