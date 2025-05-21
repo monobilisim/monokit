@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	// "github.com/charmbracelet/lipgloss" // Removed as it's no longer used
 	"github.com/monobilisim/monokit/common"
 )
 
@@ -59,12 +60,11 @@ type SystemLoadInfo struct {
 
 // ZFSPoolInfo represents ZFS pool information
 type ZFSPoolInfo struct {
-	Name       string
-	Status     string
-	Used       string
-	Total      string
-	UsedPct    float64
-	ScanStatus string
+	Name    string
+	Status  string
+	Used    string
+	Total   string
+	UsedPct float64
 }
 
 // SystemdUnitInfo represents systemd unit information
@@ -117,21 +117,21 @@ func (h *HealthData) RenderCompact() string {
 		for _, pool := range h.ZFSPools {
 			isSuccess := pool.Status == "ONLINE"
 
-			sb.WriteString(common.StatusListItem(
-				pool.Name,
-				"", // use default prefix
-				"ONLINE",
-				pool.Status,
-				isSuccess))
+			// Format pool status string using SimpleStatusListItem
+			labelText := pool.Name
+			statusDescription := ""
+			if isSuccess {
+				statusDescription = "ONLINE"
+			} else {
+				statusDescription = fmt.Sprintf("ONLINE (actual: %s)", pool.Status)
+			}
+			sb.WriteString(common.SimpleStatusListItem(labelText, statusDescription, isSuccess))
 			sb.WriteString("\n")
 
-			// Add usage information
-			sb.WriteString(common.StatusListItem(
-				pool.Name+" Usage",
-				"", // use default prefix
-				pool.Total,
-				pool.Used,
-				true)) // Always show usage as success
+			// Format usage string using SimpleStatusListItem for consistent "is" formatting
+			usageLabelText := pool.Name + " usage"
+			usageStatusDescription := fmt.Sprintf("%s / %s (%.0f%%)", pool.Used, pool.Total, pool.UsedPct)
+			sb.WriteString(common.SimpleStatusListItem(usageLabelText, usageStatusDescription, true)) // true for isSuccess to keep it green/neutral
 			sb.WriteString("\n")
 		}
 	}
