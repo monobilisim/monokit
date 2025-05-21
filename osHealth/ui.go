@@ -87,18 +87,18 @@ func NewHealthData() *HealthData {
 // RenderCompact renders a compact view of all health data for a single-box display
 func (h *HealthData) RenderCompact() string {
 	var sb strings.Builder
-	
+
 	// Disk Usage section
 	sb.WriteString(common.SectionTitle("Disk Usage"))
 	sb.WriteString("\n")
-	
+
 	// Disk usage details
 	for _, disk := range h.Disk {
 		isSuccess := disk.UsedPct <= OsHealthConfig.Part_use_limit
-		
+
 		limits := fmt.Sprintf("%.0f%%", OsHealthConfig.Part_use_limit)
 		current := fmt.Sprintf("%.0f%%", disk.UsedPct)
-		
+
 		sb.WriteString(common.StatusListItem(
 			disk.Mountpoint,
 			"", // use default prefix
@@ -107,16 +107,44 @@ func (h *HealthData) RenderCompact() string {
 			isSuccess))
 		sb.WriteString("\n")
 	}
-	
+
+	// ZFS Pools section if any exist
+	if len(h.ZFSPools) > 0 {
+		sb.WriteString("\n")
+		sb.WriteString(common.SectionTitle("ZFS Pools"))
+		sb.WriteString("\n")
+
+		for _, pool := range h.ZFSPools {
+			isSuccess := pool.Status == "ONLINE"
+
+			sb.WriteString(common.StatusListItem(
+				pool.Name,
+				"", // use default prefix
+				"ONLINE",
+				pool.Status,
+				isSuccess))
+			sb.WriteString("\n")
+
+			// Add usage information
+			sb.WriteString(common.StatusListItem(
+				pool.Name+" Usage",
+				"", // use default prefix
+				pool.Total,
+				pool.Used,
+				true)) // Always show usage as success
+			sb.WriteString("\n")
+		}
+	}
+
 	// System Load and RAM section
 	sb.WriteString("\n")
 	sb.WriteString(common.SectionTitle("System Load and RAM"))
 	sb.WriteString("\n")
-	
+
 	// System Load details
 	loadLimit := float64(h.SystemLoad.CPUCount) * h.SystemLoad.Multiplier
 	isLoadSuccess := !h.SystemLoad.Exceeded
-	
+
 	sb.WriteString(common.StatusListItem(
 		"System Load",
 		"", // use default prefix
@@ -124,17 +152,17 @@ func (h *HealthData) RenderCompact() string {
 		fmt.Sprintf("%.2f", h.SystemLoad.Load5),
 		isLoadSuccess))
 	sb.WriteString("\n")
-	
+
 	// RAM usage details
 	isRamSuccess := !h.Memory.Exceeded
-	
+
 	sb.WriteString(common.StatusListItem(
 		"RAM Usage",
 		"", // use default prefix
 		fmt.Sprintf("%.0f%%", h.Memory.Limit),
 		fmt.Sprintf("%.0f%%", h.Memory.UsedPct),
 		isRamSuccess))
-	
+
 	return sb.String()
 }
 

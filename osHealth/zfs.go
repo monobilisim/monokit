@@ -14,6 +14,7 @@ package osHealth
 import (
 	"os/exec"
 	"slices"
+	"strconv"
 	"strings"
 
 	"github.com/monobilisim/monokit/common"
@@ -23,23 +24,18 @@ import (
 
 // ZFSHealth checks the health status of ZFS pools and reports any issues
 // It replicates the functionality of the zfs-health-check Ansible playbook
-func ZFSHealth() {
+func ZFSHealth() []ZFSPoolInfo {
 	// Skip if ZFS is not in OsHealthConfig.Filesystems
 	if !slices.Contains(OsHealthConfig.Filesystems, "zfs") {
 		// Silently skip ZFS health check if not configured
-		return
+		return nil
 	}
 
 	// Check if zpool command exists
 	if _, err := exec.LookPath("zpool"); err != nil {
 		// Silently fail if zpool command is not found
-		return
+		return nil
 	}
-
-	// At this point, we know zpool is installed, but we need to check if there are any pools
-	// We'll show the section heading regardless of whether there are pools or not,
-	// since we've verified that zpool exists
-	common.SplitSection("ZFS Health")
 
 	// Get ZFS pool status
 	cmd := exec.Command("zpool", "status", "-x")
@@ -49,29 +45,30 @@ func ZFSHealth() {
 	// (e.g., no pools exist, or we don't have permission to check pools)
 	if err != nil {
 		common.PrettyPrintStr("ZFS Pool Status", false, "Unable to check ZFS pools status: "+strings.TrimSpace(string(output)))
-		return
+		return nil
 	}
 
 	poolStatusOutput := strings.TrimSpace(string(output))
 	common.PrettyPrintStr("ZFS Pool Status", true, poolStatusOutput)
 
 	// Get detailed pool information
-	cmd = exec.Command("zpool", "list", "-H", "-o", "name,health")
+	cmd = exec.Command("zpool", "list", "-H", "-o", "name,health,used,size,scan")
 	output, err = cmd.CombinedOutput()
 	if err != nil {
 		common.LogError("An error occurred while fetching ZFS pool list\n" + err.Error())
-		return
+		return nil
 	}
 
 	// Parse pool information and identify degraded pools
 	var degradedPools []string
 	var poolsInfo [][]string
+	var zfsPools []ZFSPoolInfo
 
 	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
 	// Skip if no output (no pools)
 	if len(lines) == 1 && lines[0] == "" {
 		common.PrettyPrintStr("ZFS Pools", true, "No ZFS pools found")
-		return
+		return nil
 	}
 
 	for _, line := range lines {
@@ -79,12 +76,31 @@ func ZFSHealth() {
 			continue
 		}
 		fields := strings.Fields(line)
-		if len(fields) < 2 {
+		if len(fields) < 5 {
 			continue
 		}
 
 		poolName := fields[0]
 		poolHealth := fields[1]
+		poolUsed := fields[2]
+		poolTotal := fields[3]
+		poolScan := fields[4]
+
+		// Calculate used percentage
+		usedBytes, _ := strconv.ParseInt(poolUsed, 10, 64)
+		totalBytes, _ := strconv.ParseInt(poolTotal, 10, 64)
+		usedPct := float64(usedBytes) / float64(totalBytes) * 100
+
+		// Create ZFSPoolInfo for UI
+		zfsPool := ZFSPoolInfo{
+			Name:       poolName,
+			Status:     poolHealth,
+			Used:       common.ConvertBytes(uint64(usedBytes)),
+			Total:      common.ConvertBytes(uint64(totalBytes)),
+			UsedPct:    usedPct,
+			ScanStatus: poolScan,
+		}
+		zfsPools = append(zfsPools, zfsPool)
 
 		poolsInfo = append(poolsInfo, []string{poolName, poolHealth})
 
@@ -154,6 +170,8 @@ func ZFSHealth() {
 		// Close any existing issues
 		issues.CheckUp("zfs_health", common.Config.Identifier+" için tüm ZFS poolları sağlıklı durumda.")
 	}
+
+	return zfsPools
 }
 
 // createZFSPoolsTable creates a formatted table of ZFS pool information

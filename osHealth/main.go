@@ -196,12 +196,8 @@ func collectSystemLoad() SystemLoadInfo {
 
 // Helper function to collect ZFS information
 func collectZFSInfo() []ZFSPoolInfo {
-	var zfsPools []ZFSPoolInfo
-
-	// ZFS collection logic here, if applicable
-	// This would involve calling zpool status or similar commands
-
-	return zfsPools
+	// Call ZFSHealth to get pool information and handle alarms/issues
+	return ZFSHealth()
 }
 
 // Helper function to collect systemd information
