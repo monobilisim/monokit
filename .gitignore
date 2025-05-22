@@ -4,3 +4,6 @@ common/api/frontend
 **/node_modules
 **/build
 .aider*
+coverage.out
+coverage.html
+*.coverprofile

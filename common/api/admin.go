@@ -12,6 +12,59 @@ import (
 	"gorm.io/gorm"
 )
 
+// Export functions for testing
+func ExportListGroups(db *gorm.DB) gin.HandlerFunc {
+	return listGroups(db)
+}
+
+func ExportCreateGroup(db *gorm.DB) gin.HandlerFunc {
+	return createGroup(db)
+}
+
+func ExportDeleteGroup(db *gorm.DB) gin.HandlerFunc {
+	return deleteGroup(db)
+}
+
+func ExportAddHostToGroup(db *gorm.DB) gin.HandlerFunc {
+	return addHostToGroup(db)
+}
+
+func ExportRemoveHostFromGroup(db *gorm.DB) gin.HandlerFunc {
+	return removeHostFromGroup(db)
+}
+
+func ExportUpdateUserGroups(db *gorm.DB) gin.HandlerFunc {
+	return updateUserGroups(db)
+}
+
+func ExportCreateUser(db *gorm.DB) gin.HandlerFunc {
+	return createUser(db)
+}
+
+func ExportDeleteUser(db *gorm.DB) gin.HandlerFunc {
+	return deleteUser(db)
+}
+
+func ExportUpdateUser(db *gorm.DB) gin.HandlerFunc {
+	return updateUser(db)
+}
+
+func ExportGetAllUsers(db *gorm.DB) gin.HandlerFunc {
+	return getAllUsers(db)
+}
+
+func ExportScheduleHostDeletion(db *gorm.DB) gin.HandlerFunc {
+	return scheduleHostDeletion(db)
+}
+
+func ExportMoveHostToInventory(db *gorm.DB) gin.HandlerFunc {
+	return moveHostToInventory(db)
+}
+
+func ExportGetUser(db *gorm.DB) gin.HandlerFunc {
+	return getUser(db)
+}
+
 // @Summary List all groups
 // @Description Get list of all groups
 // @Tags admin

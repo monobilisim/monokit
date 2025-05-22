@@ -1,4 +1,4 @@
-.PHONY: help all with-api clean docs build-frontend clean-frontend install install-with-api .FORCE
+.PHONY: help all with-api clean clean-coverage docs build-frontend clean-frontend install install-with-api test test-with-api .FORCE
 
 # Colors for help target
 BLUE := \033[34m
@@ -24,9 +24,32 @@ help:
 	@echo "  $(GREEN)make with-api$(RESET)          Build monokit with API server (includes frontend)"
 	@echo "  $(GREEN)make clean$(RESET)              Clean all build artifacts"
 	@echo "  $(GREEN)make clean-frontend$(RESET)     Clean only frontend build artifacts"
+	@echo "  $(GREEN)make clean-coverage$(RESET)     Clean coverage files"
 	@echo "  $(GREEN)make docs$(RESET)               Generate swagger documentation"
 	@echo "  $(GREEN)make install$(RESET)            Install minimal monokit"
 	@echo "  $(GREEN)make install-with-api$(RESET)   Install monokit with API (includes frontend)"
+	@echo "  $(GREEN)make test$(RESET)               Run tests"
+	@echo "  $(GREEN)make test-with-api$(RESET)      Run tests including API"
+
+# Run tests without API
+test:
+	@echo "$(BLUE)Running tests...$(RESET)"
+	go test -coverprofile=coverage.out ./...
+	go tool cover -html=coverage.out -o coverage.html
+	@echo "$(GREEN)Tests complete, coverage report written to coverage.html$(RESET)"
+
+# Run tests with API support
+test-with-api:
+	@echo "$(BLUE)Running tests with API...$(RESET)"
+	go test -tags=with_api -coverprofile=coverage.out -coverpkg=github.com/monobilisim/monokit/common/api ./common/api/tests
+	go tool cover -html=coverage.out -o coverage.html
+	@echo "$(GREEN)Tests complete, coverage report written to coverage.html$(RESET)"
+
+# Clean coverage files
+clean-coverage:
+	@echo "$(BLUE)Cleaning coverage files...$(RESET)"
+	rm -f coverage.out coverage.html *.coverprofile
+	@echo "$(GREEN)Coverage files cleaned$(RESET)"
 
 # Build with API support (includes frontend)
 with-api: clean-frontend build-frontend bin/monokit-with-api
@@ -47,7 +70,7 @@ clean-frontend:
 	@echo "$(GREEN)Frontend clean complete$(RESET)"
 
 # Clean all build artifacts
-clean: clean-frontend
+clean: clean-frontend clean-coverage
 	@echo "$(BLUE)Cleaning all build artifacts...$(RESET)"
 	rm -rf bin/
 	@echo "$(GREEN)Clean complete$(RESET)"

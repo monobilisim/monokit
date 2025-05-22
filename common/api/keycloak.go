@@ -20,6 +20,28 @@ import (
 	"gorm.io/gorm"
 )
 
+// Export variables and functions for testing
+var (
+	ExportGenerateRandomState    = generateRandomState
+	ExportHandleSSOLogin         = handleSSOLogin
+	ExportHandleSSOCallback      = handleSSOCallback
+	ExportExchangeCodeForToken   = exchangeCodeForToken
+	ExportSyncKeycloakUser       = syncKeycloakUser
+	ExportKeycloakAuthMiddleware = KeycloakAuthMiddleware
+	ExportJWKS                   = (*keyfunc.JWKS)(nil)
+	ExportKeyFunc                = func(token *jwt.Token) (interface{}, error) {
+		if jwks == nil {
+			return nil, fmt.Errorf("JWKS is not initialized")
+		}
+		return jwks.Keyfunc(token)
+	}
+)
+
+// SetTestJWKS allows test code to set the jwks variable directly
+func SetTestJWKS(testJWKS *keyfunc.JWKS) {
+	jwks = testJWKS
+}
+
 // KeycloakConfig holds the settings for Keycloak integration
 type KeycloakConfig struct {
 	Enabled          bool   `mapstructure:"enabled"`
@@ -85,6 +107,9 @@ func initJWKS() {
 	if err != nil {
 		log.Printf("Failed to get JWKS from %s: %v", jwksURL, err)
 	}
+
+	// Assign to exported variable for testing
+	ExportJWKS = jwks
 }
 
 // generateRandomState creates a random state parameter for OAuth flow
@@ -185,10 +210,7 @@ func handleSSOCallback(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// Parse the access token
-		token, err := jwt.ParseWithClaims(tokenData["access_token"].(string), &KeycloakClaims{}, func(token *jwt.Token) (interface{}, error) {
-			// Get the key from the JWKS
-			return jwks.Keyfunc(token)
-		})
+		token, err := jwt.ParseWithClaims(tokenData["access_token"].(string), &KeycloakClaims{}, ExportKeyFunc)
 
 		if err != nil {
 			log.Printf("Error validating token: %v", err)
@@ -416,12 +438,7 @@ func KeycloakAuthMiddleware(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// Parse the token with proper validation
-		token, err := jwt.ParseWithClaims(tokenString, &KeycloakClaims{}, func(token *jwt.Token) (interface{}, error) {
-			if jwks == nil {
-				return nil, fmt.Errorf("JWKS is not initialized")
-			}
-			return jwks.Keyfunc(token)
-		})
+		token, err := jwt.ParseWithClaims(tokenString, &KeycloakClaims{}, ExportKeyFunc)
 		if err != nil {
 			if ServerConfig.Keycloak.DisableLocalAuth {
 				if defaultUser, err := createOrGetDefaultAdminUser(db); err == nil {

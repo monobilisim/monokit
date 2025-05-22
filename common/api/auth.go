@@ -15,6 +15,35 @@ import (
 	"gorm.io/gorm"
 )
 
+// Export functions for testing
+func ExportRegisterUser(db *gorm.DB) gin.HandlerFunc {
+	return registerUser(db)
+}
+
+func ExportLoginUser(db *gorm.DB) gin.HandlerFunc {
+	return loginUser(db)
+}
+
+func ExportLogoutUser(db *gorm.DB) gin.HandlerFunc {
+	return logoutUser(db)
+}
+
+func ExportUpdateMe(db *gorm.DB) gin.HandlerFunc {
+	return updateMe(db)
+}
+
+func ExportDeleteMe(db *gorm.DB) gin.HandlerFunc {
+	return deleteMe(db)
+}
+
+func ExportGetCurrentUser() gin.HandlerFunc {
+	return getCurrentUser()
+}
+
+func ExportAuthMiddleware(db *gorm.DB) gin.HandlerFunc {
+	return AuthMiddleware(db)
+}
+
 func HashPassword(password string) (string, error) {
 	bytes, err := bcrypt.GenerateFromPassword([]byte(password), 14)
 	return string(bytes), err
