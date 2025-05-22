@@ -3,7 +3,12 @@
 package tests
 
 import (
+	"crypto/rand"
+	"crypto/rsa"
+	"crypto/x509"
 	"encoding/base64"
+	"encoding/pem"
+	"fmt"
 	"net/http"
 	"testing"
 	"time"
@@ -16,34 +21,21 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-// RSA private key for testing
-const testPrivateKey = `-----BEGIN RSA PRIVATE KEY-----
-MIIEpAIBAAKCAQEApu6QCnJzJdsi44a0xv8FGIz8zOCnqVmIcmALHzTAy2xmsQbQ
-hUpfa8UqELdGgJmBjkxDQ+4QL/MvCPoRbqjEz9HoMJxvuP7UVqvkjVV2hgVG4jS0
-SYhzltQqtHgM0Ma5CgPzLn8FBZogONjCnANGBHdZvCvgUCPJQGBJEEzI2lkNIJ5K
-eVGvYLzMRX5RQNqVsJnWfEzsG5QgHuQBfkuouG0L95PXnbwe8w8USjDDn5kXb3Jl
-zFyuqDYnXPdELL7IYdEcGUvCDovp2uKzBNxTGnTL3q9jfQ+7XgJ1n4qS0xrRZH3F
-ixcQ98CzB/8R+wIdIpb/jlUZKOnRVbwf/IpCdQIDAQABAoIBAQCYqScDunCKrjgu
-J51KXHRNWb9Chnj8N0q4b98Bft07ZbRLzNJJIEGW0ZrQpUjZBYXJFGBBtgLY5Kon
-zbkGkJahORpRi74aGriR3DwyQYGNpLHDfV2WBYw5FpXfXok+QsjoX+FApn9H2QiE
-dKuyz0CviNYvSbYlPLbDKkVcHI3GYmk9Yt3SGR1YxqcUkzFhwTZRh9SbEwnz3XY+
-H5NrZzA+Uq+/8dPOF9aqCCvCCGM4cq8i+kS4odAYwWiYhJVj+saNH7QkznJR2yQJ
-ZAYxveLRShBB9JXbx3bGPzeMHDJftX9YQukPggZJ4JK4OfqYdHKLKAHFUFCGnLER
-Kr3EIqwNAoGBANUPVIK3BMyVdtn3jaOKZ1uOYfbMhmet8Z7NI8mfoKNFn8hZGRKb
-5xPOjCluUYsKhLAp8B7/a7Jr1K2zJUvPZB/qTHfGpQESQ5xZQCBe+leU3W9/lz8a
-ZA7rgJQmcgIXmEGejwgHqvy2D0GStxoXgOVMrGCFwwU0wlEGo0Z6KbO3AoGBAMjm
-kqpHAIffk5jMuA0CpJUUgwT4sTWnKmIrPkHPkJWvtvCHsqjK3ZBCcbLUXQCf2NRk
-BR8UkKZh1qz3sCGt3ufLFaaIk2/iwCkZAQdP8r0UEGmJ/rYZK7G/g3ZzDvqmu52b
-GNpCNdZ2ktcF9/q4n5QdWvlZafL4Ids4qGTGSLTDAoGAffnNLiTnxXgow/5jYuLp
-ERNBzVbx0DPrHHJzYLMJqROgHmCG7hcXZMXHOQVxIkYmkQlBWHvDyQR3WtXyuNwc
-GoxyzXRrHycY1/45rm1HIvd9Vj7i6J+eAldvFe1ZwXGkDsVsjH7cGgsoOs5SU+z0
-yZntjx0DYTtWIvsHK6rLPYMCgYAvLzXHff2JOMpZMTR53+XNwA0jgIJbcs2FUDsb
-7X6qxAv5/r1xOH+qOUFnwTWogFZQ9lWOyXJm/LqV8AKjqYpbRBLVw8PZpIrEu3bN
-QtjfkABbCUsGD+LKzCZbLKyZZb7VuH4iJRHevPD9pSS7R/sKz3KLc56T+Zbi13A3
-JMLh2wKBgQCR9TlKI7fgZB7OuIGPmzGAOEEFvLXhJDpXAzlJf0VOAEaXBuCj4xXq
-V9xKgVEKlMZ71+18siYSm+cBv7QxQ3a4aFnqYfr/3AnhUgZkh5FOzBISUXYgk8jZ
-s4wJ5iHsQ/39ej1Omv8rG2Nd+Qntx5JwbPwPPGvx6BgahJlZzQjVWg==
------END RSA PRIVATE KEY-----`
+// generateTestRSAKey generates an RSA key for testing
+func generateTestRSAKey(t *testing.T) (*rsa.PrivateKey, string) {
+	// Generate a new RSA private key
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	require.NoError(t, err, "Failed to generate RSA key")
+
+	// Encode the private key to PEM format
+	privateKeyBytes := x509.MarshalPKCS1PrivateKey(privateKey)
+	privateKeyPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "RSA PRIVATE KEY",
+		Bytes: privateKeyBytes,
+	})
+
+	return privateKey, string(privateKeyPEM)
+}
 
 // Mock Keycloak config used for testing
 func setupKeycloakConfig() {
@@ -56,6 +48,11 @@ func setupKeycloakConfig() {
 		DisableLocalAuth: false,
 	}
 }
+
+// SigningMethod and key used for tokens - can be switched between tests
+var testSigningMethod jwt.SigningMethod = jwt.SigningMethodRS256
+var testSigningKey interface{} = []byte("test-signing-key")
+var testKeyID = "test-key-id"
 
 // Helper to create a mock JWT token for testing
 func createMockToken(t *testing.T, username string, role string, issuer string) string {
@@ -79,24 +76,59 @@ func createMockToken(t *testing.T, username string, role string, issuer string) 
 		},
 	}
 
-	// For testing purposes, we use a simple signing key
-	// In production, this would be handled by Keycloak's JWKS
-	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
-	tokenString, err := token.SignedString([]byte("test-signing-key"))
+	// Create a JWT token with current signing method
+	token := jwt.NewWithClaims(testSigningMethod, claims)
+	// Add a key ID
+	token.Header["kid"] = testKeyID
+
+	var tokenString string
+	var err error
+
+	if testSigningMethod == jwt.SigningMethodRS256 {
+		// For RSA signing, use the private key from generateTestRSAKey
+		privateKey, _ := generateTestRSAKey(t)
+		tokenString, err = token.SignedString(privateKey)
+	} else {
+		// For other methods (like HS256), use the testSigningKey
+		tokenString, err = token.SignedString(testSigningKey)
+	}
+
 	require.NoError(t, err)
 	return tokenString
 }
 
 // Setup a mock JWKS for token validation
 func setupMockJWKS(t *testing.T) {
-	// Initialize a mock JWKS that will always return our test key
-	jwkJSON := `{
+	// Generate a test key
+	privateKey, _ := generateTestRSAKey(t)
+
+	// Create a JWK (JSON Web Key) from the public key
+	publicKey := privateKey.Public()
+	n := publicKey.(*rsa.PublicKey).N
+	e := publicKey.(*rsa.PublicKey).E
+
+	// Convert n and e to base64url encoded strings
+	nBytes := n.Bytes()
+	nBase64 := base64.RawURLEncoding.EncodeToString(nBytes)
+
+	eBytes := make([]byte, 4)
+	eBytes[0] = byte(e >> 24)
+	eBytes[1] = byte(e >> 16)
+	eBytes[2] = byte(e >> 8)
+	eBytes[3] = byte(e)
+	eBase64 := base64.RawURLEncoding.EncodeToString(eBytes[1:]) // Skip leading zero byte
+
+	// Create a JSON string with our JWK
+	jwkJSON := fmt.Sprintf(`{
 		"keys": [{
 			"kid": "test-key-id",
-			"kty": "oct",
-			"k": "dGVzdC1zaWduaW5nLWtleQ"
+			"kty": "RSA",
+			"n": "%s",
+			"e": "%s",
+			"use": "sig",
+			"alg": "RS256"
 		}]
-	}`
+	}`, nBase64, eBase64)
 
 	var err error
 	mockJWKS, err := keyfunc.NewJSON([]byte(jwkJSON))
@@ -107,29 +139,34 @@ func setupMockJWKS(t *testing.T) {
 	common.SetTestJWKS(mockJWKS) // This will set the internal jwks variable
 }
 
-// TestTokenValidation tests that our mock token validation mechanism works
+// TestTokenValidation tests our token validation approach
 func TestTokenValidation(t *testing.T) {
 	// Setup
 	setupKeycloakConfig()
 
-	// Create a mock key function that always succeeds
-	originalKeyFunc := common.ExportKeyFunc
-	defer func() { common.ExportKeyFunc = originalKeyFunc }()
+	// Save original settings
+	origSigningMethod := testSigningMethod
+	origSigningKey := testSigningKey
+	defer func() {
+		testSigningMethod = origSigningMethod
+		testSigningKey = origSigningKey
+	}()
 
-	common.ExportKeyFunc = func(token *jwt.Token) (interface{}, error) {
-		// Always return the same test key for any token
-		return []byte("test-signing-key"), nil
-	}
+	// Use HS256 for simpler testing
+	testSigningMethod = jwt.SigningMethodHS256
+	testSigningKey = []byte("test-signing-key")
 
 	// Create a token
 	expectedIssuer := common.ServerConfig.Keycloak.URL + "/realms/" + common.ServerConfig.Keycloak.Realm
 	tokenString := createMockToken(t, "test-user", "user", expectedIssuer)
 
-	// Validate the token using our mock key function
-	token, err := jwt.ParseWithClaims(tokenString, &common.KeycloakClaims{}, common.ExportKeyFunc)
+	// Validate the token using our test key directly
+	token, err := jwt.ParseWithClaims(tokenString, &common.KeycloakClaims{}, func(token *jwt.Token) (interface{}, error) {
+		return testSigningKey, nil
+	})
 
 	// Check if validation works
-	assert.NoError(t, err, "Token validation should succeed with mocked key function")
+	assert.NoError(t, err, "Token validation should succeed")
 	assert.True(t, token.Valid, "Token should be valid")
 
 	// Extract and verify claims
@@ -209,12 +246,26 @@ func TestHandleSSOCallback(t *testing.T) {
 	defer CleanupTestDB(db)
 	setupKeycloakConfig()
 
-	// Create a mocked key function for token validation
+	// Set up the mock JWKS for validation
+	setupMockJWKS(t)
+
+	// Save original settings
+	origSigningMethod := testSigningMethod
+	origSigningKey := testSigningKey
+	defer func() {
+		testSigningMethod = origSigningMethod
+		testSigningKey = origSigningKey
+	}()
+
+	// Switch to HS256 for this test
+	testSigningMethod = jwt.SigningMethodHS256
+	testSigningKey = []byte("test-signing-key")
+
+	// Override key function to use our simple key
 	originalKeyFunc := common.ExportKeyFunc
 	defer func() { common.ExportKeyFunc = originalKeyFunc }()
 
 	common.ExportKeyFunc = func(token *jwt.Token) (interface{}, error) {
-		// Always return the same test key for any token
 		return []byte("test-signing-key"), nil
 	}
 
@@ -298,13 +349,26 @@ func TestKeycloakAuthMiddleware(t *testing.T) {
 		}
 	}
 
-	// Create mocked verification function
-	// This is an internal function that should return test keys for our tokens
+	// Set up the mock JWKS for validation
+	setupMockJWKS(t)
+
+	// Save original settings
+	origSigningMethod := testSigningMethod
+	origSigningKey := testSigningKey
+	defer func() {
+		testSigningMethod = origSigningMethod
+		testSigningKey = origSigningKey
+	}()
+
+	// Switch to HS256 for this test
+	testSigningMethod = jwt.SigningMethodHS256
+	testSigningKey = []byte("test-signing-key")
+
+	// Override key function to use our simple key
 	originalKeyFunc := common.ExportKeyFunc
 	defer func() { common.ExportKeyFunc = originalKeyFunc }()
 
 	common.ExportKeyFunc = func(token *jwt.Token) (interface{}, error) {
-		// Always return the same test key for any token
 		return []byte("test-signing-key"), nil
 	}
 
