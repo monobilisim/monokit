@@ -27,6 +27,10 @@ type Postgres struct {
 	Wal_g_verify_hour string
 
 	Leader_switch_hook string
+
+	Consul struct {
+		Enabled bool
+	}
 }
 
 type DbHealth struct {

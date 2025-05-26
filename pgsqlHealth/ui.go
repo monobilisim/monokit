@@ -1,3 +1,5 @@
+//go:build linux
+
 package pgsqlHealth
 
 import (
@@ -236,6 +238,117 @@ func (p *PostgreSQLHealthData) RenderCompact() string {
 			"Long Running Queries",
 			longRunningStatus,
 			isLongRunningOK))
+	}
+
+	// ====== Consul Status Section (if enabled) ======
+	if DbHealthConfig.Postgres.Consul.Enabled {
+		sb.WriteString("\n\n")
+		sb.WriteString(common.SectionTitle("Consul Status"))
+		sb.WriteString("\n")
+
+		// Check if consul ports are open
+		consulPortsOpen, err := checkConsulPorts()
+		if err != nil {
+			sb.WriteString(common.SimpleStatusListItem(
+				"Consul Ports",
+				"Error",
+				false))
+		} else if !consulPortsOpen {
+			sb.WriteString(common.SimpleStatusListItem(
+				"Consul Ports",
+				"Not Open",
+				false))
+		} else {
+			sb.WriteString(common.SimpleStatusListItem(
+				"Consul Ports",
+				"Open",
+				true))
+		}
+		sb.WriteString("\n")
+
+		// Check if consul is running
+		consulServiceRunning, err := checkConsulService()
+		if err != nil {
+			sb.WriteString(common.SimpleStatusListItem(
+				"Consul Status",
+				"Error",
+				false))
+		} else if !consulServiceRunning {
+			sb.WriteString(common.SimpleStatusListItem(
+				"Consul Status",
+				"Not Running",
+				false))
+		} else {
+			sb.WriteString(common.SimpleStatusListItem(
+				"Consul Status",
+				"Running",
+				true))
+		}
+		sb.WriteString("\n")
+
+		// Get consul members
+		members, err := getConsulMembers(consulURL)
+		if err != nil {
+			sb.WriteString(common.SimpleStatusListItem(
+				"Consul Members",
+				"Error",
+				false))
+		} else {
+			// Create a basic item display for each member
+			contentStyle := lipgloss.NewStyle().
+				Align(lipgloss.Left).
+				PaddingLeft(8)
+
+			itemStyle := lipgloss.NewStyle().
+				Foreground(common.NormalTextColor)
+
+			statusStyle := lipgloss.NewStyle().Foreground(common.SuccessColor)
+
+			for _, member := range members {
+				status := strings.ToLower(member.Status)
+				statusStyle = lipgloss.NewStyle().Foreground(common.SuccessColor) // Default to green
+				if status != "passing" {
+					statusStyle = lipgloss.NewStyle().Foreground(common.ErrorColor)
+				}
+				line := fmt.Sprintf("•  %-20s is %s", member.Node, statusStyle.Render(status))
+				sb.WriteString(contentStyle.Render(itemStyle.Render(line)))
+				sb.WriteString("\n")
+			}
+		}
+		sb.WriteString("\n")
+
+		// Get consul catalog
+		catalog, err := getConsulCatalog(consulURL)
+		fmt.Println("Catalog: ", catalog)
+		if err != nil {
+			sb.WriteString(common.SimpleStatusListItem(
+				"Consul Catalog",
+				"Error",
+				false))
+			fmt.Println("Error: ", err)
+		} else {
+			// Create a basic item display for each service
+			contentStyle := lipgloss.NewStyle().
+				Align(lipgloss.Left).
+				PaddingLeft(8)
+
+			itemStyle := lipgloss.NewStyle().
+				Foreground(common.NormalTextColor)
+
+			statusStyle := lipgloss.NewStyle().Foreground(common.SuccessColor)
+
+			for _, service := range catalog.Services {
+				status := "running"
+				if service.State != "running" {
+					statusStyle = lipgloss.NewStyle().Foreground(common.ErrorColor)
+					status = service.State
+				}
+				line := fmt.Sprintf("•  %-20s is %s", service.Name, statusStyle.Render(status))
+				sb.WriteString(contentStyle.Render(itemStyle.Render(line)))
+				sb.WriteString("\n")
+			}
+		}
+		sb.WriteString("\n")
 	}
 
 	// ====== Cluster Status Section (if enabled) ======
