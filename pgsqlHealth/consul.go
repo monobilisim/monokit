@@ -138,7 +138,7 @@ func getConsulCatalog(consulURL string) (*ConsulCatalog, error) {
 
 			// Check for non-consul services
 			if service.Name != "consul" {
-				common.AlarmCheckDown("consul_service_"+service.Name, fmt.Sprintf("Unexpected service found: %s", service.Name), false, "", "")
+				common.AlarmCheckDown("consul_service_"+service.Name, fmt.Sprintf("Unexpected consul service found: %s", service.Name), false, "", "")
 			}
 
 			catalogServices = append(catalogServices, service)
