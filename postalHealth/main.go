@@ -433,8 +433,11 @@ func GetHeldMessages(skipOutput bool) map[string]ServerHeldMessages {
 		common.AlarmCheckUp("mysql_held", "Can get Held messages count again", false)
 
 		var count int
-		for dbMessageHeld.Next() {
-			count++
+		if dbMessageHeld.Next() {
+			err := dbMessageHeld.Scan(&count)
+			if err != nil {
+				common.LogError("Error scanning held messages count: " + err.Error())
+			}
 		}
 		dbMessageHeld.Close()
 
