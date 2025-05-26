@@ -28,6 +28,19 @@ func analyzeDiskPartitions(diskPartitions []disk.PartitionStat) ([]DiskInfo, []D
 	var exceededDIs, allDIs []DiskInfo
 
 	for _, partition := range diskPartitions {
+		// Check if the mountpoint should be excluded
+		isExcluded := false
+		for _, excludedMountpoint := range OsHealthConfig.Excluded_Mountpoints {
+			if strings.HasPrefix(partition.Mountpoint, excludedMountpoint) {
+				isExcluded = true
+				break
+			}
+		}
+		if isExcluded {
+			common.LogDebug("Skipping excluded mountpoint: " + partition.Mountpoint)
+			continue
+		}
+
 		if !slices.Contains(OsHealthConfig.Filesystems, partition.Fstype) {
 			continue
 		}

@@ -6,9 +6,10 @@
 package osHealth
 
 type OsHealth struct {
-	Filesystems         []string
-	System_Load_And_Ram bool
-	Part_use_limit      float64
+	Filesystems          []string
+	Excluded_Mountpoints []string
+	System_Load_And_Ram  bool
+	Part_use_limit       float64
 
 	Load struct {
 		Issue_Interval   float64
