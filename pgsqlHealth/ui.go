@@ -351,6 +351,86 @@ func (p *PostgreSQLHealthData) RenderCompact() string {
 		sb.WriteString("\n")
 	}
 
+	// ====== HAProxy Status Section (if enabled) ======
+	if DbHealthConfig.Postgres.Haproxy.Enabled {
+		sb.WriteString("\n\n")
+		sb.WriteString(common.SectionTitle("HAProxy Status"))
+		sb.WriteString("\n")
+
+		haproxyServiceInstalled, haproxyServiceRunning := checkHAProxyService()
+
+		statusTextService := "Not Installed"
+		if haproxyServiceInstalled {
+			statusTextService = "Installed"
+		}
+		sb.WriteString(common.SimpleStatusListItem(
+			"HAProxy Service",
+			statusTextService,
+			haproxyServiceInstalled))
+		sb.WriteString("\n")
+
+		if haproxyServiceInstalled {
+			statusTextState := "Not Running"
+			if haproxyServiceRunning {
+				statusTextState = "Running"
+			}
+			sb.WriteString(common.SimpleStatusListItem(
+				"HAProxy State",
+				statusTextState,
+				haproxyServiceRunning))
+			sb.WriteString("\n")
+
+			if haproxyServiceRunning {
+				bindPortsAreOpen := checkHAProxyBindPortsOpen()
+				statusTextPorts := "No bind ports accessible"
+				if bindPortsAreOpen {
+					statusTextPorts = "At least one bind port accessible"
+				}
+				sb.WriteString(common.SimpleStatusListItem(
+					"HAProxy Bind Ports",
+					statusTextPorts,
+					bindPortsAreOpen))
+				sb.WriteString("\n")
+
+				// Check specific stats port 8404
+				statsPort8404Open := checkSpecificHAProxyPort(8404, "stats_8404")
+				statusTextStatsPort := "Not Accessible"
+				if statsPort8404Open {
+					statusTextStatsPort = "Accessible"
+				}
+				sb.WriteString(common.SimpleStatusListItem(
+					"HAProxy Stats (8404)",
+					statusTextStatsPort,
+					statsPort8404Open))
+				sb.WriteString("\n")
+
+			} else {
+				sb.WriteString(common.SimpleStatusListItem(
+					"HAProxy Bind Ports",
+					"Not checked (service not running)",
+					true)) // true to avoid red color for an expected state
+				sb.WriteString("\n")
+			}
+		} else {
+			sb.WriteString(common.SimpleStatusListItem(
+				"HAProxy State",
+				"N/A (service not installed)",
+				true))
+			sb.WriteString("\n")
+			sb.WriteString(common.SimpleStatusListItem(
+				"HAProxy Bind Ports",
+				"N/A (service not installed)",
+				true))
+			sb.WriteString("\n")
+			// Also show stats port as N/A if service is not installed
+			sb.WriteString(common.SimpleStatusListItem(
+				"HAProxy Stats (8404)",
+				"N/A (service not installed)",
+				true))
+			sb.WriteString("\n")
+		}
+	}
+
 	// ====== Cluster Status Section (if enabled) ======
 	if p.ClusterInfo.Enabled {
 		sb.WriteString("\n\n")

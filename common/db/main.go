@@ -31,6 +31,10 @@ type Postgres struct {
 	Consul struct {
 		Enabled bool
 	}
+
+	Haproxy struct {
+		Enabled bool
+	}
 }
 
 type DbHealth struct {
