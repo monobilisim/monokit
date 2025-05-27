@@ -20,8 +20,8 @@ var RedisMaster bool
 var healthData *RedisHealthData
 
 func DetectRedis() bool {
-	// Check if Redis service is running
-	if !common.SystemdUnitActive("redis.service") && !common.SystemdUnitActive("redis-server.service") {
+	// Check if Redis (or Valkey) service is running
+	if !common.SystemdUnitActive("redis.service") && !common.SystemdUnitActive("redis-server.service") && !common.SystemdUnitActive("valkey.service") && !common.SystemdUnitActive("valkey-server.service") {
 		return false
 	}
 
