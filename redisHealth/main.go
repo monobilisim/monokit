@@ -87,11 +87,11 @@ func Main(cmd *cobra.Command, args []string) {
 	RedisInit()
 
 	// Check service status
-	healthData.Service.Active = common.SystemdUnitActive("redis.service") || common.SystemdUnitActive("redis-server.service")
+	healthData.Service.Active = common.SystemdUnitActive("redis.service") || common.SystemdUnitActive("redis-server.service") || common.SystemdUnitActive("valkey.service") || common.SystemdUnitActive("valkey-server.service")
 	if !healthData.Service.Active {
-		common.AlarmCheckDown("redis_server_svc", "Service redis-server is not active", false, "", "")
+		common.AlarmCheckDown("redis_server_svc", "Service redis-server/valkey-server is not active", false, "", "")
 	} else {
-		common.AlarmCheckUp("redis_server_svc", "Service redis-server is now active", false)
+		common.AlarmCheckUp("redis_server_svc", "Service redis-server/valkey-server is now active", false)
 	}
 
 	// Check Redis role
