@@ -20,7 +20,28 @@ import (
 )
 
 type Client struct {
-	URL string
+	URL        string
+	HTTPClient *http.Client // Allows injection for testing
+}
+
+// hc returns the configured *http.Client, or http.DefaultClient if nil.
+func (c *Client) hc() *http.Client {
+	if c.HTTPClient != nil {
+		return c.HTTPClient
+	}
+	return http.DefaultClient
+}
+
+func getIdentifier() string {
+	if v := os.Getenv("MONOKIT_TEST_IDENTIFIER"); v != "" {
+		return v
+	}
+	// Fallback to the runtime configuration identifier if it has been set
+	if common.Config.Identifier != "" {
+		return common.Config.Identifier
+	}
+	// Final fallback to a hard-coded test-safe value
+	return "test-host"
 }
 
 var ClientConf Client
@@ -41,9 +62,9 @@ func GetServiceStatus(serviceName string) (bool, string) {
 	common.LogDebug("Checking service status for: " + serviceName)
 	apiVersion := "1"
 
-	req, err := http.NewRequest("GET", ClientConf.URL+"/api/v"+apiVersion+"/hosts/"+common.Config.Identifier+"/"+serviceName, nil)
+	req, err := http.NewRequest("GET", ClientConf.URL+"/api/v"+apiVersion+"/hosts/"+getIdentifier()+"/"+serviceName, nil)
 
-	common.LogDebug("Sending GET request to " + ClientConf.URL + "/api/v" + apiVersion + "/hosts/" + common.Config.Identifier + "/" + serviceName)
+	common.LogDebug("Sending GET request to " + ClientConf.URL + "/api/v" + apiVersion + "/hosts/" + getIdentifier() + "/" + serviceName)
 
 	if err != nil {
 		common.LogError(err.Error())
@@ -56,7 +77,7 @@ func GetServiceStatus(serviceName string) (bool, string) {
 		req.Header.Set("Authorization", string(hostKey))
 	}
 
-	client := &http.Client{}
+	client := ClientConf.hc()
 
 	resp, err := client.Do(req)
 
@@ -145,7 +166,7 @@ func GetRAM() string {
 }
 
 func GetIP() string {
-	interfaces, err := net.Interfaces()
+	interfaces, err := netInterfacesFn()
 	if err != nil {
 		common.LogError(err.Error())
 		return ""
@@ -171,14 +192,14 @@ func GetOS() string {
 }
 
 func GetReq(apiVersion string) (map[string]interface{}, error) {
-	req, err := http.NewRequest("GET", ClientConf.URL+"/api/v"+apiVersion+"/hosts/"+common.Config.Identifier, nil)
+	req, err := http.NewRequest("GET", ClientConf.URL+"/api/v"+apiVersion+"/hosts/"+getIdentifier(), nil)
 
 	if err != nil {
 		common.LogError(err.Error())
 		return nil, err
 	}
 
-	client := &http.Client{}
+	client := ClientConf.hc()
 
 	resp, err := client.Do(req)
 
@@ -196,11 +217,22 @@ func GetReq(apiVersion string) (map[string]interface{}, error) {
 	return host, nil
 }
 
+// ---- Begin shims for test injection ----
+// These function vars are used for unit tests. Production code uses the original implementations below.
+var (
+	syncConfigFn           = SyncConfig
+	getReqFn               = GetReq
+	getInstalledComponents = common.GetInstalledComponents
+	netInterfacesFn        = net.Interfaces
+)
+
+// ---- End shims for test injection ----
+
 func SendReq(apiVersion string) {
 	// Sync host configuration with server
-	SyncConfig(nil, nil)
+	syncConfigFn(nil, nil)
 
-	beforeHost, err := GetReq(apiVersion)
+	beforeHost, err := getReqFn(apiVersion)
 
 	if err != nil {
 		return
@@ -225,10 +257,10 @@ func SendReq(apiVersion string) {
 	}
 
 	// Get installed components directly
-	installedComponents := common.GetInstalledComponents()
+	installedComponents := getInstalledComponents()
 
 	// Split identifier to get inventory name
-	inventoryName := strings.Split(common.Config.Identifier, "-")[0]
+	inventoryName := strings.Split(getIdentifier(), "-")[0]
 
 	// Marshal the response to Host struct
 	host := Host{
@@ -266,7 +298,7 @@ func SendReq(apiVersion string) {
 
 	req.Header.Set("Content-Type", "application/json")
 
-	client := &http.Client{}
+	client := ClientConf.hc()
 
 	resp, err := client.Do(req)
 
@@ -341,7 +373,7 @@ func GetHosts(apiVersion string, hostName string) []Host {
 		common.AddUserAgent(req)
 		addAuthHeader(req)
 
-		client := &http.Client{}
+		client := ClientConf.hc()
 
 		resp, err := client.Do(req)
 
@@ -367,7 +399,7 @@ func GetHosts(apiVersion string, hostName string) []Host {
 
 		addAuthHeader(req)
 
-		client := &http.Client{}
+		client := ClientConf.hc()
 
 		resp, err := client.Do(req)
 
@@ -432,7 +464,7 @@ func SendUpdateTo(apiVersion string, hostName string, versionTo string) {
 
 	addAuthHeader(req)
 
-	client := &http.Client{}
+	client := ClientConf.hc()
 
 	resp, err := client.Do(req)
 
@@ -458,7 +490,7 @@ func SendDisable(apiVersion string, hostName string, component string) {
 
 	addAuthHeader(req)
 
-	client := &http.Client{}
+	client := ClientConf.hc()
 
 	resp, err := client.Do(req)
 
@@ -493,7 +525,7 @@ func SendEnable(apiVersion string, hostName string, component string) {
 
 	addAuthHeader(req)
 
-	client := &http.Client{}
+	client := ClientConf.hc()
 
 	resp, err := client.Do(req)
 
@@ -524,7 +556,7 @@ func Update(cmd *cobra.Command, args []string) {
 	apiVersion := ClientInit()
 
 	SendReq(apiVersion)
-	
+
 	// Ensure lockfile is removed after update
 	common.RemoveLockfile()
 }
@@ -666,7 +698,7 @@ func adminGet(path string) (*http.Response, error) {
 	}
 
 	addAuthHeader(req)
-	client := &http.Client{}
+	client := ClientConf.hc()
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
@@ -688,7 +720,7 @@ func adminPost(path string, data []byte) (*http.Response, error) {
 
 	addAuthHeader(req)
 	req.Header.Set("Content-Type", "application/json")
-	client := &http.Client{}
+	client := ClientConf.hc()
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
@@ -709,7 +741,7 @@ func adminDelete(path string) (*http.Response, error) {
 	}
 
 	addAuthHeader(req)
-	client := &http.Client{}
+	client := ClientConf.hc()
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
@@ -998,7 +1030,7 @@ func adminPut(path string, data []byte) (*http.Response, error) {
 
 	addAuthHeader(req)
 	req.Header.Set("Content-Type", "application/json")
-	client := &http.Client{}
+	client := ClientConf.hc()
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
@@ -1084,7 +1116,7 @@ func authPut(path string, data []byte) (*http.Response, error) {
 	}
 	addAuthHeader(req)
 	req.Header.Set("Content-Type", "application/json")
-	client := &http.Client{}
+	client := ClientConf.hc()
 	return client.Do(req)
 }
 
@@ -1193,7 +1225,7 @@ func SyncConfig(cmd *cobra.Command, args []string) {
 	apiVersion := ClientInit()
 	hostname := common.Config.Identifier
 	configDir := "/etc/mono"
-	client := &http.Client{}
+	client := ClientConf.hc()
 
 	// Ensure config directory exists
 	if err := os.MkdirAll(configDir, 0755); err != nil {
@@ -1318,7 +1350,7 @@ func authDelete(path string) (*http.Response, error) {
 		return nil, fmt.Errorf("error creating request: %v", err)
 	}
 	addAuthHeader(req)
-	client := &http.Client{}
+	client := ClientConf.hc()
 	return client.Do(req)
 }
 
@@ -1335,7 +1367,7 @@ func SendGenericRequest(method, path string, data []byte) (*http.Response, error
 		req.Header.Set("Content-Type", "application/json")
 	}
 
-	client := &http.Client{}
+	client := ClientConf.hc()
 	return client.Do(req)
 }
 

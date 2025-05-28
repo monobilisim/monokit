@@ -49,7 +49,7 @@ func HashPassword(password string) (string, error) {
 	return string(bytes), err
 }
 
-func CreateUser(username, password, email, role, groups, inventory string, db *gorm.DB) error {
+func CreateUser(username, password, email, role, groups, inventory string, db DBTX) error {
 	hashedPassword, err := HashPassword(password)
 	if err != nil {
 		return err

@@ -110,6 +110,43 @@ type APIHostLogsResponse struct {
 	Pagination APILogPagination `json:"pagination"`
 }
 
+// Export functions for testing
+func ExportRegisterHost(db *gorm.DB) gin.HandlerFunc {
+	return registerHost(db)
+}
+
+func ExportGetAllHosts(db *gorm.DB) gin.HandlerFunc {
+	return getAllHosts(db)
+}
+
+func ExportGetHostByName() gin.HandlerFunc {
+	return getHostByName()
+}
+
+func ExportDeleteHost(db *gorm.DB) gin.HandlerFunc {
+	return deleteHost(db)
+}
+
+func ExportForceDeleteHost(db *gorm.DB) gin.HandlerFunc {
+	return forceDeleteHost(db)
+}
+
+func ExportUpdateHost(db *gorm.DB) gin.HandlerFunc {
+	return updateHost(db)
+}
+
+func ExportGetAssignedHosts(db *gorm.DB) gin.HandlerFunc {
+	return getAssignedHosts(db)
+}
+
+func ExportHostAuthMiddleware(db *gorm.DB) gin.HandlerFunc {
+	return hostAuthMiddleware(db)
+}
+
+func ExportGenerateToken() string {
+	return generateToken()
+}
+
 // StartAPIServer starts the API server
 func StartAPIServer(cmd *cobra.Command, args []string) error {
 	r := gin.Default()
@@ -117,6 +154,55 @@ func StartAPIServer(cmd *cobra.Command, args []string) error {
 	setupRoutes(r, db)
 	SetupFrontend(r) // This will be a no-op if frontend is not included
 	return r.Run(fmt.Sprintf(":%s", ServerConfig.Port))
+}
+
+// Export AWX functions for testing
+func ExportCreateAwxHost(db *gorm.DB) gin.HandlerFunc {
+	return createAwxHost(db)
+}
+
+func ExportDeleteAwxHost(db *gorm.DB) gin.HandlerFunc {
+	return deleteAwxHost(db)
+}
+
+func ExportGetAwxTemplatesGlobal(db *gorm.DB) gin.HandlerFunc {
+	return getAwxTemplatesGlobal(db)
+}
+
+func ExportExecuteAwxWorkflowJob(db *gorm.DB) gin.HandlerFunc {
+	return executeAwxWorkflowJob(db)
+}
+
+func ExportGetAwxJobStatus(db *gorm.DB) gin.HandlerFunc {
+	return getAwxJobStatus(db)
+}
+
+func ExportExecuteAwxJob(db *gorm.DB) gin.HandlerFunc {
+	return executeAwxJob(db)
+}
+
+func ExportGetHostAwxJobs(db *gorm.DB) gin.HandlerFunc {
+	return getHostAwxJobs(db)
+}
+
+func ExportGetHostAwxJobLogs(db *gorm.DB) gin.HandlerFunc {
+	return getHostAwxJobLogs(db)
+}
+
+func ExportGetAwxJobTemplateDetails(db *gorm.DB) gin.HandlerFunc {
+	return getAwxJobTemplateDetails(db)
+}
+
+func ExportGetAwxJobTemplates(db *gorm.DB) gin.HandlerFunc {
+	return getAwxJobTemplates(db)
+}
+
+func ExportGetAwxWorkflowTemplatesGlobal(db *gorm.DB) gin.HandlerFunc {
+	return getAwxWorkflowTemplatesGlobal(db)
+}
+
+func ExportEnsureHostInAwx(db *gorm.DB, host Host) (string, error) {
+	return ensureHostInAwx(db, host)
 }
 
 func setupDatabase() *gorm.DB {

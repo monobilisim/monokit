@@ -4,6 +4,7 @@ package tests
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -255,48 +256,49 @@ func TestGetCurrentUser(t *testing.T) {
 }
 
 func TestAuthMiddleware(t *testing.T) {
-	// Setup
 	db := SetupTestDB(t)
 	defer CleanupTestDB(db)
 
 	user := SetupTestUser(t, db, "testuser")
 	session := SetupSession(t, db, user)
 
-	// Test: Valid token
-	c, w := CreateRequestContext("GET", "/api/v1/protected", nil)
-	c.Request.Header.Set("Authorization", session.Token)
-
-	var handlerCalled bool
-	middleware := common.ExportAuthMiddleware(db)
-
-	// Create a test handler that will be called after middleware
-	testHandler := func(c *gin.Context) {
+	// Set up a gin router with the middleware and a test handler
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.Use(common.ExportAuthMiddleware(db))
+	handlerCalled := false
+	router.GET("/api/v1/protected", func(c *gin.Context) {
 		userObj, exists := c.Get("user")
 		if exists {
 			handlerCalled = true
 			assert.Equal(t, user.ID, userObj.(common.User).ID)
 		}
 		c.Status(http.StatusOK)
-	}
+	})
 
-	// Call middleware then the test handler
-	middleware(c)
-	if c.Writer.Status() == http.StatusOK {
-		testHandler(c)
-	}
+	// Test: Valid token
+	w := httptest.NewRecorder()
+	req, _ := http.NewRequest("GET", "/api/v1/protected", nil)
+	req.Header.Set("Authorization", session.Token)
+	router.ServeHTTP(w, req)
 
 	assert.True(t, handlerCalled)
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	// Test: Invalid token
-	c, w = CreateRequestContext("GET", "/api/v1/protected", nil)
-	c.Request.Header.Set("Authorization", "invalid-token")
-
-	middleware(c)
+	handlerCalled = false
+	w = httptest.NewRecorder()
+	req, _ = http.NewRequest("GET", "/api/v1/protected", nil)
+	req.Header.Set("Authorization", "invalid-token")
+	router.ServeHTTP(w, req)
+	assert.False(t, handlerCalled)
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 
 	// Test: Missing token
-	c, w = CreateRequestContext("GET", "/api/v1/protected", nil)
-	middleware(c)
+	handlerCalled = false
+	w = httptest.NewRecorder()
+	req, _ = http.NewRequest("GET", "/api/v1/protected", nil)
+	router.ServeHTTP(w, req)
+	assert.False(t, handlerCalled)
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }

@@ -180,12 +180,6 @@ func main() {
 		Run:   api.RequestCmd,
 	}
 
-	var clientTUICmd = &cobra.Command{
-		Use:   "tui",
-		Short: "Start the terminal user interface",
-		Run:   api.StartTUI,
-	}
-
 	var clientLogsCmd = &cobra.Command{
 		Use:   "logs",
 		Short: "View system logs",
@@ -516,8 +510,6 @@ Supports pagination for large log sets.`,
 	clientCmd.AddCommand(clientDeleteMeCmd)
 
 	clientCmd.AddCommand(clientReqCmd)
-
-	clientCmd.AddCommand(clientTUICmd)
 
 	clientCmd.AddCommand(clientLogsCmd)
 

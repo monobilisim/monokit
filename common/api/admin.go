@@ -10,6 +10,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"gorm.io/gorm"
+	// "gorm.io/gorm" // No longer directly needed for function signatures if DBTX is used
 )
 
 // Export functions for testing
@@ -21,47 +22,47 @@ func ExportCreateGroup(db *gorm.DB) gin.HandlerFunc {
 	return createGroup(db)
 }
 
-func ExportDeleteGroup(db *gorm.DB) gin.HandlerFunc {
+func ExportDeleteGroup(db DBTX) gin.HandlerFunc {
 	return deleteGroup(db)
 }
 
-func ExportAddHostToGroup(db *gorm.DB) gin.HandlerFunc {
+func ExportAddHostToGroup(db DBTX) gin.HandlerFunc {
 	return addHostToGroup(db)
 }
 
-func ExportRemoveHostFromGroup(db *gorm.DB) gin.HandlerFunc {
+func ExportRemoveHostFromGroup(db DBTX) gin.HandlerFunc {
 	return removeHostFromGroup(db)
 }
 
-func ExportUpdateUserGroups(db *gorm.DB) gin.HandlerFunc {
+func ExportUpdateUserGroups(db DBTX) gin.HandlerFunc {
 	return updateUserGroups(db)
 }
 
-func ExportCreateUser(db *gorm.DB) gin.HandlerFunc {
+func ExportCreateUser(db DBTX) gin.HandlerFunc {
 	return createUser(db)
 }
 
-func ExportDeleteUser(db *gorm.DB) gin.HandlerFunc {
+func ExportDeleteUser(db DBTX) gin.HandlerFunc {
 	return deleteUser(db)
 }
 
-func ExportUpdateUser(db *gorm.DB) gin.HandlerFunc {
+func ExportUpdateUser(db DBTX) gin.HandlerFunc {
 	return updateUser(db)
 }
 
-func ExportGetAllUsers(db *gorm.DB) gin.HandlerFunc {
+func ExportGetAllUsers(db DBTX) gin.HandlerFunc {
 	return getAllUsers(db)
 }
 
-func ExportScheduleHostDeletion(db *gorm.DB) gin.HandlerFunc {
+func ExportScheduleHostDeletion(db DBTX) gin.HandlerFunc {
 	return scheduleHostDeletion(db)
 }
 
-func ExportMoveHostToInventory(db *gorm.DB) gin.HandlerFunc {
+func ExportMoveHostToInventory(db DBTX) gin.HandlerFunc {
 	return moveHostToInventory(db)
 }
 
-func ExportGetUser(db *gorm.DB) gin.HandlerFunc {
+func ExportGetUser(db DBTX) gin.HandlerFunc {
 	return getUser(db)
 }
 
@@ -150,7 +151,7 @@ func createGroup(db *gorm.DB) gin.HandlerFunc {
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Router /admin/groups/{name} [delete]
-func deleteGroup(db *gorm.DB) gin.HandlerFunc {
+func deleteGroup(db DBTX) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user, exists := c.Get("user")
 		if !exists || user.(User).Role != "admin" {
@@ -217,23 +218,29 @@ func deleteGroup(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		for _, user := range users {
-			groups := strings.Split(user.Groups, ",")
-			var newGroups []string
-			for _, group := range groups {
-				group = strings.TrimSpace(group)
-				if group != groupName {
-					newGroups = append(newGroups, group)
+		for _, userLoopVar := range users {
+			currentUserGroups := strings.Split(userLoopVar.Groups, ",")
+			var newGroupsForUser []string
+			foundInUser := false
+			for _, g := range currentUserGroups {
+				g = strings.TrimSpace(g)
+				if g == groupName {
+					foundInUser = true
+				} else if g != "" {
+					newGroupsForUser = append(newGroupsForUser, g)
 				}
 			}
-			if len(newGroups) == 0 {
-				user.Groups = "nil"
-			} else {
-				user.Groups = strings.Join(newGroups, ",")
-			}
-			if err := db.Save(&user).Error; err != nil {
-				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user groups"})
-				return
+
+			if foundInUser {
+				if len(newGroupsForUser) == 0 {
+					userLoopVar.Groups = "nil"
+				} else {
+					userLoopVar.Groups = strings.Join(newGroupsForUser, ",")
+				}
+				if err := db.Save(&userLoopVar).Error; err != nil {
+					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update user groups"})
+					return
+				}
 			}
 		}
 
@@ -259,7 +266,7 @@ func deleteGroup(db *gorm.DB) gin.HandlerFunc {
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Router /admin/groups/{name}/hosts/{hostname} [post]
-func addHostToGroup(db *gorm.DB) gin.HandlerFunc {
+func addHostToGroup(db DBTX) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user, exists := c.Get("user")
 		if !exists || user.(User).Role != "admin" {
@@ -318,7 +325,7 @@ func addHostToGroup(db *gorm.DB) gin.HandlerFunc {
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Router /admin/groups/{name}/hosts/{hostname} [delete]
-func removeHostFromGroup(db *gorm.DB) gin.HandlerFunc {
+func removeHostFromGroup(db DBTX) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user, exists := c.Get("user")
 		if !exists || user.(User).Role != "admin" {
@@ -382,7 +389,7 @@ func removeHostFromGroup(db *gorm.DB) gin.HandlerFunc {
 // @Success 200 {object} map[string]string
 // @Failure 403 {object} ErrorResponse
 // @Router /admin/users/{username}/groups [put]
-func updateUserGroups(db *gorm.DB) gin.HandlerFunc {
+func updateUserGroups(db DBTX) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user, exists := c.Get("user")
 		if !exists || user.(User).Role != "admin" {
@@ -424,7 +431,7 @@ func updateUserGroups(db *gorm.DB) gin.HandlerFunc {
 // @Failure 403 {object} ErrorResponse
 // @Failure 409 {object} ErrorResponse
 // @Router /admin/users [post]
-func createUser(db *gorm.DB) gin.HandlerFunc {
+func createUser(db DBTX) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user, exists := c.Get("user")
 		if !exists || user.(User).Role != "admin" {
@@ -467,7 +474,7 @@ func createUser(db *gorm.DB) gin.HandlerFunc {
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Router /admin/users/{username} [delete]
-func deleteUser(db *gorm.DB) gin.HandlerFunc {
+func deleteUser(db DBTX) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		currentUser, exists := c.Get("user")
 		if !exists || currentUser.(User).Role != "admin" {
@@ -512,7 +519,7 @@ func deleteUser(db *gorm.DB) gin.HandlerFunc {
 // @Failure 404 {object} ErrorResponse
 // @Failure 409 {object} ErrorResponse
 // @Router /admin/users/{username} [put]
-func updateUser(db *gorm.DB) gin.HandlerFunc {
+func updateUser(db DBTX) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		currentUser, exists := c.Get("user")
 		if !exists || currentUser.(User).Role != "admin" {
@@ -580,7 +587,7 @@ func updateUser(db *gorm.DB) gin.HandlerFunc {
 // @Success 200 {array} UserResponse
 // @Failure 403 {object} ErrorResponse
 // @Router /admin/users [get]
-func getAllUsers(db *gorm.DB) gin.HandlerFunc {
+func getAllUsers(db DBTX) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Check for admin access
 		user, exists := c.Get("user")
@@ -597,13 +604,13 @@ func getAllUsers(db *gorm.DB) gin.HandlerFunc {
 
 		// Convert to response objects without sensitive data
 		response := make([]UserResponse, len(users))
-		for i, user := range users {
+		for i, u := range users {
 			response[i] = UserResponse{
-				Username:    user.Username,
-				Email:       user.Email,
-				Role:        user.Role,
-				Groups:      user.Groups,
-				Inventories: user.Inventories,
+				Username:    u.Username,
+				Email:       u.Email,
+				Role:        u.Role,
+				Groups:      u.Groups,
+				Inventories: u.Inventories,
 			}
 		}
 
@@ -622,7 +629,7 @@ func getAllUsers(db *gorm.DB) gin.HandlerFunc {
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Router /admin/hosts/{hostname} [delete]
-func scheduleHostDeletion(db *gorm.DB) gin.HandlerFunc {
+func scheduleHostDeletion(db DBTX) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Check for admin access
 		user, exists := c.Get("user")
@@ -664,7 +671,7 @@ func scheduleHostDeletion(db *gorm.DB) gin.HandlerFunc {
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Router /admin/hosts/{hostname}/move/{inventory} [post]
-func moveHostToInventory(db *gorm.DB) gin.HandlerFunc {
+func moveHostToInventory(db DBTX) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Check for admin access
 		user, exists := c.Get("user")
@@ -714,9 +721,9 @@ func moveHostToInventory(db *gorm.DB) gin.HandlerFunc {
 // @Failure 403 {object} ErrorResponse
 // @Failure 404 {object} ErrorResponse
 // @Router /admin/users/{username} [get]
-func getUser(db *gorm.DB) gin.HandlerFunc {
+func getUser(db DBTX) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if user, exists := c.Get("user"); !exists || user.(User).Role != "admin" {
+		if userCtx, exists := c.Get("user"); !exists || userCtx.(User).Role != "admin" {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}
