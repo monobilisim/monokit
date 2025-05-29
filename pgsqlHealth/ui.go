@@ -317,6 +317,7 @@ func (p *PostgreSQLHealthData) RenderCompact() string {
 		}
 		sb.WriteString("\n")
 
+		catalog, err := getConsulCatalog(consulURL)
 		// Get consul catalog
 		if err != nil {
 			sb.WriteString(common.SimpleStatusListItem(
