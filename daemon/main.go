@@ -30,10 +30,10 @@ func Main(cmd *cobra.Command, args []string) {
 	// --- Get flags before Init ---
 	runOnce, _ := cmd.Flags().GetBool("once")
 	listComponents, _ := cmd.Flags().GetBool("list-components")
-	ignoreLockfile, _ := cmd.Flags().GetBool("ignore-lockfile") // Check if daemon itself was started with this flag
+	lockfile, _ := cmd.Flags().GetBool("lockfile") // Check if daemon itself was started with this flag
 
 	// --- Set common flag BEFORE Init ---
-	common.IgnoreLockfile = ignoreLockfile
+	common.IgnoreLockfile = !lockfile
 
 	// --- Init common (handles lockfile based on common.IgnoreLockfile) ---
 	common.Init()
