@@ -30,17 +30,17 @@ func Main(cmd *cobra.Command, args []string) {
 	// --- Get flags before Init ---
 	runOnce, _ := cmd.Flags().GetBool("once")
 	listComponents, _ := cmd.Flags().GetBool("list-components")
-	lockfile, _ := cmd.Flags().GetBool("lockfile") // Check if daemon itself was started with this flag
 
+	// --- Single-instance check ---
+	if common.ProcGrep("monokit daemon", true) {
+		fmt.Println("Monokit daemon is already running, exiting...")
+		os.Exit(1)
+	}
 	// --- Set common flag BEFORE Init ---
-	common.IgnoreLockfile = !lockfile
+	common.IgnoreLockfile = true
 
 	// --- Init common (handles lockfile based on common.IgnoreLockfile) ---
 	common.Init()
-	// Ensure lockfile created by Init (if any) is removed on exit
-	if !common.IgnoreLockfile {
-		defer common.RemoveLockfile()
-	}
 
 	if common.ConfExists("daemon") {
 		common.ConfInit("daemon", &DaemonConfig)
@@ -56,7 +56,7 @@ func Main(cmd *cobra.Command, args []string) {
 
 	if runOnce {
 		fmt.Println("Running once")
-		RunAll(ignoreLockfile) // Pass the flag value down for component execution logic
+		RunAll() // Pass the flag value down for component execution logic
 		os.Exit(0)
 	}
 
@@ -71,8 +71,8 @@ func Main(cmd *cobra.Command, args []string) {
 	defer ticker.Stop()
 
 	for {
-		RunAll(ignoreLockfile) // Pass ignoreLockfile flag down
-		<-ticker.C             // Wait for the next tick
+		RunAll()   // Pass lockfile flag down
+		<-ticker.C // Wait for the next tick
 	}
 }
 
@@ -114,8 +114,8 @@ func recordUpdateCheck(filePath string) {
 }
 
 // RunAll executes all registered and enabled components.
-// It now accepts the ignoreLockfile flag to pass down to sudo calls.
-func RunAll(ignoreLockfile bool) {
+// It now accepts the lockfile flag to pass down to sudo calls.
+func RunAll() {
 	// Check and run daily update if needed
 	if shouldRunDailyUpdate(lastUpdateCheckFile) {
 		fmt.Println("Running daily monokit update check...")
@@ -126,7 +126,7 @@ func RunAll(ignoreLockfile bool) {
 	// --- Run versionCheck unconditionally ---
 	fmt.Println("Running version checks...")
 	if vcComp, vcExists := common.GetComponent("versionCheck"); vcExists {
-		executeComponent(vcComp, ignoreLockfile) // Use helper function
+		executeComponent(vcComp) // Use helper function
 	} else {
 		fmt.Println("Warning: versionCheck component not found in registry.")
 	}
@@ -146,7 +146,7 @@ func RunAll(ignoreLockfile bool) {
 	for _, compName := range componentsToRun {
 		if comp, exists := common.GetComponent(compName); exists {
 			// Platform/disabled checks are already handled by GetInstalledComponents
-			executeComponent(comp, ignoreLockfile) // Use helper function
+			executeComponent(comp) // Use helper function
 		} else {
 			// This should ideally not happen if GetInstalledComponents is correct
 			fmt.Printf("Warning: Component %s was listed to run but not found in registry.\n", compName)
@@ -158,7 +158,7 @@ func RunAll(ignoreLockfile bool) {
 
 // executeComponent handles the logic for running a single component,
 // including direct execution, sudo execution, and platform checks.
-func executeComponent(comp common.Component, ignoreLockfile bool) {
+func executeComponent(comp common.Component) {
 	executablePath, execErr := os.Executable()
 	if execErr != nil {
 		fmt.Printf("Error getting executable path: %v. Cannot run components as different users.\n", execErr)
@@ -181,11 +181,9 @@ func executeComponent(comp common.Component, ignoreLockfile bool) {
 			args = append(args, fmt.Sprintf("HOSTNAME=%s", hostname))
 		}
 		args = append(args, executablePath, comp.Name)
-		// Add --ignore-lockfile flag ONLY if the daemon was started with it
-		if ignoreLockfile {
-			args = append(args, "--ignore-lockfile")
-			fmt.Printf(" with --ignore-lockfile")
-		}
+		// Add --ignore-lockfile flag
+		args = append(args, "--ignore-lockfile")
+		fmt.Printf(" with --ignore-lockfile")
 		fmt.Println("...")
 
 		cmd := exec.Command("sudo", args...)
@@ -218,24 +216,18 @@ func executeComponent(comp common.Component, ignoreLockfile bool) {
 			// Need to create a temporary cobra command to execute
 			// Pass the --ignore-lockfile flag to the component's execution context if needed
 			originalOsArgs := os.Args // Store original args
-			var tempCmd *cobra.Command
-			if ignoreLockfile {
-				tempCmd = &cobra.Command{
-					Use:                comp.Name,
-					Run:                comp.EntryPoint,
-					DisableFlagParsing: false, // Allow parsing flags like --ignore-lockfile
-					Args:               cobra.ArbitraryArgs,
-				}
-				// Manually set the arguments for the component's command execution
-				os.Args = []string{executablePath, comp.Name, "--ignore-lockfile"}
-			} else {
-				tempCmd = &cobra.Command{
-					Use:                comp.Name,
-					Run:                comp.EntryPoint,
-					DisableFlagParsing: true, // Original behavior if no flag needed
-				}
-				os.Args = []string{executablePath, comp.Name} // Simulate command line without the flag
+			tempCmd := &cobra.Command{
+				Use:                comp.Name,
+				Run:                comp.EntryPoint,
+				DisableFlagParsing: false, // Allow parsing flags like --ignore-lockfile
+				Args:               cobra.ArbitraryArgs,
 			}
+			// Let Cobra ignore unknown flags (e.g., --ignore-lockfile) if the component
+			// itself doesn't declare them, preventing duplicate-definition panics
+			// and “unknown flag” errors.
+			tempCmd.FParseErrWhitelist = cobra.FParseErrWhitelist{UnknownFlags: true}
+			// Manually set the arguments for the component's command execution
+			os.Args = []string{executablePath, comp.Name, "--ignore-lockfile"}
 
 			// ExecuteC captures errors, Execute runs and panics on error
 			_, err := tempCmd.ExecuteC() // Use ExecuteC to handle errors gracefully
@@ -247,9 +239,7 @@ func executeComponent(comp common.Component, ignoreLockfile bool) {
 			// How to pass --ignore-lockfile to ExecuteFunc? It needs to be designed to accept it.
 			// For now, we assume ExecuteFunc handles its context or doesn't need the flag.
 			// If ExecuteFunc needs the flag, the component definition should change.
-			if ignoreLockfile {
-				fmt.Printf("Note: Cannot automatically pass --ignore-lockfile to ExecuteFunc for %s.\n", comp.Name)
-			}
+			fmt.Printf("Note: Cannot automatically pass --ignore-lockfile to ExecuteFunc for %s.\n", comp.Name)
 			comp.ExecuteFunc() // Assuming ExecuteFunc handles its own errors or panics
 		} else {
 			fmt.Printf("Warning: Component %s determined to run but has no execution method defined.\n", comp.Name)
