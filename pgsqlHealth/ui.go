@@ -318,8 +318,6 @@ func (p *PostgreSQLHealthData) RenderCompact() string {
 		sb.WriteString("\n")
 
 		// Get consul catalog
-		catalog, err := getConsulCatalog(consulURL)
-		fmt.Println("Catalog: ", catalog)
 		if err != nil {
 			sb.WriteString(common.SimpleStatusListItem(
 				"Consul Catalog",
