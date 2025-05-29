@@ -44,17 +44,9 @@ type ClusterStatusData struct {
 // 3. Checks the role of the current node
 // 4. Checks for changes in the cluster roles
 // 5. Checks the state of each cluster member
-/*
-Leader switch detection fix:
-
-- Persist this node's last-known role in /tmp/pgsqlHealth/last_role
-- On each run, after fetching cluster status, compare current vs previous role (ours only!)
-- If we became leader (current == "leader" && last != "leader"), fire leader_switch_hook
-- Update last_role file every run
-*/
-
 // 6. Saves the current cluster status to a JSON file for future comparison
 func clusterStatus(patroniApiUrl string, dbConfig db.DbHealth) (*ClusterStatusData, error) { // Added parameters and return type
+	// Remove direct console output from checkPatroniService and call it internally
 	isPatroniRunning := common.SystemdUnitActive("patroni.service")
 	if isPatroniRunning {
 		common.AlarmCheckUp("patroni_service", "Patroni service is now accessible", false)
@@ -62,7 +54,7 @@ func clusterStatus(patroniApiUrl string, dbConfig db.DbHealth) (*ClusterStatusDa
 		common.AlarmCheckDown("patroni_service", "Patroni service is not accessible", false, "", "")
 	}
 
-	result, oldResult := getClusterStatus(patroniApiUrl)
+	result, oldResult := getClusterStatus(patroniApiUrl) // Pass patroniApiUrl
 	if result == nil {
 		return nil, fmt.Errorf("failed to get cluster status")
 	}
@@ -71,22 +63,20 @@ func clusterStatus(patroniApiUrl string, dbConfig db.DbHealth) (*ClusterStatusDa
 		Nodes: result.Members,
 	}
 
-	// --- New: check for local leader transitions and run hook if needed
-	checkLocalLeaderTransition(result.Members, dbConfig)
-	// ---
-
-	// Check this node's role (kept for legacy/compat)
+	// Check this node's role
 	for _, member := range result.Members {
 		if member.Name == nodeName {
+			// No direct console output
 			break
 		}
 	}
 
-	// Check for role changes (legacy snapshot diff, for alarms/reporting)
-	checkClusterRoleChanges(result, oldResult, dbConfig, false)
+	// Check for role changes
+	checkClusterRoleChanges(result, oldResult, dbConfig, false) // Add param to skip console output
 
 	// Check states and update health data
-	runningNodes, stoppedNodes := checkClusterStates(result, false)
+	runningNodes, stoppedNodes := checkClusterStates(result, false) // Add param to skip console output
+
 	clusterData.IsReplicated = len(runningNodes) > 1
 	clusterData.IsHealthy = len(stoppedNodes) == 0
 
@@ -97,43 +87,10 @@ func clusterStatus(patroniApiUrl string, dbConfig db.DbHealth) (*ClusterStatusDa
 		clusterData.Status = "Unhealthy"
 	}
 
-	// Save current state for future comparison (legacy)
+	// Save current state for future comparison
 	saveOutputJSON(result)
 
 	return clusterData, nil
-}
-
-// getLocalRole returns the current node's role ("leader", "replica", ...). "unknown" if not found.
-func getLocalRole(members []Member) string {
-	for _, m := range members {
-		if m.Name == nodeName {
-			return m.Role
-		}
-	}
-	return "unknown"
-}
-
-// checkLocalLeaderTransition detects local node becoming leader, runs hook and updates last_role file.
-func checkLocalLeaderTransition(members []Member, dbConfig db.DbHealth) {
-	if dbConfig.Postgres.Leader_switch_hook == "" {
-		return
-	}
-	lastRoleFile := common.TmpDir + "/last_role"
-
-	currRole := getLocalRole(members)
-	lastRole := "unknown"
-	// Read last role from file
-	if data, err := os.ReadFile(lastRoleFile); err == nil {
-		lastRole = string(data)
-	}
-	// Only run hook if we transitioned to leader
-	if currRole == "leader" && lastRole != "leader" {
-		runLeaderSwitchHook(dbConfig)
-	}
-	// Always persist current role
-	if err := os.WriteFile(lastRoleFile, []byte(currRole), 0644); err != nil {
-		common.LogError(fmt.Sprintf("Error writing last_role file: %v\n", err))
-	}
 }
 
 // checkPatroniService checks if the Patroni service is running
