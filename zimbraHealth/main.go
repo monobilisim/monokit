@@ -599,7 +599,7 @@ func processServiceStateChanges(tmpDir string, currentStatus map[string]bool) []
 				// Emit recovery alarm only if down alarm file exists (avoids duplicates)
 				alarmFile := filepath.Join(tmpDir, "service_"+serviceName+".log")
 				if _, err := os.Stat(alarmFile); err == nil {
-					common.AlarmCheckUp("service_"+serviceName, "🟢 "+serviceName+" is now running", false)
+					common.AlarmCheckUp("service_"+serviceName, serviceName+" is now running", false)
 				}
 			}
 		} else {
@@ -632,7 +632,7 @@ func processServiceStateChanges(tmpDir string, currentStatus map[string]bool) []
 			// Emit recovery alarm for disappeared services (they're no longer failing)
 			alarmFile := filepath.Join(tmpDir, "service_"+serviceName+".log")
 			if _, err := os.Stat(alarmFile); err == nil {
-				common.AlarmCheckUp("service_"+serviceName, "🟢 "+serviceName+" is no longer reported by zmcontrol status", false)
+				common.AlarmCheckUp("service_"+serviceName, serviceName+" is no longer reported by zmcontrol status", false)
 			}
 
 			saveServiceState(tmpDir, state)
@@ -658,15 +658,15 @@ func displayServiceSummary(states []*ServiceState) {
 	}
 
 	if len(relevantStates) == 0 {
-		fmt.Println("\n✅ No service failures recorded.")
+		common.LogDebug("No service failures recorded.")
 		return
 	}
 
-	fmt.Println("\n📊 Service Recovery Summary:")
-	fmt.Println("================================================================================")
-	fmt.Printf("%-15s %-20s %-10s %-20s %-10s\n",
-		"Service", "Last Failure", "Restarts", "Recovery Time", "Status")
-	fmt.Println("================================================================================")
+	common.LogDebug("Service Recovery Summary:")
+	common.LogDebug("================================================================================")
+	common.LogDebug(fmt.Sprintf("%-15s %-20s %-10s %-20s %-10s",
+		"Service", "Last Failure", "Restarts", "Recovery Time", "Status"))
+	common.LogDebug("================================================================================")
 
 	for _, state := range relevantStates {
 		lastFailure := "–"
@@ -687,19 +687,19 @@ func displayServiceSummary(states []*ServiceState) {
 		statusIcon := ""
 		switch state.Status {
 		case "Running":
-			statusIcon = "🟢 Running"
+			statusIcon = "Running"
 		case "Stopped":
-			statusIcon = "🔴 Stopped"
+			statusIcon = "Stopped"
 		case "Disappeared":
-			statusIcon = "⚪ Gone"
+			statusIcon = "Gone"
 		default:
-			statusIcon = "❓ " + state.Status
+			statusIcon = state.Status
 		}
 
-		fmt.Printf("%-15s %-20s %-10s %-20s %-10s\n",
-			state.Name, lastFailure, restartInfo, recoveryTime, statusIcon)
+		common.LogDebug(fmt.Sprintf("%-15s %-20s %-10s %-20s %-10s",
+			state.Name, lastFailure, restartInfo, recoveryTime, statusIcon))
 	}
-	fmt.Println("================================================================================")
+	common.LogDebug("================================================================================")
 }
 
 // changeImmutable remains unchanged
