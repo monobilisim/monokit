@@ -33,6 +33,15 @@ type ServiceInfo struct {
 	Running bool
 }
 
+// ServiceState tracks persistent service health across runs
+type ServiceState struct {
+	Name            string `json:"name"`
+	LastFailure     string `json:"last_failure,omitempty"`
+	RestartAttempts int    `json:"restart_attempts,omitempty"`
+	RecoveredAt     string `json:"recovered_at,omitempty"`
+	Status          string `json:"status"` // "Running", "Stopped", "Disappeared"
+}
+
 // VersionInfo holds Zimbra version details.
 type VersionInfo struct {
 	InstalledVersion string

@@ -6,12 +6,14 @@ import (
 	"bufio"
 	"bytes"
 	"crypto/tls"
+	"encoding/json"
 	"fmt"
 	"io"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -456,15 +458,14 @@ func RestartZimbraService(service string) bool {
 	return true // Restart command executed
 }
 
-// CheckZimbraServices refactored to return []ServiceInfo
+// CheckZimbraServices refactored to return []ServiceInfo with recovery tracking
 func CheckZimbraServices() []ServiceInfo {
 	var currentServices []ServiceInfo
-	var knownServiceNames []string // Track names found in current status
+	currentStatus := make(map[string]bool)
 
 	statusOutput, err := ExecZimbraCommand("zmcontrol status", false, false)
 	if err != nil {
 		common.LogError("Failed to get zmcontrol status: " + err.Error())
-		// Return empty list, maybe set a global error flag?
 		return currentServices
 	}
 
@@ -500,45 +501,205 @@ func CheckZimbraServices() []ServiceInfo {
 		serviceName = strings.TrimPrefix(serviceName, "carbonio-")
 
 		currentServices = append(currentServices, ServiceInfo{Name: serviceName, Running: isRunning})
-		knownServiceNames = append(knownServiceNames, serviceName)
+		currentStatus[serviceName] = isRunning
 
-		// Handle alarms and potential restart for currently checked services
-		alarmKey := "service_" + serviceName
-		if isRunning {
-			common.LogDebug(serviceName + " is running.")
-			common.AlarmCheckUp(alarmKey, serviceName+" is now running", false)
-		} else {
+		// Handle down services for restart logic (existing behavior)
+		if !isRunning {
 			common.LogWarn(serviceName + " is NOT running.")
-			common.WriteToFile(common.TmpDir+"/"+"zmcontrol_status_"+time.Now().Format("2006-01-02_15.04.05")+".log", statusOutput) // Use .log extension
-			common.AlarmCheckDown(alarmKey, serviceName+" is not running", false, "", "")
+			common.WriteToFile(common.TmpDir+"/"+"zmcontrol_status_"+time.Now().Format("2006-01-02_15.04.05")+".log", statusOutput)
+			common.AlarmCheckDown("service_"+serviceName, serviceName+" is not running", false, "", "")
 			if MailHealthConfig.Zimbra.Restart {
 				RestartZimbraService(serviceName) // Attempt restart
 			}
 		}
 	}
 
-	// Check for services that disappeared (present in alarms but not in current status)
-	files, err := ioutil.ReadDir(common.TmpDir)
+	// Process state changes and emit recovery alarms
+	allServiceStates := processServiceStateChanges(common.TmpDir, currentStatus)
+
+	// Display summary
+	displayServiceSummary(allServiceStates)
+
+	return currentServices
+}
+
+// --- Service State Persistence & Summary ---
+// --- Service State Persistence & Summary ---
+func loadServiceState(tmpDir, name string) (*ServiceState, error) {
+	path := filepath.Join(tmpDir, "service_"+name+".state")
+	b, err := os.ReadFile(path)
 	if err != nil {
-		common.LogWarn("Error reading tmp directory for disappeared services: " + err.Error())
-	} else {
-		for _, file := range files {
-			if strings.HasPrefix(file.Name(), "service_") && strings.HasSuffix(file.Name(), ".down") {
-				// Extract service name from alarm file, e.g., service_zmconfigd.down
-				parts := strings.Split(file.Name(), "_")
-				if len(parts) > 1 {
-					serviceNameFromAlarm := strings.Split(parts[1], ".")[0] // Get 'zmconfigd' from 'zmconfigd.down'
-					if !common.IsInArray(serviceNameFromAlarm, knownServiceNames) {
-						common.LogWarn("Service " + serviceNameFromAlarm + " seems to have disappeared (alarm exists, but not in status). Clearing alarm.") // Changed to Warn
-						common.AlarmCheckUp("service_"+serviceNameFromAlarm, serviceNameFromAlarm+" is no longer reported by zmcontrol status.", false)
-						// Optionally add to currentServices as 'Disappeared' or 'Unknown'? For now, just clear alarm.
-					}
+		return nil, err
+	}
+	var s ServiceState
+	if json.Unmarshal(b, &s) != nil {
+		return nil, err
+	}
+	return &s, nil
+}
+
+func saveServiceState(tmpDir string, s *ServiceState) error {
+	path := filepath.Join(tmpDir, "service_"+s.Name+".state")
+	b, err := json.Marshal(s)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, b, 0644)
+}
+
+// Collect state for all files
+func loadAllServiceStates(tmpDir string) (map[string]*ServiceState, error) {
+	states := make(map[string]*ServiceState)
+	files, err := os.ReadDir(tmpDir)
+	if err != nil {
+		return states, nil // treat as empty if not exists
+	}
+	for _, file := range files {
+		if file.IsDir() || !strings.HasSuffix(file.Name(), ".state") {
+			continue
+		}
+		name := strings.TrimPrefix(strings.TrimSuffix(file.Name(), ".state"), "service_")
+		if s, err := loadServiceState(tmpDir, name); err == nil {
+			states[name] = s
+		}
+	}
+	return states, nil
+}
+
+// processServiceStateChanges tracks service state transitions and emits recovery alarms
+func processServiceStateChanges(tmpDir string, currentStatus map[string]bool) []*ServiceState {
+	now := time.Now().Format("2006-01-02 15:04:05")
+
+	// Load all existing service states
+	existingStates, _ := loadAllServiceStates(tmpDir)
+
+	var allStates []*ServiceState
+
+	// Process current services
+	for serviceName, isRunning := range currentStatus {
+		var state *ServiceState
+		if existing, exists := existingStates[serviceName]; exists {
+			state = existing
+		} else {
+			state = &ServiceState{
+				Name:   serviceName,
+				Status: "Unknown",
+			}
+		}
+
+		previousStatus := state.Status
+
+		if isRunning {
+			state.Status = "Running"
+			// Check for recovery (was not running, now running)
+			if previousStatus == "Stopped" || previousStatus == "Unknown" {
+				state.RecoveredAt = now
+				state.RestartAttempts = 0 // Reset on recovery
+
+				// Emit recovery alarm only if down alarm file exists (avoids duplicates)
+				alarmFile := filepath.Join(tmpDir, "service_"+serviceName+".log")
+				if _, err := os.Stat(alarmFile); err == nil {
+					common.AlarmCheckUp("service_"+serviceName, "🟢 "+serviceName+" is now running", false)
 				}
 			}
+		} else {
+			state.Status = "Stopped"
+			// Check for new failure (was running, now stopped)
+			if previousStatus == "Running" || previousStatus == "Unknown" {
+				state.LastFailure = now
+				state.RestartAttempts = 1
+				state.RecoveredAt = "" // Clear recovery time
+			} else if previousStatus == "Stopped" {
+				// Increment restart attempts for continued failure
+				state.RestartAttempts++
+			}
+		}
+
+		// Save updated state
+		saveServiceState(tmpDir, state)
+		allStates = append(allStates, state)
+
+		// Remove from existing states map (for tracking disappeared services)
+		delete(existingStates, serviceName)
+	}
+
+	// Handle disappeared services (exist in state files but not in current status)
+	for serviceName, state := range existingStates {
+		if state.Status != "Disappeared" {
+			state.Status = "Disappeared"
+			state.RecoveredAt = now
+
+			// Emit recovery alarm for disappeared services (they're no longer failing)
+			alarmFile := filepath.Join(tmpDir, "service_"+serviceName+".log")
+			if _, err := os.Stat(alarmFile); err == nil {
+				common.AlarmCheckUp("service_"+serviceName, "🟢 "+serviceName+" is no longer reported by zmcontrol status", false)
+			}
+
+			saveServiceState(tmpDir, state)
+		}
+		allStates = append(allStates, state)
+	}
+
+	return allStates
+}
+
+// displayServiceSummary prints a summary table of service states
+func displayServiceSummary(states []*ServiceState) {
+	if len(states) == 0 {
+		return
+	}
+
+	// Filter to only show services that have had failures
+	var relevantStates []*ServiceState
+	for _, state := range states {
+		if state.LastFailure != "" || state.RestartAttempts > 0 {
+			relevantStates = append(relevantStates, state)
 		}
 	}
 
-	return currentServices
+	if len(relevantStates) == 0 {
+		fmt.Println("\n✅ No service failures recorded.")
+		return
+	}
+
+	fmt.Println("\n📊 Service Recovery Summary:")
+	fmt.Println("================================================================================")
+	fmt.Printf("%-15s %-20s %-10s %-20s %-10s\n",
+		"Service", "Last Failure", "Restarts", "Recovery Time", "Status")
+	fmt.Println("================================================================================")
+
+	for _, state := range relevantStates {
+		lastFailure := "–"
+		if state.LastFailure != "" {
+			lastFailure = state.LastFailure
+		}
+
+		recoveryTime := "–"
+		if state.RecoveredAt != "" {
+			recoveryTime = state.RecoveredAt
+		}
+
+		restartInfo := fmt.Sprintf("%d", state.RestartAttempts)
+		if state.RestartAttempts >= 2 {
+			restartInfo += "/2 (limit)"
+		}
+
+		statusIcon := ""
+		switch state.Status {
+		case "Running":
+			statusIcon = "🟢 Running"
+		case "Stopped":
+			statusIcon = "🔴 Stopped"
+		case "Disappeared":
+			statusIcon = "⚪ Gone"
+		default:
+			statusIcon = "❓ " + state.Status
+		}
+
+		fmt.Printf("%-15s %-20s %-10s %-20s %-10s\n",
+			state.Name, lastFailure, restartInfo, recoveryTime, statusIcon)
+	}
+	fmt.Println("================================================================================")
 }
 
 // changeImmutable remains unchanged
