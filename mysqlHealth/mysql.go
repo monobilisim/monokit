@@ -98,7 +98,7 @@ func ParseMyCnfAndConnect(profile string) (string, error) {
 					isMatch = true // Match any section if profile is empty
 				} else if sectionName == profile {
 					isMatch = true // Exact match
-				} else if profile == "client" && sectionName == "client" {
+				} else if (profile == "client" && sectionName == "client") || (profile == "client-server" && sectionName == "client-server") {
 					isMatch = true // Specific case for default client profile
 				} else if strings.HasPrefix(sectionName, profile) && sectionName != "DEFAULT" {
 					// Optional: Allow prefix matching if needed, but exact match is safer
@@ -151,8 +151,8 @@ func ParseMyCnfAndConnect(profile string) (string, error) {
 
 				// Validate required fields before attempting connection
 				if config.User == "" {
-					common.LogDebug(fmt.Sprintf("Skipping profile [%s] in %s: missing user", s.Name(), path))
-					continue
+					common.LogDebug(fmt.Sprintf("Defaulting user for 'root' profile [%s] in %s", s.Name(), path))
+					config.User	= "root" // Default to 'root' if no user specified
 				}
 
 				currentConnStr = config.FormatDSN()
