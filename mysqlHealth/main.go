@@ -84,9 +84,17 @@ func Main(cmd *cobra.Command, args []string) {
 
 	// ParseMyCnfAndConnect now handles setting the global Connection on success.
 	// We don't need the returned connection string here anymore.
+	var finalErr error
 	_, err := ParseMyCnfAndConnect("client")
-
 	if err != nil {
+		_, err = ParseMyCnfAndConnect("client-server")
+		if err != nil {
+			// If both attempts fail, log the error and set finalErr
+			finalErr = err
+		}
+	}
+
+	if finalErr != nil {
 		// Log the specific error from ParseMyCnfAndConnect
 		errMsg := fmt.Sprintf("Failed to establish initial MySQL connection: %s", err.Error())
 		common.LogError(errMsg)
