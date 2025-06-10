@@ -4,13 +4,110 @@ package redisHealth
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/monobilisim/monokit/common"
 	api "github.com/monobilisim/monokit/common/api"
+	"github.com/monobilisim/monokit/common/health"
 	"github.com/spf13/cobra"
 )
+
+// getActualSlaveCount retrieves the actual number of connected slaves from Redis
+func getActualSlaveCount() int {
+	if rdb == nil {
+		return 0
+	}
+
+	info, err := rdb.Info(ctx, "Replication").Result()
+	if err != nil {
+		return 0
+	}
+
+	// Parse the replication info
+	lines := strings.Split(info, "\n")
+	for _, line := range lines {
+		if strings.HasPrefix(line, "connected_slaves:") {
+			countStr := strings.TrimPrefix(line, "connected_slaves:")
+			countStr = strings.TrimSpace(countStr)
+			if count, err := strconv.Atoi(countStr); err == nil {
+				return count
+			}
+		}
+	}
+	return 0
+}
+
+// RedisHealthProvider implements the health.Provider interface
+type RedisHealthProvider struct{}
+
+// Name returns the name of the provider
+func (p *RedisHealthProvider) Name() string {
+	return "redisHealth"
+}
+
+// Collect gathers Redis health data.
+// The 'hostname' parameter is ignored for redisHealth as it collects local data.
+func (p *RedisHealthProvider) Collect(_ string) (interface{}, error) {
+	// Initialize config if not already done
+	if RedisHealthConfig.Port == "" {
+		if common.ConfExists("redis") {
+			common.ConfInit("redis", &RedisHealthConfig)
+		}
+		if RedisHealthConfig.Port == "" {
+			RedisHealthConfig.Port = "6379"
+		}
+	}
+
+	// Store the original global healthData to restore later
+	originalHealthData := healthData
+
+	// Create health data (this will be used by Redis functions that modify global healthData)
+	healthData = &RedisHealthData{
+		Version:     "2.0.0",
+		LastChecked: time.Now().Format("2006-01-02 15:04:05"),
+	}
+
+	// Initialize Redis connection
+	RedisInit()
+
+	// Check service status
+	healthData.Service.Active = common.SystemdUnitActive("redis.service") || common.SystemdUnitActive("redis-server.service") || common.SystemdUnitActive("valkey.service") || common.SystemdUnitActive("valkey-server.service")
+
+	// Check Redis role
+	healthData.Role.IsMaster = RedisIsMaster()
+
+	// Check if Sentinel is enabled
+	isSentinel := RedisIsSentinel()
+	if isSentinel {
+		healthData.Sentinel = &SentinelInfo{
+			Active:        common.SystemdUnitActive("redis-sentinel.service"),
+			ExpectedCount: RedisHealthConfig.Slave_count,
+		}
+
+		// Get actual slave count if this is a master
+		if healthData.Role.IsMaster {
+			healthData.Sentinel.SlaveCount = getActualSlaveCount()
+		}
+
+		RedisSlaveCountChange()
+	}
+
+	// Check read/write capabilities
+	healthData.Connection.Pingable = true  // Set by RedisInit()
+	healthData.Connection.Writeable = true // Will be set by RedisReadWriteTest
+	healthData.Connection.Readable = true  // Will be set by RedisReadWriteTest
+	RedisReadWriteTest(isSentinel)
+
+	// Store the result
+	result := healthData
+
+	// Restore the original global healthData
+	healthData = originalHealthData
+
+	return result, nil
+}
 
 func init() {
 	common.RegisterComponent(common.Component{
@@ -19,6 +116,8 @@ func init() {
 		Platform:   "linux",
 		AutoDetect: DetectRedis,
 	})
+	// Register health provider
+	health.Register(&RedisHealthProvider{})
 }
 
 var RedisHealthConfig struct {

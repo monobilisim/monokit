@@ -6,6 +6,7 @@ import (
 
 	"github.com/monobilisim/monokit/common"
 	api "github.com/monobilisim/monokit/common/api"
+	"github.com/monobilisim/monokit/common/health"
 	versionCheck "github.com/monobilisim/monokit/common/versionCheck"
 	"github.com/spf13/cobra"
 	"k8s.io/client-go/kubernetes"
@@ -79,6 +80,33 @@ func DetectK8s() bool {
 	return true
 }
 
+// K8sHealthProvider implements the health.Provider interface
+type K8sHealthProvider struct{}
+
+// Name returns the name of the provider
+func (p *K8sHealthProvider) Name() string {
+	return "k8sHealth"
+}
+
+// Collect gathers Kubernetes health data.
+// The 'hostname' parameter is used for context but k8s data is cluster-wide
+func (p *K8sHealthProvider) Collect(hostname string) (interface{}, error) {
+	// Initialize config if not already done
+	if len(K8sHealthConfig.K8s.Floating_Ips) == 0 && len(K8sHealthConfig.K8s.Ingress_Floating_Ips) == 0 {
+		if common.ConfExists("k8s") {
+			common.ConfInit("k8s", &K8sHealthConfig)
+		}
+	}
+
+	// Initialize clientset if not already done
+	if clientset == nil {
+		kubeconfigPath := getKubeconfigPath("")
+		InitClientset(kubeconfigPath)
+	}
+
+	return collectK8sHealthData(), nil
+}
+
 func init() {
 	common.RegisterComponent(common.Component{
 		Name:       "k8sHealth",
@@ -86,6 +114,8 @@ func init() {
 		Platform:   "any", // Relies on Kubernetes API, platform-agnostic
 		AutoDetect: DetectK8s,
 	})
+	// Register health provider
+	health.Register(&K8sHealthProvider{})
 }
 
 type K8sHealth struct {

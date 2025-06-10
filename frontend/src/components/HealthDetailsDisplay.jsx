@@ -36,7 +36,9 @@ import {
   BuildingIcon,
   LockIcon,
   ConnectedIcon,
-  DisconnectedIcon
+  DisconnectedIcon,
+  CubesIcon,
+  DatabaseIcon
 } from '@patternfly/react-icons';
 import axios from 'axios';
 
@@ -597,6 +599,509 @@ const HealthDetailsDisplay = ({ hostname, toolName }) => {
     );
   };
 
+  const renderK8sHealthData = (data) => {
+    return (
+      <Stack hasGutter>
+        {/* Errors Section */}
+        {data.Errors && data.Errors.length > 0 && (
+          <StackItem>
+            <Alert variant="danger" title="Kubernetes Health Errors">
+              <Stack hasGutter>
+                {data.Errors.map((error, index) => (
+                  <StackItem key={index}>- {error}</StackItem>
+                ))}
+              </Stack>
+            </Alert>
+          </StackItem>
+        )}
+
+        {/* Nodes Section */}
+        {data.Nodes && data.Nodes.length > 0 && (
+          <StackItem>
+            <Card>
+              <CardTitle>
+                <Title headingLevel="h5" size="md">
+                  <ServerIcon style={{ marginRight: '8px' }} />
+                  Kubernetes Nodes
+                </Title>
+              </CardTitle>
+              <CardBody>
+                <Stack hasGutter>
+                  {data.Nodes.map((node, index) => (
+                    <StackItem key={index}>
+                      <Card isCompact>
+                        <CardBody>
+                          <Flex alignItems={{ default: 'alignItemsCenter' }}>
+                            <FlexItem>
+                              {node.IsReady ? (
+                                <Icon status="success"><CheckCircleIcon /></Icon>
+                              ) : (
+                                <Icon status="danger"><ExclamationCircleIcon /></Icon>
+                              )}
+                            </FlexItem>
+                            <FlexItem>
+                              <strong>{node.Name}</strong>
+                            </FlexItem>
+                            <FlexItem>
+                              <Label color={node.Role === 'master' ? 'blue' : 'green'}>
+                                {node.Role}
+                              </Label>
+                            </FlexItem>
+                            <FlexItem>
+                              <Label color={node.IsReady ? 'green' : 'red'}>
+                                {node.Status}
+                              </Label>
+                            </FlexItem>
+                            {node.Reason && (
+                              <FlexItem>
+                                <span style={{ fontSize: '0.875rem', color: '#6a6e73' }}>
+                                  {node.Reason}
+                                </span>
+                              </FlexItem>
+                            )}
+                          </Flex>
+                        </CardBody>
+                      </Card>
+                    </StackItem>
+                  ))}
+                </Stack>
+              </CardBody>
+            </Card>
+          </StackItem>
+        )}
+
+        {/* Problematic Pods Section */}
+        {data.Pods && data.Pods.filter(pod => pod.IsProblem).length > 0 && (
+          <StackItem>
+            <Card>
+              <CardTitle>
+                <Title headingLevel="h5" size="md">
+                  <CubesIcon style={{ marginRight: '8px' }} />
+                  Problematic Pods
+                </Title>
+              </CardTitle>
+              <CardBody>
+                <Stack hasGutter>
+                  {data.Pods.filter(pod => pod.IsProblem).map((pod, index) => (
+                    <StackItem key={index}>
+                      <Card isCompact>
+                        <CardBody>
+                          <Flex direction={{ default: 'column' }} spaceItems={{ default: 'spaceItemsSm' }}>
+                            <FlexItem>
+                              <Flex alignItems={{ default: 'alignItemsCenter' }}>
+                                <FlexItem>
+                                  <Icon status="warning"><ExclamationTriangleIcon /></Icon>
+                                </FlexItem>
+                                <FlexItem>
+                                  <strong>{pod.Namespace}/{pod.Name}</strong>
+                                </FlexItem>
+                                <FlexItem>
+                                  <Label color="orange">{pod.Phase}</Label>
+                                </FlexItem>
+                              </Flex>
+                            </FlexItem>
+                            {pod.ContainerStates && pod.ContainerStates.length > 0 && (
+                              <FlexItem>
+                                <DescriptionList isCompact>
+                                  {pod.ContainerStates.filter(container => !container.IsReady).map((container, idx) => (
+                                    <DescriptionListGroup key={idx}>
+                                      <DescriptionListTerm>{container.Name}</DescriptionListTerm>
+                                      <DescriptionListDescription>
+                                        {container.State} - {container.Reason}
+                                        {container.Message && ` (${container.Message.slice(0, 100)}${container.Message.length > 100 ? '...' : ''})`}
+                                      </DescriptionListDescription>
+                                    </DescriptionListGroup>
+                                  ))}
+                                </DescriptionList>
+                              </FlexItem>
+                            )}
+                          </Flex>
+                        </CardBody>
+                      </Card>
+                    </StackItem>
+                  ))}
+                </Stack>
+              </CardBody>
+            </Card>
+          </StackItem>
+        )}
+
+        {/* RKE2 Ingress Nginx Section */}
+        {data.Rke2IngressNginx && (
+          <StackItem>
+            <Card>
+              <CardTitle>
+                <Title headingLevel="h5" size="md">
+                  <NetworkIcon style={{ marginRight: '8px' }} />
+                  RKE2 Ingress Nginx
+                </Title>
+              </CardTitle>
+              <CardBody>
+                {data.Rke2IngressNginx.Error ? (
+                  <Alert variant="danger" title="Error">
+                    {data.Rke2IngressNginx.Error}
+                  </Alert>
+                ) : (
+                  <DescriptionList isHorizontal>
+                    <DescriptionListGroup>
+                      <DescriptionListTerm>Manifest Available</DescriptionListTerm>
+                      <DescriptionListDescription>
+                        <Label color={data.Rke2IngressNginx.ManifestAvailable ? 'green' : 'red'}>
+                          {data.Rke2IngressNginx.ManifestAvailable ? 'Yes' : 'No'}
+                        </Label>
+                      </DescriptionListDescription>
+                    </DescriptionListGroup>
+                    {data.Rke2IngressNginx.ManifestPath && (
+                      <DescriptionListGroup>
+                        <DescriptionListTerm>Manifest Path</DescriptionListTerm>
+                        <DescriptionListDescription>{data.Rke2IngressNginx.ManifestPath}</DescriptionListDescription>
+                      </DescriptionListGroup>
+                    )}
+                    {data.Rke2IngressNginx.PublishServiceEnabled !== null && (
+                      <DescriptionListGroup>
+                        <DescriptionListTerm>Publish Service</DescriptionListTerm>
+                        <DescriptionListDescription>
+                          <Label color={data.Rke2IngressNginx.PublishServiceEnabled ? 'green' : 'orange'}>
+                            {data.Rke2IngressNginx.PublishServiceEnabled ? 'Enabled' : 'Disabled'}
+                          </Label>
+                        </DescriptionListDescription>
+                      </DescriptionListGroup>
+                    )}
+                  </DescriptionList>
+                )}
+              </CardBody>
+            </Card>
+          </StackItem>
+        )}
+
+        {/* Cert Manager Section */}
+        {data.CertManager && (
+          <StackItem>
+            <Card>
+              <CardTitle>
+                <Title headingLevel="h5" size="md">
+                  <LockIcon style={{ marginRight: '8px' }} />
+                  Cert Manager
+                </Title>
+              </CardTitle>
+              <CardBody>
+                {data.CertManager.Error ? (
+                  <Alert variant="danger" title="Error">
+                    {data.CertManager.Error}
+                  </Alert>
+                ) : (
+                  <Stack hasGutter>
+                    <StackItem>
+                      <DescriptionList isCompact isHorizontal>
+                        <DescriptionListGroup>
+                          <DescriptionListTerm>Namespace Available</DescriptionListTerm>
+                          <DescriptionListDescription>
+                            <Label color={data.CertManager.NamespaceAvailable ? 'green' : 'red'}>
+                              {data.CertManager.NamespaceAvailable ? 'Yes' : 'No'}
+                            </Label>
+                          </DescriptionListDescription>
+                        </DescriptionListGroup>
+                      </DescriptionList>
+                    </StackItem>
+                    {data.CertManager.Certificates && data.CertManager.Certificates.length > 0 && (
+                      <StackItem>
+                        <Stack hasGutter>
+                          {data.CertManager.Certificates.map((cert, index) => (
+                            <StackItem key={index}>
+                              <Card isCompact>
+                                <CardBody>
+                                  <Flex alignItems={{ default: 'alignItemsCenter' }}>
+                                    <FlexItem>
+                                      {cert.IsReady ? (
+                                        <Icon status="success"><CheckCircleIcon /></Icon>
+                                      ) : (
+                                        <Icon status="danger"><ExclamationCircleIcon /></Icon>
+                                      )}
+                                    </FlexItem>
+                                    <FlexItem>
+                                      <strong>{cert.Name}</strong>
+                                    </FlexItem>
+                                    <FlexItem>
+                                      <Label color={cert.IsReady ? 'green' : 'red'}>
+                                        {cert.IsReady ? 'Ready' : 'Not Ready'}
+                                      </Label>
+                                    </FlexItem>
+                                    {cert.Reason && (
+                                      <FlexItem>
+                                        <span style={{ fontSize: '0.875rem', color: '#6a6e73' }}>
+                                          {cert.Reason}
+                                        </span>
+                                      </FlexItem>
+                                    )}
+                                  </Flex>
+                                </CardBody>
+                              </Card>
+                            </StackItem>
+                          ))}
+                        </Stack>
+                      </StackItem>
+                    )}
+                  </Stack>
+                )}
+              </CardBody>
+            </Card>
+          </StackItem>
+        )}
+
+        {/* Last Checked */}
+        {data.LastChecked && (
+          <StackItem>
+            <Card isCompact>
+              <CardBody>
+                <DescriptionList isCompact isHorizontal>
+                  <DescriptionListGroup>
+                    <DescriptionListTerm>Last Checked</DescriptionListTerm>
+                    <DescriptionListDescription>{data.LastChecked}</DescriptionListDescription>
+                  </DescriptionListGroup>
+                </DescriptionList>
+              </CardBody>
+            </Card>
+          </StackItem>
+        )}
+      </Stack>
+    );
+  };
+
+  const renderRedisHealthData = (data) => {
+    return (
+      <Stack hasGutter>
+        {/* Service Status Section */}
+        <StackItem>
+          <Card>
+            <CardTitle>
+              <Title headingLevel="h5" size="md">
+                <DatabaseIcon style={{ marginRight: '8px' }} />
+                Service Status
+              </Title>
+            </CardTitle>
+            <CardBody>
+              <Flex alignItems={{ default: 'alignItemsCenter' }}>
+                <FlexItem>
+                  {data.Service.Active ? (
+                    <Icon status="success"><CheckCircleIcon /></Icon>
+                  ) : (
+                    <Icon status="danger"><ExclamationCircleIcon /></Icon>
+                  )}
+                </FlexItem>
+                <FlexItem>
+                  <strong>Redis Service</strong>
+                </FlexItem>
+                <FlexItem>
+                  <Label color={data.Service.Active ? 'green' : 'red'}>
+                    {data.Service.Active ? 'Active' : 'Inactive'}
+                  </Label>
+                </FlexItem>
+              </Flex>
+            </CardBody>
+          </Card>
+        </StackItem>
+
+        {/* Connection Status Section */}
+        <StackItem>
+          <Card>
+            <CardTitle>
+              <Title headingLevel="h5" size="md">
+                <ConnectedIcon style={{ marginRight: '8px' }} />
+                Connection Status
+              </Title>
+            </CardTitle>
+            <CardBody>
+              <Stack hasGutter>
+                <StackItem>
+                  <Card isCompact>
+                    <CardBody>
+                      <Flex alignItems={{ default: 'alignItemsCenter' }}>
+                        <FlexItem>
+                          {data.Connection.Pingable ? (
+                            <Icon status="success"><CheckCircleIcon /></Icon>
+                          ) : (
+                            <Icon status="danger"><ExclamationCircleIcon /></Icon>
+                          )}
+                        </FlexItem>
+                        <FlexItem>
+                          <strong>Connection</strong>
+                        </FlexItem>
+                        <FlexItem>
+                          <Label color={data.Connection.Pingable ? 'green' : 'red'}>
+                            {data.Connection.Pingable ? 'Connected' : 'Disconnected'}
+                          </Label>
+                        </FlexItem>
+                      </Flex>
+                    </CardBody>
+                  </Card>
+                </StackItem>
+                <StackItem>
+                  <Card isCompact>
+                    <CardBody>
+                      <Flex alignItems={{ default: 'alignItemsCenter' }}>
+                        <FlexItem>
+                          {data.Connection.Writeable ? (
+                            <Icon status="success"><CheckCircleIcon /></Icon>
+                          ) : (
+                            <Icon status="danger"><ExclamationCircleIcon /></Icon>
+                          )}
+                        </FlexItem>
+                        <FlexItem>
+                          <strong>Write Access</strong>
+                        </FlexItem>
+                        <FlexItem>
+                          <Label color={data.Connection.Writeable ? 'green' : 'red'}>
+                            {data.Connection.Writeable ? 'Writeable' : 'Read-only'}
+                          </Label>
+                        </FlexItem>
+                      </Flex>
+                    </CardBody>
+                  </Card>
+                </StackItem>
+                <StackItem>
+                  <Card isCompact>
+                    <CardBody>
+                      <Flex alignItems={{ default: 'alignItemsCenter' }}>
+                        <FlexItem>
+                          {data.Connection.Readable ? (
+                            <Icon status="success"><CheckCircleIcon /></Icon>
+                          ) : (
+                            <Icon status="danger"><ExclamationCircleIcon /></Icon>
+                          )}
+                        </FlexItem>
+                        <FlexItem>
+                          <strong>Read Access</strong>
+                        </FlexItem>
+                        <FlexItem>
+                          <Label color={data.Connection.Readable ? 'green' : 'red'}>
+                            {data.Connection.Readable ? 'Readable' : 'Not readable'}
+                          </Label>
+                        </FlexItem>
+                      </Flex>
+                    </CardBody>
+                  </Card>
+                </StackItem>
+              </Stack>
+            </CardBody>
+          </Card>
+        </StackItem>
+
+        {/* Role Status Section */}
+        <StackItem>
+          <Card>
+            <CardTitle>
+              <Title headingLevel="h5" size="md">
+                <ServerIcon style={{ marginRight: '8px' }} />
+                Role Status
+              </Title>
+            </CardTitle>
+            <CardBody>
+              <Flex alignItems={{ default: 'alignItemsCenter' }}>
+                <FlexItem>
+                  <Icon status="info"><ServerIcon /></Icon>
+                </FlexItem>
+                <FlexItem>
+                  <strong>Redis Role</strong>
+                </FlexItem>
+                <FlexItem>
+                  <Label color={data.Role.IsMaster ? 'blue' : 'green'}>
+                    {data.Role.IsMaster ? 'Master' : 'Slave'}
+                  </Label>
+                </FlexItem>
+              </Flex>
+            </CardBody>
+          </Card>
+        </StackItem>
+
+        {/* Sentinel Status Section */}
+        {data.Sentinel && (
+          <StackItem>
+            <Card>
+              <CardTitle>
+                <Title headingLevel="h5" size="md">
+                  <NetworkIcon style={{ marginRight: '8px' }} />
+                  Sentinel Status
+                </Title>
+              </CardTitle>
+              <CardBody>
+                <Stack hasGutter>
+                  <StackItem>
+                    <Card isCompact>
+                      <CardBody>
+                        <Flex alignItems={{ default: 'alignItemsCenter' }}>
+                          <FlexItem>
+                            {data.Sentinel.Active ? (
+                              <Icon status="success"><CheckCircleIcon /></Icon>
+                            ) : (
+                              <Icon status="danger"><ExclamationCircleIcon /></Icon>
+                            )}
+                          </FlexItem>
+                          <FlexItem>
+                            <strong>Sentinel Service</strong>
+                          </FlexItem>
+                          <FlexItem>
+                            <Label color={data.Sentinel.Active ? 'green' : 'red'}>
+                              {data.Sentinel.Active ? 'Active' : 'Inactive'}
+                            </Label>
+                          </FlexItem>
+                        </Flex>
+                      </CardBody>
+                    </Card>
+                  </StackItem>
+                  {data.Role.IsMaster && (
+                    <StackItem>
+                      <Card isCompact>
+                        <CardBody>
+                          <Flex alignItems={{ default: 'alignItemsCenter' }}>
+                            <FlexItem>
+                              {data.Sentinel.SlaveCount === data.Sentinel.ExpectedCount ? (
+                                <Icon status="success"><CheckCircleIcon /></Icon>
+                              ) : (
+                                <Icon status="warning"><ExclamationTriangleIcon /></Icon>
+                              )}
+                            </FlexItem>
+                            <FlexItem>
+                              <strong>Slave Count</strong>
+                            </FlexItem>
+                            <FlexItem>
+                              <Label color={data.Sentinel.SlaveCount === data.Sentinel.ExpectedCount ? 'green' : 'orange'}>
+                                {data.Sentinel.SlaveCount} / {data.Sentinel.ExpectedCount}
+                              </Label>
+                            </FlexItem>
+                          </Flex>
+                        </CardBody>
+                      </Card>
+                    </StackItem>
+                  )}
+                </Stack>
+              </CardBody>
+            </Card>
+          </StackItem>
+        )}
+
+        {/* Last Checked */}
+        {data.LastChecked && (
+          <StackItem>
+            <Card isCompact>
+              <CardBody>
+                <DescriptionList isCompact isHorizontal>
+                  <DescriptionListGroup>
+                    <DescriptionListTerm>Last Checked</DescriptionListTerm>
+                    <DescriptionListDescription>{data.LastChecked}</DescriptionListDescription>
+                  </DescriptionListGroup>
+                  <DescriptionListGroup>
+                    <DescriptionListTerm>Version</DescriptionListTerm>
+                    <DescriptionListDescription>{data.Version}</DescriptionListDescription>
+                  </DescriptionListGroup>
+                </DescriptionList>
+              </CardBody>
+            </Card>
+          </StackItem>
+        )}
+      </Stack>
+    );
+  };
+
   const renderGenericHealthData = (data, toolName) => {
     return (
       <Card>
@@ -642,6 +1147,10 @@ const HealthDetailsDisplay = ({ hostname, toolName }) => {
           return renderOSHealthData(healthData);
         } else if (toolName === 'pritunlHealth') {
           return renderPritunlHealthData(healthData);
+        } else if (toolName === 'k8sHealth') {
+          return renderK8sHealthData(healthData);
+        } else if (toolName === 'redisHealth') {
+          return renderRedisHealthData(healthData);
         } else {
           return renderGenericHealthData(healthData, toolName);
         }
