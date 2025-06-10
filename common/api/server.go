@@ -41,11 +41,13 @@ package common
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/monobilisim/monokit/common"
+	commonPkg "github.com/monobilisim/monokit/common"
 	_ "github.com/monobilisim/monokit/docs"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -104,6 +106,7 @@ func ServerMain(cmd *cobra.Command, args []string) {
 			db.AutoMigrate(&Session{})
 			db.AutoMigrate(&HostLog{})        // Add migration for HostLog table
 			db.AutoMigrate(&HostFileConfig{}) // Add migration for host file configs
+			db.AutoMigrate(&HostHealthData{}) // Add migration for HostHealthData
 			db.Exec("CREATE INDEX IF NOT EXISTS idx_host_logs_timestamp ON host_logs (timestamp)")
 			// Create default inventory if it doesn't exist
 			var defaultInventory Inventory
@@ -125,7 +128,14 @@ func ServerMain(cmd *cobra.Command, args []string) {
 			gin.SetMode(gin.ReleaseMode)
 			r := gin.Default()
 			r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
-			setupRoutes(r, db)
+
+			monokitHostname, err := os.Hostname()
+			if err != nil {
+				commonPkg.LogError(fmt.Sprintf("Failed to get Monokit server hostname in BuildRouter: %v. Health check fallback for self may not work as expected.", err))
+				monokitHostname = "" // Set to empty or a placeholder
+			}
+
+			setupRoutes(r, db, monokitHostname)
 			SetupFrontend(r)
 			return r
 		},

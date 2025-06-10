@@ -8,10 +8,36 @@ import (
 	"time"
 
 	"github.com/monobilisim/monokit/common"
+	"github.com/monobilisim/monokit/common/health"
 	issues "github.com/monobilisim/monokit/common/redmine/issues"
 	"github.com/shirou/gopsutil/v4/disk" // For GetDiskPartitions
 	"github.com/spf13/cobra"
 )
+
+// OsHealthProvider implements the health.Provider interface
+type OsHealthProvider struct{}
+
+// Name returns the name of the provider
+func (p *OsHealthProvider) Name() string {
+	return "osHealth"
+}
+
+// Collect gathers OS health data.
+// The 'hostname' parameter is ignored for osHealth as it collects local data.
+func (p *OsHealthProvider) Collect(_ string) (interface{}, error) {
+	// Initialize config if not already done (e.g. if called directly, not via CLI)
+	// This is a simplified approach; a more robust solution might involve a dedicated config loader.
+	if OsHealthConfig.Load.Issue_Multiplier == 0 { // Check if config is uninitialized
+		common.ConfInit("os", &OsHealthConfig) // Load "os" config into OsHealthConfig
+		if OsHealthConfig.Load.Issue_Multiplier == 0 {
+			OsHealthConfig.Load.Issue_Multiplier = 1
+		}
+		if OsHealthConfig.Load.Issue_Interval == 0 {
+			OsHealthConfig.Load.Issue_Interval = 15
+		}
+	}
+	return collectHealthData("api"), nil // "api" as version, or make version dynamic
+}
 
 func init() {
 	common.RegisterComponent(common.Component{
@@ -19,6 +45,7 @@ func init() {
 		EntryPoint: Main,
 		Platform:   "any", // Runs on multiple OS, specific features checked internally
 	})
+	health.Register(&OsHealthProvider{})
 }
 
 // types.go
@@ -31,6 +58,11 @@ func Main(cmd *cobra.Command, args []string) {
 	common.Init()
 	common.ConfInit("os", &OsHealthConfig)
 
+	// Check service status with the Monokit server.
+	// This initializes common.ClientURL, common.Config.Identifier,
+	// checks if the service is enabled, and handles updates.
+	common.WrapperGetServiceStatus("osHealth")
+
 	// Initialize configuration defaults
 	if OsHealthConfig.Load.Issue_Multiplier == 0 {
 		OsHealthConfig.Load.Issue_Multiplier = 1
@@ -42,6 +74,12 @@ func Main(cmd *cobra.Command, args []string) {
 
 	// Collect health data
 	healthData := collectHealthData(version)
+
+	// Attempt to POST health data to the Monokit server
+	if err := common.PostHostHealth("osHealth", healthData); err != nil {
+		common.LogError(fmt.Sprintf("osHealth: failed to POST health data: %v", err))
+		// Continue execution even if POST fails, e.g., to display UI locally
+	}
 
 	// Display as a nice box UI
 	displayBoxUI(healthData)

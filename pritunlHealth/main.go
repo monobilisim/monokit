@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/monobilisim/monokit/common"
+	"github.com/monobilisim/monokit/common/health"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper" // Import viper for config reading in detection
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -15,6 +16,30 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 	"go.mongodb.org/mongo-driver/v2/mongo/readpref"
 )
+
+// PritunlHealthProvider implements the health.Provider interface
+type PritunlHealthProvider struct{}
+
+// Name returns the name of the provider
+func (p *PritunlHealthProvider) Name() string {
+	return "pritunlHealth"
+}
+
+// Collect gathers Pritunl health data.
+// The 'hostname' parameter is ignored for pritunlHealth as it collects MongoDB data.
+func (p *PritunlHealthProvider) Collect(_ string) (interface{}, error) {
+	// Initialize config if not already done (e.g. if called directly, not via CLI)
+	if PritunlHealthConfig.Url == "" {
+		if common.ConfExists("pritunl") {
+			common.ConfInit("pritunl", &PritunlHealthConfig)
+		}
+		// Apply default URL after attempting to load config
+		if PritunlHealthConfig.Url == "" {
+			PritunlHealthConfig.Url = "mongodb://localhost:27017"
+		}
+	}
+	return collectPritunlHealthData()
+}
 
 // DetectPritunl checks if the Pritunl service seems to be configured and reachable via MongoDB.
 func DetectPritunl() bool {
@@ -78,6 +103,7 @@ func init() {
 		Platform:   "any",         // Connects to MongoDB, platform-agnostic
 		AutoDetect: DetectPritunl, // Add the auto-detect function
 	})
+	health.Register(&PritunlHealthProvider{})
 }
 
 type PritunlHealth struct {
@@ -92,25 +118,11 @@ type Client struct {
 
 var PritunlHealthConfig PritunlHealth
 
-func Main(cmd *cobra.Command, args []string) {
-	version := "1.0.0"
-	common.ScriptName = "pritunlHealth"
-	common.TmpDir = common.TmpDir + "pritunlHealth"
-	common.Init()
-
-	// Load config after common.Init
-	if common.ConfExists("pritunl") {
-		common.ConfInit("pritunl", &PritunlHealthConfig)
-	}
-
-	// Apply default URL after attempting to load config
-	if PritunlHealthConfig.Url == "" {
-		PritunlHealthConfig.Url = "mongodb://localhost:27017"
-	}
-
+// collectPritunlHealthData gathers all the Pritunl health information
+func collectPritunlHealthData() (*PritunlHealthData, error) {
 	// Create health data structure
 	healthData := NewPritunlHealthData()
-	healthData.Version = version
+	healthData.Version = "1.0.0"
 
 	// Connect call does not use context in this driver version
 	clientOptions := options.Client().ApplyURI(PritunlHealthConfig.Url)
@@ -119,8 +131,7 @@ func Main(cmd *cobra.Command, args []string) {
 		common.LogError("Couldn't connect to the server: " + err.Error())
 		common.AlarmCheckDown("pritunl_connect", "Couldn't connect to the server: "+err.Error(), false, "", "")
 		healthData.IsHealthy = false
-		fmt.Println(healthData.RenderAll())
-		return
+		return healthData, err
 	} else {
 		common.AlarmCheckUp("pritunl_connect", "Server is now connected", false)
 	}
@@ -145,8 +156,7 @@ func Main(cmd *cobra.Command, args []string) {
 		common.LogError("Couldn't ping the server: " + err.Error())
 		common.AlarmCheckDown("pritunl_ping", "Couldn't ping the server: "+err.Error(), false, "", "")
 		healthData.IsHealthy = false
-		fmt.Println(healthData.RenderAll())
-		return
+		return healthData, err
 	} else {
 		common.AlarmCheckUp("pritunl_ping", "Server is now pingable", false)
 	}
@@ -170,6 +180,46 @@ func Main(cmd *cobra.Command, args []string) {
 			healthData.IsHealthy = false
 			break
 		}
+	}
+
+	return healthData, nil
+}
+
+func Main(cmd *cobra.Command, args []string) {
+	common.ScriptName = "pritunlHealth"
+	common.TmpDir = common.TmpDir + "pritunlHealth"
+	common.Init()
+
+	// Check service status with the Monokit server.
+	// This initializes common.ClientURL, common.Config.Identifier,
+	// checks if the service is enabled, and handles updates.
+	common.WrapperGetServiceStatus("pritunlHealth")
+
+	// Load config after common.Init
+	if common.ConfExists("pritunl") {
+		common.ConfInit("pritunl", &PritunlHealthConfig)
+	}
+
+	// Apply default URL after attempting to load config
+	if PritunlHealthConfig.Url == "" {
+		PritunlHealthConfig.Url = "mongodb://localhost:27017"
+	}
+
+	// Collect health data
+	healthData, err := collectPritunlHealthData()
+	if err != nil {
+		common.LogError("Failed to collect Pritunl health data: " + err.Error())
+		// Display error state and return
+		if healthData != nil {
+			fmt.Println(healthData.RenderAll())
+		}
+		return
+	}
+
+	// Attempt to POST health data to the Monokit server
+	if err := common.PostHostHealth("pritunlHealth", healthData); err != nil {
+		common.LogError(fmt.Sprintf("pritunlHealth: failed to POST health data: %v", err))
+		// Continue execution even if POST fails, e.g., to display UI locally
 	}
 
 	// Display the health data

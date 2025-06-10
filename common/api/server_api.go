@@ -12,21 +12,26 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"os"
 	"regexp"
 	"runtime"
 	"slices"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
 	commonPkg "github.com/monobilisim/monokit/common"
+	"github.com/monobilisim/monokit/common/health"
 	_ "github.com/monobilisim/monokit/docs"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/schema"
 )
 
 // @title Monokit API
@@ -151,7 +156,15 @@ func ExportGenerateToken() string {
 func StartAPIServer(cmd *cobra.Command, args []string) error {
 	r := gin.Default()
 	db := setupDatabase()
-	setupRoutes(r, db)
+
+	monokitHostname, err := os.Hostname()
+	if err != nil {
+		// Log the error but continue, as health fallback might not be critical for all setups
+		commonPkg.LogError(fmt.Sprintf("Failed to get Monokit server hostname: %v. Health check fallback for self may not work as expected.", err))
+		monokitHostname = "" // Set to empty or a placeholder if preferred
+	}
+
+	setupRoutes(r, db, monokitHostname)
 	SetupFrontend(r) // This will be a no-op if frontend is not included
 	return r.Run(fmt.Sprintf(":%s", ServerConfig.Port))
 }
@@ -213,8 +226,11 @@ func setupDatabase() *gorm.DB {
 		ServerConfig.Postgres.Dbname,
 		ServerConfig.Postgres.Port,
 	)
-
-	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{
+		NamingStrategy: schema.NamingStrategy{
+			SingularTable: true, // Ensure table names are not pluralized by GORM
+		},
+	})
 	if err != nil {
 		panic("Failed to connect to database")
 	}
@@ -225,45 +241,47 @@ func setupDatabase() *gorm.DB {
 		panic(fmt.Sprintf("Failed to begin transaction: %v", tx.Error))
 	}
 
-	// Auto migrate the rest of the schema in the correct order
-	if err := db.AutoMigrate(
-		&APILogEntry{},
-		&Inventory{},
-		&Host{},
-		&User{},
-		&HostKey{},
-		&Session{},
-		&Group{},
-		&HostLog{},
-		&HostFileConfig{},
-	); err != nil {
+	// Auto migrate the rest of the schema in the correct order, using the transaction
+	allModels := []interface{}{
+		&APILogEntry{}, &Inventory{}, &Host{}, &User{}, &HostKey{},
+		&Session{}, &Group{}, &HostLog{}, &HostFileConfig{}, &HostHealthData{},
+	}
+	if err := tx.AutoMigrate(allModels...); err != nil {
+		tx.Rollback() // Rollback on error
 		panic(fmt.Sprintf("Failed to migrate schema: %v", err))
 	}
 
-	// Add AwxOnly column to hosts table if it doesn't exist
+	// Add AwxOnly column to hosts table if it doesn't exist, using the transaction
 	// This helps with backward compatibility for existing databases
-	if err := db.Exec("ALTER TABLE hosts ADD COLUMN IF NOT EXISTS awx_only boolean DEFAULT false").Error; err != nil {
+	if err := tx.Exec("ALTER TABLE hosts ADD COLUMN IF NOT EXISTS awx_only boolean DEFAULT false").Error; err != nil {
+		// Log warning but don't necessarily rollback, as it's a non-critical compatibility addition
 		fmt.Printf("Warning: Failed to add awx_only column: %v\n", err)
 	}
 
-	// Add indexes for host_logs table to improve query performance
-	if err := db.Exec("CREATE INDEX IF NOT EXISTS idx_host_logs_deleted_at_timestamp ON host_logs (deleted_at, timestamp)").Error; err != nil {
-		fmt.Printf("Warning: Failed to create index on host_logs: %v\n", err)
+	// Add indexes for host_logs table to improve query performance, using the transaction
+	if err := tx.Exec("CREATE INDEX IF NOT EXISTS idx_host_logs_deleted_at_timestamp ON host_logs (deleted_at, timestamp)").Error; err != nil {
+		fmt.Printf("Warning: Failed to create index idx_host_logs_deleted_at_timestamp on host_logs: %v\n", err)
 	}
 
-	// Add index for timestamp alone for faster sorting
-	if err := db.Exec("CREATE INDEX IF NOT EXISTS idx_host_logs_timestamp ON host_logs (timestamp)").Error; err != nil {
-		fmt.Printf("Warning: Failed to create index on host_logs timestamp: %v\n", err)
+	// Add index for timestamp alone for faster sorting, using the transaction
+	if err := tx.Exec("CREATE INDEX IF NOT EXISTS idx_host_logs_timestamp ON host_logs (timestamp)").Error; err != nil {
+		fmt.Printf("Warning: Failed to create index idx_host_logs_timestamp on host_logs timestamp: %v\n", err)
 	}
 
-	// Add index for the id column to speed up "WHERE id IN (...)" queries
-	if err := db.Exec("CREATE INDEX IF NOT EXISTS idx_host_logs_id ON host_logs (id)").Error; err != nil {
-		fmt.Printf("Warning: Failed to create index on host_logs id: %v\n", err)
+	// Add index for the id column to speed up "WHERE id IN (...)" queries, using the transaction
+	if err := tx.Exec("CREATE INDEX IF NOT EXISTS idx_host_logs_id ON host_logs (id)").Error; err != nil {
+		fmt.Printf("Warning: Failed to create index idx_host_logs_id on host_logs id: %v\n", err)
 	}
 
-	// Verify the host_file_configs table exists and has the correct structure
-	if err := db.Exec("SELECT * FROM host_file_configs LIMIT 0").Error; err != nil {
+	// Verify the host_file_configs table exists and has the correct structure, using the transaction
+	if err := tx.Exec("SELECT * FROM host_file_configs LIMIT 0").Error; err != nil {
+		tx.Rollback() // Rollback if a critical table verification fails
 		panic(fmt.Sprintf("Failed to verify host_file_configs table: %v", err))
+	}
+
+	// Commit the transaction
+	if err := tx.Commit().Error; err != nil {
+		panic(fmt.Sprintf("Failed to commit transaction: %v", err))
 	}
 
 	// Create default inventory if it doesn't exist
@@ -285,7 +303,7 @@ func setupDatabase() *gorm.DB {
 	return db
 }
 
-func setupRoutes(r *gin.Engine, db *gorm.DB) {
+func setupRoutes(r *gin.Engine, db *gorm.DB, monokitHostname string) {
 	// Setup API routes first
 	// Swagger route is already set up in server.go
 	SetupAuthRoutes(r, db)
@@ -349,6 +367,11 @@ func setupRoutes(r *gin.Engine, db *gorm.DB) {
 		api.GET("/logs/:hostname", getHostLogs(db))
 		api.POST("/logs/search", searchLogs(db))
 		api.DELETE("/logs/:id", deleteLog(db))
+
+		// Health endpoints
+		api.GET("/health/tools", getHealthTools(db))
+		api.GET("/hosts/:name/health", getHostHealth(db, monokitHostname))
+		api.GET("/hosts/:name/health/:tool", getHostToolHealth(db, monokitHostname))
 	}
 
 	// Host-specific API that uses host token authentication
@@ -364,6 +387,8 @@ func setupRoutes(r *gin.Engine, db *gorm.DB) {
 
 		// Allow hosts to submit their logs
 		hostApi.POST("/logs", submitHostLog(db))
+		// Allow hosts to submit their health data
+		hostApi.POST("/health/:tool", postHostHealth(db))
 	}
 }
 
@@ -3700,5 +3725,290 @@ func searchLogs(db *gorm.DB) gin.HandlerFunc {
 				Pages:    totalPages,
 			},
 		})
+	}
+}
+
+// getHealthTools returns a list of available health tools
+// @Summary Get available health tools
+// @Description Retrieves a combined list of names of all registered health check providers and tools found in submitted health data.
+// @Tags Health
+// @Produce json
+// @Success 200 {array} string "List of health tool names"
+// @Failure 500 {object} ErrorResponse "Internal server error"
+// @Router /health/tools [get]
+// @Security ApiKeyAuth
+func getHealthTools(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Get tools from the health registry
+		registeredTools := health.List()
+		toolSet := make(map[string]bool)
+		for _, tool := range registeredTools {
+			toolSet[tool] = true
+		}
+
+		// Get tools from the database
+		var dbTools []string
+		if err := db.Model(&HostHealthData{}).Distinct("tool_name").Pluck("tool_name", &dbTools).Error; err != nil {
+			commonPkg.LogError(fmt.Sprintf("Error fetching distinct tool names from database: %v", err))
+			// We can still return registered tools even if DB query fails
+		} else {
+			for _, tool := range dbTools {
+				toolSet[tool] = true
+			}
+		}
+
+		// Convert set to list
+		finalToolList := make([]string, 0, len(toolSet))
+		for tool := range toolSet {
+			finalToolList = append(finalToolList, tool)
+		}
+		sort.Strings(finalToolList) // Optional: sort for consistent ordering
+
+		c.JSON(http.StatusOK, finalToolList)
+	}
+}
+
+// getHostHealth returns aggregated health data for all tools for a specific host
+// @Summary Get aggregated health data for a host
+// @Description Retrieves health data from the database for a given hostname.
+// @Description For the Monokit server itself, if data is not found in the database, it may attempt to collect it directly from local providers.
+// @Tags Health
+// @Produce json
+// @Param name path string true "Hostname"
+// @Success 200 {object} map[string]interface{} "Aggregated health data"
+// @Failure 404 {object} ErrorResponse "Host not found"
+// @Failure 500 {object} ErrorResponse "Internal server error"
+// @Router /hosts/{name}/health [get]
+// @Security ApiKeyAuth
+func getHostHealth(db *gorm.DB, monokitHostname string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		hostName := c.Param("name")
+		var host Host
+		if err := db.Where("name = ?", hostName).First(&host).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				c.JSON(http.StatusNotFound, gin.H{"error": "Host not found"})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve host: " + err.Error()})
+			return
+		}
+
+		results := make(map[string]interface{})
+		var healthDataEntries []HostHealthData
+		if err := db.Where("host_name = ?", hostName).Find(&healthDataEntries).Error; err != nil {
+			commonPkg.LogError(fmt.Sprintf("Error fetching health data for host %s from DB: %v", hostName, err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve health data from database"})
+			return
+		}
+
+		for _, entry := range healthDataEntries {
+			var dataContent interface{}
+			if err := json.Unmarshal([]byte(entry.DataJSON), &dataContent); err != nil {
+				results[entry.ToolName] = gin.H{"error": fmt.Sprintf("Error unmarshalling health data for tool %s: %v", entry.ToolName, err)}
+				commonPkg.LogError(fmt.Sprintf("Error unmarshalling health data for host %s, tool %s: %v", hostName, entry.ToolName, err))
+			} else {
+				results[entry.ToolName] = dataContent
+			}
+		}
+
+		// Fallback for Monokit server's own health if it's the requested host
+		if hostName == monokitHostname {
+			allProviders := health.GetAllProviders()
+			var wg sync.WaitGroup
+			var mu sync.Mutex
+
+			for toolName, provider := range allProviders {
+				if _, exists := results[toolName]; !exists { // Only collect if not found in DB
+					wg.Add(1)
+					go func(name string, p health.Provider) {
+						defer wg.Done()
+						data, err := p.Collect(hostName)
+						mu.Lock()
+						defer mu.Unlock()
+						if err != nil {
+							results[name] = gin.H{"error": fmt.Sprintf("Error collecting local %s data: %v", name, err)}
+							commonPkg.LogError(fmt.Sprintf("Error collecting local %s health data for host %s: %v", name, hostName, err))
+						} else {
+							results[name] = data
+						}
+					}(toolName, provider)
+				}
+			}
+			wg.Wait()
+		}
+
+		if len(results) == 0 && len(healthDataEntries) == 0 {
+			// If still no results, it could mean no data has been pushed or no local providers for self-health
+			// c.JSON(http.StatusNotFound, gin.H{"message": "No health data available for this host"})
+			// Return empty map instead of 404 to allow frontend to display "no data" state
+			c.JSON(http.StatusOK, results)
+			return
+		}
+
+		c.JSON(http.StatusOK, results)
+	}
+}
+
+// postHostHealth receives and stores health data submitted by a host agent.
+// @Summary Submit health data from a host agent
+// @Description Allows a host agent to POST its health data for a specific tool.
+// @Tags Health
+// @Accept json
+// @Produce json
+// @Param tool path string true "Name of the health tool (e.g., osHealth)"
+// @Param healthData body string true "JSON health data from the tool"
+// @Success 200 {object} SuccessResponse "Data received and stored"
+// @Failure 400 {object} ErrorResponse "Invalid JSON data or missing tool name"
+// @Failure 401 {object} ErrorResponse "Unauthorized (invalid host token)"
+// @Failure 500 {object} ErrorResponse "Internal server error"
+// @Router /host/health/{tool} [post]
+// @Security ApiKeyAuth
+func postHostHealth(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		hostName, exists := c.Get("hostname")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Hostname not found in context, host auth middleware might not have run"})
+			return
+		}
+
+		toolName := c.Param("tool")
+		if toolName == "" {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Tool name parameter is required"})
+			return
+		}
+
+		// Read the raw body
+		jsonData, err := io.ReadAll(c.Request.Body)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Failed to read request body"})
+			return
+		}
+		defer c.Request.Body.Close()
+
+		// Validate if it's valid JSON - Unmarshal into a generic interface
+		var dataInterface interface{}
+		if err := json.Unmarshal(jsonData, &dataInterface); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid JSON data provided"})
+			return
+		}
+
+		// Ensure the Host record exists, or handle as an error
+		// This prevents orphaned health data if a host is deleted and an agent tries to post.
+		var host Host
+		if err := db.Where("name = ?", hostName.(string)).First(&host).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				c.JSON(http.StatusNotFound, gin.H{"error": "Host not found in database. Cannot submit health data."})
+				return
+			}
+			commonPkg.LogError(fmt.Sprintf("Error fetching host %s for health data submission: %v", hostName.(string), err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify host existence"})
+			return
+		}
+
+		healthData := HostHealthData{
+			HostName: hostName.(string),
+			ToolName: toolName,
+			DataJSON: string(jsonData), // Store as raw JSON string
+		}
+
+		// Upsert logic: Try to update if exists, otherwise create.
+		// GORM's Save handles this if Primary Key is zero or if record is found.
+		// For composite unique keys, we need to be more explicit or use raw SQL for true UPSERT.
+		// Let's use a "find then update or create" approach for simplicity with GORM.
+
+		var existingData HostHealthData
+		err = db.Where("host_name = ? AND tool_name = ?", hostName.(string), toolName).First(&existingData).Error
+
+		if err == nil { // Record found, update it
+			existingData.DataJSON = string(jsonData)
+			existingData.LastUpdated = time.Now() // GORM autoUpdateTime might handle this if configured
+			if err := db.Save(&existingData).Error; err != nil {
+				commonPkg.LogError(fmt.Sprintf("Error updating host health data for %s, tool %s: %v", hostName.(string), toolName, err))
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update health data"})
+				return
+			}
+		} else if err == gorm.ErrRecordNotFound { // Record not found, create it
+			if err := db.Create(&healthData).Error; err != nil {
+				commonPkg.LogError(fmt.Sprintf("Error creating host health data for %s, tool %s: %v", hostName.(string), toolName, err))
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create health data"})
+				return
+			}
+		} else { // Other DB error
+			commonPkg.LogError(fmt.Sprintf("Error checking for existing host health data for %s, tool %s: %v", hostName.(string), toolName, err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error while checking health data"})
+			return
+		}
+
+		c.JSON(http.StatusOK, gin.H{"message": "Health data received and stored"})
+	}
+}
+
+// getHostToolHealth returns health data for a specific tool for a specific host
+// @Summary Get specific tool health data for a host
+// @Description Retrieves health data from a specific registered provider for a given hostname and tool name.
+// @Tags Health
+// @Produce json
+// @Param name path string true "Hostname"
+// @Param tool path string true "Health tool name"
+// @Success 200 {object} interface{} "Health data for the specified tool"
+// @Failure 404 {object} ErrorResponse "Host not found or Tool not found"
+// @Failure 500 {object} ErrorResponse "Internal server error"
+// @Router /hosts/{name}/health/{tool} [get]
+// @Security ApiKeyAuth
+func getHostToolHealth(db *gorm.DB, monokitHostname string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		hostName := c.Param("name")
+		toolName := c.Param("tool")
+
+		var host Host
+		if err := db.Where("name = ?", hostName).First(&host).Error; err != nil {
+			if err == gorm.ErrRecordNotFound {
+				c.JSON(http.StatusNotFound, gin.H{"error": "Host not found"})
+				return
+			}
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve host: " + err.Error()})
+			return
+		}
+
+		var healthDataEntry HostHealthData
+		err := db.Where("host_name = ? AND tool_name = ?", hostName, toolName).First(&healthDataEntry).Error
+
+		if err == nil { // Data found in DB
+			var dataContent interface{}
+			if unmarshalErr := json.Unmarshal([]byte(healthDataEntry.DataJSON), &dataContent); unmarshalErr != nil {
+				commonPkg.LogError(fmt.Sprintf("Error unmarshalling health data for host %s, tool %s: %v", hostName, toolName, unmarshalErr))
+				c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Error unmarshalling health data for tool %s", toolName)})
+				return
+			}
+			c.JSON(http.StatusOK, dataContent)
+			return
+		}
+
+		if err != gorm.ErrRecordNotFound { // Some other DB error
+			commonPkg.LogError(fmt.Sprintf("Error fetching health data for host %s, tool %s from DB: %v", hostName, toolName, err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve health data from database"})
+			return
+		}
+
+		// Data not found in DB, try fallback for Monokit server's own health
+		if hostName == monokitHostname {
+			provider := health.Get(toolName)
+			if provider == nil {
+				c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("Health tool '%s' not found locally for self-check and not in DB", toolName)})
+				return
+			}
+
+			data, collectErr := provider.Collect(hostName)
+			if collectErr != nil {
+				commonPkg.LogError(fmt.Sprintf("Error collecting local %s health data for host %s: %v", toolName, hostName, collectErr))
+				c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Error collecting local %s data: %v", toolName, collectErr)})
+				return
+			}
+			c.JSON(http.StatusOK, data)
+			return
+		}
+
+		// If not Monokit server and data not in DB
+		c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("Health data not found for tool '%s' on host '%s'", toolName, hostName)})
 	}
 }

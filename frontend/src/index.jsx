@@ -13,6 +13,9 @@ import '@patternfly/patternfly/patternfly-charts.css';
 // Import our custom styles last so they can override PatternFly styles if needed
 import './index.css';
 
+// Import web components for side-effects (registration)
+import './components/health-card.js';
+
 // Application configuration
 console.log('App Name:', config.app.name);
 console.log('App Version:', config.app.version);

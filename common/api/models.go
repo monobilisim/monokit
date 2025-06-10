@@ -129,6 +129,21 @@ type HostLog struct {
 	Type      string    `json:"type"`
 }
 
+// HostHealthData stores the latest health check JSON output for a specific tool on a host.
+type HostHealthData struct {
+	ID          uint      `gorm:"primaryKey" json:"id"`
+	HostName    string    `gorm:"uniqueIndex:idx_host_tool;not null" json:"host_name"` // Foreign key to Host.Name
+	ToolName    string    `gorm:"uniqueIndex:idx_host_tool;not null" json:"tool_name"` // e.g., "osHealth", "mysqlHealth"
+	DataJSON    string    `gorm:"type:jsonb;not null" json:"data_json"`                // The actual JSON output from the health tool
+	LastUpdated time.Time `gorm:"autoUpdateTime" json:"last_updated"`
+	CreatedAt   time.Time `gorm:"autoCreateTime" json:"created_at"`
+}
+
+// TableName specifies the database table name for the HostHealthData model.
+func (HostHealthData) TableName() string {
+	return "host_health_data"
+}
+
 // Global variables
 var ServerConfig struct {
 	Port     string `mapstructure:"port"`
