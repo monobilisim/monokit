@@ -6,6 +6,7 @@ import (
 
 	"github.com/monobilisim/monokit/common"
 	api "github.com/monobilisim/monokit/common/api"
+	versionCheck "github.com/monobilisim/monokit/common/versionCheck"
 	"github.com/spf13/cobra"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
@@ -103,6 +104,9 @@ func Main(cmd *cobra.Command, args []string) {
 	common.TmpDir = common.TmpDir + "k8sHealth"
 	common.Init()
 	common.ConfInit("k8s", &K8sHealthConfig) // K8sHealthConfig is from this file
+
+	// Run RKE2 version check first
+	versionCheck.RKE2VersionCheck()
 
 	api.WrapperGetServiceStatus("k8sHealth") // Keep this for service status reporting
 

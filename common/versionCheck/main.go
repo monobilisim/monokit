@@ -71,4 +71,7 @@ func VersionCheck(cmd *cobra.Command, args []string) {
 
 	// PostgreSQL
 	PostgresCheck()
+
+	// RKE2 Kubernetes
+	RKE2VersionCheck()
 }
