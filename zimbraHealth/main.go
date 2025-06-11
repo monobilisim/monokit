@@ -157,7 +157,8 @@ func runPeriodicTasks(healthData *ZimbraHealthData) {
 
 	// Tasks to run only at specific times (e.g., 01:00)
 	date := time.Now().Format("15:04") // Use 15:04 for HH:MM format
-	if date == "01:00" {
+	// Get env variable ZIMBRA_HEALTH_TEST_ZMFIXPERMS
+	if date == "01:00" || (os.Getenv("ZIMBRA_HEALTH_TEST_ZMFIXPERMS") == "true" || os.Getenv("ZIMBRA_HEALTH_TEST_ZMFIXPERMS") == "1") {
 		// common.LogInfo("Running scheduled 01:00 tasks...") // Removed LogInfo
 		// common.SplitSection("Running zmfixperms") // Removed SplitSection
 		Zmfixperms() // Zmfixperms has its own logging
@@ -253,12 +254,11 @@ func TailWebhook(filePath string, quotaLimit int) {
 // Zmfixperms remains unchanged, but remove internal LogInfo
 func Zmfixperms() {
 	// common.LogInfo("Running zmfixperms...") // Removed LogInfo
-	date := time.Now().Format("2006-01-02 15:04:05")
-	_, err := ExecZimbraCommand("libexec/zmfixperms", true, true)
+	out, err := ExecZimbraCommand("libexec/zmfixperms", true, true)
 	if err != nil {
-		common.LogError(fmt.Sprintf("zmfixperms failed on date %s: %s", date, err.Error()))
+		common.Alarm("["+common.Config.Identifier+"] Zmfixperms failed: \n```spoiler Error\n"+err.Error()+"\n```", MailHealthConfig.Zimbra.Zmfixperms.Stream, MailHealthConfig.Zimbra.Zmfixperms.Topic, true)
 	} else {
-		common.LogInfo(fmt.Sprintf("zmfixperms completed for date %s", date))
+		common.Alarm("["+common.Config.Identifier+"] Zmfixperms completed successfully: \n```spoiler Zmfixperms Output\n"+out+"\n```", MailHealthConfig.Zimbra.Zmfixperms.Stream, MailHealthConfig.Zimbra.Zmfixperms.Topic, true)
 	}
 } // <-- Correct end of Zmfixperms
 
