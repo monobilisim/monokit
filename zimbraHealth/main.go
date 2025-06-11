@@ -253,11 +253,12 @@ func TailWebhook(filePath string, quotaLimit int) {
 // Zmfixperms remains unchanged, but remove internal LogInfo
 func Zmfixperms() {
 	// common.LogInfo("Running zmfixperms...") // Removed LogInfo
+	date := time.Now().Format("2006-01-02 15:04:05")
 	_, err := ExecZimbraCommand("libexec/zmfixperms", true, true)
 	if err != nil {
-		common.LogError("zmfixperms failed: " + err.Error())
+		common.LogError(fmt.Sprintf("zmfixperms failed on date %s: %s", date, err.Error()))
 	} else {
-		// common.LogInfo("zmfixperms completed.") // Removed LogInfo
+		common.LogInfo(fmt.Sprintf("zmfixperms completed for date %s", date))
 	}
 } // <-- Correct end of Zmfixperms
 
