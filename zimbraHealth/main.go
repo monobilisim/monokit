@@ -255,10 +255,13 @@ func TailWebhook(filePath string, quotaLimit int) {
 func Zmfixperms() {
 	// common.LogInfo("Running zmfixperms...") // Removed LogInfo
 	out, err := ExecZimbraCommand("libexec/zmfixperms", true, true)
+	
 	if err != nil {
 		common.Alarm("["+common.Config.Identifier+"] Zmfixperms failed: \n```spoiler Error\n"+err.Error()+"\n```", MailHealthConfig.Zimbra.Zmfixperms.Stream, MailHealthConfig.Zimbra.Zmfixperms.Topic, true)
 	} else {
-		common.Alarm("["+common.Config.Identifier+"] Zmfixperms completed successfully: \n```spoiler Zmfixperms Output\n"+out+"\n```", MailHealthConfig.Zimbra.Zmfixperms.Stream, MailHealthConfig.Zimbra.Zmfixperms.Topic, true)
+		_, _ := ExecZimbraCommand("zmcontrol restart", false, false) // Restart Zimbra services after zmfixperms
+		secondOut, _ := ExecZimbraCommand("zmcontrol status", false, false)
+		common.Alarm("["+common.Config.Identifier+"] Zmfixperms completed successfully: \n```spoiler Zmfixperms Output\n"+out+"\n``` ```spoiler zmcontrol status output\n" + secondOut + "\n```", MailHealthConfig.Zimbra.Zmfixperms.Stream, MailHealthConfig.Zimbra.Zmfixperms.Topic, true)
 	}
 } // <-- Correct end of Zmfixperms
 
