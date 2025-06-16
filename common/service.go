@@ -94,7 +94,7 @@ func WrapperGetServiceStatus(serviceName string) {
 // It relies on ClientURL and Config.Identifier being previously initialized (e.g., by WrapperGetServiceStatus or similar).
 func PostHostHealth(toolName string, payload interface{}) error {
 	if ClientURL == "" {
-		return fmt.Errorf("monokit client URL not configured")
+		return nil 
 	}
 	if Config.Identifier == "" {
 		return fmt.Errorf("monokit client identifier (hostname) not configured")
