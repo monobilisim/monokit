@@ -1,4 +1,4 @@
-.PHONY: help all with-api clean clean-coverage docs build-frontend clean-frontend install install-with-api test test-with-api build-plugins build-plugin-k8sHealth .FORCE
+.PHONY: help all with-api clean clean-coverage clean-plugins docs build-frontend clean-frontend install install-with-api test test-with-api build-plugins build-plugin-k8sHealth .FORCE
 
 # Colors for help target
 BLUE := \033[34m
@@ -22,8 +22,10 @@ help:
 	@echo "  $(GREEN)make$(RESET)                    Build monokit (minimal build, no API)"
 	@echo "  $(GREEN)make help$(RESET)               Show this help message"
 	@echo "  $(GREEN)make with-api$(RESET)          Build monokit with API server (includes frontend)"
+	@echo "  $(GREEN)make build-plugins$(RESET)     Build plugins for current platform"
 	@echo "  $(GREEN)make clean$(RESET)              Clean all build artifacts"
 	@echo "  $(GREEN)make clean-frontend$(RESET)     Clean only frontend build artifacts"
+	@echo "  $(GREEN)make clean-plugins$(RESET)      Clean only plugin build artifacts"
 	@echo "  $(GREEN)make clean-coverage$(RESET)     Clean coverage files"
 	@echo "  $(GREEN)make docs$(RESET)               Generate swagger documentation"
 	@echo "  $(GREEN)make install$(RESET)            Install minimal monokit"
@@ -70,10 +72,16 @@ clean-frontend:
 	@echo "$(GREEN)Frontend clean complete$(RESET)"
 
 # Clean all build artifacts
-clean: clean-frontend clean-coverage
+clean: clean-frontend clean-coverage clean-plugins
 	@echo "$(BLUE)Cleaning all build artifacts...$(RESET)"
 	rm -rf bin/
 	@echo "$(GREEN)Clean complete$(RESET)"
+
+# Clean plugins
+clean-plugins:
+	@echo "$(BLUE)Cleaning plugin artifacts...$(RESET)"
+	rm -rf $(PLUGINS_DIR)/*
+	@echo "$(GREEN)Plugin clean complete$(RESET)"
 
 # Generate swagger documentation
 docs:
@@ -137,8 +145,10 @@ build-plugins: build-plugin-k8sHealth
 	@echo "$(GREEN)All plugins built.$(RESET)"
 
 build-plugin-k8sHealth: .FORCE
-	@echo "$(BLUE)Building k8sHealth plugin (includes RKE2 functionality)...$(RESET)"
+	@echo "$(BLUE)Building k8sHealth plugin for current platform...$(RESET)"
 	@mkdir -p $(PLUGINS_DIR)
-	# Ensure the output filename matches what the host expects (e.g., "k8sHealth")
-	GOOS=linux GOARCH=amd64 go build -tags=plugin -o $(PLUGINS_DIR)/k8sHealth ./k8sHealth/cmd/plugin/main.go
+	
+	# Build for current platform
+	cd k8sHealth && go build -tags=plugin -o ../$(PLUGINS_DIR)/k8sHealth ./cmd/plugin/main.go
+	
 	@echo "$(GREEN)k8sHealth plugin built: $(PLUGINS_DIR)/k8sHealth$(RESET)"

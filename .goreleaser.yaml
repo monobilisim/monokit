@@ -28,18 +28,45 @@ builds:
     tags:
       - with_api
     binary: monokit
-    # Add a hook specific to the withapi build
+    # Add hooks to build frontend only
     hooks:
       pre: 
         - sh -c "make clean-frontend && make build-frontend"
+
+  # Plugin builds
+  - id: k8sHealth-plugin
+    main: ./k8sHealth/cmd/plugin/main.go
+    binary: k8sHealth
+    goos:
+      - linux
+      - darwin
+      - windows
+      - freebsd
+    env:
+      - CGO_ENABLED=0
+    tags:
+      - plugin
+    dir: k8sHealth
 
 archives:
   - id: default
     ids:
       - default
+      - k8sHealth-plugin
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    # Include plugins and config files in archives
+    files:
+      - README.md
+      - LICENSE
+      - config/*.yml
     
   - id: withapi
     ids:
       - withapi
+      - k8sHealth-plugin
     name_template: "{{ .ProjectName }}_withapi_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    # Include plugins and config files in archives
+    files:
+      - README.md
+      - LICENSE
+      - config/*.yml

@@ -12,9 +12,10 @@ RUN go mod download
 # Copy the source code
 COPY . .
 
-# Build the application using make and target architecture
+# Build the application and plugins using make and target architecture
 ARG TARGETARCH
 RUN GOARCH=$TARGETARCH make
+RUN GOARCH=$TARGETARCH make build-plugins
 
 # Create the final image
 FROM alpine:3.21
@@ -25,6 +26,9 @@ WORKDIR /root/
 
 # Copy the binary from the builder stage
 COPY --from=builder /app/bin/monokit /usr/local/bin/monokit
+
+# Copy the plugins from the builder stage
+COPY --from=builder /app/plugins/ /usr/local/lib/monokit/plugins/
 
 # Copy the configuration files
 COPY --from=builder /app/config /etc/mono/
