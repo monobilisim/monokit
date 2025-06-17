@@ -13,9 +13,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/MicahParks/keyfunc/v2"
+	"github.com/MicahParks/keyfunc"
 	"github.com/gin-gonic/gin"
-	"github.com/golang-jwt/jwt/v5"
+	"github.com/golang-jwt/jwt/v4"
+	"github.com/monobilisim/monokit/common"
 	"gorm.io/gorm"
 )
 
@@ -97,14 +98,14 @@ func initJWKS() {
 	options := keyfunc.Options{
 		RefreshInterval: time.Hour, // Refresh JWKS every hour
 		RefreshErrorHandler: func(err error) {
-			LogError(fmt.Sprintf("Error refreshing JWKS: %v", err))
+			common.LogError(fmt.Sprintf("Error refreshing JWKS: %v", err))
 		},
 	}
 
 	var err error
 	jwks, err = keyfunc.Get(jwksURL, options)
 	if err != nil {
-		LogError(fmt.Sprintf("Failed to get JWKS from %s: %v", jwksURL, err))
+		common.LogError(fmt.Sprintf("Failed to get JWKS from %s: %v", jwksURL, err))
 	}
 
 	// Assign to exported variable for testing
@@ -170,7 +171,7 @@ func handleSSOCallback(db *gorm.DB) gin.HandlerFunc {
 
 		// Check if there was an error during authentication
 		if errParam != "" {
-			LogError(fmt.Sprintf("Keycloak authentication error: %s - %s", errParam, errorDesc))
+			common.LogError(fmt.Sprintf("Keycloak authentication error: %s - %s", errParam, errorDesc))
 			c.Redirect(http.StatusTemporaryRedirect, "/login?error="+url.QueryEscape(errorDesc))
 			return
 		}
@@ -203,7 +204,7 @@ func handleSSOCallback(db *gorm.DB) gin.HandlerFunc {
 		// Exchange the authorization code for an access token using the original redirect URI
 		tokenData, err := exchangeCodeForToken(code, redirectCookie)
 		if err != nil {
-			LogError(fmt.Sprintf("Error exchanging code for token: %v", err))
+			common.LogError(fmt.Sprintf("Error exchanging code for token: %v", err))
 			c.Redirect(http.StatusTemporaryRedirect, "/login?error=Failed+to+authenticate")
 			return
 		}
@@ -212,7 +213,7 @@ func handleSSOCallback(db *gorm.DB) gin.HandlerFunc {
 		token, err := jwt.ParseWithClaims(tokenData["access_token"].(string), &KeycloakClaims{}, ExportKeyFunc)
 
 		if err != nil {
-			LogError(fmt.Sprintf("Error validating token: %v", err))
+			common.LogError(fmt.Sprintf("Error validating token: %v", err))
 			c.Redirect(http.StatusTemporaryRedirect, "/login?error=Invalid+token")
 			return
 		}
@@ -222,7 +223,7 @@ func handleSSOCallback(db *gorm.DB) gin.HandlerFunc {
 			// Create or update user in database
 			user, err := syncKeycloakUser(db, claims)
 			if err != nil {
-				LogError(fmt.Sprintf("Error syncing user from Keycloak: %v", err))
+				common.LogError(fmt.Sprintf("Error syncing user from Keycloak: %v", err))
 				c.Redirect(http.StatusTemporaryRedirect, "/login?error=Failed+to+create+user")
 				return
 			}
@@ -232,7 +233,7 @@ func handleSSOCallback(db *gorm.DB) gin.HandlerFunc {
 			timeout := time.Now().Add(24 * time.Hour)
 
 			if err := CreateSession(sessionToken, timeout, user, db); err != nil {
-				LogError(fmt.Sprintf("Error creating session: %v", err))
+				common.LogError(fmt.Sprintf("Error creating session: %v", err))
 				c.Redirect(http.StatusTemporaryRedirect, "/login?error=Failed+to+create+session")
 				return
 			}
