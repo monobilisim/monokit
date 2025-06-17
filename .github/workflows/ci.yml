@@ -22,7 +22,10 @@ jobs:
         with:
           go-version: stable
       
-      - run: make with-api
+      - run: |
+          make install-deps
+          export PATH=$PATH:$HOME/go/bin
+          make with-api
 
       - name: Create required instances
         env:
