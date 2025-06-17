@@ -1,7 +1,7 @@
 FROM --platform=$BUILDPLATFORM golang:1.24-alpine AS builder
 
 # Install make and other build dependencies
-RUN apk add --no-cache make git bash binutils
+RUN apk add --no-cache make git bash binutils protoc protobuf-dev
 
 WORKDIR /app
 
@@ -11,6 +11,9 @@ RUN go mod download
 
 # Copy the source code
 COPY . .
+
+# Install Go dependencies for protobuf generation
+RUN make install-deps
 
 # Build the application and plugins using make and target architecture
 ARG TARGETARCH

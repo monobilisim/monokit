@@ -23,6 +23,13 @@ jobs:
       - uses: actions/setup-go@main
         with:
           go-version: stable
+          
+      - name: Install protobuf compiler and Go dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y protobuf-compiler
+          make install-deps
+          export PATH=$PATH:$HOME/go/bin
 
       - uses: goreleaser/goreleaser-action@v6
         with:

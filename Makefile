@@ -1,9 +1,10 @@
-.PHONY: help all with-api clean clean-coverage clean-plugins docs build-frontend clean-frontend install install-with-api test test-with-api build-plugins build-plugin-k8sHealth .FORCE
+.PHONY: help all with-api clean clean-coverage clean-plugins docs build-frontend clean-frontend install install-with-api test test-with-api build-plugins build-plugin-k8sHealth install-deps .FORCE
 
 # Colors for help target
 BLUE := \033[34m
 CYAN := \033[36m
 GREEN := \033[32m
+RED := \033[31m
 RESET := \033[0m
 
 # Go source files
@@ -23,6 +24,8 @@ help:
 	@echo "  $(GREEN)make help$(RESET)               Show this help message"
 	@echo "  $(GREEN)make with-api$(RESET)          Build monokit with API server (includes frontend)"
 	@echo "  $(GREEN)make build-plugins$(RESET)     Build plugins for current platform"
+	@echo "  $(GREEN)make gen-health-plugin-proto$(RESET) Generate protobuf code for health plugins"
+	@echo "  $(GREEN)make install-deps$(RESET)       Install Go dependencies for protobuf generation"
 	@echo "  $(GREEN)make clean$(RESET)              Clean all build artifacts"
 	@echo "  $(GREEN)make clean-frontend$(RESET)     Clean only frontend build artifacts"
 	@echo "  $(GREEN)make clean-plugins$(RESET)      Clean only plugin build artifacts"
@@ -131,20 +134,39 @@ PROTO_DIR=proto
 HEALTH_PROTO=$(PROTO_DIR)/health_plugin.proto
 HEALTH_PROTO_GO_PKG=common/health/pluginpb
 
-gen-health-plugin-proto:
+install-deps:
+	@echo "$(BLUE)Installing Go dependencies for protobuf generation...$(RESET)"
+	go install google.golang.org/protobuf/cmd/protoc-gen-go@latest
+	go install google.golang.org/grpc/cmd/protoc-gen-go-grpc@latest
+	@echo "$(GREEN)Dependencies installed$(RESET)"
+
+gen-health-plugin-proto: .FORCE
+	@echo "$(BLUE)Generating health plugin protobuf code...$(RESET)"
+	@mkdir -p $(HEALTH_PROTO_GO_PKG)
+	@if ! command -v protoc-gen-go >/dev/null 2>&1; then \
+		echo "$(RED)Error: protoc-gen-go not found$(RESET)"; \
+		echo "$(BLUE)Please run: make install-deps$(RESET)"; \
+		exit 1; \
+	fi
+	@if ! command -v protoc-gen-go-grpc >/dev/null 2>&1; then \
+		echo "$(RED)Error: protoc-gen-go-grpc not found$(RESET)"; \
+		echo "$(BLUE)Please run: make install-deps$(RESET)"; \
+		exit 1; \
+	fi
 	protoc --go_out=paths=source_relative:$(HEALTH_PROTO_GO_PKG) \
 	       --go-grpc_out=paths=source_relative:$(HEALTH_PROTO_GO_PKG) \
 	       $(HEALTH_PROTO)
+	@echo "$(GREEN)Health plugin protobuf code generated$(RESET)"
 
 .PHONY: gen-health-plugin-proto
 
 # --- Plugin Building ---
 PLUGINS_DIR=plugins
 
-build-plugins: build-plugin-k8sHealth
+build-plugins: gen-health-plugin-proto build-plugin-k8sHealth
 	@echo "$(GREEN)All plugins built.$(RESET)"
 
-build-plugin-k8sHealth: .FORCE
+build-plugin-k8sHealth: gen-health-plugin-proto .FORCE
 	@echo "$(BLUE)Building k8sHealth plugin for current platform...$(RESET)"
 	@mkdir -p $(PLUGINS_DIR)
 	
