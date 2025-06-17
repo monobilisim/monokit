@@ -23,6 +23,8 @@ jobs:
           go-version: stable
       
       - run: |
+          apt update
+          apt install -y protobuf-compiler
           make install-deps
           export PATH=$PATH:$HOME/go/bin
           make with-api
