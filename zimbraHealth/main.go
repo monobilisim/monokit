@@ -156,7 +156,7 @@ func runPeriodicTasks(healthData *ZimbraHealthData) {
 	}
 
 	// Tasks to run only at specific times (e.g., 01:00)
-	date := time.Now().Format("15:04") // Use 15:04 for HH:MM format
+	//date := time.Now().Format("15:04") // Use 15:04 for HH:MM format
 	// Get env variable ZIMBRA_HEALTH_TEST_ZMFIXPERMS
 	//if date == "01:00" || (os.Getenv("ZIMBRA_HEALTH_TEST_ZMFIXPERMS") == "true" || os.Getenv("ZIMBRA_HEALTH_TEST_ZMFIXPERMS") == "1") {
 		// common.LogInfo("Running scheduled 01:00 tasks...") // Removed LogInfo
