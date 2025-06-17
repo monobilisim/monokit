@@ -16,7 +16,6 @@ package pgsqlHealth
 import (
 	"encoding/json"
 	"fmt"
-	"log"
 	"net/http"
 	"os"
 	"os/exec"
@@ -143,16 +142,17 @@ func getClusterStatus(patroniApiUrl string) (*Response, *Response) { // Added pa
 // loadOldResult loads the previous cluster status from the JSON file
 // and returns it
 func loadOldResult() *Response {
-	outputJSON := common.TmpDir + "/raw_output.json"
-	if _, err := os.Stat(outputJSON); err == nil {
-		oldOutput, err := os.ReadFile(outputJSON)
+	oldOutputFile := common.TmpDir + "/old_raw_output.json"
+	if _, err := os.Stat(oldOutputFile); err == nil {
+		oldOutput, err := os.ReadFile(oldOutputFile)
 		if err != nil {
 			common.LogError(fmt.Sprintf("Error reading file: %v\n", err))
 			return nil
 		}
 		var oldResult Response
 		if err := json.Unmarshal(oldOutput, &oldResult); err != nil {
-			log.Fatal("Error during Unmarshal(): ", err)
+			common.LogError(fmt.Sprintf("Error during Unmarshal(): %v", err))
+			return nil
 		}
 		return &oldResult
 	}
@@ -309,7 +309,8 @@ func checkClusterStates(result *Response, skipOutput bool) ([]Member, []Member) 
 			issues.CheckDown("cluster_size_issue", "Patroni Cluster Size: "+rcLen+"/"+clusterLen, "Patroni cluster size: "+rcLen+"/"+clusterLen+"\n"+listTable, false, 0)
 		}
 		if err != nil {
-			log.Fatal("Error during Unmarshal(): ", err)
+			common.LogError(fmt.Sprintf("Error during Unmarshal(): %v", err))
+			return runningClusters, stoppedClusters
 		}
 
 		if len(oldResult.Members) == len(result.Members) {

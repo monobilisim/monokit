@@ -6,4 +6,7 @@ common/api/frontend
 .aider*
 coverage.out
 coverage.html
+.DS_Store
+plugins/
+common/health/pluginpb
 *.coverprofile

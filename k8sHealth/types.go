@@ -1,6 +1,77 @@
+//go:build plugin
+
 package k8sHealth
 
-import "time"
+import (
+	"time"
+
+	"github.com/monobilisim/monokit/common" // For ConfInit, ConfExists
+)
+
+// K8sHealthProvider implements the health.Provider interface.
+// It's defined here to be accessible by both plugin and non-plugin builds.
+type K8sHealthProvider struct{}
+
+// Name returns the name of the provider
+func (p *K8sHealthProvider) Name() string {
+	return "k8sHealth"
+}
+
+// Collect gathers Kubernetes health data.
+// The 'hostname' parameter is used for context but k8s data is cluster-wide.
+// Note: This method relies on functions (e.g., getKubeconfigPath, InitClientset, collectK8sHealthData)
+// and variables (e.g., clientset) that might need to be made accessible/exported
+// from other files in the k8sHealth package if they are not already.
+func (p *K8sHealthProvider) Collect(hostname string) (interface{}, error) {
+	// Initialize config if not already done
+	// This uses the global K8sHealthConfig from this types.go file
+	if len(K8sHealthConfig.K8s.Floating_Ips) == 0 && len(K8sHealthConfig.K8s.Ingress_Floating_Ips) == 0 {
+		if common.ConfExists("k8s") {
+			if err := common.ConfInit("k8s", &K8sHealthConfig); err != nil {
+				// Consider how to handle/log this error, as plugins might not have easy stdout
+				// For now, let it proceed, Collect might fail later if config is crucial and missing
+			}
+		}
+	}
+
+	// Initialize clientset if not already done.
+	// These functions/variables (clientset, getKubeconfigPath, InitClientset, collectK8sHealthData)
+	// are expected to be available from the k8sHealth package (e.g., defined in k8s.go or main.go and exported).
+	// If they are not, this will cause a compile error that we'll address next.
+	if Clientset == nil { // Expects global 'Clientset *kubernetes.Clientset' from k8s.go
+		kubeconfigPath := GetKubeconfigPath("") // Call exported func from k8s.go
+		InitClientset(kubeconfigPath)           // Call exported func from k8s.go (already was)
+	}
+
+	return CollectK8sHealthData(), nil // Call exported func from k8s.go
+}
+
+// Ensure the original import "time" is preserved and Go tooling will merge/format correctly.
+// The line directive was to insert after line 3, which had "import \"time\"".
+// The closing parenthesis for imports is added above.
+
+// Config holds configuration specific to k8sHealth checks,
+// typically loaded from a YAML file (e.g., k8s.yml).
+type Config struct {
+	K8s struct {
+		Floating_Ips         []string `yaml:"floating_ips"`
+		Ingress_Floating_Ips []string `yaml:"ingress_floating_ips"`
+	} `yaml:"k8s"`
+}
+
+// K8sHealthConfig is the global instance of the k8sHealth configuration.
+// This will be populated by the plugin's main or init function.
+var K8sHealthConfig Config
+
+// RKE2Info holds the information collected by the RKE2 checker functionality
+// and is used for RKE2-specific health checks within k8sHealth.
+type RKE2Info struct {
+	IsRKE2Environment bool   `json:"isRke2Environment"`
+	ClusterName       string `json:"clusterName"`
+	CurrentVersion    string `json:"currentVersion"`
+	IsMasterNode      bool   `json:"isMasterNode"`
+	Error             string `json:"error,omitempty"`
+}
 
 // --- UI Data Structures ---
 
@@ -12,6 +83,7 @@ type K8sHealthData struct {
 	CertManager      *CertManagerHealth
 	KubeVip          *KubeVipHealth
 	ClusterApiCert   *ClusterApiCertHealth
+	RKE2Info         *RKE2Info // Added RKE2 information
 	// PodRunningLogChecks []PodLogCheckInfo // Removed as per user request
 	LastChecked string
 	Errors      []string // To store any general error messages

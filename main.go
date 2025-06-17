@@ -8,12 +8,14 @@ import (
 
 	"github.com/monobilisim/monokit/common"
 	api "github.com/monobilisim/monokit/common/api"
+	"github.com/monobilisim/monokit/common/health"
+	"github.com/monobilisim/monokit/common/health/plugin"
 	issues "github.com/monobilisim/monokit/common/redmine/issues"
 	news "github.com/monobilisim/monokit/common/redmine/news"
 	verCheck "github.com/monobilisim/monokit/common/versionCheck"
 	"github.com/monobilisim/monokit/daemon"
 	"github.com/monobilisim/monokit/esHealth"
-	"github.com/monobilisim/monokit/k8sHealth"
+
 	"github.com/monobilisim/monokit/lbPolicy"
 	"github.com/monobilisim/monokit/osHealth"
 	"github.com/monobilisim/monokit/pritunlHealth"
@@ -39,6 +41,63 @@ func init() {
 }
 
 func main() {
+	// Set up graceful shutdown handling for plugins
+	setupGracefulShutdown()
+
+	// Wire up plugin loader registration to health registry
+	plugin.RegisterProviderGlobally = func(p interface{}) {
+		if prov, ok := p.(health.Provider); ok {
+			health.Register(prov)
+		}
+	}
+
+	// Attempt to load plugins from ./plugins (with proper error handling)
+	if err := plugin.LoadAll("plugins"); err != nil {
+		common.LogWarn(fmt.Sprintf("Failed to load some plugins: %v", err))
+	}
+
+	// Dynamically add k8sHealth command if plugin is loaded
+	if k8sHealthProvider := health.Get("k8sHealth"); k8sHealthProvider != nil {
+		var k8sHealthCmd = &cobra.Command{
+			Use:   "k8sHealth",
+			Short: "Run k8sHealth checks (via plugin)",
+			Long:  "Collects and displays Kubernetes health information via the k8sHealth plugin.",
+			Run: func(cmd *cobra.Command, args []string) {
+				common.Init() // Ensure common is initialized for logging, etc.
+				// Get hostname (plugins might need this context)
+				// Provider's Collect method is responsible for actual K8s interaction
+				hostname, err := os.Hostname()
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error getting hostname: %v\n", err)
+					// Fallback or decide if hostname is critical.
+					// For k8sHealth, it might not be strictly necessary for cluster-wide checks
+					// but the interface requires it.
+					hostname = "localhost" // Or some default
+				}
+
+				data, err := k8sHealthProvider.Collect(hostname)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "Error collecting k8sHealth data from plugin: %v\n", err)
+					os.Exit(1)
+				}
+
+				// The data from the plugin is now a pre-rendered string.
+				if renderedString, ok := data.(string); ok {
+					fmt.Println(renderedString)
+				} else {
+					fmt.Fprintf(os.Stderr, "Error: k8sHealth plugin returned data of unexpected type %T. Expected string.\n", data)
+					// Optionally, try to print a default representation or more details
+					// For now, just exit if the type is wrong, as the contract is broken.
+					os.Exit(1)
+				}
+			},
+		}
+		RootCmd.AddCommand(k8sHealthCmd)
+		common.LogDebug("k8sHealth plugin detected, 'k8sHealth' command added")
+	} else {
+		common.LogDebug("k8sHealth plugin not detected or not loaded")
+	}
+
 	var osHealthCmd = &cobra.Command{
 		Use:   "osHealth",
 		Short: "OS Health",
@@ -56,11 +115,7 @@ func main() {
 		Run:   shutdownNotifier.Main,
 	}
 
-	var k8sHealthCmd = &cobra.Command{
-		Use:   "k8sHealth",
-		Short: "Kubernetes Health",
-		Run:   k8sHealth.Main,
-	}
+	// Removing monolithic k8sHealth CLI command for plugin-only operation.
 
 	var pritunlHealthCmd = &cobra.Command{
 		Use:   "pritunlHealth",
@@ -471,9 +526,6 @@ Supports pagination for large log sets.`,
 	shutdownNotifierCmd.Flags().BoolP("poweron", "1", false, "Power On")
 	shutdownNotifierCmd.Flags().BoolP("poweroff", "0", false, "Power Off")
 
-	/// Kubernetes Health
-	RootCmd.AddCommand(k8sHealthCmd)
-
 	/// SSH Notifier
 	RootCmd.AddCommand(sshNotifierCmd)
 
@@ -594,22 +646,21 @@ Supports pagination for large log sets.`,
 		kubeconfig = os.Getenv("HOME") + "/.kube/config"
 	}
 
-	k8sHealthCmd.Flags().StringP("kubeconfig", "k", kubeconfig, "Kubeconfig file")
-	k8sHealthCmd.Flags().Bool("disable-cleanup-orphaned-alarms", false, "Don't clean up alarm logs for pods and containers that no longer exist")
-
-	c := make(chan os.Signal, 1)
-	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
-	go func() {
-		<-c
-		os.Remove(common.TmpDir + "/monokit.lock")
-		os.Exit(1)
-	}()
-
 	if err := RootCmd.Execute(); err != nil {
-		os.Remove(common.TmpDir + "/monokit.lock")
 		fmt.Println(err)
 		os.Exit(1)
 	}
+}
 
-	os.Remove(common.TmpDir + "/monokit.lock")
+// setupGracefulShutdown sets up signal handlers for graceful shutdown
+func setupGracefulShutdown() {
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		<-c
+		common.LogDebug("Received shutdown signal, cleaning up plugins...")
+		plugin.CleanupAll()
+		os.Exit(0)
+	}()
 }

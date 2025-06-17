@@ -1,3 +1,5 @@
+//go:build plugin
+
 package k8sHealth
 
 import (
@@ -333,4 +335,20 @@ func (khd *K8sHealthData) RenderCompact() string {
 	// The esHealth example also commented out LastChecked from its RenderCompact.
 
 	return sb.String()
+}
+
+// RenderK8sHealthCLI formats the K8sHealthData for command-line display using common.DisplayBox.
+// Version string can be used in the title.
+func RenderK8sHealthCLI(data *K8sHealthData, version string) string {
+	if data == nil {
+		return common.DisplayBox("monokit k8sHealth", "Error: No data to display.")
+	}
+	title := "monokit k8sHealth"
+	if version != "" {
+		title = fmt.Sprintf("monokit k8sHealth v%s", version) // Indicate it's via plugin
+	}
+	// Use RenderCompact as it's designed for text UI.
+	// RenderAll currently just calls RenderCompact.
+	content := data.RenderCompact()
+	return common.DisplayBox(title, content)
 }

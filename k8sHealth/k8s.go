@@ -1,3 +1,5 @@
+//go:build plugin
+
 package k8sHealth
 
 import (
@@ -9,8 +11,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-
-	// "path/filepath" // Removed as it's unused after recent refactoring
 	"strings"
 	"time"
 
@@ -19,6 +19,8 @@ import (
 	"github.com/spf13/viper"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/version" // Added for GetKubernetesServerVersion
+	"k8s.io/client-go/discovery"      // Added for GetKubernetesServerVersion
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/tools/clientcmd"
 )
@@ -46,7 +48,7 @@ type CertManager struct {
 	} `json:"items"`
 }
 
-var clientset *kubernetes.Clientset
+var Clientset *kubernetes.Clientset
 
 func InitClientset(kubeconfig string) {
 	var err error
@@ -56,11 +58,134 @@ func InitClientset(kubeconfig string) {
 		common.LogError("Error creating client config: " + err.Error())
 		return
 	}
-	clientset, err = kubernetes.NewForConfig(config)
+	Clientset, err = kubernetes.NewForConfig(config)
 	if err != nil {
 		common.LogError("Error creating clientset: " + err.Error())
 		return
 	}
+}
+
+// GetKubeconfigPath determines the correct kubeconfig path to use based on priority:
+// 1. Explicit flag value (if provided) - Note: flagValue will be empty for plugin context
+// 2. KUBECONFIG environment variable
+// 3. Default path ($HOME/.kube/config)
+// Returns an empty string if none are found or applicable (e.g., for in-cluster detection).
+func GetKubeconfigPath(flagValue string) string {
+	if flagValue != "" {
+		common.LogDebug(fmt.Sprintf("Using kubeconfig from flag: %s", flagValue))
+		return flagValue
+	}
+
+	envVar := os.Getenv("KUBECONFIG")
+	if envVar != "" {
+		common.LogDebug(fmt.Sprintf("Using kubeconfig from KUBECONFIG env var: %s", envVar))
+		return envVar
+	}
+
+	homeDir, err := os.UserHomeDir()
+	if err == nil {
+		defaultPath := homeDir + "/.kube/config"
+		// Check if the default file actually exists before returning it
+		if _, err := os.Stat(defaultPath); err == nil {
+			common.LogDebug(fmt.Sprintf("Using default kubeconfig path: %s", defaultPath))
+			return defaultPath
+		} else if !os.IsNotExist(err) {
+			// Log error if Stat failed for reasons other than file not existing
+			common.LogWarn(fmt.Sprintf("Error checking default kubeconfig path %s: %v", defaultPath, err))
+		} else {
+			common.LogDebug(fmt.Sprintf("Default kubeconfig %s not found.", defaultPath))
+		}
+	} else {
+		common.LogWarn("Could not determine home directory to find default kubeconfig.")
+	}
+
+	common.LogDebug("No explicit kubeconfig path found (flag, env, default). Will rely on in-cluster config if applicable.")
+	return "" // Return empty string to let client-go attempt in-cluster config
+}
+
+// CollectK8sHealthData gathers all Kubernetes health information.
+// This function will call the refactored check functions from k8s.go
+func CollectK8sHealthData() *K8sHealthData {
+	healthData := NewK8sHealthData() // From ui.go (ensure ui.go types are accessible or NewK8sHealthData is moved/aliased)
+
+	if Clientset == nil {
+		errMsg := "Failed to initialize Kubernetes clientset. Aborting checks."
+		healthData.AddError(errMsg)
+		common.LogError(errMsg)
+		// Consider an alarm for k8s client initialization failure
+		common.AlarmCheckDown("kubernetes_client_init", errMsg, false, "", "")
+		return healthData
+	}
+	common.AlarmCheckUp("kubernetes_client_init", "Kubernetes clientset initialized successfully.", false)
+
+	var err error // Declare error variable to reuse
+
+	// Collect Node Health
+	healthData.Nodes, err = CollectNodeHealth() // This CollectNodeHealth is from k8s.go
+	if err != nil {
+		errMsg := fmt.Sprintf("Error collecting node health: %v", err)
+		healthData.AddError(errMsg)
+		common.LogError(errMsg)
+	}
+
+	// Collect Pod Health
+	healthData.Pods, err = CollectPodHealth() // This CollectPodHealth is from k8s.go
+	if err != nil {
+		errMsg := fmt.Sprintf("Error collecting pod health: %v", err)
+		healthData.AddError(errMsg)
+		common.LogError(errMsg)
+	}
+
+	// Collect RKE2 Ingress Nginx Health
+	healthData.Rke2IngressNginx, err = CollectRke2IngressNginxHealth() // This is from k8s.go
+	if err != nil {
+		errMsg := fmt.Sprintf("Error collecting RKE2 Ingress Nginx health: %v", err)
+		healthData.AddError(errMsg)
+		common.LogError(errMsg)
+	}
+
+	// Collect Cert-Manager Health
+	healthData.CertManager, err = CollectCertManagerHealth() // This is from k8s.go
+	if err != nil {
+		errMsg := fmt.Sprintf("Error collecting Cert-Manager health: %v", err)
+		healthData.AddError(errMsg)
+		common.LogError(errMsg)
+	}
+
+	// Collect Kube-VIP Health
+	healthData.KubeVip, err = CollectKubeVipHealth() // This is from k8s.go
+	if err != nil {
+		errMsg := fmt.Sprintf("Error collecting Kube-VIP health: %v", err)
+		healthData.AddError(errMsg)
+		common.LogError(errMsg)
+	}
+
+	// Collect Cluster API Cert Health
+	healthData.ClusterApiCert, err = CollectClusterApiCertHealth() // This is from k8s.go
+	if err != nil {
+		errMsg := fmt.Sprintf("Error collecting Cluster API Cert health: %v", err)
+		healthData.AddError(errMsg)
+		common.LogError(errMsg)
+	}
+
+	// Collect RKE2 Information
+	healthData.RKE2Info = CollectRKE2Information() // This is from k8s.go
+
+	// Clean up orphaned alarm logs for pods and containers that no longer exist
+	// For plugin context, assume cleanup is enabled (disableCleanupOrphanedAlarms = false)
+	// If granular control is needed, this could become a config option.
+	const disableCleanupOrphanedAlarmsInPlugin = false
+	if !disableCleanupOrphanedAlarmsInPlugin {
+		common.LogInfo("Cleaning up orphaned alarm logs...")
+		if err := CleanupOrphanedAlarms(); err != nil { // This CleanupOrphanedAlarms is from k8s.go
+			errMsg := fmt.Sprintf("Error cleaning up orphaned alarms: %v", err)
+			healthData.AddError(errMsg)
+			common.LogError(errMsg)
+		}
+	} else {
+		common.LogDebug("Skipping orphaned alarm cleanup (hardcoded to enabled in plugin context)")
+	}
+	return healthData
 }
 
 // CollectNodeHealth gathers health information for all Kubernetes nodes.
@@ -68,11 +193,11 @@ func CollectNodeHealth() ([]NodeHealthInfo, error) {
 	common.LogFunctionEntry()
 	var nodeHealthInfos []NodeHealthInfo
 
-	if clientset == nil {
+	if Clientset == nil {
 		return nil, fmt.Errorf("kubernetes clientset is not initialized")
 	}
 
-	nodes, err := clientset.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+	nodes, err := Clientset.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		common.LogError("Error listing nodes: " + err.Error())
 		return nil, fmt.Errorf("error listing nodes: %w", err)
@@ -264,11 +389,11 @@ func CollectPodHealth() ([]PodHealthInfo, error) {
 	common.LogFunctionEntry()
 	var podInfos []PodHealthInfo
 
-	if clientset == nil {
+	if Clientset == nil {
 		return nil, fmt.Errorf("kubernetes clientset is not initialized")
 	}
 
-	pods, err := clientset.CoreV1().Pods("").List(context.TODO(), metav1.ListOptions{})
+	pods, err := Clientset.CoreV1().Pods("").List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		common.LogError("Error listing pods: " + err.Error())
 		return nil, fmt.Errorf("error listing pods: %w", err)
@@ -453,13 +578,13 @@ func CollectCertManagerHealth() (*CertManagerHealth, error) {
 		Certificates: make([]CertificateInfo, 0),
 	}
 
-	if clientset == nil {
+	if Clientset == nil {
 		health.Error = "kubernetes clientset is not initialized"
 		return health, fmt.Errorf(health.Error)
 	}
 
 	// Check cert-manager namespace
-	_, err := clientset.CoreV1().Namespaces().Get(context.TODO(), "cert-manager", metav1.GetOptions{})
+	_, err := Clientset.CoreV1().Namespaces().Get(context.TODO(), "cert-manager", metav1.GetOptions{})
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
 			health.NamespaceAvailable = false
@@ -480,7 +605,7 @@ func CollectCertManagerHealth() (*CertManagerHealth, error) {
 	common.AlarmCheckUp("cert_manager_namespace", "cert-manager namespace exists.", false)
 
 	// Get a list of cert-manager.io/Certificate resources
-	rawCertData, err := clientset.RESTClient().Get().AbsPath("/apis/cert-manager.io/v1/certificates").DoRaw(context.Background())
+	rawCertData, err := Clientset.RESTClient().Get().AbsPath("/apis/cert-manager.io/v1/certificates").DoRaw(context.Background())
 	if err != nil {
 		errMsg := fmt.Sprintf("Error getting cert-manager.io/Certificate resources: %v", err)
 		common.LogError(errMsg)
@@ -554,13 +679,13 @@ func CollectKubeVipHealth() (*KubeVipHealth, error) {
 		FloatingIPChecks: make([]FloatingIPCheck, 0),
 	}
 
-	if clientset == nil {
+	if Clientset == nil {
 		health.Error = "kubernetes clientset is not initialized"
 		return health, fmt.Errorf(health.Error)
 	}
 
 	// Check if kube-vip pods exists on kube-system namespace
-	pods, err := clientset.CoreV1().Pods("kube-system").List(context.TODO(), metav1.ListOptions{})
+	pods, err := Clientset.CoreV1().Pods("kube-system").List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		errMsg := fmt.Sprintf("Error listing pods in kube-system for Kube-VIP check: %v", err)
 		common.LogError(errMsg)
@@ -673,12 +798,12 @@ func CollectClusterApiCertHealth() (*ClusterApiCertHealth, error) {
 func CleanupOrphanedAlarms() error {
 	common.LogFunctionEntry()
 
-	if clientset == nil {
+	if Clientset == nil {
 		return fmt.Errorf("kubernetes clientset is not initialized")
 	}
 
 	// Get all current pods
-	pods, err := clientset.CoreV1().Pods("").List(context.TODO(), metav1.ListOptions{})
+	pods, err := Clientset.CoreV1().Pods("").List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		common.LogError("Error listing pods: " + err.Error())
 		return fmt.Errorf("error listing pods: %w", err)
@@ -789,4 +914,210 @@ func CleanupOrphanedAlarms() error {
 	common.LogDebug(fmt.Sprintf("Cleanup complete. Removed %d orphaned pod logs, %d orphaned container status logs, and %d orphaned simple container logs.",
 		podLogsCleaned, containerLogsCleaned, simpleContainerLogsCleaned))
 	return nil
+}
+
+// GetCurrentNodeName determines the current node name using os.Hostname.
+// This is used within the plugin context where direct access to host's common.Config is not available.
+func GetCurrentNodeName() string {
+	hostname, err := os.Hostname()
+	if err == nil {
+		common.LogDebug(fmt.Sprintf("GetCurrentNodeName (plugin context): using os.Hostname(): %s", hostname))
+		return hostname
+	}
+	common.LogWarn(fmt.Sprintf("GetCurrentNodeName (plugin context): failed to get os.Hostname(): %v", err))
+	return ""
+}
+
+// GetKubernetesServerVersion gets the Kubernetes server version using discovery client
+func GetKubernetesServerVersion() (*version.Info, error) {
+	kubeconfigPath := GetKubeconfigPath("") // This will call the k8sHealth.GetKubeconfigPath
+	config, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build k8s config: %w", err)
+	}
+
+	discoveryClient, err := discovery.NewDiscoveryClientForConfig(config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create discovery client: %w", err)
+	}
+
+	versionInfo, err := discoveryClient.ServerVersion()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get server version: %w", err)
+	}
+
+	return versionInfo, nil
+}
+
+// IsMasterNodeViaAPI checks if current node is a master/control-plane node via Kubernetes API
+func IsMasterNodeViaAPI() bool {
+	kubeconfigPath := GetKubeconfigPath("") // This will call the k8sHealth.GetKubeconfigPath
+	config, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
+	if err != nil {
+		common.LogWarn(fmt.Sprintf("IsMasterNodeViaAPI: failed to build k8s config: %v", err))
+		return false
+	}
+
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		common.LogWarn(fmt.Sprintf("IsMasterNodeViaAPI: failed to create k8s client: %v", err))
+		return false
+	}
+
+	// Get current node name
+	nodeName := GetCurrentNodeName() // This will call the k8sHealth.GetCurrentNodeName
+	if nodeName == "" {
+		common.LogWarn("IsMasterNodeViaAPI: failed to get current node name.")
+		return false
+	}
+
+	// Check node labels for master/control-plane role
+	node, err := clientset.CoreV1().Nodes().Get(context.TODO(), nodeName, metav1.GetOptions{})
+	if err != nil {
+		common.LogWarn(fmt.Sprintf("IsMasterNodeViaAPI: failed to get node %s: %v", nodeName, err))
+		return false
+	}
+
+	// Check for standard master node labels
+	if _, ok := node.Labels["node-role.kubernetes.io/master"]; ok {
+		return true
+	}
+	if _, ok := node.Labels["node-role.kubernetes.io/control-plane"]; ok {
+		return true
+	}
+
+	return false
+}
+
+// CreateKubernetesClient creates a new Kubernetes clientset using the auto-detected kubeconfig.
+// This is a utility function for creating an ad-hoc client if needed, separate from the global k8sHealth.Clientset.
+func CreateKubernetesClient() (*kubernetes.Clientset, error) {
+	kubeconfigPath := GetKubeconfigPath("") // This will call the k8sHealth.GetKubeconfigPath
+	config, err := clientcmd.BuildConfigFromFlags("", kubeconfigPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to build k8s config for CreateKubernetesClient: %w", err)
+	}
+
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create kubernetes client for CreateKubernetesClient: %w", err)
+	}
+
+	return clientset, nil
+}
+
+// createK8sVersionNews logs information about Kubernetes version updates.
+// In the plugin context, it logs instead of creating a direct news item.
+func createK8sVersionNews(clusterName, distroName, oldVersion, newVersion string) {
+	title := fmt.Sprintf("%s Cluster'ı %s sürümü güncellendi", clusterName, distroName)
+	description := fmt.Sprintf("%s Cluster'ı %s sürümünden %s sürümüne güncellendi.",
+		clusterName, oldVersion, newVersion)
+
+	common.LogInfo(fmt.Sprintf("Kubernetes version update detected (for potential news): Title: '%s', Description: '%s'", title, description))
+}
+
+// GetClusterName extracts cluster name from node identifiers or uses a config override.
+// It uses the plugin's GetCurrentNodeName (os.Hostname based).
+func GetClusterName(configOverride string) string {
+	if configOverride != "" {
+		common.LogDebug(fmt.Sprintf("GetClusterName (plugin context): using configOverride: %s", configOverride))
+		return configOverride
+	}
+
+	identifier := GetCurrentNodeName() // k8sHealth.GetCurrentNodeName
+	common.LogDebug(fmt.Sprintf("GetClusterName (plugin context): using identifier from GetCurrentNodeName(): %s", identifier))
+	if identifier == "" {
+		return ""
+	}
+
+	parts := strings.Split(identifier, "-")
+	if len(parts) <= 1 {
+		return identifier
+	}
+	clusterParts := parts[:len(parts)-1]
+	return strings.Join(clusterParts, "-")
+}
+
+// --- RKE2 specific functionality (integrated from rke2checker) ---
+
+// isRKE2Environment checks if we're running in an RKE2 environment.
+func isRKE2Environment() bool {
+	rke2Paths := []string{
+		"/var/lib/rancher/rke2",
+		"/etc/rancher/rke2",
+		"/var/lib/rancher/rke2/server/manifests",
+	}
+	for _, path := range rke2Paths {
+		if _, err := os.Stat(path); err == nil {
+			return true
+		}
+	}
+	return false
+}
+
+// getRKE2Version gets the RKE2/Kubernetes version.
+func getRKE2Version() (string, error) {
+	versionInfo, err := GetKubernetesServerVersion()
+	if err != nil {
+		return "", err
+	}
+	return versionInfo.GitVersion, nil
+}
+
+// getClusterNameFromIdentifier extracts cluster name from node identifiers.
+func getClusterNameFromIdentifier(identifier string) string {
+	if identifier == "" {
+		return ""
+	}
+	parts := strings.Split(identifier, "-")
+	if len(parts) <= 1 {
+		return identifier
+	}
+	clusterParts := parts[:len(parts)-1]
+	return strings.Join(clusterParts, "-")
+}
+
+// CollectRKE2Information performs the RKE2 checks and returns structured data.
+func CollectRKE2Information() *RKE2Info {
+	common.LogFunctionEntry()
+	info := &RKE2Info{}
+
+	info.IsRKE2Environment = isRKE2Environment()
+	if !info.IsRKE2Environment {
+		// Not an error, just not an RKE2 env. Host can decide what to do.
+		common.LogInfo("k8sHealth: RKE2 environment not detected.")
+		return info
+	}
+
+	// Use GetCurrentNodeName for cluster name detection logic
+	nodeIdentifier := GetCurrentNodeName()
+	info.ClusterName = getClusterNameFromIdentifier(nodeIdentifier)
+	if info.ClusterName == "" {
+		errMsg := "k8sHealth: Could not determine cluster name."
+		common.LogWarn(errMsg)
+		if info.Error != "" {
+			info.Error += "; " + errMsg
+		} else {
+			info.Error = errMsg
+		}
+		// Continue to gather other info if possible
+	}
+
+	version, err := getRKE2Version()
+	if err != nil {
+		errMsg := fmt.Sprintf("k8sHealth: Error getting RKE2 version: %v", err)
+		common.LogError(errMsg)
+		if info.Error != "" {
+			info.Error += "; " + errMsg
+		} else {
+			info.Error = errMsg
+		}
+	} else {
+		info.CurrentVersion = version
+	}
+
+	isMaster := IsMasterNodeViaAPI()
+	info.IsMasterNode = isMaster
+
+	return info
 }

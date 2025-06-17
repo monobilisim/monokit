@@ -1,0 +1,24 @@
+syntax = "proto3";
+
+package healthplugin;
+
+option go_package = "github.com/monobilisim/monokit/common/health/pluginpb;pluginpb";
+
+service HealthProvider {
+  rpc Name (Empty) returns (NameReply);
+  rpc Collect (CollectRequest) returns (CollectReply);
+}
+
+message Empty {}
+
+message NameReply {
+  string name = 1;
+}
+
+message CollectRequest {
+  string hostname = 1;
+}
+
+message CollectReply {
+  bytes json = 1; // raw JSON payload (typically marshaled by the plugin side)
+}

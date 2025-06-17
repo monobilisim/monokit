@@ -1,4 +1,4 @@
-.PHONY: help all with-api clean clean-coverage docs build-frontend clean-frontend install install-with-api test test-with-api .FORCE
+.PHONY: help all with-api clean clean-coverage docs build-frontend clean-frontend install install-with-api test test-with-api build-plugins build-plugin-k8sHealth .FORCE
 
 # Colors for help target
 BLUE := \033[34m
@@ -13,7 +13,7 @@ GO_FILES := $(shell find . -type f -name '*.go')
 .FORCE:
 
 # Default target: build without API
-all: bin/monokit
+all: build-plugins bin/monokit
 
 # Help target
 help:
@@ -52,7 +52,7 @@ clean-coverage:
 	@echo "$(GREEN)Coverage files cleaned$(RESET)"
 
 # Build with API support (includes frontend)
-with-api: clean-frontend build-frontend bin/monokit-with-api
+with-api: clean-frontend build-frontend build-plugins bin/monokit-with-api
 
 # Build the frontend assets
 build-frontend:
@@ -117,3 +117,28 @@ install-with-api: with-api
 	@echo "$(BLUE)Installing monokit with API...$(RESET)"
 	install -m 755 bin/monokit /usr/local/bin/monokit
 	@echo "$(GREEN)Installation complete$(RESET)"
+
+# --- Plugin Proto generation (health_plugin.proto) ---
+PROTO_DIR=proto
+HEALTH_PROTO=$(PROTO_DIR)/health_plugin.proto
+HEALTH_PROTO_GO_PKG=common/health/pluginpb
+
+gen-health-plugin-proto:
+	protoc --go_out=paths=source_relative:$(HEALTH_PROTO_GO_PKG) \
+	       --go-grpc_out=paths=source_relative:$(HEALTH_PROTO_GO_PKG) \
+	       $(HEALTH_PROTO)
+
+.PHONY: gen-health-plugin-proto
+
+# --- Plugin Building ---
+PLUGINS_DIR=plugins
+
+build-plugins: build-plugin-k8sHealth
+	@echo "$(GREEN)All plugins built.$(RESET)"
+
+build-plugin-k8sHealth: .FORCE
+	@echo "$(BLUE)Building k8sHealth plugin (includes RKE2 functionality)...$(RESET)"
+	@mkdir -p $(PLUGINS_DIR)
+	# Ensure the output filename matches what the host expects (e.g., "k8sHealth")
+	GOOS=linux GOARCH=amd64 go build -tags=plugin -o $(PLUGINS_DIR)/k8sHealth ./k8sHealth/cmd/plugin/main.go
+	@echo "$(GREEN)k8sHealth plugin built: $(PLUGINS_DIR)/k8sHealth$(RESET)"

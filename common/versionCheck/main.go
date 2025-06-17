@@ -4,11 +4,14 @@ import (
 	"fmt"
 	"io/ioutil"
 	"os"
+	"reflect"
 	"strings"
 	"time"
 
 	"github.com/monobilisim/monokit/common"
+	"github.com/monobilisim/monokit/common/health" // For getting plugin providers
 	news "github.com/monobilisim/monokit/common/redmine/news"
+	"github.com/monobilisim/monokit/common/types" // For RKE2Info struct
 	"github.com/spf13/cobra"
 )
 
@@ -72,6 +75,113 @@ func VersionCheck(cmd *cobra.Command, args []string) {
 	// PostgreSQL
 	PostgresCheck()
 
-	// RKE2 Kubernetes
-	RKE2VersionCheck()
+	// RKE2 Kubernetes - Replaced with plugin call
+	handleRKE2VersionCheckViaPlugin()
+}
+
+func handleRKE2VersionCheckViaPlugin() {
+	// Attempt RKE2 version check via k8sHealth plugin
+	if k8sHealthProvider := health.Get("k8sHealth"); k8sHealthProvider != nil {
+		common.LogDebug("Attempting RKE2 version check via plugin")
+		pluginData, err := k8sHealthProvider.Collect("") // Hostname might not be relevant for k8sHealth
+		if err != nil {
+			fmt.Printf("Error collecting data from k8sHealth plugin: %v\n", err)
+			return
+		}
+
+		// The k8sHealth plugin returns a struct containing RKE2Info
+		// Use reflection to access the RKE2Info field since we can't import k8sHealth due to build constraints
+		v := reflect.ValueOf(pluginData)
+		if v.Kind() == reflect.Ptr {
+			v = v.Elem()
+		}
+
+		if v.Kind() != reflect.Struct {
+			fmt.Printf("Unexpected data type from k8sHealth plugin: expected struct, got %T\n", pluginData)
+			return
+		}
+
+		rke2InfoField := v.FieldByName("RKE2Info")
+		if !rke2InfoField.IsValid() {
+			common.LogDebug("No RKE2Info field found in k8sHealth plugin response")
+			return
+		}
+
+		if rke2InfoField.IsNil() {
+			common.LogDebug("No RKE2 information available from k8sHealth plugin")
+			return
+		}
+
+		// Extract the RKE2Info using reflection
+		rke2InfoValue := rke2InfoField.Elem()
+		if rke2InfoValue.Kind() != reflect.Struct {
+			fmt.Printf("RKE2Info field has unexpected type: %v\n", rke2InfoValue.Kind())
+			return
+		}
+
+		// Extract fields from the RKE2Info struct using reflection
+		info := types.RKE2Info{
+			IsRKE2Environment: rke2InfoValue.FieldByName("IsRKE2Environment").Bool(),
+			ClusterName:       rke2InfoValue.FieldByName("ClusterName").String(),
+			CurrentVersion:    rke2InfoValue.FieldByName("CurrentVersion").String(),
+			IsMasterNode:      rke2InfoValue.FieldByName("IsMasterNode").Bool(),
+			Error:             rke2InfoValue.FieldByName("Error").String(),
+		}
+
+		if info.Error != "" {
+			fmt.Printf("RKE2 checker plugin reported an error: %s\n", info.Error)
+			// Decide if we should still proceed if only partial data is available
+		}
+
+		if !info.IsRKE2Environment {
+			fmt.Println("RKE2 environment not detected by plugin, skipping RKE2 version check.")
+			return
+		}
+
+		clusterName := info.ClusterName
+		if clusterName == "" {
+			// Attempt to use common.Config.Identifier if plugin couldn't determine it
+			// This might happen if plugin's hostname detection isn't what's expected for cluster naming.
+			// However, the plugin is designed to provide this, so if it's empty, it's an issue.
+			// For now, let's trust the plugin or log a more specific warning if it's consistently empty.
+			// common.LogWarn("Plugin did not return a cluster name for RKE2 check. This might affect version tracking.")
+			// Fallback or error based on requirements. If essential:
+			fmt.Println("Could not determine cluster name for RKE2 version check from plugin.")
+			return
+		}
+
+		currentVersion := info.CurrentVersion
+		if currentVersion == "" {
+			fmt.Printf("Could not determine current RKE2 version for cluster '%s' from plugin.\n", clusterName)
+			return
+		}
+
+		fmt.Printf("RKE2 cluster '%s' version (from plugin): %s\n", clusterName, currentVersion)
+
+		oldVersion := GatherVersion("rke2-" + clusterName)
+
+		if oldVersion != "" && oldVersion == currentVersion {
+			fmt.Printf("RKE2 cluster '%s' version is unchanged.\n", clusterName)
+			return
+		} else if oldVersion != "" && oldVersion != currentVersion {
+			fmt.Printf("RKE2 cluster '%s' version has been updated.\n", clusterName)
+			fmt.Printf("Old version: %s\n", oldVersion)
+			fmt.Printf("New version: %s\n", currentVersion)
+
+			if info.IsMasterNode {
+				// Using existing CreateNews function from this file.
+				// It uses common.Config.Identifier for node identification in news.
+				CreateNews("RKE2 on "+clusterName, oldVersion, currentVersion, false)
+			} else {
+				common.LogDebug("Skipping news creation (not a master node, or plugin indicated so)")
+			}
+		} else { // oldVersion == ""
+			fmt.Printf("First time detecting RKE2 cluster '%s' version via plugin.\n", clusterName)
+		}
+
+		StoreVersion("rke2-"+clusterName, currentVersion)
+	} else {
+		common.LogDebug("k8sHealth plugin not found or not loaded")
+		return
+	}
 }
