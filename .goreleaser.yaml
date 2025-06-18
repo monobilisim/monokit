@@ -47,9 +47,6 @@ builds:
     tags:
       - plugin
     dir: k8sHealth
-    hooks:
-      pre:
-        - cd .. && make gen-health-plugin-proto
 
 archives:
   - id: default
