@@ -51,24 +51,31 @@ builds:
     dir: k8sHealth
 
 archives:
+  # Main monokit binary for all platforms
   - id: default
     ids:
       - default
-      - k8sHealth-plugin
     name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    # Include plugins and config files in archives
     files:
       - README.md
       - LICENSE
       - config/*.yml
     
+  # Monokit with API support (Linux only)
   - id: withapi
     ids:
       - withapi
-      - k8sHealth-plugin
     name_template: "{{ .ProjectName }}_withapi_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
-    # Include plugins and config files in archives
     files:
       - README.md
       - LICENSE
       - config/*.yml
+
+  # k8sHealth plugin (all platforms)
+  - id: k8sHealth
+    ids:
+      - k8sHealth-plugin
+    name_template: "{{ .ProjectName }}_k8sHealth_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - LICENSE
