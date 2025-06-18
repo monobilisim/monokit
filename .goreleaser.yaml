@@ -42,6 +42,8 @@ builds:
       - darwin
       - windows
       - freebsd
+    ldflags:
+      - -X github.com/monobilisim/monokit/common.MonokitVersion={{ .Version }}
     env:
       - CGO_ENABLED=0
     tags:
