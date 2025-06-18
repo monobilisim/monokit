@@ -119,7 +119,7 @@ func RunAll() {
 	// Check and run daily update if needed
 	if shouldRunDailyUpdate(lastUpdateCheckFile) {
 		fmt.Println("Running daily monokit update check...")
-		common.Update("", false) // Check for monokit updates
+		common.Update("", false, true, []string{}, "/var/lib/monokit/plugins") // Check for monokit updates
 		recordUpdateCheck(lastUpdateCheckFile)
 	}
 

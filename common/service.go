@@ -83,7 +83,7 @@ func WrapperGetServiceStatus(serviceName string) {
 
 	if updateVersion != MonokitVersion && updateVersion != "" {
 		fmt.Println(serviceName + " wants to be updated to " + updateVersion)
-		Update(updateVersion, false)
+		Update(updateVersion, false, true, []string{}, "/var/lib/monokit/plugins")
 
 		// Re-run sendReq after the update
 		// Note: SendReq is removed as it's not needed in the common package
@@ -94,7 +94,7 @@ func WrapperGetServiceStatus(serviceName string) {
 // It relies on ClientURL and Config.Identifier being previously initialized (e.g., by WrapperGetServiceStatus or similar).
 func PostHostHealth(toolName string, payload interface{}) error {
 	if ClientURL == "" {
-		return nil 
+		return nil
 	}
 	if Config.Identifier == "" {
 		return fmt.Errorf("monokit client identifier (hostname) not configured")

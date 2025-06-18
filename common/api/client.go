@@ -138,7 +138,7 @@ func WrapperGetServiceStatus(serviceName string) {
 
 	if updateVersion != common.MonokitVersion && updateVersion != "" {
 		fmt.Println(serviceName + " wants to be updated to " + updateVersion)
-		common.Update(updateVersion, false)
+		common.Update(updateVersion, false, true, []string{}, "/var/lib/monokit/plugins")
 
 		// Re-run sendReq after the update
 		SendReq("1")
