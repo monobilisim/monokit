@@ -268,6 +268,7 @@ func (khd *K8sHealthData) RenderCompact() string {
 			}
 		}
 	}
+	// Note: If khd.CertManager is nil, cert-manager checking is disabled and we skip this section
 
 	// --- Kube-VIP Section ---
 	if khd.KubeVip != nil {
@@ -303,6 +304,7 @@ func (khd *K8sHealthData) RenderCompact() string {
 			}
 		}
 	}
+	// Note: If khd.KubeVip is nil, kube-vip checking is disabled and we skip this section
 
 	// --- Cluster API Cert Section ---
 	if khd.ClusterApiCert != nil {

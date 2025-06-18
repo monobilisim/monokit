@@ -50,6 +50,59 @@ type CertManager struct {
 
 var Clientset *kubernetes.Clientset
 
+// Helper function to determine if cert-manager should be collected
+func shouldCollectCertManager() bool {
+	if K8sHealthConfig.K8s.EnableCertManager != nil {
+		return *K8sHealthConfig.K8s.EnableCertManager
+	}
+	// Auto-detect: check if cert-manager namespace exists
+	return autoDetectCertManager()
+}
+
+// Helper function to determine if kube-vip should be collected
+func shouldCollectKubeVip() bool {
+	if K8sHealthConfig.K8s.EnableKubeVip != nil {
+		return *K8sHealthConfig.K8s.EnableKubeVip
+	}
+	// Auto-detect: check if kube-vip pods exist
+	return autoDetectKubeVip()
+}
+
+// Auto-detection for cert-manager
+func autoDetectCertManager() bool {
+	if Clientset == nil {
+		return false
+	}
+	_, err := Clientset.CoreV1().Namespaces().Get(context.TODO(), "cert-manager", metav1.GetOptions{})
+	detected := err == nil
+	if detected {
+		common.LogDebug("Auto-detected cert-manager namespace, enabling cert-manager health checks")
+	} else {
+		common.LogDebug("Cert-manager namespace not found, disabling cert-manager health checks")
+	}
+	return detected
+}
+
+// Auto-detection for kube-vip
+func autoDetectKubeVip() bool {
+	if Clientset == nil {
+		return false
+	}
+	pods, err := Clientset.CoreV1().Pods("kube-system").List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		common.LogDebug("Error listing kube-system pods for kube-vip auto-detection, disabling kube-vip health checks")
+		return false
+	}
+	for _, pod := range pods.Items {
+		if strings.Contains(pod.Name, "kube-vip") {
+			common.LogDebug("Auto-detected kube-vip pods, enabling kube-vip health checks")
+			return true
+		}
+	}
+	common.LogDebug("No kube-vip pods found, disabling kube-vip health checks")
+	return false
+}
+
 func InitClientset(kubeconfig string) {
 	var err error
 	// Create a Kubernetes clientset
@@ -145,19 +198,23 @@ func CollectK8sHealthData() *K8sHealthData {
 	}
 
 	// Collect Cert-Manager Health
-	healthData.CertManager, err = CollectCertManagerHealth() // This is from k8s.go
-	if err != nil {
-		errMsg := fmt.Sprintf("Error collecting Cert-Manager health: %v", err)
-		healthData.AddError(errMsg)
-		common.LogError(errMsg)
+	if shouldCollectCertManager() {
+		healthData.CertManager, err = CollectCertManagerHealth() // This is from k8s.go
+		if err != nil {
+			errMsg := fmt.Sprintf("Error collecting Cert-Manager health: %v", err)
+			healthData.AddError(errMsg)
+			common.LogError(errMsg)
+		}
 	}
 
 	// Collect Kube-VIP Health
-	healthData.KubeVip, err = CollectKubeVipHealth() // This is from k8s.go
-	if err != nil {
-		errMsg := fmt.Sprintf("Error collecting Kube-VIP health: %v", err)
-		healthData.AddError(errMsg)
-		common.LogError(errMsg)
+	if shouldCollectKubeVip() {
+		healthData.KubeVip, err = CollectKubeVipHealth() // This is from k8s.go
+		if err != nil {
+			errMsg := fmt.Sprintf("Error collecting Kube-VIP health: %v", err)
+			healthData.AddError(errMsg)
+			common.LogError(errMsg)
+		}
 	}
 
 	// Collect Cluster API Cert Health

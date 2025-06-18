@@ -56,6 +56,8 @@ type Config struct {
 	K8s struct {
 		Floating_Ips         []string `yaml:"floating_ips"`
 		Ingress_Floating_Ips []string `yaml:"ingress_floating_ips"`
+		EnableCertManager    *bool    `yaml:"enable_cert_manager"` // nil = auto-detect, true/false = force
+		EnableKubeVip        *bool    `yaml:"enable_kube_vip"`     // nil = auto-detect, true/false = force
 	} `yaml:"k8s"`
 }
 

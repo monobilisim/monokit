@@ -6,6 +6,9 @@ k8s:
     - 127.0.0.1
   ingress_floating_ips:
     - 127.0.0.1
+  # New toggleable options
+  # enable_cert_manager: true   # true=force enable, false=force disable, omit=auto-detect
+  # enable_kube_vip: true       # true=force enable, false=force disable, omit=auto-detect
 
 aws:
   endpoint_url: https://s3.test.com
