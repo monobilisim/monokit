@@ -41,7 +41,7 @@ var UpdateCmd = &cobra.Command{
 func init() {
 	UpdateCmd.Flags().Bool("update-plugins", true, "Update plugins along with main binary")
 	UpdateCmd.Flags().StringSlice("plugins", []string{}, "Specific plugins to update (comma-separated)")
-	UpdateCmd.Flags().String("plugin-dir", "/var/lib/monokit/plugins", "Plugin directory path")
+	UpdateCmd.Flags().String("plugin-dir", DefaultPluginDir, "Plugin directory path")
 }
 
 // DetectInstalledPlugins scans the plugin directory and returns information about installed plugins
@@ -130,13 +130,6 @@ func GetAvailablePlugins(version, os, arch string) ([]PluginInfo, error) {
 		return nil, fmt.Errorf("no assets found in release")
 	}
 
-	// Known plugin names based on the codebase structure
-	knownPlugins := []string{
-		"k8sHealth", "osHealth", "mysqlHealth", "pgsqlHealth", "redisHealth",
-		"zimbraHealth", "traefikHealth", "rmqHealth", "pritunlHealth",
-		"wppconnectHealth", "pmgHealth", "esHealth", "postalHealth",
-	}
-
 	for _, asset := range assets {
 		assetMap := asset.(map[string]interface{})
 		assetName := assetMap["name"].(string)
@@ -149,7 +142,7 @@ func GetAvailablePlugins(version, os, arch string) ([]PluginInfo, error) {
 
 		// Parse plugin name from asset name
 		// Expected format: monokit_{pluginName}_{version}_{os}_{arch}.tar.gz
-		for _, pluginName := range knownPlugins {
+		for _, pluginName := range KnownPlugins {
 			expectedPattern := fmt.Sprintf("monokit_%s_%s_%s_%s.tar.gz", pluginName, releaseVersion, os, arch)
 			if assetName == expectedPattern {
 				plugin := PluginInfo{

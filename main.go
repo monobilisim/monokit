@@ -52,7 +52,7 @@ func main() {
 	}
 
 	// Attempt to load plugins from /var/lib/monokit/plugins (with proper error handling)
-	if err := plugin.LoadAll("/var/lib/monokit/plugins"); err != nil {
+	if err := plugin.LoadAll(common.DefaultPluginDir); err != nil {
 		common.LogWarn(fmt.Sprintf("Failed to load some plugins: %v", err))
 	}
 
@@ -351,6 +351,12 @@ Supports pagination for large log sets.`,
 	common.UpdateCmd.Flags().StringP("version", "v", "", "Custom version")
 	common.UpdateCmd.Flags().BoolP("force", "f", false, "Force update")
 	RootCmd.AddCommand(common.UpdateCmd)
+
+	// Plugin commands
+	RootCmd.AddCommand(common.PluginCmd)
+	common.PluginCmd.AddCommand(common.PluginInstallCmd)
+	common.PluginCmd.AddCommand(common.PluginListCmd)
+	common.PluginCmd.AddCommand(common.PluginUninstallCmd)
 
 	/// Alarm
 
