@@ -14,7 +14,7 @@ GO_FILES := $(shell find . -type f -name '*.go')
 .FORCE:
 
 # Default target: build without API
-all: build-plugins bin/monokit
+all: bin/monokit
 
 # Help target
 help:

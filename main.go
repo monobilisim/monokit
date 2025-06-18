@@ -51,8 +51,8 @@ func main() {
 		}
 	}
 
-	// Attempt to load plugins from ./plugins (with proper error handling)
-	if err := plugin.LoadAll("plugins"); err != nil {
+	// Attempt to load plugins from /var/lib/monokit/plugins (with proper error handling)
+	if err := plugin.LoadAll("/var/lib/monokit/plugins"); err != nil {
 		common.LogWarn(fmt.Sprintf("Failed to load some plugins: %v", err))
 	}
 
