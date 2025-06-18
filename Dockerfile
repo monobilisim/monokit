@@ -17,6 +17,7 @@ RUN make install-deps
 
 # Build the application and plugins using make and target architecture
 ARG TARGETARCH
+RUN make gen-health-plugin-proto
 RUN GOARCH=$TARGETARCH make
 RUN GOARCH=$TARGETARCH make build-plugins
 
