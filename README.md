@@ -27,12 +27,58 @@
 
 ---
 
-## Tools
+## Core tools
+These core tools will be available in every monokit installation.
 
 - plugin
     - Plugin management system for monokit.
     - Allows you to install, list, and remove plugins.
     - Plugins are installed to /var/lib/monokit/plugins.
+
+- client
+    - A client that sends information to the Monokit server.
+    - Config: `/etc/mono/client.yaml`
+
+- shutdownNotifier
+  - Notifies of a poweroff/poweron through the Slack webhook.
+
+- sshNotifier
+    - Notifies of a successful SSH login/logout through the Slack webhook.
+    - Config: `/etc/mono/ssh-notifier.yaml`
+
+- osHealth
+  - Checks OS health, including Disk, CPU and Memory usage.
+  - Sends alarm notifications to a Slack webhook.
+  - Opens issue in Redmine if disks are above the threshold.
+  - Config: `/etc/mono/os.yaml`
+
+- redmine
+  - Allows you to create, update and close issues in Redmine.
+  - Has a service system that keeps track of the issue ID.
+  - Config: `/etc/mono/global.yaml`
+
+- alarm
+  - Sends alarm notifications to a Slack webhook.
+  - Config: `/etc/mono/global.yaml`
+
+- daemon
+    - Daemonizes Monokit, allowing you to run it as a service.
+    - Runs health checks with the specified interval.
+    - Config: `/etc/mono/daemon.yaml`
+
+- update
+  - Updates the monokit binary to the latest version.
+  - Allows you to choose the version to update with the `--version` flag.
+
+- migrate
+    - Migrates from a old version of Monokit to a new one in case of a breaking change.
+
+- versionCheck
+    - Checks the version of various services, including OPNsense, Zimbra and Proxmox.
+    - Creates a Redmine news entry if the version has been updated.
+    - Config: `/etc/mono/global.yaml`
+
+## Tools
 
 - esHealth
     - Check Opensearch/Elasticsearch health.
@@ -44,15 +90,7 @@
 - server
     - An API server that gets information from other Monokit instances.
     - Config: `/etc/mono/server.yaml`
-
-- client
-    - A client that sends information to the Monokit server.
-    - Config: `/etc/mono/client.yaml`
-
-- versionCheck
-    - Checks the version of various services, including OPNsense, Zimbra and Proxmox.
-    - Creates a Redmine news entry if the version has been updated.
-    - Config: `/etc/mono/global.yaml`
+    - Only available on with_api builds.
 
 - zimbraLdap
     - Runs ldap.sh script.
@@ -61,9 +99,6 @@
     - Check Traefik health, including service status and logs.
     - Sends alarm notifications to a Slack webhook.
 
-- sshNotifier
-    - Notifies of a successful SSH login/logout through the Slack webhook.
-    - Config: `/etc/mono/ssh-notifier.yaml`
 
 - pritunlHealth
     - Check Pritunl server health.
@@ -93,9 +128,6 @@
     - Config: `/etc/mono/k8s.yaml`
     - Is a plugin, install it with `monokit plugin install k8sHealth`.
 
-- shutdownNotifier
-  - Notifies of a poweroff/poweron through the Slack webhook.
-
 - mysqlHealth
   - Checks MySQL health, including read and write operations.
   - Sends alarm notifications to a Slack webhook.
@@ -116,28 +148,6 @@
   - Sends alarm notifications to a Slack webhook.
   - Config: `/etc/mono/rabbitmq.yaml` (optional)
 
-- osHealth
-  - Checks OS health, including Disk, CPU and Memory usage.
-  - Sends alarm notifications to a Slack webhook.
-  - Opens issue in Redmine if disks are above the threshold.
-  - Config: `/etc/mono/os.yaml`
-
-- redmine
-  - Allows you to create, update and close issues in Redmine.
-  - Has a service system that keeps track of the issue ID.
-  - Config: `/etc/mono/global.yaml`
-
-- alarm
-  - Sends alarm notifications to a Slack webhook.
-  - Config: `/etc/mono/global.yaml`
-
-- update
-  - Updates the monokit binary to the latest version.
-  - Allows you to choose the version to update with the `--version` flag.
-
-- migrate
-    - Migrates from a old version of Monokit to a new one in case of a breaking change.
-
 - lbPolicy
     - Allows you to switch between the load balancing policies on Caddy, and list current policies.
     - Config: `/etc/mono/glb-*.yaml`
@@ -146,11 +156,6 @@
     - Checks WPPConnect health, phone status.
     - Sends alarm notifications to a Slack webhook.
     - Config: `/etc/mono/wppconnect.yaml`
-
-- daemon
-    - Daemonizes Monokit, allowing you to run it as a service.
-    - Runs health checks with the specified interval.
-    - Config: `/etc/mono/daemon.yaml`
 
 - ufw
     - Manages UFW rules by downloading and applying IP lists from URLs.
