@@ -35,7 +35,7 @@ builds:
 
   # Plugin builds
   - id: k8sHealth-plugin
-    main: ./k8sHealth/cmd/plugin/main.go
+    main: ./cmd/plugin/main.go
     binary: k8sHealth
     goos:
       - linux
