@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/monobilisim/monokit/common"
+	"github.com/monobilisim/monokit/common/health/plugin" // Added for plugin cleanup
+
 	// Removed direct component imports like k8sHealth, osHealth, etc.
 	// They will be accessed via the registry.
 	"github.com/spf13/cobra"
@@ -137,6 +139,10 @@ func RunAll() {
 	if componentsToRunStr == "" {
 		fmt.Println("No other components determined to run in this cycle.")
 		fmt.Println("Finished component checks for this cycle.")
+
+		// Clean up plugins at the end of the cycle when no components need to run
+		fmt.Println("Cleaning up plugins at the end of daemon cycle...")
+		plugin.CleanupAll()
 		return // Nothing to do
 	}
 	componentsToRun := strings.Split(componentsToRunStr, "::")
@@ -154,6 +160,11 @@ func RunAll() {
 	} // End of component loop
 
 	fmt.Println("Finished component checks for this cycle.")
+
+	// CRITICAL: Clean up plugins at the end of each daemon cycle
+	// This prevents plugin processes from accumulating after all components have finished
+	fmt.Println("Cleaning up plugins at the end of daemon cycle...")
+	plugin.CleanupAll()
 }
 
 // executeComponent handles the logic for running a single component,
@@ -183,7 +194,9 @@ func executeComponent(comp common.Component) {
 		args = append(args, executablePath, comp.Name)
 		// Add --ignore-lockfile flag
 		args = append(args, "--ignore-lockfile")
-		fmt.Printf(" with --ignore-lockfile")
+		// Add --cleanup-plugins flag to ensure spawned processes clean up their plugins
+		args = append(args, "--cleanup-plugins")
+		fmt.Printf(" with --ignore-lockfile --cleanup-plugins")
 		fmt.Println("...")
 
 		cmd := exec.Command("sudo", args...)
@@ -224,10 +237,10 @@ func executeComponent(comp common.Component) {
 			}
 			// Let Cobra ignore unknown flags (e.g., --ignore-lockfile) if the component
 			// itself doesn't declare them, preventing duplicate-definition panics
-			// and “unknown flag” errors.
+			// and "unknown flag" errors.
 			tempCmd.FParseErrWhitelist = cobra.FParseErrWhitelist{UnknownFlags: true}
 			// Manually set the arguments for the component's command execution
-			os.Args = []string{executablePath, comp.Name, "--ignore-lockfile"}
+			os.Args = []string{executablePath, comp.Name, "--ignore-lockfile", "--cleanup-plugins"}
 
 			// ExecuteC captures errors, Execute runs and panics on error
 			_, err := tempCmd.ExecuteC() // Use ExecuteC to handle errors gracefully

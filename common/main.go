@@ -3,12 +3,12 @@ package common
 import (
 	"bufio"
 	"fmt"
+	"math"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"unicode"
-	"math"
 
 	"github.com/sirupsen/logrus"
 )
@@ -16,7 +16,8 @@ import (
 var Config Common
 var TmpPath string
 var MonokitVersion = "devel"
-var IgnoreLockfile bool // Flag to ignore lockfile check
+var IgnoreLockfile bool       // Flag to ignore lockfile check
+var CleanupPluginsOnExit bool // Flag to clean up plugin processes before exit
 
 func SplitSection(section string) {
 	fmt.Println("\n" + section)

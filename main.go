@@ -38,11 +38,22 @@ var RootCmd = &cobra.Command{
 func init() {
 	// Define persistent flags in init() so they are available early.
 	RootCmd.PersistentFlags().BoolVar(&common.IgnoreLockfile, "ignore-lockfile", false, "Ignore lockfile check during initialization")
+	RootCmd.PersistentFlags().BoolVar(&common.CleanupPluginsOnExit, "cleanup-plugins", false, "Clean up plugin processes before exit (used internally by daemon)")
 }
 
 func main() {
 	// Set up graceful shutdown handling for plugins
 	setupGracefulShutdown()
+
+	// Ensure plugins are always cleaned up before exit
+	defer func() {
+		if common.CleanupPluginsOnExit {
+			common.LogDebug("Cleaning up plugins before exit (--cleanup-plugins flag set)...")
+		} else {
+			common.LogDebug("Cleaning up plugins before exit...")
+		}
+		plugin.CleanupAll()
+	}()
 
 	// Wire up plugin loader registration to health registry
 	plugin.RegisterProviderGlobally = func(p interface{}) {
@@ -618,8 +629,10 @@ Supports pagination for large log sets.`,
 
 	if err := RootCmd.Execute(); err != nil {
 		fmt.Println(err)
+		// Plugin cleanup will be handled by defer
 		os.Exit(1)
 	}
+	// Plugin cleanup will be handled by defer
 }
 
 // setupGracefulShutdown sets up signal handlers for graceful shutdown
