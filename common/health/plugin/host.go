@@ -30,6 +30,7 @@ type ProviderProxy struct {
 func (p *ProviderProxy) Name() string {
 	return p.name
 }
+
 func (p *ProviderProxy) Collect(hostname string) (interface{}, error) {
 	req := &pb.CollectRequest{Hostname: hostname}
 	resp, err := p.client.Collect(context.Background(), req)
@@ -42,6 +43,19 @@ func (p *ProviderProxy) Collect(hostname string) (interface{}, error) {
 	// The host will just pass this string through.
 	// The `resp.Json` field (bytes) directly contains the rendered UI string.
 	return string(resp.Json), nil
+}
+
+// CollectStructured gets structured data from the plugin for programmatic access (e.g., versionCheck)
+func (p *ProviderProxy) CollectStructured(hostname string) (interface{}, error) {
+	req := &pb.CollectRequest{Hostname: hostname}
+	resp, err := p.client.CollectStructured(context.Background(), req)
+	if err != nil {
+		common.LogError(fmt.Sprintf("Plugin RPC call to CollectStructured failed for %s (hostname: %s): %v", p.name, hostname, err))
+		return nil, fmt.Errorf("plugin RPC call to CollectStructured failed for %s: %w", p.name, err)
+	}
+
+	// Return the raw JSON data as bytes for the caller to unmarshal
+	return resp.Json, nil
 }
 
 var (

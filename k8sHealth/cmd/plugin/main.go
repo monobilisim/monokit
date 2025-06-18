@@ -4,6 +4,7 @@ package main
 
 import (
 	"context" // Added for GRPCClient
+	"encoding/json"
 	"fmt"     // For fmt.Errorf in stubs
 	"net/rpc" // For plugin.Plugin interface (for netrpc stubs)
 	"os"      // Add for os.Getenv
@@ -42,7 +43,7 @@ func (s *k8sHealthGRPCServer) Name(ctx context.Context, req *proto.Empty) (*prot
 	return &proto.NameReply{Name: name}, nil
 }
 
-// Collect implements the gRPC server interface for Collect
+// Collect implements the gRPC server interface for Collect (returns rendered CLI string)
 func (s *k8sHealthGRPCServer) Collect(ctx context.Context, req *proto.CollectRequest) (*proto.CollectReply, error) {
 	// The k8sHealth.K8sHealthProvider.Collect returns interface{}, which is *k8sHealth.K8sHealthData
 	rawData, err := s.Impl.Collect(req.Hostname)
@@ -63,6 +64,29 @@ func (s *k8sHealthGRPCServer) Collect(ctx context.Context, req *proto.CollectReq
 	// The proto definition expects `bytes json` in CollectReply.
 	// We are now sending the rendered string as bytes.
 	return &proto.CollectReply{Json: []byte(renderedString)}, nil
+}
+
+// CollectStructured implements the gRPC server interface for CollectStructured (returns raw JSON data)
+func (s *k8sHealthGRPCServer) CollectStructured(ctx context.Context, req *proto.CollectRequest) (*proto.CollectStructuredReply, error) {
+	// Get the raw data from the implementation
+	rawData, err := s.Impl.Collect(req.Hostname)
+	if err != nil {
+		return nil, fmt.Errorf("plugin k8sHealth CollectStructured failed: %w", err)
+	}
+
+	// Assert the type to *k8sHealth.K8sHealthData
+	healthData, ok := rawData.(*k8sHealth.K8sHealthData)
+	if !ok {
+		return nil, fmt.Errorf("plugin k8sHealth CollectStructured returned unexpected data type: %T", rawData)
+	}
+
+	// Marshal the structured data to JSON for programmatic access
+	jsonData, err := json.Marshal(healthData)
+	if err != nil {
+		return nil, fmt.Errorf("plugin k8sHealth CollectStructured JSON marshal failed: %w", err)
+	}
+
+	return &proto.CollectStructuredReply{Json: jsonData}, nil
 }
 
 // GRPCServer registers the HealthProviderServer with the gRPC server

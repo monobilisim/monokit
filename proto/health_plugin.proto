@@ -7,6 +7,7 @@ option go_package = "github.com/monobilisim/monokit/common/health/pluginpb;plugi
 service HealthProvider {
   rpc Name (Empty) returns (NameReply);
   rpc Collect (CollectRequest) returns (CollectReply);
+  rpc CollectStructured (CollectRequest) returns (CollectStructuredReply);
 }
 
 message Empty {}
@@ -21,4 +22,8 @@ message CollectRequest {
 
 message CollectReply {
   bytes json = 1; // raw JSON payload (typically marshaled by the plugin side)
+}
+
+message CollectStructuredReply {
+  bytes json = 1; // structured JSON data for programmatic access (e.g., versionCheck)
 }

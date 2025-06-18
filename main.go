@@ -56,47 +56,11 @@ func main() {
 		common.LogWarn(fmt.Sprintf("Failed to load some plugins: %v", err))
 	}
 
-	// Dynamically add k8sHealth command if plugin is loaded
-	if k8sHealthProvider := health.Get("k8sHealth"); k8sHealthProvider != nil {
-		var k8sHealthCmd = &cobra.Command{
-			Use:   "k8sHealth",
-			Short: "Run k8sHealth checks (via plugin)",
-			Long:  "Collects and displays Kubernetes health information via the k8sHealth plugin.",
-			Run: func(cmd *cobra.Command, args []string) {
-				common.Init() // Ensure common is initialized for logging, etc.
-				// Get hostname (plugins might need this context)
-				// Provider's Collect method is responsible for actual K8s interaction
-				hostname, err := os.Hostname()
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "Error getting hostname: %v\n", err)
-					// Fallback or decide if hostname is critical.
-					// For k8sHealth, it might not be strictly necessary for cluster-wide checks
-					// but the interface requires it.
-					hostname = "localhost" // Or some default
-				}
+	// Register bridge components for all loaded plugins
+	common.RegisterPluginBridgeComponents()
 
-				data, err := k8sHealthProvider.Collect(hostname)
-				if err != nil {
-					fmt.Fprintf(os.Stderr, "Error collecting k8sHealth data from plugin: %v\n", err)
-					os.Exit(1)
-				}
-
-				// The data from the plugin is now a pre-rendered string.
-				if renderedString, ok := data.(string); ok {
-					fmt.Println(renderedString)
-				} else {
-					fmt.Fprintf(os.Stderr, "Error: k8sHealth plugin returned data of unexpected type %T. Expected string.\n", data)
-					// Optionally, try to print a default representation or more details
-					// For now, just exit if the type is wrong, as the contract is broken.
-					os.Exit(1)
-				}
-			},
-		}
-		RootCmd.AddCommand(k8sHealthCmd)
-		common.LogDebug("k8sHealth plugin detected, 'k8sHealth' command added")
-	} else {
-		common.LogDebug("k8sHealth plugin not detected or not loaded")
-	}
+	// Register CLI commands for all loaded plugins
+	common.RegisterPluginCLICommands(RootCmd)
 
 	var osHealthCmd = &cobra.Command{
 		Use:   "osHealth",
