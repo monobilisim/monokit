@@ -29,6 +29,11 @@
 
 ## Tools
 
+- plugin
+    - Plugin management system for monokit.
+    - Allows you to install, list, and remove plugins.
+    - Plugins are installed to /var/lib/monokit/plugins.
+
 - esHealth
     - Check Opensearch/Elasticsearch health.
     - Validates cluster health status through the /_cluster/health endpoint.
@@ -86,6 +91,7 @@
     - Checks Kubernetes health, including node status and certificate expiration.
     - Sends alarm notifications to a Slack webhook.
     - Config: `/etc/mono/k8s.yaml`
+    - Is a plugin, install it with `monokit plugin install k8sHealth`.
 
 - shutdownNotifier
   - Notifies of a poweroff/poweron through the Slack webhook.
