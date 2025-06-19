@@ -2,7 +2,7 @@ package common
 
 // KnownPlugins contains the list of all officially supported plugins
 var KnownPlugins = []string{
-	"k8sHealth", "osHealth", "mysqlHealth", "pgsqlHealth", "redisHealth",
+	"k8sHealth", "mysqlHealth", "pgsqlHealth", "redisHealth",
 	"zimbraHealth", "traefikHealth", "rmqHealth", "pritunlHealth",
 	"wppconnectHealth", "pmgHealth", "esHealth", "postalHealth",
 }

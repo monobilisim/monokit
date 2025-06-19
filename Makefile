@@ -1,4 +1,4 @@
-.PHONY: help all with-api clean clean-coverage clean-plugins docs build-frontend clean-frontend install install-with-api test test-with-api build-plugins build-plugin-k8sHealth install-deps .FORCE
+.PHONY: help all with-api clean clean-coverage clean-plugins docs build-frontend clean-frontend install install-with-api test test-with-api build-plugins build-plugin-k8sHealth build-plugin-redisHealth install-deps .FORCE
 
 # Colors for help target
 BLUE := \033[34m
@@ -163,7 +163,7 @@ gen-health-plugin-proto: .FORCE
 # --- Plugin Building ---
 PLUGINS_DIR=plugins
 
-build-plugins: gen-health-plugin-proto build-plugin-k8sHealth
+build-plugins: gen-health-plugin-proto build-plugin-k8sHealth build-plugin-redisHealth
 	@echo "$(GREEN)All plugins built.$(RESET)"
 
 build-plugin-k8sHealth: gen-health-plugin-proto .FORCE
@@ -174,3 +174,12 @@ build-plugin-k8sHealth: gen-health-plugin-proto .FORCE
 	cd k8sHealth && go build -tags=plugin -o ../$(PLUGINS_DIR)/k8sHealth ./cmd/plugin/main.go
 	
 	@echo "$(GREEN)k8sHealth plugin built: $(PLUGINS_DIR)/k8sHealth$(RESET)"
+
+build-plugin-redisHealth: gen-health-plugin-proto .FORCE
+	@echo "$(BLUE)Building redisHealth plugin for current platform...$(RESET)"
+	@mkdir -p $(PLUGINS_DIR)
+	
+	# Build for current platform
+	cd redisHealth && go build -tags=plugin -o ../$(PLUGINS_DIR)/redisHealth ./cmd/plugin/main.go
+	
+	@echo "$(GREEN)redisHealth plugin built: $(PLUGINS_DIR)/redisHealth$(RESET)"

@@ -2,10 +2,6 @@
 
 package main
 
-func RedisCommandAdd() {
-	// redisHealth is not supported on anything other than Linux
-}
-
 func MysqlCommandAdd() {
 	// mysqlHealth is not supported on anything other than Linux
 }

@@ -112,11 +112,13 @@ func LoadAll(dir string) error {
 		rpcClient, err := cli.Client()
 		if err != nil {
 			common.LogError(fmt.Sprintf("Error starting plugin '%s': %v", path, err))
+			cli.Kill() // Clean up the plugin even if it errored out, as it may still be running
 			continue
 		}
 		raw, err := rpcClient.Dispense("provider")
 		if err != nil {
 			common.LogError(fmt.Sprintf("Error dispensing provider '%s': %v", path, err))
+			cli.Kill() // Clean up the plugin even if it errored out, as it may still be running
 			continue
 		}
 		grpcClient := raw.(pb.HealthProviderClient)

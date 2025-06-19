@@ -485,8 +485,6 @@ Supports pagination for large log sets.`,
 	/// Search Health
 	RootCmd.AddCommand(esHealthCmd)
 
-	RedisCommandAdd()
-
 	MysqlCommandAdd()
 
 	RmqCommandAdd()

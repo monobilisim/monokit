@@ -1,11 +1,9 @@
-//go:build linux
+//go:build linux && plugin
 
 package redisHealth
 
 import (
 	"fmt"
-	"strconv"
-	"strings"
 	"time"
 
 	"github.com/monobilisim/monokit/common"
@@ -13,101 +11,6 @@ import (
 	"github.com/monobilisim/monokit/common/health"
 	"github.com/spf13/cobra"
 )
-
-// getActualSlaveCount retrieves the actual number of connected slaves from Redis
-func getActualSlaveCount() int {
-	if rdb == nil {
-		return 0
-	}
-
-	info, err := rdb.Info(ctx, "Replication").Result()
-	if err != nil {
-		return 0
-	}
-
-	// Parse the replication info
-	lines := strings.Split(info, "\n")
-	for _, line := range lines {
-		if strings.HasPrefix(line, "connected_slaves:") {
-			countStr := strings.TrimPrefix(line, "connected_slaves:")
-			countStr = strings.TrimSpace(countStr)
-			if count, err := strconv.Atoi(countStr); err == nil {
-				return count
-			}
-		}
-	}
-	return 0
-}
-
-// RedisHealthProvider implements the health.Provider interface
-type RedisHealthProvider struct{}
-
-// Name returns the name of the provider
-func (p *RedisHealthProvider) Name() string {
-	return "redisHealth"
-}
-
-// Collect gathers Redis health data.
-// The 'hostname' parameter is ignored for redisHealth as it collects local data.
-func (p *RedisHealthProvider) Collect(_ string) (interface{}, error) {
-	// Initialize config if not already done
-	if RedisHealthConfig.Port == "" {
-		if common.ConfExists("redis") {
-			common.ConfInit("redis", &RedisHealthConfig)
-		}
-		if RedisHealthConfig.Port == "" {
-			RedisHealthConfig.Port = "6379"
-		}
-	}
-
-	// Store the original global healthData to restore later
-	originalHealthData := healthData
-
-	// Create health data (this will be used by Redis functions that modify global healthData)
-	healthData = &RedisHealthData{
-		Version:     "2.0.0",
-		LastChecked: time.Now().Format("2006-01-02 15:04:05"),
-	}
-
-	// Initialize Redis connection
-	RedisInit()
-
-	// Check service status
-	healthData.Service.Active = common.SystemdUnitActive("redis.service") || common.SystemdUnitActive("redis-server.service") || common.SystemdUnitActive("valkey.service") || common.SystemdUnitActive("valkey-server.service")
-
-	// Check Redis role
-	healthData.Role.IsMaster = RedisIsMaster()
-
-	// Check if Sentinel is enabled
-	isSentinel := RedisIsSentinel()
-	if isSentinel {
-		healthData.Sentinel = &SentinelInfo{
-			Active:        common.SystemdUnitActive("redis-sentinel.service"),
-			ExpectedCount: RedisHealthConfig.Slave_count,
-		}
-
-		// Get actual slave count if this is a master
-		if healthData.Role.IsMaster {
-			healthData.Sentinel.SlaveCount = getActualSlaveCount()
-		}
-
-		RedisSlaveCountChange()
-	}
-
-	// Check read/write capabilities
-	healthData.Connection.Pingable = true  // Set by RedisInit()
-	healthData.Connection.Writeable = true // Will be set by RedisReadWriteTest
-	healthData.Connection.Readable = true  // Will be set by RedisReadWriteTest
-	RedisReadWriteTest(isSentinel)
-
-	// Store the result
-	result := healthData
-
-	// Restore the original global healthData
-	healthData = originalHealthData
-
-	return result, nil
-}
 
 func init() {
 	common.RegisterComponent(common.Component{
@@ -120,52 +23,14 @@ func init() {
 	health.Register(&RedisHealthProvider{})
 }
 
-var RedisHealthConfig struct {
-	Port        string
-	Password    string
-	Slave_count int
-}
+// Types are now defined in types.go
+// RedisHealthConfig will be populated from there
 
-// RedisHealthData represents the health status of Redis
-type RedisHealthData struct {
-	Version     string
-	LastChecked string
-	Service     ServiceInfo
-	Connection  ConnectionInfo
-	Role        RoleInfo
-	Sentinel    *SentinelInfo
-}
-
-// ServiceInfo represents Redis service status
-type ServiceInfo struct {
-	Active bool
-}
-
-// ConnectionInfo represents Redis connection status
-type ConnectionInfo struct {
-	Pingable  bool
-	Writeable bool
-	Readable  bool
-}
-
-// RoleInfo represents Redis role information
-type RoleInfo struct {
-	IsMaster bool
-}
-
-// SentinelInfo represents Redis Sentinel information
-type SentinelInfo struct {
-	Active        bool
-	SlaveCount    int
-	ExpectedCount int
-}
-
-func Main(cmd *cobra.Command, args []string) {
+// collectRedisHealthData collects all Redis health information and returns it
+func collectRedisHealthData() (*RedisHealthData, error) {
 	version := "0.2.0"
-	common.ScriptName = "redisHealth"
-	common.TmpDir = common.TmpDir + "redisHealth"
-	common.Init()
 
+	// Initialize config if not already done
 	if common.ConfExists("redis") {
 		common.ConfInit("redis", &RedisHealthConfig)
 	}
@@ -174,16 +39,14 @@ func Main(cmd *cobra.Command, args []string) {
 		RedisHealthConfig.Port = "6379"
 	}
 
-	api.WrapperGetServiceStatus("redisHealth")
-
 	// Create health data
-	healthData = &RedisHealthData{
+	healthData := &RedisHealthData{
 		Version:     version,
 		LastChecked: time.Now().Format("2006-01-02 15:04:05"),
 	}
 
 	// Initialize Redis connection
-	RedisInit()
+	InitRedis()
 
 	// Check service status
 	healthData.Service.Active = common.SystemdUnitActive("redis.service") || common.SystemdUnitActive("redis-server.service") || common.SystemdUnitActive("valkey.service") || common.SystemdUnitActive("valkey-server.service")
@@ -194,10 +57,10 @@ func Main(cmd *cobra.Command, args []string) {
 	}
 
 	// Check Redis role
-	healthData.Role.IsMaster = RedisIsMaster()
+	healthData.Role.IsMaster = IsRedisMaster()
 
 	// Check if Sentinel is enabled
-	isSentinel := RedisIsSentinel()
+	isSentinel := IsRedisSentinel()
 	if isSentinel {
 		healthData.Sentinel = &SentinelInfo{
 			Active:        common.SystemdUnitActive("redis-sentinel.service"),
@@ -210,88 +73,43 @@ func Main(cmd *cobra.Command, args []string) {
 			common.AlarmCheckUp("redis_sentinel", "Service redis-sentinel is now active", false)
 		}
 
-		RedisSlaveCountChange()
+		// Get actual slave count if this is a master
+		if healthData.Role.IsMaster {
+			healthData.Sentinel.SlaveCount = GetActualSlaveCount()
+		}
+
+		CheckSlaveCountChange()
 	}
 
 	// Check read/write capabilities
-	healthData.Connection.Pingable = true  // Set by RedisInit()
-	healthData.Connection.Writeable = true // Will be set by RedisReadWriteTest
-	healthData.Connection.Readable = true  // Will be set by RedisReadWriteTest
-	RedisReadWriteTest(isSentinel)
+	healthData.Connection.Pingable = true  // Set by InitRedis()
+	healthData.Connection.Writeable = true // Will be set by TestRedisReadWrite
+	healthData.Connection.Readable = true  // Will be set by TestRedisReadWrite
+	TestRedisReadWrite(healthData, isSentinel)
 
-	// Render the health data
-	fmt.Println(RenderRedisHealth(healthData))
+	return healthData, nil
 }
 
-// RenderRedisHealth renders the Redis health information using the new UI components
-func RenderRedisHealth(data *RedisHealthData) string {
-	var sb strings.Builder
+// Main function for CLI usage
+func Main(cmd *cobra.Command, args []string) {
+	common.ScriptName = "redisHealth"
+	common.TmpDir = common.TmpDir + "redisHealth"
+	common.Init()
 
-	// Service Status section
-	sb.WriteString(common.SectionTitle("Service Status"))
-	sb.WriteString("\n")
-	sb.WriteString(common.SimpleStatusListItem(
-		"Redis Service",
-		"active",
-		data.Service.Active))
-	sb.WriteString("\n")
+	api.WrapperGetServiceStatus("redisHealth")
 
-	// Connection Status section
-	sb.WriteString("\n")
-	sb.WriteString(common.SectionTitle("Connection Status"))
-	sb.WriteString("\n")
-	sb.WriteString(common.SimpleStatusListItem(
-		"Redis Connection",
-		"connected",
-		data.Connection.Pingable))
-	sb.WriteString("\n")
-	sb.WriteString(common.SimpleStatusListItem(
-		"Redis Writeable",
-		"writeable",
-		data.Connection.Writeable))
-	sb.WriteString("\n")
-	sb.WriteString(common.SimpleStatusListItem(
-		"Redis Readable",
-		"readable",
-		data.Connection.Readable))
-	sb.WriteString("\n")
-
-	// Role Status section
-	sb.WriteString("\n")
-	sb.WriteString(common.SectionTitle("Role Status"))
-	sb.WriteString("\n")
-	roleStatus := "slave"
-	if data.Role.IsMaster {
-		roleStatus = "master"
-	}
-	sb.WriteString(common.SimpleStatusListItem(
-		"Redis Role",
-		roleStatus,
-		true))
-	sb.WriteString("\n")
-
-	// Sentinel Status section (if enabled)
-	if data.Sentinel != nil {
-		sb.WriteString("\n")
-		sb.WriteString(common.SectionTitle("Sentinel Status"))
-		sb.WriteString("\n")
-		sb.WriteString(common.SimpleStatusListItem(
-			"Redis Sentinel",
-			"active",
-			data.Sentinel.Active))
-		sb.WriteString("\n")
-
-		// Only show slave count if this is a master
-		if data.Role.IsMaster {
-			slaveCountStatus := fmt.Sprintf("%d/%d", data.Sentinel.SlaveCount, data.Sentinel.ExpectedCount)
-			sb.WriteString(common.SimpleStatusListItem(
-				"Slave Count",
-				slaveCountStatus,
-				data.Sentinel.SlaveCount == data.Sentinel.ExpectedCount))
-			sb.WriteString("\n")
-		}
+	// Collect health data using the shared function
+	healthData, err := collectRedisHealthData()
+	if err != nil {
+		common.LogError("Failed to collect Redis health data: " + err.Error())
+		return
 	}
 
-	// Wrap everything in a box
-	return common.DisplayBox("Redis Health", sb.String())
+	// Attempt to POST health data to the Monokit server
+	if err := common.PostHostHealth("redisHealth", healthData); err != nil {
+		common.LogError(fmt.Sprintf("redisHealth: failed to POST health data: %v", err))
+		// Continue execution even if POST fails, e.g., to display UI locally
+	}
+
+	fmt.Println(RenderRedisHealthCLI(healthData, healthData.Version))
 }

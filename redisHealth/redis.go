@@ -16,9 +16,9 @@ import (
 
 var rdb *redis.Client
 var ctx context.Context
-var RedisMaster bool
-var healthData *RedisHealthData
+var redisMaster bool
 
+// DetectRedis detects if Redis service is available and running
 func DetectRedis() bool {
 	// Check if Redis (or Valkey) service is running
 	if !common.SystemdUnitActive("redis.service") && !common.SystemdUnitActive("redis-server.service") && !common.SystemdUnitActive("valkey.service") && !common.SystemdUnitActive("valkey-server.service") {
@@ -43,7 +43,8 @@ func DetectRedis() bool {
 	return false
 }
 
-func RedisInit() {
+// InitRedis initializes the Redis connection and sets up context
+func InitRedis() {
 	rdb = redis.NewClient(&redis.Options{
 		Addr:       "localhost:" + fmt.Sprint(common.ConnsByProc("redis-server")),
 		Password:   RedisHealthConfig.Password,
@@ -69,15 +70,14 @@ func RedisInit() {
 	if ping != "PONG" || pingerr != nil {
 		common.LogError("Error while trying to ping Redis: " + pingerr.Error() + "\n" + "Tried ports: " + fmt.Sprint(common.ConnsByProc("redis-server")) + " and " + RedisHealthConfig.Port)
 		common.AlarmCheckDown("redis_ping", "Trying to ping Redis failed", false, "", "")
-		healthData.Connection.Pingable = false
 	} else {
 		common.AlarmCheckUp("redis_ping", "Redis is pingable again", false)
-		healthData.Connection.Pingable = true
 	}
 }
 
-func RedisSlaveCountChange() {
-	if !RedisMaster || !RedisIsSentinel() {
+// CheckSlaveCountChange checks if the Redis slave count matches the expected count
+func CheckSlaveCountChange() {
+	if !redisMaster || !IsRedisSentinel() {
 		return
 	}
 
@@ -88,7 +88,6 @@ func RedisSlaveCountChange() {
 	}
 
 	// Go over line by line
-
 	scanner := bufio.NewScanner(strings.NewReader(info))
 
 	for scanner.Scan() {
@@ -104,7 +103,6 @@ func RedisSlaveCountChange() {
 		common.PrettyPrintStr("Slave Count", false, strconv.Itoa(RedisHealthConfig.Slave_count))
 		common.AlarmCheckDown("redis_slave_count", "Slave count is incorrect, intended: "+strconv.Itoa(RedisHealthConfig.Slave_count)+", actual: "+strings.Split(scanner.Text(), "connected_slaves:")[1], false, "", "")
 	}
-
 }
 
 func redisAlarmRoleChange(isMaster bool) {
@@ -163,7 +161,8 @@ func redisAlarmRoleChange(isMaster bool) {
 	}
 }
 
-func RedisIsMaster() bool {
+// IsRedisMaster checks if the Redis instance is a master
+func IsRedisMaster() bool {
 	// Check INFO
 	info, err := rdb.Info(ctx, "Replication").Result()
 
@@ -173,7 +172,6 @@ func RedisIsMaster() bool {
 	}
 
 	// Go over line by line
-
 	scanner := bufio.NewScanner(strings.NewReader(info))
 
 	for scanner.Scan() {
@@ -184,17 +182,19 @@ func RedisIsMaster() bool {
 
 	if scanner.Text() == "role:master" {
 		redisAlarmRoleChange(true)
+		redisMaster = true
 		return true
 	} else if scanner.Text() == "role:slave" {
 		redisAlarmRoleChange(false)
+		redisMaster = false
 		return false
 	}
 
 	return false
-
 }
 
-func RedisReadWriteTest(isSentinel bool) {
+// TestRedisReadWrite tests Redis read and write capabilities
+func TestRedisReadWrite(healthData *RedisHealthData, isSentinel bool) {
 	err := rdb.Set(ctx, "redisHealth_foo", "bar", 0).Err()
 
 	if err != nil && strings.Contains(err.Error(), "MOVED") {
@@ -212,14 +212,14 @@ func RedisReadWriteTest(isSentinel bool) {
 		})
 
 		// Run function again
-		RedisReadWriteTest(isSentinel)
+		TestRedisReadWrite(healthData, isSentinel)
 		return
 	}
 
 	if err != nil {
 		if isSentinel {
 			// Check if its master
-			if RedisMaster {
+			if redisMaster {
 				common.LogError("Can't Write to Redis (sentinel): " + err.Error())
 				common.AlarmCheckDown("redis_write", "Trying to write a string to Redis failed", false, "", "")
 				healthData.Connection.Writeable = false
@@ -261,7 +261,8 @@ func RedisReadWriteTest(isSentinel bool) {
 	}
 }
 
-func RedisIsSentinel() bool {
+// IsRedisSentinel is a function to check if Redis Sentinel is running
+func IsRedisSentinel() bool {
 	// Check if port 26379 is open
 	rdb_sentinel := redis.NewClient(&redis.Options{
 		Addr:       "localhost:" + fmt.Sprint(common.ConnsByProc("redis-sentinel")),
@@ -286,4 +287,29 @@ func RedisIsSentinel() bool {
 	}
 
 	return false
+}
+
+// GetActualSlaveCount retrieves the actual number of connected slaves from Redis
+func GetActualSlaveCount() int {
+	if rdb == nil {
+		return 0
+	}
+
+	info, err := rdb.Info(ctx, "Replication").Result()
+	if err != nil {
+		return 0
+	}
+
+	// Parse the replication info
+	lines := strings.Split(info, "\n")
+	for _, line := range lines {
+		if strings.HasPrefix(line, "connected_slaves:") {
+			countStr := strings.TrimPrefix(line, "connected_slaves:")
+			countStr = strings.TrimSpace(countStr)
+			if count, err := strconv.Atoi(countStr); err == nil {
+				return count
+			}
+		}
+	}
+	return 0
 }

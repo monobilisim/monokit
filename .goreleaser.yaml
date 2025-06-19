@@ -50,6 +50,19 @@ builds:
       - plugin
     dir: k8sHealth
 
+  - id: redisHealth-plugin
+    main: ./cmd/plugin/main.go
+    binary: redisHealth
+    goos:
+      - linux
+    ldflags:
+      - -X github.com/monobilisim/monokit/common.MonokitVersion={{ .Version }}
+    env:
+      - CGO_ENABLED=0
+    tags:
+      - plugin
+    dir: redisHealth
+
 archives:
   # Main monokit binary for all platforms
   - id: default
@@ -76,6 +89,15 @@ archives:
     ids:
       - k8sHealth-plugin
     name_template: "{{ .ProjectName }}_k8sHealth_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - LICENSE
+
+  # redisHealth plugin (Linux only)
+  - id: redisHealth
+    ids:
+      - redisHealth-plugin
+    name_template: "{{ .ProjectName }}_redisHealth_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
       - README.md
       - LICENSE
