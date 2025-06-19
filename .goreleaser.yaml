@@ -63,6 +63,20 @@ builds:
       - plugin
     dir: redisHealth
 
+  - id: wppconnectHealth-plugin
+
+    main: ./cmd/plugin/main.go
+    binary: wppconnectHealth
+    goos:
+      - linux
+    ldflags:
+      - -X github.com/monobilisim/monokit/common.MonokitVersion={{ .Version }}
+    env:
+      - CGO_ENABLED=0
+    tags:
+      - plugin
+    dir: wppconnectHealth
+
 archives:
   # Main monokit binary for all platforms
   - id: default
@@ -98,6 +112,15 @@ archives:
     ids:
       - redisHealth-plugin
     name_template: "{{ .ProjectName }}_redisHealth_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - LICENSE
+
+  # wppconnectHealth plugin (Linux only)
+  - id: wppconnectHealth
+    ids:
+      - wppconnectHealth-plugin
+    name_template: "{{ .ProjectName }}_wppconnectHealth_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
     files:
       - README.md
       - LICENSE

@@ -163,7 +163,7 @@ gen-health-plugin-proto: .FORCE
 # --- Plugin Building ---
 PLUGINS_DIR=plugins
 
-build-plugins: gen-health-plugin-proto build-plugin-k8sHealth build-plugin-redisHealth
+build-plugins: gen-health-plugin-proto build-plugin-k8sHealth build-plugin-redisHealth build-plugin-wppconnectHealth
 	@echo "$(GREEN)All plugins built.$(RESET)"
 
 build-plugin-k8sHealth: gen-health-plugin-proto .FORCE
@@ -183,3 +183,12 @@ build-plugin-redisHealth: gen-health-plugin-proto .FORCE
 	cd redisHealth && go build -tags=plugin -o ../$(PLUGINS_DIR)/redisHealth ./cmd/plugin/main.go
 	
 	@echo "$(GREEN)redisHealth plugin built: $(PLUGINS_DIR)/redisHealth$(RESET)"
+
+build-plugin-wppconnectHealth: gen-health-plugin-proto .FORCE
+	@echo "$(BLUE)Building wppconnectHealth plugin for current platform...$(RESET)"
+	@mkdir -p $(PLUGINS_DIR)
+	
+	# Build for current platform
+	cd wppconnectHealth && go build -tags=plugin -o ../$(PLUGINS_DIR)/wppconnectHealth ./cmd/plugin/main.go
+	
+	@echo "$(GREEN)wppconnectHealth plugin built: $(PLUGINS_DIR)/wppconnectHealth$(RESET)"

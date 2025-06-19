@@ -157,6 +157,7 @@ These core tools will be available in every monokit installation.
     - Checks WPPConnect health, phone status.
     - Sends alarm notifications to a Slack webhook.
     - Config: `/etc/mono/wppconnect.yaml`
+    - Is a plugin, install it with `monokit plugin install wppconnectHealth`.
 
 - ufw
     - Manages UFW rules by downloading and applying IP lists from URLs.

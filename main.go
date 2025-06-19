@@ -22,7 +22,6 @@ import (
 	"github.com/monobilisim/monokit/shutdownNotifier"
 	"github.com/monobilisim/monokit/sshNotifier"
 	ufwApply "github.com/monobilisim/monokit/ufwApply"
-	"github.com/monobilisim/monokit/wppconnectHealth"
 	"github.com/spf13/cobra"
 )
 
@@ -125,12 +124,6 @@ func main() {
 		Use:   "list",
 		Short: "List Load Balancer Policies",
 		Run:   lbPolicy.List,
-	}
-
-	var wppconnectHealthCmd = &cobra.Command{
-		Use:   "wppconnectHealth",
-		Short: "WPPConnect Health",
-		Run:   wppconnectHealth.Main,
 	}
 
 	var daemon = &cobra.Command{
@@ -598,9 +591,6 @@ Supports pagination for large log sets.`,
 	adminInventoryCmd.AddCommand(adminInventoryCreateCmd)
 
 	RootCmd.AddCommand(clientCmd)
-
-	/// WPPConnect
-	RootCmd.AddCommand(wppconnectHealthCmd)
 
 	// / UFW Applier
 	RootCmd.AddCommand(ufwApply.UfwCmd) // Add UFW command to root command

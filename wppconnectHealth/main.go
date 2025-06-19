@@ -4,12 +4,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"time"
 
 	"github.com/monobilisim/monokit/common"
-	api "github.com/monobilisim/monokit/common/api"
-	"github.com/spf13/cobra"
 	"github.com/spf13/viper" // Import viper for config reading in detection
 )
 
@@ -65,131 +62,14 @@ func DetectWppconnect() bool {
 	return true
 }
 
-func init() {
-	common.RegisterComponent(common.Component{
-		Name:       "wppconnectHealth",
-		EntryPoint: Main,
-		Platform:   "any",            // Interacts via HTTP API, platform-agnostic
-		AutoDetect: DetectWppconnect, // Add the auto-detect function
-	})
-}
-
-var Config struct {
-	Wpp struct {
-		Secret string
-		Url    string
-	}
-}
-
-func GetStatus(session string, token string) string {
-	client := &http.Client{}
-	req, err := http.NewRequest("GET", Config.Wpp.Url+"/api/"+session+"/check-connection-session", nil)
-	if err != nil {
-		common.LogError("Error while checking connection: " + err.Error())
-		return "Error"
-	}
-
-	req.Header.Add("Authorization", "Bearer "+token)
-	resp, err := client.Do(req)
-	if err != nil {
-		common.LogError("Error while checking connection: " + err.Error())
-		return "Error"
-	}
-
-	defer resp.Body.Close()
-
-	var result map[string]interface{}
-	json.NewDecoder(resp.Body).Decode(&result)
-
-	message := "Unknown"
-	if msg, ok := result["message"].(string); ok {
-		message = msg
-	} else {
-		common.LogDebug(fmt.Sprintf("wppconnectHealth: Unexpected response format or missing 'message' key for session %s status check.", session))
-	}
-
-	return message
-}
-
-func GetContactName(session string, token string) string {
-	client := &http.Client{}
-	req, err := http.NewRequest("GET", Config.Wpp.Url+"/api/"+session+"/contact/"+session, nil)
-	if err != nil {
-		common.LogError("Error while getting contact name: " + err.Error())
-		return "Error"
-	}
-
-	req.Header.Add("Authorization", "Bearer "+token)
-	resp, err := client.Do(req)
-	if err != nil {
-		common.LogError("Error while getting contact name: " + err.Error())
-		return "Error"
-	}
-
-	defer resp.Body.Close()
-
-	var result map[string]interface{}
-	err = json.NewDecoder(resp.Body).Decode(&result)
-	if err != nil {
-		common.LogError(fmt.Sprintf("Error decoding contact name response for session %s: %v", session, err))
-		return "ErrorDecoding"
-	}
-
-	var contactName string
-	if responseMap, ok := result["response"].(map[string]interface{}); ok {
-		if name, ok := responseMap["name"].(string); ok && name != "" {
-			contactName = name
-		} else if pushname, ok := responseMap["pushname"].(string); ok && pushname != "" {
-			contactName = pushname
-		}
-	}
-
-	if contactName == "" {
-		contactName = "No Name"
-	}
-
-	return contactName
-}
-
-func GetToken(session string) string {
-	client := &http.Client{}
-	req, err := http.NewRequest("POST", Config.Wpp.Url+"/api/"+session+"/"+Config.Wpp.Secret+"/generate-token", nil)
-	if err != nil {
-		common.LogError("Error while generating token: " + err.Error())
-		return ""
-	}
-
-	req.Header.Add("Content-Type", "application/json")
-	resp, err := client.Do(req)
-	if err != nil {
-		common.LogError("Error while generating token: " + err.Error())
-		return ""
-	}
-
-	defer resp.Body.Close()
-
-	var token map[string]interface{}
-	err = json.NewDecoder(resp.Body).Decode(&token)
-	if err != nil {
-		common.LogError(fmt.Sprintf("Error decoding token response for session %s: %v", session, err))
-		return ""
-	}
-
-	tokenStr := ""
-	if tok, ok := token["token"].(string); ok {
-		tokenStr = tok
-	} else {
-		common.LogError(fmt.Sprintf("wppconnectHealth: Unexpected response format or missing 'token' key for session %s token generation.", session))
-	}
-	return tokenStr
-}
-
-func WppCheck() *WppConnectHealthData {
+// CollectWppConnectHealthData gathers all WPPConnect health information.
+func CollectWppConnectHealthData() *WppConnectHealthData {
 	healthData := &WppConnectHealthData{
 		Healthy: true,
+		Version: "2.0.0",
 	}
 
-	url := Config.Wpp.Url + "/api/" + Config.Wpp.Secret + "/show-all-sessions"
+	url := WppConnectHealthConfig.Wpp.Url + "/api/" + WppConnectHealthConfig.Wpp.Secret + "/show-all-sessions"
 	resp, err := http.Get(url)
 	if err != nil {
 		common.LogError("Error while getting sessions: " + err.Error())
@@ -266,26 +146,105 @@ func WppCheck() *WppConnectHealthData {
 	return healthData
 }
 
-func Main(cmd *cobra.Command, args []string) {
-	version := "2.0.0"
-	common.ScriptName = "wppconnectHealth"
-	common.TmpDir = common.TmpDir + "Health"
-	common.Init()
-	common.ConfInit("wppconnect", &Config)
-
-	// Check essential config after loading
-	if Config.Wpp.Url == "" || Config.Wpp.Secret == "" {
-		common.LogError("wppconnectHealth: Missing Wpp.Url or Wpp.Secret in configuration. Cannot proceed.")
-		fmt.Println("Error: Missing Wpp.Url or Wpp.Secret in configuration.")
-		os.Exit(1)
+func GetStatus(session string, token string) string {
+	client := &http.Client{}
+	req, err := http.NewRequest("GET", WppConnectHealthConfig.Wpp.Url+"/api/"+session+"/check-connection-session", nil)
+	if err != nil {
+		common.LogError("Error while checking connection: " + err.Error())
+		return "Error"
 	}
 
-	api.WrapperGetServiceStatus("wppconnectHealth")
+	req.Header.Add("Authorization", "Bearer "+token)
+	resp, err := client.Do(req)
+	if err != nil {
+		common.LogError("Error while checking connection: " + err.Error())
+		return "Error"
+	}
 
-	// Collect health data
-	healthData := WppCheck()
-	healthData.Version = version
+	defer resp.Body.Close()
 
-	// Render the health data using our UI system
-	RenderWppConnectHealth(healthData)
+	var result map[string]interface{}
+	json.NewDecoder(resp.Body).Decode(&result)
+
+	message := "Unknown"
+	if msg, ok := result["message"].(string); ok {
+		message = msg
+	} else {
+		common.LogDebug(fmt.Sprintf("wppconnectHealth: Unexpected response format or missing 'message' key for session %s status check.", session))
+	}
+
+	return message
+}
+
+func GetContactName(session string, token string) string {
+	client := &http.Client{}
+	req, err := http.NewRequest("GET", WppConnectHealthConfig.Wpp.Url+"/api/"+session+"/contact/"+session, nil)
+	if err != nil {
+		common.LogError("Error while getting contact name: " + err.Error())
+		return "Error"
+	}
+
+	req.Header.Add("Authorization", "Bearer "+token)
+	resp, err := client.Do(req)
+	if err != nil {
+		common.LogError("Error while getting contact name: " + err.Error())
+		return "Error"
+	}
+
+	defer resp.Body.Close()
+
+	var result map[string]interface{}
+	err = json.NewDecoder(resp.Body).Decode(&result)
+	if err != nil {
+		common.LogError(fmt.Sprintf("Error decoding contact name response for session %s: %v", session, err))
+		return "ErrorDecoding"
+	}
+
+	var contactName string
+	if responseMap, ok := result["response"].(map[string]interface{}); ok {
+		if name, ok := responseMap["name"].(string); ok && name != "" {
+			contactName = name
+		} else if pushname, ok := responseMap["pushname"].(string); ok && pushname != "" {
+			contactName = pushname
+		}
+	}
+
+	if contactName == "" {
+		contactName = "No Name"
+	}
+
+	return contactName
+}
+
+func GetToken(session string) string {
+	client := &http.Client{}
+	req, err := http.NewRequest("POST", WppConnectHealthConfig.Wpp.Url+"/api/"+session+"/"+WppConnectHealthConfig.Wpp.Secret+"/generate-token", nil)
+	if err != nil {
+		common.LogError("Error while generating token: " + err.Error())
+		return ""
+	}
+
+	req.Header.Add("Content-Type", "application/json")
+	resp, err := client.Do(req)
+	if err != nil {
+		common.LogError("Error while generating token: " + err.Error())
+		return ""
+	}
+
+	defer resp.Body.Close()
+
+	var token map[string]interface{}
+	err = json.NewDecoder(resp.Body).Decode(&token)
+	if err != nil {
+		common.LogError(fmt.Sprintf("Error decoding token response for session %s: %v", session, err))
+		return ""
+	}
+
+	tokenStr := ""
+	if tok, ok := token["token"].(string); ok {
+		tokenStr = tok
+	} else {
+		common.LogError(fmt.Sprintf("wppconnectHealth: Unexpected response format or missing 'token' key for session %s token generation.", session))
+	}
+	return tokenStr
 }
