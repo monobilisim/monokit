@@ -27,6 +27,11 @@ func ZimbraCheck() (string, error) {
 		zimbraUser = "zextras"
 	}
 
+	// Check if zimbraPath is empty
+	if zimbraPath == "" {
+		return "", nil // Zimbra/Zextras not found, ignore it
+	}
+
 	// Get the version of Zimbra/Zextras
 	cmd := exec.Command("/bin/su", zimbraUser, "-c", zimbraPath+"/bin/zmcontrol -v")
 	out, err := cmd.Output()
