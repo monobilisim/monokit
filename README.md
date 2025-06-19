@@ -142,6 +142,7 @@ These core tools will be available in every monokit installation.
   - Checks Redis health, including read and write operations.
   - Sends alarm notifications to a Slack webhook.
   - Config: `/etc/mono/redis.yml` (optional)
+  - Is a plugin, install it with `monokit plugin install redisHealth`.
 
 - rmqHealth
   - Checks RabbitMQ health, including Management API and node status.
