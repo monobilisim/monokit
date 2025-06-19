@@ -162,10 +162,7 @@ require (
 // HashiCorp go-plugin, gRPC, and proto deps for plugin support
 require (
 	github.com/hashicorp/go-plugin v1.6.1 // or latest compatible
-	github.com/monobilisim/monokit/redisHealth v0.0.0-00010101000000-000000000000
 	google.golang.org/grpc v1.67.1 // or latest compatible
 )
 
 replace github.com/hashicorp/go-plugin => github.com/hashicorp/go-plugin v1.6.0
-
-replace github.com/monobilisim/monokit/redisHealth => ./redisHealth

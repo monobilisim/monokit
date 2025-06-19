@@ -1,4 +1,4 @@
-//go:build plugin
+//go:build plugin && linux
 
 package main
 
