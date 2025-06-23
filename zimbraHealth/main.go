@@ -159,13 +159,13 @@ func runPeriodicTasks(healthData *ZimbraHealthData) {
 	//date := time.Now().Format("15:04") // Use 15:04 for HH:MM format
 	// Get env variable ZIMBRA_HEALTH_TEST_ZMFIXPERMS
 	//if date == "01:00" || (os.Getenv("ZIMBRA_HEALTH_TEST_ZMFIXPERMS") == "true" || os.Getenv("ZIMBRA_HEALTH_TEST_ZMFIXPERMS") == "1") {
-		// common.LogInfo("Running scheduled 01:00 tasks...") // Removed LogInfo
-		// common.SplitSection("Running zmfixperms") // Removed SplitSection
-		//Zmfixperms() // Zmfixperms has its own logging
-		// Note: SSL check data is already collected in collectHealthData for UI display.
-		// The Redmine issue creation logic within CheckSSL might still be relevant here
-		// if it should only happen at 01:00. Consider refactoring CheckSSL further if needed.
-//	}
+	// common.LogInfo("Running scheduled 01:00 tasks...") // Removed LogInfo
+	// common.SplitSection("Running zmfixperms") // Removed SplitSection
+	//Zmfixperms() // Zmfixperms has its own logging
+	// Note: SSL check data is already collected in collectHealthData for UI display.
+	// The Redmine issue creation logic within CheckSSL might still be relevant here
+	// if it should only happen at 01:00. Consider refactoring CheckSSL further if needed.
+	//	}
 }
 
 // escapeJSON remains unchanged
@@ -255,13 +255,13 @@ func TailWebhook(filePath string, quotaLimit int) {
 func Zmfixperms() {
 	// common.LogInfo("Running zmfixperms...") // Removed LogInfo
 	out, err := ExecZimbraCommand("libexec/zmfixperms", true, true)
-	
+
 	if err != nil {
 		common.Alarm("["+common.Config.Identifier+"] Zmfixperms failed: \n```spoiler Error\n"+err.Error()+"\n```", MailHealthConfig.Zimbra.Zmfixperms.Stream, MailHealthConfig.Zimbra.Zmfixperms.Topic, true)
 	} else {
 		_, _ = ExecZimbraCommand("zmcontrol restart", false, false) // Restart Zimbra services after zmfixperms
 		secondOut, _ := ExecZimbraCommand("zmcontrol status", false, false)
-		common.Alarm("["+common.Config.Identifier+"] Zmfixperms completed successfully: \n```spoiler Zmfixperms Output\n"+out+"\n``` ```spoiler zmcontrol status output\n" + secondOut + "\n```", MailHealthConfig.Zimbra.Zmfixperms.Stream, MailHealthConfig.Zimbra.Zmfixperms.Topic, true)
+		common.Alarm("["+common.Config.Identifier+"] Zmfixperms completed successfully: \n```spoiler Zmfixperms Output\n"+out+"\n``` ```spoiler zmcontrol status output\n"+secondOut+"\n```", MailHealthConfig.Zimbra.Zmfixperms.Stream, MailHealthConfig.Zimbra.Zmfixperms.Topic, true)
 	}
 } // <-- Correct end of Zmfixperms
 
@@ -448,7 +448,8 @@ func RestartZimbraService(service string) bool {
 	}
 
 	common.LogWarn("Attempting to restart Zimbra services (triggered by failure in " + service + ")...") // Changed to Warn
-	_, err := ExecZimbraCommand("zmcontrol start", false, false)                                         // Try starting all services
+	output, err := ExecZimbraCommand("zmcontrol start", false, false)
+	common.LogInfo("zmcontrol start output: " + output) // Try starting all services
 
 	if err != nil {
 		common.LogError("Error attempting to start Zimbra services: " + err.Error())
@@ -511,7 +512,7 @@ func CheckZimbraServices() []ServiceInfo {
 		if !isRunning {
 			common.LogWarn(serviceName + " is NOT running.")
 			common.WriteToFile(common.TmpDir+"/"+"zmcontrol_status_"+time.Now().Format("2006-01-02_15.04.05")+".log", statusOutput)
-			common.AlarmCheckDown("service_"+serviceName, serviceName+" is not running ````spoiler zmcontrol status\n" + statusOutput + "\n```" , false, "", "")
+			common.AlarmCheckDown("service_"+serviceName, serviceName+" is not running ````spoiler zmcontrol status\n"+statusOutput+"\n```", false, "", "")
 			if MailHealthConfig.Zimbra.Restart {
 				RestartZimbraService(serviceName) // Attempt restart
 			}
