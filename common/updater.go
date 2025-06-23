@@ -293,17 +293,15 @@ func UpdatePlugins(version string, specificPlugins []string, pluginDir string, f
 			}
 		}
 	} else {
-		// Update all available plugins, but only if they're already installed or force is enabled
+		// Update all available plugins, but only if they're already installed
 		for _, available := range availablePlugins {
-			shouldUpdate := force
+			shouldUpdate := false
 
-			if !shouldUpdate {
-				// Check if plugin is already installed
-				for _, installed := range installedPlugins {
-					if installed.Name == available.Name {
-						shouldUpdate = true
-						break
-					}
+			// Check if plugin is already installed
+			for _, installed := range installedPlugins {
+				if installed.Name == available.Name {
+					shouldUpdate = true
+					break
 				}
 			}
 

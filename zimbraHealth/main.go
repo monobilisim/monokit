@@ -55,7 +55,8 @@ func init() {
 var MailHealthConfig mail.MailHealth
 var zimbraPath string // Determined in collectHealthData
 var restartCounter int
-var templateFile string // Determined in collectHealthData
+var lastRestart time.Time // Track last restart attempt time
+var templateFile string   // Determined in collectHealthData
 
 // Main entry point for zimbraHealth
 func Main(cmd *cobra.Command, args []string) {
@@ -441,6 +442,28 @@ location / {
 
 // RestartZimbraService refactored to avoid recursion and direct call to CheckZimbraServices
 func RestartZimbraService(service string) bool {
+	// Check interval guard first - prevent too frequent restart attempts
+	restartInterval := MailHealthConfig.Zimbra.Restart_Interval
+	if restartInterval <= 0 {
+		restartInterval = 3 // Default to 3 minutes if not configured or invalid
+	}
+
+	interval := time.Duration(restartInterval) * time.Minute
+	common.LogDebug("Restart interval: " + interval.String())
+
+	if !lastRestart.IsZero() {
+		timeSinceLastRestart := time.Since(lastRestart)
+		common.LogDebug("Last restart: " + fmt.Sprintf("%v ago", timeSinceLastRestart.Round(time.Second)))
+
+		if timeSinceLastRestart < interval {
+			common.LogWarn(fmt.Sprintf("Skipping restart for %s - only %v since last attempt (need %v)",
+				service, timeSinceLastRestart.Round(time.Second), interval))
+			return false
+		}
+	} else {
+		common.LogDebug("No previous restart recorded - proceeding with restart")
+	}
+
 	if restartCounter >= MailHealthConfig.Zimbra.Restart_Limit { // Use >= for clarity
 		common.LogWarn("Restart limit reached for " + service + ". Not restarting.")
 		common.AlarmCheckDown("service_restart_limit_"+service, "Restart limit reached for "+service, false, "", "")
@@ -457,7 +480,9 @@ func RestartZimbraService(service string) bool {
 		return false // Restart command failed
 	}
 
+	// Update tracking variables after successful restart command
 	restartCounter++
+	lastRestart = time.Now()
 	common.LogWarn(fmt.Sprintf("Zimbra services restart attempted (%d/%d). Re-check will occur in the next cycle.", restartCounter, MailHealthConfig.Zimbra.Restart_Limit)) // Changed to Warn
 	// Do not call CheckZimbraServices recursively. Let the next run verify.
 	return true // Restart command executed
