@@ -77,6 +77,19 @@ builds:
       - plugin
     dir: wppconnectHealth
 
+  - id: pritunlHealth-plugin
+    main: ./cmd/plugin/main.go
+    binary: pritunlHealth
+    goos:
+      - linux
+    ldflags:
+      - -X github.com/monobilisim/monokit/common.MonokitVersion={{ .Version }}
+    env:
+      - CGO_ENABLED=0
+    tags:
+      - plugin
+    dir: pritunlHealth 
+
 archives:
   # Main monokit binary for all platforms
   - id: default
@@ -124,3 +137,13 @@ archives:
     files:
       - README.md
       - LICENSE
+
+  # pritunlHealth plugin (Linux only)
+  - id: pritunlHealth
+    ids:
+      - pritunlHealth-plugin
+    name_template: "{{ .ProjectName }}_pritunlHealth_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - LICENSE
+    
