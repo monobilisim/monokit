@@ -134,6 +134,14 @@ func (p *PritunlHealthData) RenderAll() string {
 	return common.DisplayBox(title, content)
 }
 
+// RenderPritunlHealthCLI renders pritunl health data for CLI display (used by plugin)
+func RenderPritunlHealthCLI(healthData *PritunlHealthData, monokitVersion string) string {
+	// Create title with version information
+	title := fmt.Sprintf("monokit pritunlHealth v%s - %s", healthData.Version, healthData.LastChecked)
+	content := healthData.RenderCompact()
+	return common.DisplayBox(title, content)
+}
+
 // getStatusText returns a status text based on the health state
 func getStatusText(healthy bool, status string) string {
 	if healthy {

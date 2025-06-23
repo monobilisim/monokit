@@ -17,30 +17,6 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo/readpref"
 )
 
-// PritunlHealthProvider implements the health.Provider interface
-type PritunlHealthProvider struct{}
-
-// Name returns the name of the provider
-func (p *PritunlHealthProvider) Name() string {
-	return "pritunlHealth"
-}
-
-// Collect gathers Pritunl health data.
-// The 'hostname' parameter is ignored for pritunlHealth as it collects MongoDB data.
-func (p *PritunlHealthProvider) Collect(_ string) (interface{}, error) {
-	// Initialize config if not already done (e.g. if called directly, not via CLI)
-	if PritunlHealthConfig.Url == "" {
-		if common.ConfExists("pritunl") {
-			common.ConfInit("pritunl", &PritunlHealthConfig)
-		}
-		// Apply default URL after attempting to load config
-		if PritunlHealthConfig.Url == "" {
-			PritunlHealthConfig.Url = "mongodb://localhost:27017"
-		}
-	}
-	return collectPritunlHealthData()
-}
-
 // DetectPritunl checks if the Pritunl service seems to be configured and reachable via MongoDB.
 func DetectPritunl() bool {
 	// 1. Try to load the configuration
@@ -105,18 +81,6 @@ func init() {
 	})
 	health.Register(&PritunlHealthProvider{})
 }
-
-type PritunlHealth struct {
-	Url          string
-	Allowed_orgs []string
-}
-
-type Client struct {
-	User_id      bson.ObjectID
-	Real_address string
-}
-
-var PritunlHealthConfig PritunlHealth
 
 // collectPritunlHealthData gathers all the Pritunl health information
 func collectPritunlHealthData() (*PritunlHealthData, error) {

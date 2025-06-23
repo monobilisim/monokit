@@ -7,4 +7,5 @@ use (
 	./k8sHealth
 	./redisHealth
     ./wppconnectHealth
+    ./pritunlHealth
 )

@@ -18,7 +18,6 @@ import (
 
 	"github.com/monobilisim/monokit/lbPolicy"
 	"github.com/monobilisim/monokit/osHealth"
-	"github.com/monobilisim/monokit/pritunlHealth"
 	"github.com/monobilisim/monokit/shutdownNotifier"
 	"github.com/monobilisim/monokit/sshNotifier"
 	ufwApply "github.com/monobilisim/monokit/ufwApply"
@@ -90,12 +89,6 @@ func main() {
 	}
 
 	// Removing monolithic k8sHealth CLI command for plugin-only operation.
-
-	var pritunlHealthCmd = &cobra.Command{
-		Use:   "pritunlHealth",
-		Short: "Pritunl Health",
-		Run:   pritunlHealth.Main,
-	}
 
 	var esHealthCmd = &cobra.Command{
 		Use:   "esHealth",
@@ -472,9 +465,6 @@ Supports pagination for large log sets.`,
 	/// OS Health
 	RootCmd.AddCommand(osHealthCmd)
 
-	/// Pritunl Health
-	RootCmd.AddCommand(pritunlHealthCmd)
-
 	/// Search Health
 	RootCmd.AddCommand(esHealthCmd)
 
@@ -608,12 +598,6 @@ Supports pagination for large log sets.`,
 
 	sshNotifierCmd.Flags().BoolP("login", "1", false, "Login")
 	sshNotifierCmd.Flags().BoolP("logout", "0", false, "Logout")
-
-	kubeconfig := os.Getenv("KUBECONFIG")
-
-	if kubeconfig == "" {
-		kubeconfig = os.Getenv("HOME") + "/.kube/config"
-	}
 
 	if err := RootCmd.Execute(); err != nil {
 		fmt.Println(err)

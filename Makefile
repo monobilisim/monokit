@@ -192,3 +192,12 @@ build-plugin-wppconnectHealth: gen-health-plugin-proto .FORCE
 	cd wppconnectHealth && go build -tags=plugin -o ../$(PLUGINS_DIR)/wppconnectHealth ./cmd/plugin/main.go
 	
 	@echo "$(GREEN)wppconnectHealth plugin built: $(PLUGINS_DIR)/wppconnectHealth$(RESET)"
+
+build-plugin-pritunlHealth: gen-health-plugin-proto .FORCE
+	@echo "$(BLUE)Building pritunlHealth plugin for current platform...$(RESET)"
+	@mkdir -p $(PLUGINS_DIR)
+	
+	# Build for current platform
+	cd pritunlHealth && go build -tags=plugin -o ../$(PLUGINS_DIR)/pritunlHealth ./cmd/plugin/main.go
+	
+	@echo "$(GREEN)pritunlHealth plugin built: $(PLUGINS_DIR)/pritunlHealth$(RESET)"
