@@ -511,7 +511,7 @@ func CheckZimbraServices() []ServiceInfo {
 		if !isRunning {
 			common.LogWarn(serviceName + " is NOT running.")
 			common.WriteToFile(common.TmpDir+"/"+"zmcontrol_status_"+time.Now().Format("2006-01-02_15.04.05")+".log", statusOutput)
-			common.AlarmCheckDown("service_"+serviceName, serviceName+" is not running", false, "", "")
+			common.AlarmCheckDown("service_"+serviceName, serviceName+" is not running ````spoiler zmcontrol status\n" + statusOutput + "\n```" , false, "", "")
 			if MailHealthConfig.Zimbra.Restart {
 				RestartZimbraService(serviceName) // Attempt restart
 			}
