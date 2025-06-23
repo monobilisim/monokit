@@ -177,32 +177,7 @@ func handleLeaderSwitch(member Member, client *http.Client, dbConfig db.DbHealth
 		return
 	}
 
-	// Verify this node is actually the leader by checking the Patroni API
-	req, err := http.NewRequest("GET", member.APIURL, nil)
-	if err != nil {
-		common.LogError(fmt.Sprintf("Error creating request to verify leader role: %v\n", err))
-		return
-	}
-
-	resp, err := client.Do(req)
-	if err != nil {
-		common.LogError(fmt.Sprintf("Error executing request to verify leader role: %v\n", err))
-		return
-	}
-	defer resp.Body.Close()
-
-	var role map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&role); err != nil {
-		common.LogError(fmt.Sprintf("Error decoding JSON response for leader verification: %v\n", err))
-		return
-	}
-
-	// Only run the hook if the API confirms this node is the leader
-	if role["role"] == "leader" {
-		runLeaderSwitchHook(dbConfig)
-	} else {
-		common.LogDebug(fmt.Sprintf("Skipping leader switch hook: API reports role as %v, not leader", role["role"]))
-	}
+	runLeaderSwitchHook(dbConfig)
 }
 
 // runLeaderSwitchHook runs the leader switch hook
@@ -244,6 +219,7 @@ func checkClusterRoleChanges(result, oldResult *Response, dbConfig db.DbHealth, 
 						common.Alarm("[ Patroni - "+common.Config.Identifier+" ] [:check:] "+member.Name+" is now the leader!", "", "", false)
 						// Only run the leader switch hook if this node is the one that became leader
 						if member.Name == nodeName {
+							common.LogInfo("Running leader switch hook for " + member.Name + " with role " + member.Role + "on nodeName:" + nodeName)
 							handleLeaderSwitch(member, &http.Client{}, dbConfig)
 						}
 					}
