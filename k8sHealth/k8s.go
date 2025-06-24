@@ -136,20 +136,23 @@ func GetKubeconfigPath(flagValue string) string {
 	}
 
 	homeDir, err := os.UserHomeDir()
+	var defaultPath string
 	if err == nil {
-		defaultPath := homeDir + "/.kube/config"
-		// Check if the default file actually exists before returning it
-		if _, err := os.Stat(defaultPath); err == nil {
-			common.LogDebug(fmt.Sprintf("Using default kubeconfig path: %s", defaultPath))
-			return defaultPath
-		} else if !os.IsNotExist(err) {
-			// Log error if Stat failed for reasons other than file not existing
-			common.LogWarn(fmt.Sprintf("Error checking default kubeconfig path %s: %v", defaultPath, err))
-		} else {
-			common.LogDebug(fmt.Sprintf("Default kubeconfig %s not found.", defaultPath))
-		}
+		defaultPath = homeDir + "/.kube/config"
 	} else {
-		common.LogWarn("Could not determine home directory to find default kubeconfig.")
+		defaultPath = "/root/.kube/config" // Fallback for root or if home directory cannot be determined
+		//common.LogWarn("Could not determine home directory to find default kubeconfig. Error: " + err.Error())
+	}
+
+	// Check if the default file actually exists before returning it
+	if _, err := os.Stat(defaultPath); err == nil {
+		common.LogDebug(fmt.Sprintf("Using default kubeconfig path: %s", defaultPath))
+		return defaultPath
+	} else if !os.IsNotExist(err) {
+		// Log error if Stat failed for reasons other than file not existing
+		common.LogWarn(fmt.Sprintf("Error checking default kubeconfig path %s: %v", defaultPath, err))
+	} else {
+		common.LogDebug(fmt.Sprintf("Default kubeconfig %s not found.", defaultPath))
 	}
 
 	common.LogDebug("No explicit kubeconfig path found (flag, env, default). Will rely on in-cluster config if applicable.")
