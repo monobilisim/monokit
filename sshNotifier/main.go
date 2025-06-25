@@ -41,6 +41,8 @@ var SSHNotifierConfig struct {
 		Stream string
 	}
 
+	Disable_File_Monitoring bool
+
 	SkippedDirectories []string
 }
 
@@ -319,6 +321,10 @@ func GetLoginInfo(customType string) LoginInfoOutput {
 }
 
 func listFiles(dir string, ignoredDirectories []string) []string {
+	if SSHNotifierConfig.Disable_File_Monitoring {
+		return []string{}
+	}
+
 	// Check if the directory exists
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		return []string{}
