@@ -119,6 +119,23 @@ func main() {
 		Run:   lbPolicy.List,
 	}
 
+	var lbPolicyPatroniCmd = &cobra.Command{
+		Use:   "patroni",
+		Short: "Patroni cluster management",
+	}
+
+	var lbPolicyPatroniMonitorCmd = &cobra.Command{
+		Use:   "monitor",
+		Short: "Start Patroni Auto-Switch Monitor",
+		Run:   lbPolicy.PatroniMonitorStart,
+	}
+
+	var lbPolicyPatroniCheckCmd = &cobra.Command{
+		Use:   "check",
+		Short: "Check Patroni Cluster Status",
+		Run:   lbPolicy.PatroniCheck,
+	}
+
 	var daemon = &cobra.Command{
 		Use:   "daemon",
 		Short: "Daemon",
@@ -595,6 +612,17 @@ Supports pagination for large log sets.`,
 
 	lbPolicyCmd.AddCommand(lbPolicyListCmd)
 	lbPolicyListCmd.Flags().StringArrayP("configs", "c", nil, "Config names to output the list of (default: all)")
+
+	// Add patroni parent command to lbPolicy
+	lbPolicyCmd.AddCommand(lbPolicyPatroniCmd)
+
+	// Add subcommands to patroni
+	lbPolicyPatroniCmd.AddCommand(lbPolicyPatroniMonitorCmd)
+	lbPolicyPatroniMonitorCmd.Flags().StringArrayP("configs", "c", nil, "Config names to monitor (default: all)")
+	lbPolicyPatroniMonitorCmd.Flags().BoolP("dry-run", "d", false, "Enable dry-run mode")
+
+	lbPolicyPatroniCmd.AddCommand(lbPolicyPatroniCheckCmd)
+	lbPolicyPatroniCheckCmd.Flags().StringArrayP("configs", "c", nil, "Config names to check (default: all)")
 
 	sshNotifierCmd.Flags().BoolP("login", "1", false, "Login")
 	sshNotifierCmd.Flags().BoolP("logout", "0", false, "Logout")

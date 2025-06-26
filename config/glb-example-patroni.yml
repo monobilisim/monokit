@@ -1,0 +1,62 @@
+caddy:
+  # Caddy API URLs for managing load balancer configuration
+  api_urls:
+    - "https://admin:password@lb1.example.com:2019"
+    - "https://admin:password@lb2.example.com:2019"
+  
+  # Backend servers that will be managed
+  servers:
+    - "test-pgsql-11.example.com"
+    - "test-pgsql-21.example.com"
+    - "prod-pgsql-12.example.com"
+  
+  # Load balancer URLs to manage
+  lb_urls:
+    - "https://app.example.com;lb1.example.com"
+    - "https://api.example.com;lb2.example.com"
+  
+  # Patroni-based automatic switching configuration
+  patroni_auto_switch:
+    enabled: true
+    check_interval: 30s
+    dry_run: false
+    only_when_needed: true
+    
+    mappings:
+      # First cluster mapping: test-pgsql with node mappings
+      - cluster: "test-pgsql"
+        nodemap:
+          - "test-pgsql-11:first_dc1"
+          - "test-pgsql-21:first_dc2"
+        switch_to: "first_dc1"  # Default switch target
+        patroni_urls: 
+          - "http://pg1.example.com:8008"
+          - "http://pg2.example.com:8008"
+        timeout: 10s
+      
+      # Second cluster mapping: prod-pgsql with different nodes
+      - cluster: "prod-pgsql"
+        nodemap:
+          - "prod-pgsql-12:prod_dc1"
+          - "prod-pgsql-22:prod_dc2"
+        switch_to: "prod_dc1"
+        patroni_urls: 
+          - "http://prod-pg1.example.com:8008"
+          - "http://prod-pg2.example.com:8008"
+        timeout: 15s
+
+# Alarm configuration for notifications
+alarm:
+  stream: "monokit-alerts"
+  topic: "lb-policy-changes"
+
+# Example usage commands:
+#
+# Start Patroni monitoring:
+# monokit lbPolicy patroni monitor --configs example-patroni
+#
+# Check Patroni status:
+# monokit lbPolicy patroni check --configs example-patroni
+#
+# Test with dry-run:
+# monokit lbPolicy patroni monitor --configs example-patroni --dry-run
