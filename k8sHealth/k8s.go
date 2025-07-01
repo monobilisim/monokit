@@ -169,10 +169,10 @@ func CollectK8sHealthData() *K8sHealthData {
 		healthData.AddError(errMsg)
 		common.LogError(errMsg)
 		// Consider an alarm for k8s client initialization failure
-		common.AlarmCheckDown("kubernetes_client_init", errMsg, false, "", "")
+		alarmCheckDown("kubernetes_client_init", errMsg, false, "", "")
 		return healthData
 	}
-	common.AlarmCheckUp("kubernetes_client_init", "Kubernetes clientset initialized successfully.", false)
+	alarmCheckUp("kubernetes_client_init", "Kubernetes clientset initialized successfully.", false)
 
 	var err error // Declare error variable to reuse
 
@@ -355,7 +355,7 @@ func CollectRke2IngressNginxHealth() (*Rke2IngressNginxHealth, error) {
 
 	if common.FileExists(ingressNginxYamlPath) {
 		health.ManifestAvailable = true
-		common.AlarmCheckUp("rke2_ingress_nginx_manifest", fmt.Sprintf("RKE2 Ingress Nginx manifest found: %s", ingressNginxYamlPath), false)
+		alarmCheckUp("rke2_ingress_nginx_manifest", fmt.Sprintf("RKE2 Ingress Nginx manifest found: %s", ingressNginxYamlPath), false)
 
 		// Use a new Viper instance to avoid global state issues if this func is called multiple times
 		// or if other parts of monokit use viper globally for different configs.
@@ -367,7 +367,7 @@ func CollectRke2IngressNginxHealth() (*Rke2IngressNginxHealth, error) {
 			common.LogError(errMsg)
 			health.Error = errMsg
 			// No alarm here, as the manifest exists but is unreadable. UI will show error.
-			// Or, common.AlarmCheckDown("rke2_ingress_nginx_config_read", errMsg, false, "", "")
+			// Or, alarmCheckDown("rke2_ingress_nginx_config_read", errMsg, false, "", "")
 		} else {
 			// Check for spec.valuesContent.controller.service.enabled
 			// Using IsSet to differentiate between 'false' and 'not present'
@@ -375,9 +375,9 @@ func CollectRke2IngressNginxHealth() (*Rke2IngressNginxHealth, error) {
 				val := v.GetBool("spec.valuesContent.controller.service.enabled")
 				health.PublishServiceEnabled = &val // Store pointer to bool
 				if val {
-					common.AlarmCheckUp("rke2_ingress_nginx_publishservice", "RKE2 Ingress Nginx: PublishService is enabled.", false)
+					alarmCheckUp("rke2_ingress_nginx_publishservice", "RKE2 Ingress Nginx: PublishService is enabled.", false)
 				} else {
-					common.AlarmCheckDown("rke2_ingress_nginx_publishservice", "RKE2 Ingress Nginx: PublishService is NOT enabled in manifest.", false, "", "")
+					alarmCheckDown("rke2_ingress_nginx_publishservice", "RKE2 Ingress Nginx: PublishService is NOT enabled in manifest.", false, "", "")
 				}
 			} else {
 				common.LogDebug(fmt.Sprintf("RKE2 Ingress Nginx: spec.valuesContent.controller.service.enabled not set in %s", ingressNginxYamlPath))
@@ -402,7 +402,7 @@ func CollectRke2IngressNginxHealth() (*Rke2IngressNginxHealth, error) {
 		health.ManifestAvailable = false
 		errMsg := fmt.Sprintf("RKE2 Ingress Nginx manifest not found at %s or alternate path.", ingressNginxYamlPath)
 		common.LogWarn(errMsg) // It's a warning as it might not be an RKE2 setup
-		common.AlarmCheckDown("rke2_ingress_nginx_manifest", errMsg, false, "", "")
+		alarmCheckDown("rke2_ingress_nginx_manifest", errMsg, false, "", "")
 		// health.Error = errMsg // Not necessarily an error for the overall k8s health if RKE2 ingress is not expected.
 		// UI will show manifest not available.
 	}
@@ -420,7 +420,7 @@ func CollectRke2IngressNginxHealth() (*Rke2IngressNginxHealth, error) {
 				check.IsAvailable = false
 				check.StatusCode = 0 // Or some indicator of connection error
 				common.LogError(fmt.Sprintf("Error checking ingress floating IP %s: %v", floatingIp, err))
-				common.AlarmCheckDown("floating_ip_ingress_"+floatingIp, fmt.Sprintf("Ingress Floating IP %s is not reachable: %v", floatingIp, err), false, "", "")
+				alarmCheckDown("floating_ip_ingress_"+floatingIp, fmt.Sprintf("Ingress Floating IP %s is not reachable: %v", floatingIp, err), false, "", "")
 			} else {
 				defer resp.Body.Close()
 				check.StatusCode = resp.StatusCode
@@ -429,10 +429,10 @@ func CollectRke2IngressNginxHealth() (*Rke2IngressNginxHealth, error) {
 				// The original check considered only 404 as "true".
 				if resp.StatusCode == http.StatusNotFound { // 404
 					check.IsAvailable = true
-					common.AlarmCheckUp("floating_ip_ingress_"+floatingIp, fmt.Sprintf("Ingress Floating IP %s is available (HTTP %d).", floatingIp, resp.StatusCode), false)
+					alarmCheckUp("floating_ip_ingress_"+floatingIp, fmt.Sprintf("Ingress Floating IP %s is available (HTTP %d).", floatingIp, resp.StatusCode), false)
 				} else {
 					check.IsAvailable = false // Or true, if other codes are acceptable. For now, matching original.
-					common.AlarmCheckDown("floating_ip_ingress_"+floatingIp, fmt.Sprintf("Ingress Floating IP %s returned HTTP %d (expected 404 or other success).", floatingIp, resp.StatusCode), false, "", "")
+					alarmCheckDown("floating_ip_ingress_"+floatingIp, fmt.Sprintf("Ingress Floating IP %s returned HTTP %d (expected 404 or other success).", floatingIp, resp.StatusCode), false, "", "")
 				}
 			}
 			health.FloatingIPChecks = append(health.FloatingIPChecks, check)
@@ -529,11 +529,11 @@ func CollectPodHealth() ([]PodHealthInfo, error) {
 			if !containerInfo.IsReady && containerInfo.State != "Terminated" && containerInfo.Reason != "Completed" { // Avoid alarming for completed containers
 				alarmMsg := fmt.Sprintf("Container '%s' in pod '%s/%s' is in state %s (Reason: %s, Message: %s)",
 					cs.Name, pod.Namespace, pod.Name, containerInfo.State, containerInfo.Reason, containerInfo.Message)
-				common.AlarmCheckDown(containerAlarmKey, alarmMsg, false, "", "")
+				alarmCheckDown(containerAlarmKey, alarmMsg, false, "", "")
 			} else {
 				alarmMsg := fmt.Sprintf("Container '%s' in pod '%s/%s' is healthy (State: %s).",
 					cs.Name, pod.Namespace, pod.Name, containerInfo.State)
-				common.AlarmCheckUp(containerAlarmKey, alarmMsg, false)
+				alarmCheckUp(containerAlarmKey, alarmMsg, false)
 			}
 		}
 
@@ -574,11 +574,11 @@ func CollectPodHealth() ([]PodHealthInfo, error) {
 			if !initContainerInfo.IsReady && initContainerInfo.State != "Terminated" && initContainerInfo.Reason != "Completed" {
 				alarmMsg := fmt.Sprintf("Init container '%s' in pod '%s/%s' is in state %s (Reason: %s, Message: %s)",
 					ics.Name, pod.Namespace, pod.Name, initContainerInfo.State, initContainerInfo.Reason, initContainerInfo.Message)
-				common.AlarmCheckDown(initContainerAlarmKey, alarmMsg, false, "", "")
+				alarmCheckDown(initContainerAlarmKey, alarmMsg, false, "", "")
 			} else {
 				alarmMsg := fmt.Sprintf("Init container '%s' in pod '%s/%s' is healthy or completed (State: %s).",
 					ics.Name, pod.Namespace, pod.Name, initContainerInfo.State)
-				common.AlarmCheckUp(initContainerAlarmKey, alarmMsg, false)
+				alarmCheckUp(initContainerAlarmKey, alarmMsg, false)
 			}
 		}
 
@@ -621,10 +621,10 @@ func CollectPodHealth() ([]PodHealthInfo, error) {
 			}
 			alarmMsg := fmt.Sprintf("Pod '%s/%s' is problematic: %s.",
 				pod.Namespace, pod.Name, strings.Join(problemDetails, "; "))
-			common.AlarmCheckDown(podAlarmKey, alarmMsg, false, "", "")
+			alarmCheckDown(podAlarmKey, alarmMsg, false, "", "")
 		} else {
 			alarmMsg := fmt.Sprintf("Pod '%s/%s' is healthy (Phase: %s).", pod.Namespace, pod.Name, pod.Status.Phase)
-			common.AlarmCheckUp(podAlarmKey, alarmMsg, false)
+			alarmCheckUp(podAlarmKey, alarmMsg, false)
 		}
 		podInfos = append(podInfos, podInfo)
 	}
@@ -652,17 +652,17 @@ func CollectCertManagerHealth() (*CertManagerHealth, error) {
 			//common.LogWarn(health.Error)
 			// This is not necessarily a critical error for the whole k8s check,
 			// but cert-manager specific checks cannot proceed.
-			common.AlarmCheckDown("cert_manager_namespace", health.Error, false, "", "")
+			alarmCheckDown("cert_manager_namespace", health.Error, false, "", "")
 			return health, nil // Return current health, not a fatal error for the collector.
 		}
 		errMsg := fmt.Sprintf("Error getting cert-manager namespace: %v", err)
 		common.LogError(errMsg)
 		health.Error = errMsg
-		common.AlarmCheckDown("cert_manager_namespace", errMsg, false, "", "")
+		alarmCheckDown("cert_manager_namespace", errMsg, false, "", "")
 		return health, fmt.Errorf(errMsg) // This is a more significant k8s API error.
 	}
 	health.NamespaceAvailable = true
-	common.AlarmCheckUp("cert_manager_namespace", "cert-manager namespace exists.", false)
+	alarmCheckUp("cert_manager_namespace", "cert-manager namespace exists.", false)
 
 	// Get a list of cert-manager.io/Certificate resources
 	rawCertData, err := Clientset.RESTClient().Get().AbsPath("/apis/cert-manager.io/v1/certificates").DoRaw(context.Background())
@@ -673,9 +673,9 @@ func CollectCertManagerHealth() (*CertManagerHealth, error) {
 		// If CRDs are not installed, this will fail.
 		if strings.Contains(err.Error(), "the server could not find the requested resource") {
 			common.LogWarn("Cert-manager CRDs for Certificates might not be installed.")
-			common.AlarmCheckDown("cert_manager_crd_certificates", "Cert-manager Certificate CRD not found.", false, "", "")
+			alarmCheckDown("cert_manager_crd_certificates", "Cert-manager Certificate CRD not found.", false, "", "")
 		} else {
-			common.AlarmCheckDown("cert_manager_api_certificates", errMsg, false, "", "")
+			alarmCheckDown("cert_manager_api_certificates", errMsg, false, "", "")
 		}
 		return health, nil // Not a fatal error for the collector if CRDs are missing.
 	}
@@ -685,7 +685,7 @@ func CollectCertManagerHealth() (*CertManagerHealth, error) {
 		errMsg := fmt.Sprintf("Error parsing cert-manager Certificate JSON: %v", err)
 		common.LogError(errMsg)
 		health.Error = errMsg
-		common.AlarmCheckDown("cert_manager_json_parse", errMsg, false, "", "")
+		alarmCheckDown("cert_manager_json_parse", errMsg, false, "", "")
 		return health, fmt.Errorf(errMsg) // Parsing error is more critical
 	}
 
@@ -717,10 +717,10 @@ func CollectCertManagerHealth() (*CertManagerHealth, error) {
 		alarmKey := fmt.Sprintf("cert_manager_cert_%s_ready", item.Metadata.Name)
 		if !isReady {
 			alarmMsg := fmt.Sprintf("Certificate '%s' is not Ready. Message: %s", item.Metadata.Name, readyConditionMessage)
-			common.AlarmCheckDown(alarmKey, alarmMsg, false, "", "")
+			alarmCheckDown(alarmKey, alarmMsg, false, "", "")
 		} else {
 			alarmMsg := fmt.Sprintf("Certificate '%s' is Ready.", item.Metadata.Name)
-			common.AlarmCheckUp(alarmKey, alarmMsg, false)
+			alarmCheckUp(alarmKey, alarmMsg, false)
 		}
 		health.Certificates = append(health.Certificates, certInfo)
 	}
@@ -761,7 +761,7 @@ func CollectKubeVipHealth() (*KubeVipHealth, error) {
 	}
 
 	if health.PodsAvailable {
-		common.AlarmCheckUp("kube_vip_pods", "Kube-VIP pods detected in kube-system.", false)
+		alarmCheckUp("kube_vip_pods", "Kube-VIP pods detected in kube-system.", false)
 		if len(K8sHealthConfig.K8s.Floating_Ips) > 0 {
 			for _, floatingIp := range K8sHealthConfig.K8s.Floating_Ips {
 				check := FloatingIPCheck{IP: floatingIp, TestType: "kube-vip"}
@@ -776,10 +776,10 @@ func CollectKubeVipHealth() (*KubeVipHealth, error) {
 					err = pinger.Run()
 					if err != nil {
 						check.IsAvailable = false
-						common.AlarmCheckDown("floating_ip_kube_vip_"+floatingIp, fmt.Sprintf("Kube-VIP Floating IP %s is not reachable: %v", floatingIp, err), false, "", "")
+						alarmCheckDown("floating_ip_kube_vip_"+floatingIp, fmt.Sprintf("Kube-VIP Floating IP %s is not reachable: %v", floatingIp, err), false, "", "")
 					} else {
 						check.IsAvailable = true
-						common.AlarmCheckUp("floating_ip_kube_vip_"+floatingIp, fmt.Sprintf("Kube-VIP Floating IP %s is reachable.", floatingIp), false)
+						alarmCheckUp("floating_ip_kube_vip_"+floatingIp, fmt.Sprintf("Kube-VIP Floating IP %s is reachable.", floatingIp), false)
 					}
 				}
 				health.FloatingIPChecks = append(health.FloatingIPChecks, check)
@@ -789,7 +789,7 @@ func CollectKubeVipHealth() (*KubeVipHealth, error) {
 		}
 	} else {
 		common.LogDebug("Kube-VIP pods not detected in kube-system.")
-		common.AlarmCheckDown("kube_vip_pods", "Kube-VIP pods not detected in kube-system. This might be normal if Kube-VIP is not used.", false, "", "")
+		alarmCheckDown("kube_vip_pods", "Kube-VIP pods not detected in kube-system. This might be normal if Kube-VIP is not used.", false, "", "")
 	}
 	return health, nil // Return health, error primarily for client init or major issues
 }
@@ -806,18 +806,18 @@ func CollectClusterApiCertHealth() (*ClusterApiCertHealth, error) {
 		common.LogWarn(errMsg) // This might be normal if not an RKE2 master
 		health.Error = errMsg
 		health.CertFileAvailable = false
-		common.AlarmCheckDown("kube_apiserver_cert_file", errMsg, false, "", "")
+		alarmCheckDown("kube_apiserver_cert_file", errMsg, false, "", "")
 		return health, nil // Not a fatal error for the collector
 	}
 	health.CertFileAvailable = true
-	common.AlarmCheckUp("kube_apiserver_cert_file", fmt.Sprintf("Cluster API server certificate file found: %s", crtFile), false)
+	alarmCheckUp("kube_apiserver_cert_file", fmt.Sprintf("Cluster API server certificate file found: %s", crtFile), false)
 
 	certFileContent, err := os.ReadFile(crtFile)
 	if err != nil {
 		errMsg := fmt.Sprintf("Error reading Cluster API server certificate file %s: %v", crtFile, err)
 		common.LogError(errMsg)
 		health.Error = errMsg
-		common.AlarmCheckDown("kube_apiserver_cert_read", errMsg, false, "", "")
+		alarmCheckDown("kube_apiserver_cert_read", errMsg, false, "", "")
 		return health, fmt.Errorf(errMsg) // This is a file read error
 	}
 
@@ -826,7 +826,7 @@ func CollectClusterApiCertHealth() (*ClusterApiCertHealth, error) {
 		errMsg := fmt.Sprintf("Failed to parse PEM block from Cluster API server certificate file: %s", crtFile)
 		common.LogError(errMsg)
 		health.Error = errMsg
-		common.AlarmCheckDown("kube_apiserver_cert_parse", errMsg, false, "", "")
+		alarmCheckDown("kube_apiserver_cert_parse", errMsg, false, "", "")
 		return health, fmt.Errorf(errMsg)
 	}
 
@@ -835,7 +835,7 @@ func CollectClusterApiCertHealth() (*ClusterApiCertHealth, error) {
 		errMsg := fmt.Sprintf("Error parsing Cluster API server certificate from %s: %v", crtFile, err)
 		common.LogError(errMsg)
 		health.Error = errMsg
-		common.AlarmCheckDown("kube_apiserver_cert_parse", errMsg, false, "", "")
+		alarmCheckDown("kube_apiserver_cert_parse", errMsg, false, "", "")
 		return health, fmt.Errorf(errMsg)
 	}
 
@@ -844,10 +844,10 @@ func CollectClusterApiCertHealth() (*ClusterApiCertHealth, error) {
 
 	if health.IsExpired {
 		alarmMsg := fmt.Sprintf("Cluster API server certificate (%s) is EXPIRED. Expires: %s", crtFile, health.NotAfter.Format(time.RFC3339))
-		common.AlarmCheckDown("kube_apiserver_cert_expiry", alarmMsg, false, "", "")
+		alarmCheckDown("kube_apiserver_cert_expiry", alarmMsg, false, "", "")
 	} else {
 		alarmMsg := fmt.Sprintf("Cluster API server certificate (%s) is valid. Expires: %s", crtFile, health.NotAfter.Format(time.RFC3339))
-		common.AlarmCheckUp("kube_apiserver_cert_expiry", alarmMsg, false)
+		alarmCheckUp("kube_apiserver_cert_expiry", alarmMsg, false)
 	}
 
 	return health, nil
@@ -1180,4 +1180,18 @@ func CollectRKE2Information() *RKE2Info {
 	info.IsMasterNode = isMaster
 
 	return info
+}
+
+func alarmCheckUp(service, message string, noInterval bool) {
+	if !K8sHealthConfig.Alarm.Enabled {
+		return
+	}
+	common.AlarmCheckUp(service, message, noInterval)
+}
+
+func alarmCheckDown(service, message string, noInterval bool, customStream, customTopic string) {
+	if !K8sHealthConfig.Alarm.Enabled {
+		return
+	}
+	common.AlarmCheckDown(service, message, noInterval, customStream, customTopic)
 }

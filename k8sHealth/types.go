@@ -59,6 +59,9 @@ type Config struct {
 		EnableCertManager    *bool    `yaml:"enable_cert_manager"` // nil = auto-detect, true/false = force
 		EnableKubeVip        *bool    `yaml:"enable_kube_vip"`     // nil = auto-detect, true/false = force
 	} `yaml:"k8s"`
+	Alarm struct {
+		Enabled bool `yaml:"enabled"`
+	} `yaml:"alarm"`
 }
 
 // K8sHealthConfig is the global instance of the k8sHealth configuration.
