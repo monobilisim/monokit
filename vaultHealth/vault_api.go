@@ -20,7 +20,7 @@ import (
 func createHTTPClient() *http.Client {
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{
-			InsecureSkipVerify: !VaultHealthConfig.TLS.Verify,
+			InsecureSkipVerify: !VaultHealthConfig.Vault.Tls.Verify,
 		},
 	}
 
@@ -32,7 +32,7 @@ func createHTTPClient() *http.Client {
 
 // makeVaultAPIRequest makes a request to the Vault API
 func makeVaultAPIRequest(endpoint string) (*http.Response, error) {
-	baseURL := VaultHealthConfig.Address
+	baseURL := VaultHealthConfig.Vault.Address
 	if baseURL == "" {
 		baseURL = "https://127.0.0.1:8200"
 	}
@@ -54,8 +54,8 @@ func makeVaultAPIRequest(endpoint string) (*http.Response, error) {
 	}
 
 	// Add token if configured
-	if VaultHealthConfig.Token != "" {
-		req.Header.Set("X-Vault-Token", VaultHealthConfig.Token)
+	if VaultHealthConfig.Vault.Token != "" {
+		req.Header.Set("X-Vault-Token", VaultHealthConfig.Vault.Token)
 		common.LogDebug("Using Vault token for authentication")
 	} else {
 		common.LogDebug("No Vault token configured")
@@ -69,7 +69,7 @@ func makeVaultAPIRequest(endpoint string) (*http.Response, error) {
 
 // checkVaultAPI checks basic API connectivity and populates connection info
 func checkVaultAPI(healthData *VaultHealthData) error {
-	baseURL := VaultHealthConfig.Address
+	baseURL := VaultHealthConfig.Vault.Address
 	if baseURL == "" {
 		baseURL = "https://127.0.0.1:8200"
 	}
@@ -171,7 +171,7 @@ func checkSealStatus(healthData *VaultHealthData) error {
 	}
 
 	// Create alerts for seal status changes
-	if VaultHealthConfig.Alerts.SealedVault {
+	if VaultHealthConfig.Vault.Alerts.Sealed_vault {
 		if sealResp.Sealed {
 			common.AlarmCheckDown("vault_sealed", "Vault is sealed", false, "", "")
 		} else {
@@ -247,26 +247,26 @@ func checkClusterStatus(healthData *VaultHealthData) error {
 		}
 
 		// Perform additional Raft checks only if enabled in configuration
-		if VaultHealthConfig.ClusterChecks.Enabled {
-			if VaultHealthConfig.ClusterChecks.CheckConfiguration {
+		if VaultHealthConfig.Vault.ClusterChecks.Enabled {
+			if VaultHealthConfig.Vault.ClusterChecks.Check_configuration {
 				if err := checkRaftConfiguration(healthData); err != nil {
 					common.LogDebug(fmt.Sprintf("Failed to get Raft configuration: %v", err))
 					healthData.Cluster.HealthIssues = append(healthData.Cluster.HealthIssues, "Raft configuration check failed")
 				}
 			}
 
-			if VaultHealthConfig.ClusterChecks.CheckNodeHealth {
+			if VaultHealthConfig.Vault.ClusterChecks.Check_node_health {
 				if err := checkClusterNodeHealth(healthData); err != nil {
 					common.LogDebug(fmt.Sprintf("Failed to check cluster node health: %v", err))
 					healthData.Cluster.HealthIssues = append(healthData.Cluster.HealthIssues, "Node health check failed")
 				}
 			}
 
-			if VaultHealthConfig.ClusterChecks.CheckQuorum {
+			if VaultHealthConfig.Vault.ClusterChecks.Check_quorum {
 				validateClusterQuorum(healthData)
 			}
 
-			if VaultHealthConfig.ClusterChecks.CheckPerformance {
+			if VaultHealthConfig.Vault.ClusterChecks.Check_performance {
 				if err := checkClusterPerformance(healthData); err != nil {
 					common.LogDebug(fmt.Sprintf("Failed to check cluster performance: %v", err))
 					healthData.Cluster.HealthIssues = append(healthData.Cluster.HealthIssues, "Performance check failed")
@@ -311,7 +311,7 @@ func checkClusterStatus(healthData *VaultHealthData) error {
 	}
 
 	// Check for leader changes and alerts
-	if VaultHealthConfig.Alerts.LeaderChanges && healthData.Cluster.HAEnabled {
+	if VaultHealthConfig.Vault.Alerts.Leader_changes && healthData.Cluster.HAEnabled {
 		// Log current leader status
 		common.LogDebug(fmt.Sprintf("Current Vault leader: %s (this node: %t)",
 			healthData.Cluster.LeaderAddr, healthData.Cluster.IsLeader))
@@ -720,8 +720,8 @@ func checkClusterPerformance(healthData *VaultHealthData) error {
 
 	// Check if response time is within acceptable limits
 	maxResponseTime := 5 * time.Second // Default 5 seconds
-	if VaultHealthConfig.Limits.MaxResponseTime != "" {
-		if parsedTime, err := time.ParseDuration(VaultHealthConfig.Limits.MaxResponseTime); err == nil {
+	if VaultHealthConfig.Vault.Limits.Max_response_time != "" {
+		if parsedTime, err := time.ParseDuration(VaultHealthConfig.Vault.Limits.Max_response_time); err == nil {
 			maxResponseTime = parsedTime
 		}
 	}
@@ -777,7 +777,7 @@ func checkRaftPerformance(healthData *VaultHealthData) error {
 
 // checkVaultVersionUpdates checks for new Vault versions and sends alerts
 func checkVaultVersionUpdates(healthData *VaultHealthData) error {
-	if !VaultHealthConfig.Alerts.VersionUpdates {
+	if !VaultHealthConfig.Vault.Alerts.Version_updates {
 		common.LogDebug("Version update alerts disabled in configuration")
 		// Set default message when version updates are disabled
 		healthData.VersionInfo.UpdateMessage = "Version checking disabled"

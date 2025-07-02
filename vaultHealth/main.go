@@ -33,21 +33,15 @@ func collectVaultHealthData() (*VaultHealthData, error) {
 	if common.ConfExists("vault") {
 		common.LogDebug("vault config file exists, loading configuration...")
 
-		// Load the full config first
-		var fullConfig struct {
-			Vault VaultConfig `yaml:"vault"`
-		}
-		common.ConfInit("vault", &fullConfig)
+		// Load config directly into the nested config structure
+		common.ConfInit("vault", &VaultHealthConfig)
 
-		// Extract the vault section
-		VaultHealthConfig = fullConfig.Vault
-
-		common.LogDebug(fmt.Sprintf("Loaded vault config - Address: %s, TLS.Verify: %t, Alerts.SealedVault: %t",
-			VaultHealthConfig.Address, VaultHealthConfig.TLS.Verify, VaultHealthConfig.Alerts.SealedVault))
+		common.LogDebug(fmt.Sprintf("Loaded vault config - Address: %s, TLS.Verify: %t, Alerts.SealedVault: %t, Alerts.VersionUpdates: %t",
+			VaultHealthConfig.Vault.Address, VaultHealthConfig.Vault.Tls.Verify, VaultHealthConfig.Vault.Alerts.Sealed_vault, VaultHealthConfig.Vault.Alerts.Version_updates))
 
 		// Debug token loading (without exposing the actual token)
-		if VaultHealthConfig.Token != "" {
-			if strings.HasPrefix(VaultHealthConfig.Token, "${") {
+		if VaultHealthConfig.Vault.Token != "" {
+			if strings.HasPrefix(VaultHealthConfig.Vault.Token, "${") {
 				common.LogDebug("Token appears to be unexpanded environment variable")
 			} else {
 				common.LogDebug("Token loaded successfully from configuration")
@@ -60,11 +54,11 @@ func collectVaultHealthData() (*VaultHealthData, error) {
 	}
 
 	// Set defaults if not configured
-	if VaultHealthConfig.Address == "" {
-		VaultHealthConfig.Address = "https://127.0.0.1:8200"
+	if VaultHealthConfig.Vault.Address == "" {
+		VaultHealthConfig.Vault.Address = "https://127.0.0.1:8200"
 		common.LogDebug("No address configured, using default: https://127.0.0.1:8200")
 	} else {
-		common.LogDebug(fmt.Sprintf("Using configured address: %s", VaultHealthConfig.Address))
+		common.LogDebug(fmt.Sprintf("Using configured address: %s", VaultHealthConfig.Vault.Address))
 	}
 
 	// Create health data

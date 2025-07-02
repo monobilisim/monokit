@@ -20,31 +20,36 @@ func (p *VaultHealthProvider) Collect(_ string) (interface{}, error) {
 
 // VaultConfig holds configuration for Vault health checks
 type VaultConfig struct {
-	Address string `yaml:"address"`
-	Token   string `yaml:"token"`
-	TLS     struct {
-		Verify   bool   `yaml:"verify"`
-		CACert   string `yaml:"ca_cert"`
-		CertFile string `yaml:"cert_file"`
-		KeyFile  string `yaml:"key_file"`
-	} `yaml:"tls"`
-	Limits struct {
-		MaxResponseTime     string `yaml:"max_response_time"`
-		HealthCheckInterval string `yaml:"health_check_interval"`
-	} `yaml:"limits"`
-	Alerts struct {
-		SealedVault    bool `yaml:"sealed_vault"`
-		LeaderChanges  bool `yaml:"leader_changes"`
-		VersionUpdates bool `yaml:"version_updates"`
-	} `yaml:"alerts"`
-	ClusterChecks struct {
-		Enabled            bool `yaml:"enabled"`             // Enable detailed cluster checks
-		CheckConfiguration bool `yaml:"check_configuration"` // Check Raft configuration
-		CheckNodeHealth    bool `yaml:"check_node_health"`   // Check individual node health
-		CheckQuorum        bool `yaml:"check_quorum"`        // Validate cluster quorum
-		CheckPerformance   bool `yaml:"check_performance"`   // Monitor cluster performance
-		CheckMetrics       bool `yaml:"check_metrics"`       // Access Prometheus metrics
-	} `yaml:"cluster_checks"`
+	Vault struct {
+		Address string `yaml:"address"`
+		Token   string `yaml:"token"`
+		Tls     struct {
+			Verify    bool   `yaml:"verify"`
+			Ca_cert   string `yaml:"ca_cert"`
+			Cert_file string `yaml:"cert_file"`
+			Key_file  string `yaml:"key_file"`
+		} `yaml:"tls"`
+		Limits struct {
+			Max_response_time     string `yaml:"max_response_time"`
+			Health_check_interval string `yaml:"health_check_interval"`
+		} `yaml:"limits"`
+		Alerts struct {
+			Sealed_vault    bool `yaml:"sealed_vault"`
+			Leader_changes  bool `yaml:"leader_changes"`
+			Version_updates bool `yaml:"version_updates"`
+		} `yaml:"alerts"`
+		ClusterChecks struct {
+			Enabled             bool `yaml:"enabled"`             // Enable detailed cluster checks
+			Check_configuration bool `yaml:"check_configuration"` // Check Raft configuration
+			Check_node_health   bool `yaml:"check_node_health"`   // Check individual node health
+			Check_quorum        bool `yaml:"check_quorum"`        // Validate cluster quorum
+			Check_performance   bool `yaml:"check_performance"`   // Monitor cluster performance
+			Check_metrics       bool `yaml:"check_metrics"`       // Access Prometheus metrics
+		} `yaml:"cluster_checks"`
+	} `yaml:"vault"`
+	Alarm struct {
+		Enabled bool `yaml:"enabled"`
+	} `yaml:"alarm"`
 }
 
 // VaultHealthData represents comprehensive Vault health information
