@@ -29,3 +29,7 @@ func TraefikCommandAdd() {
 func ZimbraCommandAdd() {
 	// zimbraHealth is not supported on anything other than Linux
 }
+
+func VaultCommandAdd() {
+	// vaultHealth is not supported on anything other than Linux
+}

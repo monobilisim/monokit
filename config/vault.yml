@@ -1,0 +1,31 @@
+vault:
+  # Vault server connection settings
+  address: "https://127.0.0.1:8200"
+  token: "${VAULT_TOKEN}"  # Environment variable will be expanded
+  
+  # TLS Configuration
+  tls:
+    verify: true
+    ca_cert: "/path/to/ca.pem"      # Optional: CA certificate
+    cert_file: "/path/to/cert.pem"  # Optional: Client certificate
+    key_file: "/path/to/key.pem"    # Optional: Client private key
+  
+  # Performance and timing limits
+  limits:
+    max_response_time: "5s"         # Maximum time to wait for API responses
+    health_check_interval: "30s"    # How often to run health checks
+  
+  # Alert Configuration
+  alerts:
+    sealed_vault: true              # Alert when Vault becomes sealed
+    leader_changes: true            # Alert on leadership changes in cluster
+    version_updates: true           # Alert when new Vault versions are available
+  
+  # Advanced cluster monitoring (requires appropriate permissions)
+  cluster_checks:
+    enabled: true                   # Enable detailed cluster health checks
+    check_configuration: true       # Validate Raft cluster configuration
+    check_node_health: true         # Monitor individual node health status
+    check_quorum: true             # Ensure cluster has sufficient quorum
+    check_performance: true         # Monitor cluster performance metrics
+    check_metrics: false           # Access Prometheus metrics (requires sys/metrics policy)

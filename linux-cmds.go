@@ -9,6 +9,7 @@ import (
 	"github.com/monobilisim/monokit/postalHealth"
 	"github.com/monobilisim/monokit/rmqHealth"
 	"github.com/monobilisim/monokit/traefikHealth"
+	"github.com/monobilisim/monokit/vaultHealth"
 	"github.com/monobilisim/monokit/zimbraHealth"
 	"github.com/monobilisim/monokit/zimbraLdap"
 	"github.com/spf13/cobra"
@@ -89,4 +90,14 @@ func TraefikCommandAdd() {
 	}
 
 	RootCmd.AddCommand(traefikHealthCmd)
+}
+
+func VaultCommandAdd() {
+	var vaultHealthCmd = &cobra.Command{
+		Use:   "vaultHealth",
+		Short: "Vault Health",
+		Run:   vaultHealth.Main,
+	}
+
+	RootCmd.AddCommand(vaultHealthCmd)
 }

@@ -3,7 +3,6 @@ package common
 import (
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
 	"os"
 	"reflect"
 	"strings"
@@ -35,7 +34,7 @@ func GatherVersion(service string) string {
 	}
 
 	// Read the file
-	content, err := ioutil.ReadFile(common.TmpDir + "/" + service + ".version")
+	content, err := os.ReadFile(common.TmpDir + "/" + service + ".version")
 	if err != nil {
 		return ""
 	}
@@ -78,6 +77,9 @@ func VersionCheck(cmd *cobra.Command, args []string) {
 
 	// RKE2 Kubernetes - Replaced with plugin call
 	handleRKE2VersionCheckViaPlugin()
+
+	// Vault
+	VaultCheck()
 }
 
 func handleRKE2VersionCheckViaPlugin() {

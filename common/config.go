@@ -2,6 +2,7 @@ package common
 
 import (
 	"os"
+	"strings"
 
 	"github.com/spf13/viper"
 )
@@ -60,6 +61,15 @@ func ConfInit(configName string, config interface{}) interface{} {
 		panic(err)
 	}
 
+	// Get all settings and expand environment variables recursively
+	allSettings := viper.AllSettings()
+	expandEnvInMap(allSettings)
+
+	// Reset viper with expanded values
+	for key, value := range allSettings {
+		viper.Set(key, value)
+	}
+
 	err = viper.Unmarshal(&config)
 
 	if err != nil {
@@ -68,4 +78,26 @@ func ConfInit(configName string, config interface{}) interface{} {
 	}
 
 	return config
+}
+
+// expandEnvInMap recursively expands environment variables in nested map structures
+func expandEnvInMap(data map[string]interface{}) {
+	for key, value := range data {
+		switch v := value.(type) {
+		case string:
+			if strings.Contains(v, "${") || strings.Contains(v, "$") {
+				data[key] = os.ExpandEnv(v)
+			}
+		case map[string]interface{}:
+			expandEnvInMap(v)
+		case []interface{}:
+			for i, item := range v {
+				if strItem, ok := item.(string); ok {
+					if strings.Contains(strItem, "${") || strings.Contains(strItem, "$") {
+						v[i] = os.ExpandEnv(strItem)
+					}
+				}
+			}
+		}
+	}
 }

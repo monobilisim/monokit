@@ -482,6 +482,9 @@ Supports pagination for large log sets.`,
 	/// OS Health
 	RootCmd.AddCommand(osHealthCmd)
 
+	/// Vault Health
+	VaultCommandAdd()
+
 	/// Search Health
 	RootCmd.AddCommand(esHealthCmd)
 
