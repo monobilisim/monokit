@@ -9,8 +9,19 @@ import (
 
 	"github.com/monobilisim/monokit/common"
 	api "github.com/monobilisim/monokit/common/api"
+	"github.com/monobilisim/monokit/common/health"
 	"github.com/spf13/cobra"
 )
+
+func init() {
+	common.RegisterComponent(common.Component{
+		Name:       "vaultHealth",
+		EntryPoint: Main,
+		Platform:   "linux",
+		AutoDetect: DetectVault,
+	})
+	health.Register(&VaultHealthProvider{})
+}
 
 var VaultHealthConfig VaultConfig
 
