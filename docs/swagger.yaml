@@ -38,6 +38,9 @@ definitions:
       timestamp:
         example: "2023-01-01T12:00:00Z"
         type: string
+      type:
+        example: monokit
+        type: string
       updated_at:
         example: "2023-01-01T12:00:01Z"
         type: string
@@ -79,6 +82,9 @@ definitions:
       timestamp:
         example: "2023-01-01T12:00:00Z"
         type: string
+      type:
+        example: monokit
+        type: string
     required:
     - component
     - level
@@ -109,6 +115,9 @@ definitions:
         type: integer
       start_time:
         example: "2023-01-01T00:00:00Z"
+        type: string
+      type:
+        example: monokit
         type: string
     type: object
   common.APILogsResponse:
@@ -902,6 +911,68 @@ paths:
       summary: Register user
       tags:
       - auth
+  /health/tools:
+    get:
+      description: Retrieves a combined list of names of all registered health check
+        providers and tools found in submitted health data.
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of health tool names
+          schema:
+            items:
+              type: string
+            type: array
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Get available health tools
+      tags:
+      - Health
+  /host/health/{tool}:
+    post:
+      consumes:
+      - application/json
+      description: Allows a host agent to POST its health data for a specific tool.
+      parameters:
+      - description: Name of the health tool (e.g., osHealth)
+        in: path
+        name: tool
+        required: true
+        type: string
+      - description: JSON health data from the tool
+        in: body
+        name: healthData
+        required: true
+        schema:
+          type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Data received and stored
+          schema: {}
+        "400":
+          description: Invalid JSON data or missing tool name
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+        "401":
+          description: Unauthorized (invalid host token)
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Submit health data from a host agent
+      tags:
+      - Health
   /host/logs:
     post:
       consumes:
@@ -975,6 +1046,188 @@ paths:
       summary: Get component status
       tags:
       - hosts
+  /hosts/{name}/awx-job-templates:
+    get:
+      consumes:
+      - application/json
+      description: Get available job templates from AWX for a specific host
+      parameters:
+      - description: Host name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: List of job templates
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Host not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Get AWX job templates
+      tags:
+      - hosts
+  /hosts/{name}/awx-job-templates/{templateID}:
+    get:
+      consumes:
+      - application/json
+      description: Get details of a specific job template from AWX including variables
+      parameters:
+      - description: Host name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: Template ID
+        in: path
+        name: templateID
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Job template details
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Host or template not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Get AWX job template details
+      tags:
+      - hosts
+  /hosts/{name}/awx-jobs:
+    get:
+      consumes:
+      - application/json
+      description: Get AWX jobs for a specific host by name
+      parameters:
+      - description: Host name
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              additionalProperties: true
+              type: object
+            type: array
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Host not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Get AWX jobs for a host
+      tags:
+      - hosts
+  /hosts/{name}/awx-jobs/{jobID}/logs:
+    get:
+      consumes:
+      - application/json
+      description: Get logs for a specific AWX job of a host
+      parameters:
+      - description: Host name
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: AWX Job ID
+        in: path
+        name: jobID
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+        "400":
+          description: Bad request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Host or job not found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Server error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Get logs for a specific AWX job
+      tags:
+      - hosts
   /hosts/{name}/disable/{service}:
     post:
       consumes:
@@ -1035,6 +1288,72 @@ paths:
       summary: Enable component
       tags:
       - hosts
+  /hosts/{name}/health:
+    get:
+      description: |-
+        Retrieves health data from the database for a given hostname.
+        For the Monokit server itself, if data is not found in the database, it may attempt to collect it directly from local providers.
+      parameters:
+      - description: Hostname
+        in: path
+        name: name
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Aggregated health data
+          schema:
+            additionalProperties: true
+            type: object
+        "404":
+          description: Host not found
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Get aggregated health data for a host
+      tags:
+      - Health
+  /hosts/{name}/health/{tool}:
+    get:
+      description: Retrieves health data from a specific registered provider for a
+        given hostname and tool name.
+      parameters:
+      - description: Hostname
+        in: path
+        name: name
+        required: true
+        type: string
+      - description: Health tool name
+        in: path
+        name: tool
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Health data for the specified tool
+          schema: {}
+        "404":
+          description: Host not found or Tool not found
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/common.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Get specific tool health data for a host
+      tags:
+      - Health
   /hosts/{name}/updateTo/{version}:
     post:
       consumes:
@@ -1179,6 +1498,10 @@ securityDefinitions:
     in: header
     name: Authorization
     type: apiKey
+  KeycloakAuth:
+    authorizationUrl: https://keycloak.example.com/auth/realms/your-realm/protocol/openid-connect/auth
+    flow: implicit
+    type: oauth2
 swagger: "2.0"
 tags:
 - description: Host management operations
