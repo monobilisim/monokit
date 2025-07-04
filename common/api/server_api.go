@@ -2025,7 +2025,7 @@ func getHostAwxJobs(db *gorm.DB) gin.HandlerFunc {
 // @Produce json
 // @Param name path string true "Host name"
 // @Param jobID path integer true "AWX Job ID"
-// @Success 200 {object} map[string.interface{}
+// @Success 200 {object} map[string]interface{}
 // @Failure 400 {object} map[string]string "Bad request"
 // @Failure 404 {object} map[string]string "Host or job not found"
 // @Failure 500 {object} map[string]string "Server error"
@@ -2140,7 +2140,7 @@ func getHostAwxJobLogs(db *gorm.DB) gin.HandlerFunc {
 // @Produce json
 // @Param name path string true "Host name"
 // @Param templateID path integer true "Template ID"
-// @Success 200 {object} map[string.interface{} "Job template details"
+// @Success 200 {object} map[string]interface{} "Job template details"
 // @Failure 400 {object} map[string]string "Bad request"
 // @Failure 404 {object} map[string]string "Host or template not found"
 // @Failure 500 {object} map[string]string "Server error"
@@ -2280,7 +2280,7 @@ func getAwxJobTemplateDetails(db *gorm.DB) gin.HandlerFunc {
 // @Accept json
 // @Produce json
 // @Param name path string true "Host name"
-// @Success 200 {array} map[string.interface{} "List of job templates"
+// @Success 200 {array} map[string]interface{} "List of job templates"
 // @Failure 400 {object} map[string]string "Bad request"
 // @Failure 404 {object} map[string]string "Host not found"
 // @Failure 500 {object} map[string]string "Server error"
@@ -3185,7 +3185,7 @@ func filterLogsForHost(rawLogs string, hostname string) string {
 // @Produce json
 // @Param name path string true "Host name"
 // @Param service path string true "Service name"
-// @Success 200 {object} map[string.string
+// @Success 200 {object} map[string]string
 // @Router /hosts/{name}/enable/{service} [post]
 func enableComponent(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -3244,7 +3244,7 @@ func enableComponent(db *gorm.DB) gin.HandlerFunc {
 // @Produce json
 // @Param name path string true "Host name"
 // @Param service path string true "Service name"
-// @Success 200 {object} map[string.string
+// @Success 200 {object} map[string]string
 // @Router /hosts/{name}/disable/{service} [post]
 func disableComponent(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -3295,7 +3295,7 @@ func disableComponent(db *gorm.DB) gin.HandlerFunc {
 // @Produce json
 // @Param name path string true "Host name"
 // @Param service path string true "Service name"
-// @Success 200 {object} map[string.string
+// @Success 200 {object} map[string]string
 // @Router /hosts/{name}/{service} [get]
 func getComponentStatus() gin.HandlerFunc {
 	return func(c *gin.Context) {
@@ -3340,7 +3340,7 @@ func getComponentStatus() gin.HandlerFunc {
 // @Accept json
 // @Produce json
 // @Param log body APILogRequest true "Log entry"
-// @Success 201 {object} map[string.interface{} "Log entry saved response"
+// @Success 201 {object} map[string]interface{} "Log entry saved response"
 // @Failure 400 {object} map[string]string "Bad request error"
 // @Failure 401 {object} map[string]string "Unauthorized error"
 // @Failure 500 {object} map[string]string "Internal server error"
@@ -3857,7 +3857,7 @@ func getHostHealth(db *gorm.DB, monokitHostname string) gin.HandlerFunc {
 // @Produce json
 // @Param tool path string true "Name of the health tool (e.g., osHealth)"
 // @Param healthData body string true "JSON health data from the tool"
-// @Success 200 {object} SuccessResponse "Data received and stored"
+// @Success 200 {object} interface{} "Data received and stored"
 // @Failure 400 {object} ErrorResponse "Invalid JSON data or missing tool name"
 // @Failure 401 {object} ErrorResponse "Unauthorized (invalid host token)"
 // @Failure 500 {object} ErrorResponse "Internal server error"
