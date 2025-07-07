@@ -236,7 +236,6 @@ func CollectK8sHealthData() *K8sHealthData {
 	// If granular control is needed, this could become a config option.
 	const disableCleanupOrphanedAlarmsInPlugin = false
 	if !disableCleanupOrphanedAlarmsInPlugin {
-		common.LogInfo("Cleaning up orphaned alarm logs...")
 		if err := CleanupOrphanedAlarms(); err != nil { // This CleanupOrphanedAlarms is from k8s.go
 			errMsg := fmt.Sprintf("Error cleaning up orphaned alarms: %v", err)
 			healthData.AddError(errMsg)
