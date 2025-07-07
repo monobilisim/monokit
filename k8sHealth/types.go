@@ -3,9 +3,11 @@
 package k8sHealth
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/monobilisim/monokit/common" // For ConfInit, ConfExists
+	"github.com/spf13/viper"
 )
 
 // K8sHealthProvider implements the health.Provider interface.
@@ -24,14 +26,22 @@ func (p *K8sHealthProvider) Name() string {
 // from other files in the k8sHealth package if they are not already.
 func (p *K8sHealthProvider) Collect(hostname string) (interface{}, error) {
 	// Initialize config if not already done
-	// This uses the global K8sHealthConfig from this types.go file
-	if len(K8sHealthConfig.K8s.Floating_Ips) == 0 && len(K8sHealthConfig.K8s.Ingress_Floating_Ips) == 0 {
+	if !k8sConfigLoaded {
+		common.LogDebug(fmt.Sprintf("Before config load: K8sHealthConfig.Alarm.Enabled=%v", K8sHealthConfig.Alarm.Enabled))
 		if common.ConfExists("k8s") {
-			if err := common.ConfInit("k8s", &K8sHealthConfig); err != nil {
-				// Consider how to handle/log this error, as plugins might not have easy stdout
-				// For now, let it proceed, Collect might fail later if config is crucial and missing
+			common.LogDebug("k8s config file exists, loading...")
+			// Use our clean config loader to avoid global Viper state pollution
+			if err := loadK8sConfig(); err != nil {
+				common.LogError(fmt.Sprintf("Failed to load k8s config: %v", err))
+			} else {
+				common.LogDebug("k8s config loaded successfully")
+				common.LogDebug(fmt.Sprintf("Alarm.Enabled loaded as: %v", K8sHealthConfig.Alarm.Enabled))
 			}
+		} else {
+			common.LogDebug("k8s config file not found")
 		}
+		k8sConfigLoaded = true // Mark as loaded regardless of success/failure to avoid repeated attempts
+		common.LogDebug(fmt.Sprintf("After config load: K8sHealthConfig.Alarm.Enabled=%v", K8sHealthConfig.Alarm.Enabled))
 	}
 
 	// Initialize clientset if not already done.
@@ -54,19 +64,43 @@ func (p *K8sHealthProvider) Collect(hostname string) (interface{}, error) {
 // typically loaded from a YAML file (e.g., k8s.yml).
 type Config struct {
 	K8s struct {
-		Floating_Ips         []string `yaml:"floating_ips"`
-		Ingress_Floating_Ips []string `yaml:"ingress_floating_ips"`
-		EnableCertManager    *bool    `yaml:"enable_cert_manager"` // nil = auto-detect, true/false = force
-		EnableKubeVip        *bool    `yaml:"enable_kube_vip"`     // nil = auto-detect, true/false = force
-	} `yaml:"k8s"`
+		Floating_ips         []string
+		Ingress_floating_ips []string
+		Enable_cert_manager  *bool // nil = auto-detect, true/false = force
+		Enable_kube_vip      *bool // nil = auto-detect, true/false = force
+	}
+
 	Alarm struct {
-		Enabled bool `yaml:"enabled"`
-	} `yaml:"alarm"`
+		Enabled bool
+	}
 }
 
 // K8sHealthConfig is the global instance of the k8sHealth configuration.
 // This will be populated by the plugin's main or init function.
 var K8sHealthConfig Config
+
+// k8sConfigLoaded tracks whether we've attempted to load the config to avoid reloading
+var k8sConfigLoaded bool
+
+// loadK8sConfig loads the k8s configuration using a fresh Viper instance
+// This avoids global Viper state pollution that affects boolean parsing
+func loadK8sConfig() error {
+	v := viper.New()
+	v.SetConfigName("k8s")
+	v.AddConfigPath("/etc/mono")
+	v.SetConfigType("yaml")
+	v.SetDefault("alarm.interval", 3) // Match the default from common.ConfInit
+
+	if err := v.ReadInConfig(); err != nil {
+		return fmt.Errorf("failed to read config: %w", err)
+	}
+
+	if err := v.Unmarshal(&K8sHealthConfig); err != nil {
+		return fmt.Errorf("failed to unmarshal config: %w", err)
+	}
+
+	return nil
+}
 
 // RKE2Info holds the information collected by the RKE2 checker functionality
 // and is used for RKE2-specific health checks within k8sHealth.

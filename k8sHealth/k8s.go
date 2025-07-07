@@ -52,8 +52,8 @@ var Clientset *kubernetes.Clientset
 
 // Helper function to determine if cert-manager should be collected
 func shouldCollectCertManager() bool {
-	if K8sHealthConfig.K8s.EnableCertManager != nil {
-		return *K8sHealthConfig.K8s.EnableCertManager
+	if K8sHealthConfig.K8s.Enable_cert_manager != nil {
+		return *K8sHealthConfig.K8s.Enable_cert_manager
 	}
 	// Auto-detect: check if cert-manager namespace exists
 	return autoDetectCertManager()
@@ -61,8 +61,8 @@ func shouldCollectCertManager() bool {
 
 // Helper function to determine if kube-vip should be collected
 func shouldCollectKubeVip() bool {
-	if K8sHealthConfig.K8s.EnableKubeVip != nil {
-		return *K8sHealthConfig.K8s.EnableKubeVip
+	if K8sHealthConfig.K8s.Enable_kube_vip != nil {
+		return *K8sHealthConfig.K8s.Enable_kube_vip
 	}
 	// Auto-detect: check if kube-vip pods exist
 	return autoDetectKubeVip()
@@ -407,8 +407,8 @@ func CollectRke2IngressNginxHealth() (*Rke2IngressNginxHealth, error) {
 	}
 
 	// Test Ingress Floating IPs
-	if len(K8sHealthConfig.K8s.Ingress_Floating_Ips) > 0 {
-		for _, floatingIp := range K8sHealthConfig.K8s.Ingress_Floating_Ips {
+	if len(K8sHealthConfig.K8s.Ingress_floating_ips) > 0 {
+		for _, floatingIp := range K8sHealthConfig.K8s.Ingress_floating_ips {
 			check := FloatingIPCheck{IP: floatingIp, TestType: "ingress"}
 			// Equivalent of `curl -o /dev/null -s -w "%{http_code}\n" http://$floatingIp`
 			// Using a timeout for the HTTP client
@@ -761,8 +761,8 @@ func CollectKubeVipHealth() (*KubeVipHealth, error) {
 
 	if health.PodsAvailable {
 		alarmCheckUp("kube_vip_pods", "Kube-VIP pods detected in kube-system.", false)
-		if len(K8sHealthConfig.K8s.Floating_Ips) > 0 {
-			for _, floatingIp := range K8sHealthConfig.K8s.Floating_Ips {
+		if len(K8sHealthConfig.K8s.Floating_ips) > 0 {
+			for _, floatingIp := range K8sHealthConfig.K8s.Floating_ips {
 				check := FloatingIPCheck{IP: floatingIp, TestType: "kube-vip"}
 				pinger, err := probing.NewPinger(floatingIp)
 				if err != nil {
@@ -1182,6 +1182,7 @@ func CollectRKE2Information() *RKE2Info {
 }
 
 func alarmCheckUp(service, message string, noInterval bool) {
+	common.LogDebug(fmt.Sprintf("alarmCheckUp ran, service: %s, message: %s, noInterval: %v, K8sHealthConfig.Alarm.Enabled: %v", service, message, noInterval, K8sHealthConfig.Alarm.Enabled))
 	if !K8sHealthConfig.Alarm.Enabled {
 		return
 	}
@@ -1189,6 +1190,7 @@ func alarmCheckUp(service, message string, noInterval bool) {
 }
 
 func alarmCheckDown(service, message string, noInterval bool, customStream, customTopic string) {
+	common.LogDebug(fmt.Sprintf("alarmCheckDown ran, service: %s, message: %s, noInterval: %v, customStream: %s, customTopic: %s, K8sHealthConfig.Alarm.Enabled: %v", service, message, noInterval, customStream, customTopic, K8sHealthConfig.Alarm.Enabled))
 	if !K8sHealthConfig.Alarm.Enabled {
 		return
 	}

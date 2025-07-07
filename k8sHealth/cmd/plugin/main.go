@@ -124,20 +124,13 @@ func main() {
 	if noColorEnv != "1" && noColorEnv != "true" {
 		// Colors are enabled, force TrueColor profile for consistent rendering
 		lipgloss.SetColorProfile(termenv.TrueColor)
-		common.LogDebug("[PLUGIN] Colors enabled, set lipgloss to TrueColor profile")
+		//common.LogDebug("[PLUGIN] Colors enabled, set lipgloss to TrueColor profile")
 	} else {
-		common.LogDebug("[PLUGIN] Colors disabled via MONOKIT_NOCOLOR")
+		//common.LogDebug("[PLUGIN] Colors disabled via MONOKIT_NOCOLOR")
 	}
 
-	if common.ConfExists("k8s") {
-		// Load k8s-specific config into the global K8sHealthConfig var from types.go
-		// common.ConfInit panics on actual error, so we don't check its return value here.
-		// It populates K8sHealthConfig by reference.
-		common.ConfInit("k8s", &k8sHealth.K8sHealthConfig)
-		common.LogDebug("[PLUGIN] k8s config loaded into k8sHealth.K8sHealthConfig")
-	} else {
-		common.LogDebug("k8s config not found, plugin will use default/empty K8sHealthConfig")
-	}
+	// Config loading is now handled in the Collect() method to avoid duplicate loading
+	//common.LogDebug("[PLUGIN] Config will be loaded on first Collect() call")
 
 	pluginMap := map[string]plugin.Plugin{
 		"provider": &HealthPlugin{Impl: k8sHealth.K8sHealthProvider{}},
@@ -150,7 +143,7 @@ func main() {
 		MagicCookieValue: "1",
 	}
 
-	common.LogDebug("[PLUGIN] k8sHealth plugin starting, serving gRPC plugin...")
+	//common.LogDebug("[PLUGIN] k8sHealth plugin starting, serving gRPC plugin...")
 
 	plugin.Serve(&plugin.ServeConfig{
 		HandshakeConfig: handshake,
