@@ -256,7 +256,7 @@ func handleRKE2VersionCheckViaPlugin() {
 				if info.IsMasterNode {
 					// Using existing CreateNews function from this file.
 					// It uses common.Config.Identifier for node identification in news.
-					CreateNews("RKE2 on "+clusterName, oldVersion, currentVersion, false)
+					CreateNews("RKE2", oldVersion, currentVersion, false)
 				} else {
 					common.LogDebug("Skipping news creation (not a master node, or plugin indicated so)")
 				}
