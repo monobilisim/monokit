@@ -24,9 +24,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
-	commonPkg "github.com/monobilisim/monokit/common"
 	"github.com/monobilisim/monokit/common/health"
 	_ "github.com/monobilisim/monokit/docs"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 	"gorm.io/driver/postgres"
@@ -160,7 +160,11 @@ func StartAPIServer(cmd *cobra.Command, args []string) error {
 	monokitHostname, err := os.Hostname()
 	if err != nil {
 		// Log the error but continue, as health fallback might not be critical for all setups
-		commonPkg.LogError(fmt.Sprintf("Failed to get Monokit server hostname: %v. Health check fallback for self may not work as expected.", err))
+		log.Error().
+			Str("component", "api").
+			Str("operation", "get_hostname").
+			Err(err).
+			Msg("Failed to get Monokit server hostname. Health check fallback for self may not work as expected.")
 		monokitHostname = "" // Set to empty or a placeholder if preferred
 	}
 
@@ -967,12 +971,19 @@ func createAwxHost(db *gorm.DB) gin.HandlerFunc {
 		// Extract AWX host ID
 		awxHostID, ok := awxHostResponse["id"].(float64)
 		if !ok {
-			commonPkg.LogDebug(fmt.Sprintf("Warning: Couldn't extract AWX host ID from response: %+v", awxHostResponse))
+			log.Error().
+				Str("component", "api").
+				Str("operation", "extract_awx_host_id").
+				Msg("Warning: Couldn't extract AWX host ID from response")
 		}
 
 		// We always need to create a minimal entry in the local database
 		// This is necessary for the API to find the host for AWX job execution
-		commonPkg.LogDebug(fmt.Sprintf("Creating local database entry for host: %s", requestData.Name))
+		log.Debug().
+			Str("component", "api").
+			Str("operation", "create_local_database_entry").
+			Str("host", requestData.Name).
+			Msg("Creating local database entry for host")
 
 		// Create the host in the local database
 		localHost := Host{
@@ -992,7 +1003,7 @@ func createAwxHost(db *gorm.DB) gin.HandlerFunc {
 
 		// Check if host already exists
 		var existingHost Host
-		result := db.Where("name = ?", localHost.Name).First(&existingHost)
+		result = db.Where("name = ?", localHost.Name).First(&existingHost)
 		if result.Error == nil {
 			// Host already exists, update it
 			fmt.Printf("Host already exists in local DB, updating: %s (ID=%d)\n",
@@ -2566,7 +2577,11 @@ func getAwxWorkflowTemplatesGlobal(db *gorm.DB) gin.HandlerFunc {
 func executeAwxJob(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		hostname := c.Param("name")
-		commonPkg.LogDebug(fmt.Sprintf("Executing AWX job for host: %s", hostname))
+		log.Debug().
+			Str("component", "api").
+			Str("operation", "execute_awx_job").
+			Str("host", hostname).
+			Msg("Executing AWX job for host")
 
 		// Check if host exists
 		var host Host
@@ -2622,7 +2637,12 @@ func executeAwxJob(db *gorm.DB) gin.HandlerFunc {
 			// Check if we have a template ID for this name in the configuration
 			if ServerConfig.Awx.TemplateIDs != nil {
 				if id, exists := ServerConfig.Awx.TemplateIDs[requestData.TemplateName]; exists {
-					commonPkg.LogDebug(fmt.Sprintf("Found template ID %d for name '%s' in configuration", id, requestData.TemplateName))
+					log.Debug().
+						Str("component", "api").
+						Str("operation", "find_template_id").
+						Str("template_name", requestData.TemplateName).
+						Int("template_id", id).
+						Msg("Found template ID for name")
 					requestData.TemplateID = id
 				} else {
 					// Check for common aliases
@@ -2631,7 +2651,12 @@ func executeAwxJob(db *gorm.DB) gin.HandlerFunc {
 					// Try some common alternative names
 					if templateName == "client" || templateName == "monokit-client" {
 						if id, exists := ServerConfig.Awx.TemplateIDs["manual-install-monokit-client"]; exists {
-							commonPkg.LogDebug(fmt.Sprintf("Using template ID %d for 'manual-install-monokit-client'", id))
+							log.Debug().
+								Str("component", "api").
+								Str("operation", "find_template_id").
+								Str("template_name", "manual-install-monokit-client").
+								Int("template_id", id).
+								Msg("Found template ID for alias")
 							requestData.TemplateID = id
 						}
 					}
@@ -2640,7 +2665,11 @@ func executeAwxJob(db *gorm.DB) gin.HandlerFunc {
 
 			// If we still don't have a template ID, report an error
 			if requestData.TemplateID <= 0 {
-				commonPkg.LogDebug(fmt.Sprintf("No template ID found for name: %s", requestData.TemplateName))
+				log.Debug().
+					Str("component", "api").
+					Str("operation", "no_template_id").
+					Str("template_name", requestData.TemplateName).
+					Msg("No template ID found for name")
 
 				// Provide a helpful message listing available templates
 				var availableTemplates []string
@@ -2660,10 +2689,17 @@ func executeAwxJob(db *gorm.DB) gin.HandlerFunc {
 		// If no specific template was provided, use "manual-install-monokit-client" by default
 		if requestData.TemplateID <= 0 && requestData.TemplateName == "" {
 			if id, exists := ServerConfig.Awx.TemplateIDs["manual-install-monokit-client"]; exists {
-				commonPkg.LogDebug(fmt.Sprintf("Using default 'manual-install-monokit-client' template ID: %d", id))
+				log.Debug().
+					Str("component", "api").
+					Str("operation", "use_default_template").
+					Int("template_id", id).
+					Msg("Using default 'manual-install-monokit-client' template ID")
 				requestData.TemplateID = id
 			} else {
-				commonPkg.LogDebug("No template ID configured for 'manual-install-monokit-client'")
+				log.Debug().
+					Str("component", "api").
+					Str("operation", "no_default_template").
+					Msg("No template ID configured for 'manual-install-monokit-client'")
 
 				// Provide a helpful message listing available templates
 				var availableTemplates []string
@@ -2682,12 +2718,20 @@ func executeAwxJob(db *gorm.DB) gin.HandlerFunc {
 
 		// Validate we have a template ID
 		if requestData.TemplateID <= 0 {
-			commonPkg.LogDebug("No template ID or name provided")
+			log.Debug().
+				Str("component", "api").
+				Str("operation", "no_template_id").
+				Msg("No template ID or name provided")
 			c.JSON(http.StatusBadRequest, gin.H{"error": "No template_id or template_name provided"})
 			return
 		}
 
-		commonPkg.LogDebug(fmt.Sprintf("Will execute template_id=%d for host %s", requestData.TemplateID, hostname))
+		log.Debug().
+			Str("component", "api").
+			Str("operation", "execute_template").
+			Int("template_id", requestData.TemplateID).
+			Str("host", hostname).
+			Msg("Will execute template_id for host")
 
 		// Check host IP address for local network
 		if host.IpAddress == "" {
@@ -2823,15 +2867,27 @@ func executeAwxJob(db *gorm.DB) gin.HandlerFunc {
 		// AWX API endpoint for launching a job template - ensure URL is properly formatted
 		awxURL := strings.TrimRight(ServerConfig.Awx.Url, "/")
 		apiURL := fmt.Sprintf("%s/api/v2/job_templates/%d/launch/", awxURL, requestData.TemplateID)
-		commonPkg.LogDebug(fmt.Sprintf("Calling AWX API: %s", apiURL))
+		log.Debug().
+			Str("component", "api").
+			Str("operation", "call_awx_api").
+			Str("api_url", apiURL).
+			Msg("Calling AWX API")
 
 		// Create the request with complete debugging
-		commonPkg.LogDebug(fmt.Sprintf("Preparing to execute AWX job template ID: %d for host: %s", requestData.TemplateID, hostname))
-		commonPkg.LogDebug(fmt.Sprintf("AWX API URL: %s", apiURL))
-		commonPkg.LogDebug(fmt.Sprintf("Request payload: %s", string(payloadBytes)))
+		log.Debug().
+			Str("component", "api").
+			Str("operation", "prepare_request").
+			Str("api_url", apiURL).
+			Str("request_payload", string(payloadBytes)).
+			Msg("Preparing to execute AWX job template")
 
 		// Simple log message about which template we're using
-		commonPkg.LogDebug(fmt.Sprintf("Using template ID %d from configuration", requestData.TemplateID))
+		log.Debug().
+			Str("component", "api").
+			Str("operation", "use_template").
+			Int("template_id", requestData.TemplateID).
+			Str("host", hostname).
+			Msg("Using template ID from configuration")
 
 		req, err := http.NewRequest("POST", apiURL, bytes.NewBuffer(payloadBytes))
 		if err != nil {
@@ -3759,7 +3815,11 @@ func getHourlyLogStats(db *gorm.DB) gin.HandlerFunc {
 		// Query logs from the last hour
 		var logs []HostLog
 		if err := db.Where("timestamp >= ? AND timestamp <= ? AND deleted_at IS NULL", oneHourAgo, now).Find(&logs).Error; err != nil {
-			commonPkg.LogDebug(fmt.Sprintf("Error fetching hourly log statistics: %v", err))
+			log.Error().
+				Str("component", "logs").
+				Str("operation", "get_hourly_stats").
+				Err(err).
+				Msg("Error fetching hourly log statistics")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve hourly log statistics"})
 			return
 		}
@@ -3804,7 +3864,11 @@ func getHealthTools(db *gorm.DB) gin.HandlerFunc {
 		// Get tools from the database
 		var dbTools []string
 		if err := db.Model(&HostHealthData{}).Distinct("tool_name").Pluck("tool_name", &dbTools).Error; err != nil {
-			commonPkg.LogError(fmt.Sprintf("Error fetching distinct tool names from database: %v", err))
+			log.Error().
+				Str("component", "health").
+				Str("operation", "get_tools").
+				Err(err).
+				Msg("Error fetching distinct tool names from database")
 			// We can still return registered tools even if DB query fails
 		} else {
 			for _, tool := range dbTools {
@@ -3851,7 +3915,12 @@ func getHostHealth(db *gorm.DB, monokitHostname string) gin.HandlerFunc {
 		results := make(map[string]interface{})
 		var healthDataEntries []HostHealthData
 		if err := db.Where("host_name = ?", hostName).Find(&healthDataEntries).Error; err != nil {
-			commonPkg.LogError(fmt.Sprintf("Error fetching health data for host %s from DB: %v", hostName, err))
+			log.Error().
+				Str("component", "health").
+				Str("operation", "get_host_health").
+				Str("host", hostName).
+				Err(err).
+				Msg("Error fetching health data for host from DB")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve health data from database"})
 			return
 		}
@@ -3860,7 +3929,13 @@ func getHostHealth(db *gorm.DB, monokitHostname string) gin.HandlerFunc {
 			var dataContent interface{}
 			if err := json.Unmarshal([]byte(entry.DataJSON), &dataContent); err != nil {
 				results[entry.ToolName] = gin.H{"error": fmt.Sprintf("Error unmarshalling health data for tool %s: %v", entry.ToolName, err)}
-				commonPkg.LogError(fmt.Sprintf("Error unmarshalling health data for host %s, tool %s: %v", hostName, entry.ToolName, err))
+				log.Error().
+					Str("component", "health").
+					Str("operation", "unmarshal_health_data").
+					Str("host", hostName).
+					Str("tool", entry.ToolName).
+					Err(err).
+					Msg("Error unmarshalling health data")
 			} else {
 				results[entry.ToolName] = dataContent
 			}
@@ -3882,7 +3957,13 @@ func getHostHealth(db *gorm.DB, monokitHostname string) gin.HandlerFunc {
 						defer mu.Unlock()
 						if err != nil {
 							results[name] = gin.H{"error": fmt.Sprintf("Error collecting local %s data: %v", name, err)}
-							commonPkg.LogError(fmt.Sprintf("Error collecting local %s health data for host %s: %v", name, hostName, err))
+							log.Error().
+								Str("component", "health").
+								Str("operation", "collect_local_health").
+								Str("host", hostName).
+								Str("tool", name).
+								Err(err).
+								Msg("Error collecting local health data")
 						} else {
 							results[name] = data
 						}
@@ -3955,7 +4036,12 @@ func postHostHealth(db *gorm.DB) gin.HandlerFunc {
 				c.JSON(http.StatusNotFound, gin.H{"error": "Host not found in database. Cannot submit health data."})
 				return
 			}
-			commonPkg.LogError(fmt.Sprintf("Error fetching host %s for health data submission: %v", hostName.(string), err))
+			log.Error().
+				Str("component", "health").
+				Str("operation", "post_host_health").
+				Str("host", hostName.(string)).
+				Err(err).
+				Msg("Error fetching host for health data submission")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to verify host existence"})
 			return
 		}
@@ -3978,18 +4064,36 @@ func postHostHealth(db *gorm.DB) gin.HandlerFunc {
 			existingData.DataJSON = string(jsonData)
 			existingData.LastUpdated = time.Now() // GORM autoUpdateTime might handle this if configured
 			if err := db.Save(&existingData).Error; err != nil {
-				commonPkg.LogError(fmt.Sprintf("Error updating host health data for %s, tool %s: %v", hostName.(string), toolName, err))
+				log.Error().
+					Str("component", "health").
+					Str("operation", "update_health_data").
+					Str("host", hostName.(string)).
+					Str("tool", toolName).
+					Err(err).
+					Msg("Error updating host health data")
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update health data"})
 				return
 			}
 		} else if err == gorm.ErrRecordNotFound { // Record not found, create it
 			if err := db.Create(&healthData).Error; err != nil {
-				commonPkg.LogError(fmt.Sprintf("Error creating host health data for %s, tool %s: %v", hostName.(string), toolName, err))
+				log.Error().
+					Str("component", "health").
+					Str("operation", "create_health_data").
+					Str("host", hostName.(string)).
+					Str("tool", toolName).
+					Err(err).
+					Msg("Error creating host health data")
 				c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create health data"})
 				return
 			}
 		} else { // Other DB error
-			commonPkg.LogError(fmt.Sprintf("Error checking for existing host health data for %s, tool %s: %v", hostName.(string), toolName, err))
+			log.Error().
+				Str("component", "health").
+				Str("operation", "check_health_data").
+				Str("host", hostName.(string)).
+				Str("tool", toolName).
+				Err(err).
+				Msg("Error checking for existing host health data")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Database error while checking health data"})
 			return
 		}
@@ -4031,7 +4135,13 @@ func getHostToolHealth(db *gorm.DB, monokitHostname string) gin.HandlerFunc {
 		if err == nil { // Data found in DB
 			var dataContent interface{}
 			if unmarshalErr := json.Unmarshal([]byte(healthDataEntry.DataJSON), &dataContent); unmarshalErr != nil {
-				commonPkg.LogError(fmt.Sprintf("Error unmarshalling health data for host %s, tool %s: %v", hostName, toolName, unmarshalErr))
+				log.Error().
+					Str("component", "health").
+					Str("operation", "unmarshal_tool_health").
+					Str("host", hostName).
+					Str("tool", toolName).
+					Err(unmarshalErr).
+					Msg("Error unmarshalling health data")
 				c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Error unmarshalling health data for tool %s", toolName)})
 				return
 			}
@@ -4040,7 +4150,13 @@ func getHostToolHealth(db *gorm.DB, monokitHostname string) gin.HandlerFunc {
 		}
 
 		if err != gorm.ErrRecordNotFound { // Some other DB error
-			commonPkg.LogError(fmt.Sprintf("Error fetching health data for host %s, tool %s from DB: %v", hostName, toolName, err))
+			log.Error().
+				Str("component", "health").
+				Str("operation", "get_tool_health").
+				Str("host", hostName).
+				Str("tool", toolName).
+				Err(err).
+				Msg("Error fetching health data from DB")
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve health data from database"})
 			return
 		}
@@ -4055,7 +4171,13 @@ func getHostToolHealth(db *gorm.DB, monokitHostname string) gin.HandlerFunc {
 
 			data, collectErr := provider.Collect(hostName)
 			if collectErr != nil {
-				commonPkg.LogError(fmt.Sprintf("Error collecting local %s health data for host %s: %v", toolName, hostName, collectErr))
+				log.Error().
+					Str("component", "health").
+					Str("operation", "collect_local_tool_health").
+					Str("host", hostName).
+					Str("tool", toolName).
+					Err(collectErr).
+					Msg("Error collecting local health data")
 				c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Error collecting local %s data: %v", toolName, collectErr)})
 				return
 			}
