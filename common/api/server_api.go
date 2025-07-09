@@ -1003,7 +1003,7 @@ func createAwxHost(db *gorm.DB) gin.HandlerFunc {
 
 		// Check if host already exists
 		var existingHost Host
-		result = db.Where("name = ?", localHost.Name).First(&existingHost)
+		result := db.Where("name = ?", localHost.Name).First(&existingHost)
 		if result.Error == nil {
 			// Host already exists, update it
 			fmt.Printf("Host already exists in local DB, updating: %s (ID=%d)\n",

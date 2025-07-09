@@ -47,8 +47,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/monobilisim/monokit/common"
-	commonPkg "github.com/monobilisim/monokit/common"
 	_ "github.com/monobilisim/monokit/docs"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	swaggerFiles "github.com/swaggo/files"
@@ -131,7 +131,11 @@ func ServerMain(cmd *cobra.Command, args []string) {
 
 			monokitHostname, err := os.Hostname()
 			if err != nil {
-				commonPkg.LogError(fmt.Sprintf("Failed to get Monokit server hostname in BuildRouter: %v. Health check fallback for self may not work as expected.", err))
+				log.Error().
+					Str("component", "api").
+					Str("operation", "get_hostname").
+					Err(err).
+					Msg("Failed to get Monokit server hostname. Health check fallback for self may not work as expected.")
 				monokitHostname = "" // Set to empty or a placeholder
 			}
 
