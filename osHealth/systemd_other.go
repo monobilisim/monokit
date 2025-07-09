@@ -3,7 +3,6 @@
 package osHealth
 
 import (
-	"github.com/monobilisim/monokit/common"
 	"github.com/rs/zerolog/log"
 )
 
