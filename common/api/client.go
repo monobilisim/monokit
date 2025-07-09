@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/monobilisim/monokit/common"
+	"github.com/rs/zerolog/log"
 	"github.com/shirou/gopsutil/v4/cpu"
 	"github.com/shirou/gopsutil/v4/host"
 	"github.com/shirou/gopsutil/v4/mem"
@@ -59,15 +60,15 @@ type AdminGroupResponse struct {
 }
 
 func GetServiceStatus(serviceName string) (bool, string) {
-	common.LogDebug("Checking service status for: " + serviceName)
+	log.Debug().Str("serviceName", serviceName).Msg("Checking service status")
 	apiVersion := "1"
 
 	req, err := http.NewRequest("GET", ClientConf.URL+"/api/v"+apiVersion+"/hosts/"+getIdentifier()+"/"+serviceName, nil)
 
-	common.LogDebug("Sending GET request to " + ClientConf.URL + "/api/v" + apiVersion + "/hosts/" + getIdentifier() + "/" + serviceName)
+	log.Debug().Str("url", ClientConf.URL+"/api/v"+apiVersion+"/hosts/"+getIdentifier()+"/"+serviceName).Msg("Sending GET request")
 
 	if err != nil {
-		common.LogError(err.Error())
+		log.Error().Err(err).Msg("Failed to create GET request")
 		return true, ""
 	}
 
@@ -82,7 +83,7 @@ func GetServiceStatus(serviceName string) (bool, string) {
 	resp, err := client.Do(req)
 
 	if err != nil {
-		common.LogError(err.Error())
+		log.Error().Err(err).Msg("Failed to send GET request")
 		return true, ""
 	}
 
@@ -92,7 +93,7 @@ func GetServiceStatus(serviceName string) (bool, string) {
 	var serviceStatus map[string]interface{}
 	json.NewDecoder(resp.Body).Decode(&serviceStatus)
 
-	common.LogDebug("Service status response: " + fmt.Sprintf("%v", serviceStatus))
+	log.Debug().Str("serviceStatus", fmt.Sprintf("%v", serviceStatus)).Msg("Service status response")
 
 	wantsUpdateTo := ""
 	if serviceStatus["wantsUpdateTo"] != nil {
@@ -149,7 +150,7 @@ func WrapperGetServiceStatus(serviceName string) {
 func GetCPUCores() int {
 	cpuCount, err := cpu.Counts(true)
 	if err != nil {
-		common.LogError(err.Error())
+		log.Error().Err(err).Msg("Failed to get CPU cores")
 		return 0
 	}
 	return cpuCount
@@ -158,7 +159,7 @@ func GetCPUCores() int {
 func GetRAM() string {
 	memory, err := mem.VirtualMemory()
 	if err != nil {
-		common.LogError(err.Error())
+		log.Error().Err(err).Msg("Failed to get RAM")
 		return ""
 	}
 
@@ -168,7 +169,7 @@ func GetRAM() string {
 func GetIP() string {
 	interfaces, err := netInterfacesFn()
 	if err != nil {
-		common.LogError(err.Error())
+		log.Error().Err(err).Msg("Failed to get IP")
 		return ""
 	}
 
@@ -184,7 +185,7 @@ func GetIP() string {
 func GetOS() string {
 	info, err := host.Info()
 	if err != nil {
-		common.LogError(err.Error())
+		log.Error().Err(err).Msg("Failed to get OS")
 		return ""
 	}
 
@@ -195,7 +196,7 @@ func GetReq(apiVersion string) (map[string]interface{}, error) {
 	req, err := http.NewRequest("GET", ClientConf.URL+"/api/v"+apiVersion+"/hosts/"+getIdentifier(), nil)
 
 	if err != nil {
-		common.LogError(err.Error())
+		log.Error().Err(err).Msg("Failed to create GET request")
 		return nil, err
 	}
 
@@ -204,7 +205,7 @@ func GetReq(apiVersion string) (map[string]interface{}, error) {
 	resp, err := client.Do(req)
 
 	if err != nil {
-		common.LogError(err.Error())
+		log.Error().Err(err).Msg("Failed to send GET request")
 		return nil, err
 	}
 
@@ -282,11 +283,11 @@ func SendReq(apiVersion string) {
 	hostJson, _ := json.Marshal(host)
 
 	// Send the response to the API
-	common.LogDebug("Preparing to send POST request to " + ClientConf.URL + "/api/v" + apiVersion + "/hosts")
+	log.Debug().Msg("Preparing to send POST request to " + ClientConf.URL + "/api/v" + apiVersion + "/hosts")
 	req, err := http.NewRequest("POST", ClientConf.URL+"/api/v"+apiVersion+"/hosts", bytes.NewBuffer(hostJson))
 
 	if err != nil {
-		common.LogError(err.Error())
+		log.Error().Err(err).Msg("Failed to create POST request")
 		return
 	}
 
@@ -303,13 +304,13 @@ func SendReq(apiVersion string) {
 	resp, err := client.Do(req)
 
 	if err != nil {
-		common.LogError(err.Error())
+		log.Error().Err(err).Msg("Failed to send POST request")
 		return
 	}
 
 	defer resp.Body.Close()
 
-	common.LogDebug("POST request completed, decoding response...")
+	log.Debug().Msg("POST request completed, decoding response...")
 	// Handle the response
 	var response struct {
 		Host   *Host  `json:"host"`
@@ -323,7 +324,7 @@ func SendReq(apiVersion string) {
 		return
 	}
 
-	common.LogDebug("Response body: " + string(body))
+	log.Debug().Str("body", string(body)).Msg("Response body")
 
 	if err := json.Unmarshal(body, &response); err != nil {
 		fmt.Printf("Error decoding response: %v\nBody: %s\n", err, string(body))
@@ -367,7 +368,7 @@ func GetHosts(apiVersion string, hostName string) []Host {
 		req, err := http.NewRequest("GET", ClientConf.URL+"/api/v"+apiVersion+"/hosts/"+hostName, nil)
 
 		if err != nil {
-			common.LogError(err.Error())
+			log.Error().Err(err).Msg("Failed to create GET request")
 			return nil
 		}
 		common.AddUserAgent(req)
@@ -378,7 +379,7 @@ func GetHosts(apiVersion string, hostName string) []Host {
 		resp, err := client.Do(req)
 
 		if err != nil {
-			common.LogError(err.Error())
+			log.Error().Err(err).Msg("Failed to send GET request")
 			return nil
 		}
 
@@ -393,7 +394,7 @@ func GetHosts(apiVersion string, hostName string) []Host {
 		req, err := http.NewRequest("GET", ClientConf.URL+"/api/v"+apiVersion+"/hosts", nil)
 
 		if err != nil {
-			common.LogError(err.Error())
+			log.Error().Err(err).Msg("Failed to create GET request")
 			return nil
 		}
 
@@ -404,7 +405,7 @@ func GetHosts(apiVersion string, hostName string) []Host {
 		resp, err := client.Do(req)
 
 		if err != nil {
-			common.LogError(err.Error())
+			log.Error().Msg(err.Error())
 			return nil
 		}
 
@@ -458,7 +459,7 @@ func SendUpdateTo(apiVersion string, hostName string, versionTo string) {
 	req, err := http.NewRequest("POST", ClientConf.URL+"/api/v"+apiVersion+"/hosts/"+hostName+"/updateTo/"+versionTo, nil)
 
 	if err != nil {
-		common.LogError(err.Error())
+		log.Error().Err(err).Msg("Failed to create POST request")
 		return
 	}
 
@@ -469,7 +470,7 @@ func SendUpdateTo(apiVersion string, hostName string, versionTo string) {
 	resp, err := client.Do(req)
 
 	if err != nil {
-		common.LogError(err.Error())
+		log.Error().Err(err).Msg("Failed to send POST request")
 		return
 	}
 
@@ -484,7 +485,7 @@ func SendDisable(apiVersion string, hostName string, component string) {
 	req, err := http.NewRequest("POST", ClientConf.URL+"/api/v"+apiVersion+"/hosts/"+hostName+"/disable/"+component, nil)
 
 	if err != nil {
-		common.LogError(err.Error())
+		log.Error().Err(err).Msg("Failed to create POST request")
 		return
 	}
 
@@ -495,7 +496,7 @@ func SendDisable(apiVersion string, hostName string, component string) {
 	resp, err := client.Do(req)
 
 	if err != nil {
-		common.LogError(err.Error())
+		log.Error().Err(err).Msg("Failed to send POST request")
 		return
 	}
 
@@ -519,7 +520,7 @@ func SendEnable(apiVersion string, hostName string, component string) {
 	req, err := http.NewRequest("POST", ClientConf.URL+"/api/v"+apiVersion+"/hosts/"+hostName+"/enable/"+component, nil)
 
 	if err != nil {
-		common.LogError(err.Error())
+		log.Error().Err(err).Msg("Failed to create POST request")
 		return
 	}
 
@@ -530,7 +531,7 @@ func SendEnable(apiVersion string, hostName string, component string) {
 	resp, err := client.Do(req)
 
 	if err != nil {
-		common.LogError(err.Error())
+		log.Error().Err(err).Msg("Failed to send POST request")
 		return
 	}
 
@@ -1229,11 +1230,11 @@ func SyncConfig(cmd *cobra.Command, args []string) {
 
 	// Ensure config directory exists
 	if err := os.MkdirAll(configDir, 0755); err != nil {
-		common.LogError("Failed to create config directory: " + err.Error())
+		log.Error().Err(err).Msg("Failed to create config directory")
 		return
 	}
 
-	common.LogDebug("SyncConfig: Starting configuration sync for host " + hostname)
+	log.Debug().Str("hostname", hostname).Msg("SyncConfig: Starting configuration sync for host")
 
 	// Get host key for authentication
 	keyPath := filepath.Join("/var/lib/mono/api/hostkey", hostname)
@@ -1243,7 +1244,7 @@ func SyncConfig(cmd *cobra.Command, args []string) {
 	url := ClientConf.URL + "/api/v" + apiVersion + "/hosts/" + hostname + "/config"
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		common.LogError("Error creating GET request: " + err.Error())
+		log.Error().Err(err).Msg("Error creating GET request")
 		return
 	}
 
@@ -1253,24 +1254,24 @@ func SyncConfig(cmd *cobra.Command, args []string) {
 
 	resp, err := client.Do(req)
 	if err != nil {
-		common.LogError("Error retrieving remote configs: " + err.Error())
+		log.Error().Err(err).Msg("Error retrieving remote configs")
 		return
 	}
 	defer resp.Body.Close()
 
 	var remoteConfigs map[string]string
 	if err := json.NewDecoder(resp.Body).Decode(&remoteConfigs); err != nil {
-		common.LogError("Error decoding remote configs: " + err.Error())
+		log.Error().Err(err).Msg("Error decoding remote configs")
 		return
 	}
 
-	common.LogDebug(fmt.Sprintf("Retrieved %d remote config file(s)", len(remoteConfigs)))
+	log.Debug().Int("count", len(remoteConfigs)).Msg("Retrieved remote config file(s)")
 
 	// Write remote configs to local files
 	for filename, content := range remoteConfigs {
 		localPath := filepath.Join(configDir, filename)
 		if err := os.WriteFile(localPath, []byte(content), 0644); err != nil {
-			common.LogError(fmt.Sprintf("Error writing config file %s: %s", filename, err.Error()))
+			log.Error().Str("filename", filename).Err(err).Msg("Error writing config file")
 			return
 		}
 	}
@@ -1279,7 +1280,7 @@ func SyncConfig(cmd *cobra.Command, args []string) {
 	localConfigs := make(map[string]string)
 	files, err := os.ReadDir(configDir)
 	if err != nil {
-		common.LogError("Error reading config directory: " + err.Error())
+		log.Error().Err(err).Msg("Error reading config directory")
 		return
 	}
 
@@ -1287,7 +1288,7 @@ func SyncConfig(cmd *cobra.Command, args []string) {
 		if !file.IsDir() {
 			data, err := os.ReadFile(filepath.Join(configDir, file.Name()))
 			if err != nil {
-				common.LogError(fmt.Sprintf("Error reading config file %s: %s", file.Name(), err.Error()))
+				log.Error().Str("filename", file.Name()).Err(err).Msg("Error reading config file")
 				return
 			}
 			localConfigs[file.Name()] = string(data)
@@ -1297,13 +1298,13 @@ func SyncConfig(cmd *cobra.Command, args []string) {
 	// POST local configs to server
 	payload, err := json.Marshal(localConfigs)
 	if err != nil {
-		common.LogError("Error marshaling config data: " + err.Error())
+		log.Error().Err(err).Msg("Error marshaling config data")
 		return
 	}
 
 	postReq, err := http.NewRequest("POST", url, bytes.NewBuffer(payload))
 	if err != nil {
-		common.LogError("Error creating POST request: " + err.Error())
+		log.Error().Err(err).Msg("Error creating POST request")
 		return
 	}
 
@@ -1314,7 +1315,7 @@ func SyncConfig(cmd *cobra.Command, args []string) {
 
 	postResp, err := client.Do(postReq)
 	if err != nil {
-		common.LogError("Error sending local configs: " + err.Error())
+		log.Error().Err(err).Msg("Error sending local configs")
 		return
 	}
 	defer postResp.Body.Close()
@@ -1322,7 +1323,7 @@ func SyncConfig(cmd *cobra.Command, args []string) {
 	// Read response body to parse success/error message
 	bodyBytes, err := io.ReadAll(postResp.Body)
 	if err != nil {
-		common.LogError("Error reading response body: " + err.Error())
+		log.Error().Err(err).Msg("Error reading response body")
 		return
 	}
 
@@ -1337,7 +1338,7 @@ func SyncConfig(cmd *cobra.Command, args []string) {
 				return
 			}
 		}
-		common.LogError("Server error during sync: " + string(bodyBytes))
+		log.Error().Str("body", string(bodyBytes)).Msg("Server error during sync")
 		return
 	}
 
@@ -1582,7 +1583,7 @@ func LogsCmd(cmd *cobra.Command, args []string) {
 	// Send request to API
 	resp, err := SendGenericRequest("GET", query, nil)
 	if err != nil {
-		common.LogError("Failed to fetch logs: " + err.Error())
+		log.Error().Err(err).Msg("Failed to fetch logs")
 		common.RemoveLockfile()
 		os.Exit(1)
 	}
@@ -1591,7 +1592,7 @@ func LogsCmd(cmd *cobra.Command, args []string) {
 	// Read response body
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		common.LogError("Failed to read response: " + err.Error())
+		log.Error().Err(err).Msg("Failed to read response")
 		common.RemoveLockfile()
 		os.Exit(1)
 	}
@@ -1601,10 +1602,10 @@ func LogsCmd(cmd *cobra.Command, args []string) {
 		// Try to parse error as JSON
 		var errorResp map[string]string
 		if err := json.Unmarshal(body, &errorResp); err == nil && errorResp["error"] != "" {
-			common.LogError("API error: " + errorResp["error"])
+			log.Error().Str("error", errorResp["error"]).Msg("API error")
 		} else {
 			// If not JSON, print as plain text
-			common.LogError("API error: " + string(body))
+			log.Error().Str("error", string(body)).Msg("API error")
 		}
 		common.RemoveLockfile()
 		os.Exit(1)
@@ -1612,7 +1613,9 @@ func LogsCmd(cmd *cobra.Command, args []string) {
 
 	// Try to parse as JSON and pretty print
 	var prettyJSON bytes.Buffer
-	if err := json.Indent(&prettyJSON, body, "", "  "); err != nil {
+	if err := json.Indent(&prettyJSON, body, "", "  "); err == nil {
+		fmt.Println(prettyJSON.String())
+	} else {
 		// If not valid JSON, print as plain text
 		fmt.Println(string(body))
 		return

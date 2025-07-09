@@ -9,7 +9,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/monobilisim/monokit/common"
+	"github.com/rs/zerolog/log"
 )
 
 // PatroniMonitor handles Patroni-based automatic switching
@@ -57,17 +57,27 @@ func (pm *PatroniMonitor) Start() error {
 	pm.running = true
 	pm.mutex.Unlock()
 
-	common.LogInfo("Patroni monitor starting...")
+	log.Debug().Msg("Patroni monitor starting...")
 
 	// Initialize last known primaries
 	for _, mapping := range pm.config.Mappings {
 		primary, err := pm.CheckClusterPrimary(mapping)
 		if err != nil {
-			common.LogWarn(fmt.Sprintf("Failed to get initial primary for cluster %s: %v", mapping.Cluster, err))
+			log.Warn().
+				Str("component", "lbPolicy").
+				Str("function", "Start").
+				Str("cluster", mapping.Cluster).
+				Err(err).
+				Msg("Failed to get initial primary for cluster")
 			continue
 		}
 		pm.lastPrimary[mapping.Cluster] = primary
-		common.LogInfo(fmt.Sprintf("Initial primary for cluster %s: %s", mapping.Cluster, primary))
+		log.Debug().
+			Str("component", "lbPolicy").
+			Str("function", "Start").
+			Str("cluster", mapping.Cluster).
+			Str("primary", primary).
+			Msg("Initial primary for cluster")
 	}
 
 	// Start monitoring in a goroutine
@@ -85,7 +95,7 @@ func (pm *PatroniMonitor) Stop() {
 		return
 	}
 
-	common.LogInfo("Stopping Patroni monitor...")
+	log.Debug().Msg("Stopping Patroni monitor...")
 	pm.running = false
 	pm.cancel()
 	close(pm.stopChan)
@@ -99,7 +109,7 @@ func (pm *PatroniMonitor) monitorLoop() {
 	for {
 		select {
 		case <-pm.ctx.Done():
-			common.LogInfo("Monitor loop stopped")
+			log.Debug().Msg("Monitor loop stopped")
 			return
 		case <-ticker.C:
 			pm.checkAllClusters()
@@ -111,7 +121,12 @@ func (pm *PatroniMonitor) monitorLoop() {
 func (pm *PatroniMonitor) checkAllClusters() {
 	for _, mapping := range pm.config.Mappings {
 		if err := pm.checkSingleCluster(mapping); err != nil {
-			common.LogError(fmt.Sprintf("Error checking cluster %s: %v", mapping.Cluster, err))
+			log.Error().
+				Str("component", "lbPolicy").
+				Str("function", "checkAllClusters").
+				Str("cluster", mapping.Cluster).
+				Err(err).
+				Msg("Error checking cluster")
 		}
 	}
 }
@@ -127,22 +142,37 @@ func (pm *PatroniMonitor) checkSingleCluster(mapping PatroniMapping) error {
 
 	// Check if primary has changed
 	if !exists || lastPrimary != primary {
-		common.LogInfo(fmt.Sprintf("Primary change detected for cluster %s: %s -> %s",
-			mapping.Cluster, lastPrimary, primary))
+		log.Debug().
+			Str("component", "lbPolicy").
+			Str("function", "checkSingleCluster").
+			Str("cluster", mapping.Cluster).
+			Str("last_primary", lastPrimary).
+			Str("primary", primary).
+			Msg("Primary change detected")
 
 		// Get the switch target for this primary node
 		switchTarget := mapping.GetSwitchTargetForNode(primary)
 
 		if switchTarget == "" {
-			common.LogWarn(fmt.Sprintf("No switch target found for primary %s in cluster %s",
-				primary, mapping.Cluster))
+			log.Warn().
+				Str("component", "lbPolicy").
+				Str("function", "checkSingleCluster").
+				Str("cluster", mapping.Cluster).
+				Str("primary", primary).
+				Msg("No switch target found")
 			return nil
 		}
 
-		common.LogInfo(fmt.Sprintf("Triggering switch to %s for primary %s", switchTarget, primary))
+		log.Debug().
+			Str("component", "lbPolicy").
+			Str("function", "checkSingleCluster").
+			Str("cluster", mapping.Cluster).
+			Str("primary", primary).
+			Str("switch_target", switchTarget).
+			Msg("Triggering switch")
 
 		if pm.config.DryRun {
-			common.LogInfo(fmt.Sprintf("DRY RUN: Would switch to %s", switchTarget))
+			log.Debug().Msg("DRY RUN: Would switch to " + switchTarget)
 		} else {
 			if err := pm.performSwitch(switchTarget); err != nil {
 				return fmt.Errorf("failed to perform switch: %w", err)
@@ -191,7 +221,12 @@ func (pm *PatroniMonitor) CheckClusterPrimary(mapping PatroniMapping) (string, e
 		select {
 		case res := <-results:
 			if res.err == nil && res.primary != "" {
-				common.LogDebug(fmt.Sprintf("Successfully got primary from %s: %s", res.url, res.primary))
+				log.Debug().
+					Str("component", "lbPolicy").
+					Str("function", "checkSinglePatroniURL").
+					Str("url", res.url).
+					Str("primary", res.primary).
+					Msg("Successfully got primary")
 				return res.primary, nil
 			}
 			allErrors = append(allErrors, fmt.Sprintf("%s: %v", res.url, res.err))
@@ -238,7 +273,11 @@ func (pm *PatroniMonitor) checkSinglePatroniURL(ctx context.Context, patroniUrl 
 
 // performSwitch executes the switch using existing lbPolicy mechanism
 func (pm *PatroniMonitor) performSwitch(switchTarget string) error {
-	common.LogInfo(fmt.Sprintf("Performing switch to: %s", switchTarget))
+	log.Debug().
+		Str("component", "lbPolicy").
+		Str("function", "performSwitch").
+		Str("switch_target", switchTarget).
+		Msg("Performing switch")
 
 	// Call the existing SwitchMain function
 	SwitchMain(switchTarget)
@@ -252,7 +291,11 @@ func (pm *PatroniMonitor) sendAlarm(cluster, oldPrimary, newPrimary, switchTarge
 		cluster, oldPrimary, newPrimary, switchTarget)
 
 	// Log for traceability
-	common.LogInfo(fmt.Sprintf("Sending alarm: %s", message))
+	log.Debug().
+		Str("component", "lbPolicy").
+		Str("function", "sendAlarm").
+		Str("message", message).
+		Msg("Sending alarm")
 
 	// Use the existing lbPolicy alarm helper which wraps common.Alarm
 	AlarmCustom("switch", message)
@@ -290,7 +333,11 @@ func (pm *PatroniMonitor) GetClusterStatus(mapping PatroniMapping) (*PatroniClus
 		select {
 		case res := <-results:
 			if res.err == nil && res.status != nil {
-				common.LogDebug(fmt.Sprintf("Successfully got cluster status from %s", res.url))
+				log.Debug().
+					Str("component", "lbPolicy").
+					Str("function", "GetClusterStatus").
+					Str("url", res.url).
+					Msg("Successfully got cluster status")
 				return res.status, nil
 			}
 			allErrors = append(allErrors, fmt.Sprintf("%s: %v", res.url, res.err))

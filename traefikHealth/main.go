@@ -13,6 +13,7 @@ import (
 
 	"github.com/monobilisim/monokit/common"
 	api "github.com/monobilisim/monokit/common/api"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
 
@@ -21,20 +22,20 @@ import (
 func DetectTraefik() bool {
 	// 1. Check if traefik.service unit file exists
 	if !common.SystemdUnitExists("traefik.service") {
-		common.LogDebug("traefikHealth auto-detection failed: traefik.service unit file not found.")
+		log.Debug().Msg("traefikHealth auto-detection failed: traefik.service unit file not found.")
 		return false
 	}
-	common.LogDebug("traefikHealth auto-detection: traefik.service unit file found.")
+	log.Debug().Msg("traefikHealth auto-detection: traefik.service unit file found.")
 
 	// 2. Check for Traefik log directory
 	logDir := "/var/log/traefik"
 	if _, err := os.Stat(logDir); os.IsNotExist(err) {
-		common.LogDebug(fmt.Sprintf("traefikHealth auto-detection failed: Log directory not found at %s", logDir))
+		log.Debug().Msg(fmt.Sprintf("traefikHealth auto-detection failed: Log directory not found at %s", logDir))
 		return false
 	}
-	common.LogDebug(fmt.Sprintf("traefikHealth auto-detection: Found log directory: %s", logDir))
+	log.Debug().Msg(fmt.Sprintf("traefikHealth auto-detection: Found log directory: %s", logDir))
 
-	common.LogDebug("traefikHealth auto-detected successfully (service active and log directory exists).")
+	log.Debug().Msg("traefikHealth auto-detected successfully (service active and log directory exists).")
 	return true
 }
 
@@ -60,7 +61,7 @@ func checkLogs(file string, lastRunStr string, currentTimeStr string, typesToChe
 	// Read file
 	logs, err := os.Open(file)
 	if err != nil {
-		common.LogError("Error reading file: " + err.Error())
+		log.Error().Err(err).Msg("Error reading file")
 		return
 	}
 	defer logs.Close()
@@ -71,52 +72,52 @@ func checkLogs(file string, lastRunStr string, currentTimeStr string, typesToChe
 	// Parse lastRun
 	lastRun, err := time.Parse("2006-01-02T15:04:05-07:00", lastRunStr)
 	if err != nil {
-		common.LogError("Error parsing last run time: " + err.Error())
+		log.Error().Err(err).Msg("Error parsing last run time")
 		return
 	}
 
 	// Parse currentTime
 	currentTime, err := time.Parse("2006-01-02T15:04:05-07:00", currentTimeStr)
 	if err != nil {
-		common.LogError("Error parsing current time: " + err.Error())
+		log.Error().Err(err).Msg("Error parsing current time")
 		return
 	}
 
 	// Loop through logs
 	for logsScanner.Scan() {
-		log := strings.TrimSpace(logsScanner.Text())
+		logLine := strings.TrimSpace(logsScanner.Text())
 
 		// Skip empty logs
-		if log == "" {
+		if logLine == "" {
 			continue
 		}
 
 		// Parse JSON
 		var logJSON map[string]interface{}
-		err := json.Unmarshal([]byte(log), &logJSON)
+		err := json.Unmarshal([]byte(logLine), &logJSON)
 		if err != nil {
-			common.LogError("Error parsing JSON: " + err.Error())
+			log.Error().Err(err).Msg("Error parsing JSON")
 			continue
 		}
 
 		// Check if time field exists
 		timeValue, exists := logJSON["time"]
 		if !exists || timeValue == nil {
-			common.LogError("Log entry missing 'time' field")
+			log.Error().Msg("Log entry missing 'time' field")
 			continue
 		}
 
 		// Check if time field is a string
 		timeStr, ok := timeValue.(string)
 		if !ok {
-			common.LogError("Log 'time' field is not a string")
+			log.Error().Msg("Log 'time' field is not a string")
 			continue
 		}
 
 		// Check if log is between lastRun and currentTime
 		logTime, err := time.Parse("2006-01-02T15:04:05-07:00", timeStr)
 		if err != nil {
-			common.LogError("Error parsing log time: " + err.Error())
+			log.Error().Err(err).Msg("Error parsing log time")
 			continue
 		}
 
@@ -278,7 +279,7 @@ func Main(cmd *cobra.Command, args []string) {
 		// Read last run time from TmpDir + "/lastRun"
 		lastRun, err := ioutil.ReadFile(common.TmpDir + "/lastRun")
 		if err != nil {
-			common.LogError("Error reading last run time: " + err.Error())
+			log.Error().Err(err).Msg("Error reading last run time")
 		} else {
 			// Get logs between last run and now
 			checkLogs("/var/log/traefik/traefik.json", string(lastRun), currentTime, TraefikHealthConfig.Types_To_Check)

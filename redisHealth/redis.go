@@ -12,6 +12,7 @@ import (
 
 	"github.com/monobilisim/monokit/common"
 	"github.com/redis/go-redis/v9"
+	"github.com/rs/zerolog/log"
 )
 
 var rdb *redis.Client
@@ -68,7 +69,7 @@ func InitRedis() {
 	}
 
 	if ping != "PONG" || pingerr != nil {
-		common.LogError("Error while trying to ping Redis: " + pingerr.Error() + "\n" + "Tried ports: " + fmt.Sprint(common.ConnsByProc("redis-server")) + " and " + RedisHealthConfig.Port)
+		log.Error().Err(pingerr).Str("component", "redisHealth").Str("operation", "InitRedis").Str("action", "ping_failed").Str("ping", ping).Msg("Error while trying to ping Redis")
 		common.AlarmCheckDown("redis_ping", "Trying to ping Redis failed", false, "", "")
 	} else {
 		common.AlarmCheckUp("redis_ping", "Redis is pingable again", false)
@@ -84,7 +85,7 @@ func CheckSlaveCountChange() {
 	info, err := rdb.Info(ctx, "Replication").Result()
 
 	if err != nil {
-		common.LogError("Error while trying to gather replication info: " + err.Error())
+		log.Error().Err(err).Str("component", "redisHealth").Str("operation", "CheckSlaveCountChange").Str("action", "info_gather_failed").Msg("Error while trying to gather replication info")
 	}
 
 	// Go over line by line
@@ -97,10 +98,8 @@ func CheckSlaveCountChange() {
 	}
 
 	if scanner.Text() == "connected_slaves:"+strconv.Itoa(RedisHealthConfig.Slave_count) {
-		common.PrettyPrintStr("Slave Count", true, strconv.Itoa(RedisHealthConfig.Slave_count))
 		common.AlarmCheckUp("redis_slave_count", "Slave count is now correct", false)
 	} else {
-		common.PrettyPrintStr("Slave Count", false, strconv.Itoa(RedisHealthConfig.Slave_count))
 		common.AlarmCheckDown("redis_slave_count", "Slave count is incorrect, intended: "+strconv.Itoa(RedisHealthConfig.Slave_count)+", actual: "+strings.Split(scanner.Text(), "connected_slaves:")[1], false, "", "")
 	}
 }
@@ -113,7 +112,7 @@ func redisAlarmRoleChange(isMaster bool) {
 		// Write the role
 		err := os.WriteFile(common.TmpDir+"/redis_role", []byte(fmt.Sprintf("%t", isMaster)), 0644)
 		if err != nil {
-			common.LogError("Error while writing to file: " + err.Error())
+			log.Error().Err(err).Str("component", "redisHealth").Str("operation", "redisAlarmRoleChange").Str("action", "file_write_failed").Msg("Error while writing to file")
 			return
 		}
 
@@ -125,14 +124,14 @@ func redisAlarmRoleChange(isMaster bool) {
 		if _, err := os.Stat(common.TmpDir + "/redis_role.log"); err == nil {
 			err := os.Remove(common.TmpDir + "/redis_role.log")
 			if err != nil {
-				common.LogError("Error while removing redis_role.log: " + err.Error())
+				log.Error().Err(err).Str("component", "redisHealth").Str("operation", "redisAlarmRoleChange").Str("action", "file_remove_failed").Msg("Error while removing redis_role.log")
 			}
 		}
 
 		// File exists, read the role
 		data, err := os.ReadFile(common.TmpDir + "/redis_role")
 		if err != nil {
-			common.LogError("Error while reading from file: " + err.Error())
+			log.Error().Err(err).Str("component", "redisHealth").Str("operation", "redisAlarmRoleChange").Str("action", "file_read_failed").Msg("Error while reading from file")
 			return
 		}
 
@@ -145,7 +144,7 @@ func redisAlarmRoleChange(isMaster bool) {
 			err := os.WriteFile(common.TmpDir+"/redis_role", []byte(fmt.Sprintf("%t", isMaster)), 0644)
 
 			if err != nil {
-				common.LogError("Error while writing to file: " + err.Error())
+				log.Error().Err(err).Str("component", "redisHealth").Str("operation", "redisAlarmRoleChange").Str("action", "file_write_failed").Msg("Error while writing to file")
 				return
 			}
 
@@ -167,7 +166,7 @@ func IsRedisMaster() bool {
 	info, err := rdb.Info(ctx, "Replication").Result()
 
 	if err != nil {
-		common.LogError("Redis is not working: " + err.Error())
+		log.Error().Err(err).Str("component", "redisHealth").Str("operation", "IsRedisMaster").Str("action", "info_gather_failed").Msg("Redis is not working")
 		return false
 	}
 
@@ -198,10 +197,10 @@ func TestRedisReadWrite(healthData *RedisHealthData, isSentinel bool) {
 	err := rdb.Set(ctx, "redisHealth_foo", "bar", 0).Err()
 
 	if err != nil && strings.Contains(err.Error(), "MOVED") {
-		common.LogDebug("MOVED request, trying to get the new address")
+		log.Debug().Str("component", "redisHealth").Str("operation", "TestRedisReadWrite").Str("action", "moved_request").Msg("MOVED request, trying to get the new address")
 		// Get the new address
 		newAddr := strings.Split(err.Error(), " ")[2]
-		common.LogDebug("MOVED request, new address: " + newAddr)
+		log.Debug().Str("component", "redisHealth").Str("operation", "TestRedisReadWrite").Str("action", "moved_request_new_address").Str("new_address", newAddr).Msg("MOVED request, new address: " + newAddr)
 
 		// Reinitialize the client
 		rdb = redis.NewClient(&redis.Options{
@@ -220,7 +219,7 @@ func TestRedisReadWrite(healthData *RedisHealthData, isSentinel bool) {
 		if isSentinel {
 			// Check if its master
 			if redisMaster {
-				common.LogError("Can't Write to Redis (sentinel): " + err.Error())
+				log.Error().Err(err).Str("component", "redisHealth").Str("operation", "TestRedisReadWrite").Str("action", "write_failed").Msg("Can't Write to Redis (sentinel)")
 				common.AlarmCheckDown("redis_write", "Trying to write a string to Redis failed", false, "", "")
 				healthData.Connection.Writeable = false
 				return
@@ -230,7 +229,7 @@ func TestRedisReadWrite(healthData *RedisHealthData, isSentinel bool) {
 				return
 			}
 		} else {
-			common.LogError("Can't Write to Redis: " + err.Error())
+			log.Error().Err(err).Str("component", "redisHealth").Str("operation", "TestRedisReadWrite").Str("action", "write_failed").Msg("Can't Write to Redis")
 			common.AlarmCheckDown("redis_write", "Trying to write a string to Redis failed", false, "", "")
 			healthData.Connection.Writeable = false
 			return
@@ -243,7 +242,7 @@ func TestRedisReadWrite(healthData *RedisHealthData, isSentinel bool) {
 	val, err := rdb.Get(ctx, "redisHealth_foo").Result()
 
 	if err != nil {
-		common.LogError("Can't Read what is written to Redis: " + err.Error())
+		log.Error().Err(err).Str("component", "redisHealth").Str("operation", "TestRedisReadWrite").Str("action", "read_failed").Msg("Can't Read what is written to Redis")
 		common.AlarmCheckDown("redis_read", "Trying to read string from Redis failed", false, "", "")
 		healthData.Connection.Readable = false
 		return

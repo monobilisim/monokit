@@ -13,10 +13,9 @@ import (
 
 	"github.com/hashicorp/go-hclog"
 	"github.com/hashicorp/go-plugin"
-	"github.com/monobilisim/monokit/common"
 	pb "github.com/monobilisim/monokit/common/health/pluginpb/proto"
 
-	// k8sHealthTypes "github.com/monobilisim/monokit/k8sHealth" // Removed for full plugin independence
+	"github.com/rs/zerolog/log"
 	"google.golang.org/grpc"
 )
 
@@ -35,7 +34,7 @@ func (p *ProviderProxy) Collect(hostname string) (interface{}, error) {
 	req := &pb.CollectRequest{Hostname: hostname}
 	resp, err := p.client.Collect(context.Background(), req)
 	if err != nil {
-		common.LogError(fmt.Sprintf("Plugin RPC call to Collect failed for %s (hostname: %s): %v", p.name, hostname, err))
+		log.Error().Str("name", p.name).Str("hostname", hostname).Err(err).Msg("Plugin RPC call to Collect failed")
 		return nil, fmt.Errorf("plugin RPC call to Collect failed for %s: %w", p.name, err)
 	}
 
@@ -50,7 +49,7 @@ func (p *ProviderProxy) CollectStructured(hostname string) (interface{}, error) 
 	req := &pb.CollectRequest{Hostname: hostname}
 	resp, err := p.client.CollectStructured(context.Background(), req)
 	if err != nil {
-		common.LogError(fmt.Sprintf("Plugin RPC call to CollectStructured failed for %s (hostname: %s): %v", p.name, hostname, err))
+		log.Error().Str("name", p.name).Str("hostname", hostname).Err(err).Msg("Plugin RPC call to CollectStructured failed")
 		return nil, fmt.Errorf("plugin RPC call to CollectStructured failed for %s: %w", p.name, err)
 	}
 
@@ -73,15 +72,15 @@ func handshakeConfig() plugin.HandshakeConfig {
 
 // LoadAll scans dir for plugins, loads them, and registers their providers.
 func LoadAll(dir string) error {
-	common.LogDebug(fmt.Sprintf("Loading plugins from directory: %s", dir))
+	log.Debug().Msg(fmt.Sprintf("Loading plugins from directory: %s", dir))
 
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		if os.IsNotExist(err) {
-			common.LogDebug(fmt.Sprintf("Plugin directory does not exist, skipping: %s", dir))
+			log.Debug().Msg(fmt.Sprintf("Plugin directory does not exist, skipping: %s", dir))
 			return nil // no plugins dir, that's fine
 		}
-		common.LogError(fmt.Sprintf("Failed to read plugin directory %s: %v", dir, err))
+		log.Error().Str("dir", dir).Err(err).Msg("Failed to read plugin directory")
 		return err
 	}
 
@@ -111,13 +110,13 @@ func LoadAll(dir string) error {
 		})
 		rpcClient, err := cli.Client()
 		if err != nil {
-			common.LogError(fmt.Sprintf("Error starting plugin '%s': %v", path, err))
+			log.Error().Str("path", path).Err(err).Msg("Error starting plugin")
 			cli.Kill() // Clean up the plugin even if it errored out, as it may still be running
 			continue
 		}
 		raw, err := rpcClient.Dispense("provider")
 		if err != nil {
-			common.LogError(fmt.Sprintf("Error dispensing provider '%s': %v", path, err))
+			log.Error().Str("path", path).Err(err).Msg("Error dispensing provider")
 			cli.Kill() // Clean up the plugin even if it errored out, as it may still be running
 			continue
 		}
@@ -138,12 +137,12 @@ func LoadAll(dir string) error {
 		pluginClients = append(pluginClients, cli)
 		pluginMu.Unlock()
 
-		common.LogDebug(fmt.Sprintf("Successfully loaded plugin: %s", pName))
+		log.Debug().Str("name", pName).Msg("Successfully loaded plugin")
 		loadedCount++
 	}
 
 	if loadedCount > 0 {
-		common.LogDebug(fmt.Sprintf("Plugin loading completed: %d/%d plugins loaded from %s", loadedCount, len(entries), dir))
+		log.Debug().Int("loadedCount", loadedCount).Int("entries", len(entries)).Str("dir", dir).Msg("Plugin loading completed")
 	}
 
 	return nil
@@ -158,14 +157,14 @@ func CleanupAll() {
 		return
 	}
 
-	common.LogDebug(fmt.Sprintf("Shutting down %d plugins", len(pluginClients)))
+	log.Debug().Int("count", len(pluginClients)).Msg("Shutting down plugins")
 
 	for _, client := range pluginClients {
 		client.Kill()
 	}
 
 	pluginClients = nil
-	common.LogDebug("All plugins shut down")
+	log.Debug().Msg("All plugins shut down")
 }
 
 // healthPluginGRPC is the host-side struct that satisfies both plugin.Plugin

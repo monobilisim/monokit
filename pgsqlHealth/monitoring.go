@@ -21,6 +21,7 @@ import (
 
 	"github.com/monobilisim/monokit/common"
 	db "github.com/monobilisim/monokit/common/db"
+	"github.com/rs/zerolog/log"
 )
 
 // ConnectionsData holds information about PostgreSQL connections
@@ -55,7 +56,7 @@ func writeActiveConnections() {
 	//run the query and write its output to a file
 	rows, err := Connection.Query(query)
 	if err != nil {
-		common.LogError(fmt.Sprintf("Error executing query: %s - Error: %v\n", query, err))
+		log.Error().Err(err).Str("component", "pgsqlHealth").Str("operation", "writeActiveConnections").Str("action", "query_execution_failed").Str("query", query).Msg("Error executing query")
 		return
 	}
 	defer rows.Close()
@@ -64,7 +65,7 @@ func writeActiveConnections() {
 	logFileName := fmt.Sprintf("/var/log/monodb/pgsql-stat_activity-%s.log", dayOfWeek)
 	logFile, err := os.Create(logFileName)
 	if err != nil {
-		common.LogError("Failed to create log file: " + err.Error())
+		log.Error().Err(err).Str("component", "pgsqlHealth").Str("operation", "writeActiveConnections").Str("action", "create_log_file_failed").Str("log_file", logFileName).Msg("Failed to create log file")
 	}
 	defer logFile.Close()
 
@@ -85,7 +86,7 @@ func writeActiveConnections() {
 
 		err := rows.Scan(&pid, &usename, &clientAddr, &duration, &query, &state)
 		if err != nil {
-			common.LogError("Failed to scan row: " + err.Error())
+			log.Error().Err(err).Str("component", "pgsqlHealth").Str("operation", "writeActiveConnections").Str("action", "scan_row_failed").Msg("Failed to scan row")
 			continue
 		}
 
@@ -108,7 +109,7 @@ func activeConnections(dbConfig db.DbHealth) (*ConnectionsData, error) {
 	`
 	err := Connection.QueryRow(query).Scan(&maxConn, &used)
 	if err != nil {
-		common.LogError(fmt.Sprintf("Error executing query: %s - Error: %v\n", query, err))
+		log.Error().Err(err).Str("component", "pgsqlHealth").Str("operation", "activeConnections").Str("action", "query_execution_failed").Str("query", query).Msg("Error executing query")
 		common.AlarmCheckDown("postgres_active_conn", "An error occurred while checking active connections: "+err.Error(), false, "", "")
 		return nil, err
 	} else {
@@ -128,7 +129,7 @@ func activeConnections(dbConfig db.DbHealth) (*ConnectionsData, error) {
 		// set increase to the content of the file
 		content, err := os.ReadFile(aboveLimitFile)
 		if err != nil {
-			common.LogError(fmt.Sprintf("Error reading file: %v\n", err))
+			log.Error().Err(err).Str("component", "pgsqlHealth").Str("operation", "activeConnections").Str("action", "read_file_failed").Str("file", aboveLimitFile).Msg("Error reading file")
 			increase = 1
 		}
 		increase = int(content[0])
@@ -146,14 +147,14 @@ func activeConnections(dbConfig db.DbHealth) (*ConnectionsData, error) {
 		}
 		err = os.WriteFile(aboveLimitFile, []byte(strconv.Itoa(increase)), 0644)
 		if err != nil {
-			common.LogError(fmt.Sprintf("Error writing file: %v\n", err))
+			log.Error().Err(err).Str("component", "pgsqlHealth").Str("operation", "activeConnections").Str("action", "write_file_failed").Str("file", aboveLimitFile).Msg("Error writing file")
 		}
 	} else {
 		common.AlarmCheckUp("postgres_num_active_conn", fmt.Sprintf("Number of active connections is now: %d/%d", used, maxConn), false)
 		if _, err := os.Stat(aboveLimitFile); err == nil {
 			err := os.Remove(aboveLimitFile)
 			if err != nil {
-				common.LogError(fmt.Sprintf("Error deleting file: %v\n", err))
+				log.Error().Err(err).Str("component", "pgsqlHealth").Str("operation", "activeConnections").Str("action", "delete_file_failed").Str("file", aboveLimitFile).Msg("Error deleting file")
 			}
 		}
 	}
@@ -170,7 +171,7 @@ func runningQueries(dbConfig db.DbHealth) ([]QueryData, error) {
 	var activeQueriesCount int
 	err := Connection.QueryRow(countQuery).Scan(&activeQueriesCount)
 	if err != nil {
-		common.LogError(fmt.Sprintf("Error executing query: %s - Error: %v\n", countQuery, err))
+		log.Error().Err(err).Str("component", "pgsqlHealth").Str("operation", "runningQueries").Str("action", "query_execution_failed").Str("query", countQuery).Msg("Error executing query")
 		// Already commented out console output
 		common.AlarmCheckDown("postgres_running_queries", "An error occurred while checking running queries: "+err.Error(), false, "", "")
 		return nil, err
@@ -191,7 +192,7 @@ func runningQueries(dbConfig db.DbHealth) ([]QueryData, error) {
 
 	rows, err := Connection.Query(detailQuery)
 	if err != nil {
-		common.LogError(fmt.Sprintf("Error executing query: %s - Error: %v\n", detailQuery, err))
+		log.Error().Err(err).Str("component", "pgsqlHealth").Str("operation", "runningQueries").Str("action", "query_execution_failed").Str("query", detailQuery).Msg("Error executing query")
 		return nil, err
 	}
 	defer rows.Close()
@@ -213,7 +214,7 @@ func runningQueries(dbConfig db.DbHealth) ([]QueryData, error) {
 			&clientAddr)
 
 		if err != nil {
-			common.LogError("Failed to scan query row: " + err.Error())
+			log.Error().Err(err).Str("component", "pgsqlHealth").Str("operation", "runningQueries").Str("action", "scan_row_failed").Msg("Failed to scan query row")
 			continue
 		}
 

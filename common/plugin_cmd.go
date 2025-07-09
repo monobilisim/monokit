@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
 
@@ -63,14 +64,14 @@ func pluginInstallRun(cmd *cobra.Command, args []string) {
 	// Validate plugin names
 	invalidPlugins := validatePluginNames(args)
 	if len(invalidPlugins) > 0 {
-		LogError(fmt.Sprintf("Invalid plugin names: %s", strings.Join(invalidPlugins, ", ")))
-		LogError(fmt.Sprintf("Available plugins: %s", strings.Join(KnownPlugins, ", ")))
+		log.Error().Str("invalidPlugins", strings.Join(invalidPlugins, ", ")).Msg("Invalid plugin names")
+		log.Error().Str("availablePlugins", strings.Join(KnownPlugins, ", ")).Msg("Available plugins")
 		os.Exit(1)
 	}
 
 	err := InstallPlugins(version, args, pluginDir, force)
 	if err != nil {
-		LogError("Plugin installation failed: " + err.Error())
+		log.Error().Err(err).Msg("Plugin installation failed")
 		os.Exit(1)
 	}
 }
@@ -94,7 +95,7 @@ func pluginUninstallRun(cmd *cobra.Command, args []string) {
 
 	err := UninstallPlugins(args, pluginDir, force)
 	if err != nil {
-		LogError("Plugin uninstallation failed: " + err.Error())
+		log.Error().Err(err).Msg("Plugin uninstallation failed")
 		os.Exit(1)
 	}
 }
@@ -121,7 +122,7 @@ func contains(slice []string, item string) bool {
 func listInstalledPlugins(pluginDir string) {
 	plugins, err := DetectInstalledPlugins(pluginDir)
 	if err != nil {
-		LogError("Failed to detect installed plugins: " + err.Error())
+		log.Error().Err(err).Msg("Failed to detect installed plugins")
 		return
 	}
 
@@ -140,7 +141,7 @@ func listAllPlugins(pluginDir string) {
 	// Get installed plugins
 	installedPlugins, err := DetectInstalledPlugins(pluginDir)
 	if err != nil {
-		LogWarn("Failed to detect installed plugins: " + err.Error())
+		log.Warn().Err(err).Msg("Failed to detect installed plugins")
 	}
 
 	installedMap := make(map[string]bool)
@@ -153,7 +154,7 @@ func listAllPlugins(pluginDir string) {
 	arch := runtime.GOARCH
 	availablePlugins, err := GetAvailablePlugins("", osName, arch)
 	if err != nil {
-		LogWarn("Failed to get available plugins: " + err.Error())
+		log.Warn().Err(err).Msg("Failed to get available plugins")
 	}
 
 	availableMap := make(map[string]PluginInfo)

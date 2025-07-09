@@ -13,6 +13,7 @@ import (
 	rabbithole "github.com/michaelklishin/rabbit-hole/v2"
 	"github.com/monobilisim/monokit/common"
 	api "github.com/monobilisim/monokit/common/api"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
 
@@ -21,26 +22,26 @@ import (
 func DetectRmq() bool {
 	// 1. Check for rabbitmqctl command
 	if _, err := exec.LookPath("rabbitmqctl"); err != nil {
-		common.LogDebug("rmqHealth auto-detection failed: 'rabbitmqctl' command not found in PATH.")
+		log.Debug().Msg("rmqHealth auto-detection failed: 'rabbitmqctl' command not found in PATH.")
 		return false
 	}
-	common.LogDebug("rmqHealth auto-detection: 'rabbitmqctl' command found.")
+	log.Debug().Msg("rmqHealth auto-detection: 'rabbitmqctl' command found.")
 
 	// 2. Check for /etc/rabbitmq directory
 	if _, err := os.Stat("/etc/rabbitmq"); os.IsNotExist(err) {
-		common.LogDebug("rmqHealth auto-detection failed: '/etc/rabbitmq' directory not found.")
+		log.Debug().Msg("rmqHealth auto-detection failed: '/etc/rabbitmq' directory not found.")
 		return false
 	}
-	common.LogDebug("rmqHealth auto-detection: '/etc/rabbitmq' directory found.")
+	log.Debug().Msg("rmqHealth auto-detection: '/etc/rabbitmq' directory found.")
 
 	// 3. Check if rabbitmq-server service exists (using common function)
 	if !common.SystemdUnitExists("rabbitmq-server.service") {
-		common.LogDebug("rmqHealth auto-detection failed: 'rabbitmq-server.service' systemd unit not found.")
+		log.Debug().Msg("rmqHealth auto-detection failed: 'rabbitmq-server.service' systemd unit not found.")
 		return false
 	}
-	common.LogDebug("rmqHealth auto-detection: 'rabbitmq-server.service' systemd unit found.")
+	log.Debug().Msg("rmqHealth auto-detection: 'rabbitmq-server.service' systemd unit found.")
 
-	common.LogDebug("rmqHealth auto-detected successfully.")
+	log.Debug().Msg("rmqHealth auto-detected successfully.")
 	return true
 }
 
@@ -210,7 +211,7 @@ func checkEnabledPlugins() {
 
 	content, err := os.ReadFile(filePath)
 	if err != nil {
-		common.LogError(fmt.Sprintf("Failed to read file %s: %v", filePath, err))
+		log.Error().Err(err).Str("component", "rmqHealth").Str("operation", "checkEnabledPlugins").Str("action", "file_read").Str("file_path", filePath).Msg("Failed to read file")
 		healthData.Management.Enabled = false
 		healthData.IsHealthy = false
 		return

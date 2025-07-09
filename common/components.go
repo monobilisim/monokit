@@ -5,6 +5,7 @@ import (
 	"runtime" // Added import
 	"strings"
 
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
 
@@ -63,7 +64,7 @@ func GetInstalledComponents() string {
 
 	if !ConfExists("daemon") {
 		// Config file doesn't exist: Default to osHealth + auto-detected components
-		LogDebug("Daemon config file not found. Using default: osHealth + auto-detected.")
+		log.Debug().Msg("Daemon config file not found. Using default: osHealth + auto-detected.")
 		enabled = append(enabled, "osHealth") // Always include osHealth by default
 
 		for name, comp := range ComponentRegistry {
@@ -74,24 +75,29 @@ func GetInstalledComponents() string {
 			// Perform auto-detection if available.
 			// Detection logic should handle user context internally if needed.
 			shouldPerformAutoDetect := comp.AutoDetect != nil
-			LogDebug(fmt.Sprintf("Component %s: AutoDetect != nil: %t, RunAsUser: '%s', GOOS: %s, ShouldPerformAutoDetect: %t",
-				name, comp.AutoDetect != nil, comp.RunAsUser, runtime.GOOS, shouldPerformAutoDetect)) // <-- Updated log context
+			log.Debug().
+				Str("component", name).
+				Bool("has_autodetect", comp.AutoDetect != nil).
+				Str("run_as_user", comp.RunAsUser).
+				Str("goos", runtime.GOOS).
+				Bool("should_autodetect", shouldPerformAutoDetect).
+				Msg("Component analysis")
 
 			if shouldPerformAutoDetect {
-				LogDebug(fmt.Sprintf("Performing auto-detection for component %s (no config)...", name)) // Simplified log
+				log.Debug().Str("component", name).Msg("Performing auto-detection for component (no config)")
 				if comp.AutoDetect() {
-					LogDebug(fmt.Sprintf("Component %s included (passed auto-detection, no config).", name))
+					log.Debug().Str("component", name).Msg("Component included (passed auto-detection, no config)")
 					enabled = append(enabled, name)
 				} else {
-					LogDebug(fmt.Sprintf("Component %s skipped (failed auto-detection, no config).", name))
+					log.Debug().Str("component", name).Msg("Component skipped (failed auto-detection, no config)")
 				}
 			} else if comp.RunAsUser != "" && runtime.GOOS == "linux" {
 				// Include components meant to run as another user on Linux, skipping AutoDetect here.
-				LogDebug(fmt.Sprintf("Component %s included tentatively (RunAsUser set, Linux, no config). Auto-detection deferred.", name))
+				log.Debug().Str("component", name).Msg("Component included tentatively (RunAsUser set, Linux, no config). Auto-detection deferred.")
 				enabled = append(enabled, name)
 			} else {
 				// No auto-detect and not RunAsUser on Linux: Skip by default
-				LogDebug(fmt.Sprintf("Component %s skipped (no auto-detect function or RunAsUser condition not met, no config).", name))
+				log.Debug().Str("component", name).Msg("Component skipped (no auto-detect function or RunAsUser condition not met, no config)")
 			}
 		}
 	} else {
@@ -102,27 +108,27 @@ func GetInstalledComponents() string {
 		for _, check := range config.HealthChecks {
 			if !check.Enabled {
 				disabledComponents[check.Name] = true
-				LogDebug(fmt.Sprintf("Component %s explicitly disabled in config.", check.Name))
+				log.Debug().Str("component", check.Name).Msg("Component explicitly disabled in config")
 			}
 		}
 
-		LogDebug("Processing components with config file present.")
+		log.Debug().Msg("Processing components with config file present")
 
 		// Always consider osHealth unless explicitly disabled
 		if _, isDisabled := disabledComponents["osHealth"]; !isDisabled {
 			if comp, exists := ComponentRegistry["osHealth"]; exists {
 				// Check platform compatibility for osHealth
 				if comp.Platform == "any" || comp.Platform == runtime.GOOS {
-					LogDebug("Including osHealth (config exists, not disabled, platform matches).")
+					log.Debug().Msg("Including osHealth (config exists, not disabled, platform matches)")
 					enabled = append(enabled, "osHealth")
 				} else {
-					LogDebug("Skipping osHealth (config exists, not disabled, platform mismatch).")
+					log.Debug().Msg("Skipping osHealth (config exists, not disabled, platform mismatch)")
 				}
 			} else {
-				LogDebug("osHealth component not found in registry, but expected.")
+				log.Debug().Msg("osHealth component not found in registry, but expected")
 			}
 		} else {
-			LogDebug("Skipping osHealth (explicitly disabled in config).")
+			log.Debug().Msg("Skipping osHealth (explicitly disabled in config)")
 		}
 
 		// Iterate through all other registered components
@@ -133,37 +139,42 @@ func GetInstalledComponents() string {
 
 			// 1. Check if explicitly disabled
 			if _, isDisabled := disabledComponents[name]; isDisabled {
-				LogDebug(fmt.Sprintf("Component %s skipped (disabled in config).", name))
+				log.Debug().Str("component", name).Msg("Component skipped (disabled in config)")
 				continue
 			}
 
 			// 2. Check platform compatibility
 			if !(comp.Platform == "any" || comp.Platform == runtime.GOOS) {
-				LogDebug(fmt.Sprintf("Component %s skipped (platform mismatch).", name))
+				log.Debug().Str("component", name).Msg("Component skipped (platform mismatch)")
 				continue
 			}
 
 			//  3. Perform auto-detection if available.
 			//     Detection logic should handle user context internally if needed.
 			shouldPerformAutoDetect := comp.AutoDetect != nil
-			LogDebug(fmt.Sprintf("Component %s: AutoDetect != nil: %t, RunAsUser: '%s', GOOS: %s, ShouldPerformAutoDetect: %t",
-				name, comp.AutoDetect != nil, comp.RunAsUser, runtime.GOOS, shouldPerformAutoDetect)) // <-- Updated log context
+			log.Debug().
+				Str("component", name).
+				Bool("has_autodetect", comp.AutoDetect != nil).
+				Str("run_as_user", comp.RunAsUser).
+				Str("goos", runtime.GOOS).
+				Bool("should_autodetect", shouldPerformAutoDetect).
+				Msg("Component analysis with config")
 
 			if shouldPerformAutoDetect {
-				LogDebug(fmt.Sprintf("Performing auto-detection for component %s (config exists)...", name)) // Simplified log
+				log.Debug().Str("component", name).Msg("Performing auto-detection for component (config exists)")
 				if comp.AutoDetect() {
-					LogDebug(fmt.Sprintf("Component %s included (passed auto-detection with config).", name))
+					log.Debug().Str("component", name).Msg("Component included (passed auto-detection with config)")
 					enabled = append(enabled, name)
 				} else {
-					LogDebug(fmt.Sprintf("Component %s skipped (failed auto-detection with config).", name))
+					log.Debug().Str("component", name).Msg("Component skipped (failed auto-detection with config)")
 				}
 			} else if comp.RunAsUser != "" && runtime.GOOS == "linux" {
 				// Include components meant to run as another user on Linux, skipping AutoDetect here.
-				LogDebug(fmt.Sprintf("Component %s included tentatively (RunAsUser set, Linux). Auto-detection deferred.", name))
+				log.Debug().Str("component", name).Msg("Component included tentatively (RunAsUser set, Linux). Auto-detection deferred.")
 				enabled = append(enabled, name)
 			} else {
 				// No auto-detect and not RunAsUser on Linux: Skip by default
-				LogDebug(fmt.Sprintf("Component %s skipped (no auto-detect function or RunAsUser condition not met).", name))
+				log.Debug().Str("component", name).Msg("Component skipped (no auto-detect function or RunAsUser condition not met)")
 			}
 		}
 	}
@@ -183,7 +194,7 @@ func GetInstalledComponents() string {
 	}
 
 	// Fallback if absolutely nothing is enabled (should ideally not happen with osHealth default)
-	LogDebug("No components enabled after processing. Returning empty list.")
+	log.Debug().Msg("No components enabled after processing. Returning empty list.")
 	return ""
 }
 

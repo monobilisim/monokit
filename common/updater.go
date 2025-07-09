@@ -12,6 +12,7 @@ import (
 	"strings"
 	"sync"
 
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
 
@@ -49,7 +50,7 @@ func DetectInstalledPlugins(dir string) ([]PluginInfo, error) {
 	var plugins []PluginInfo
 
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		LogDebug("Plugin directory does not exist: " + dir)
+		log.Debug().Str("dir", dir).Msg("Plugin directory does not exist")
 		return plugins, nil
 	}
 
@@ -74,7 +75,7 @@ func DetectInstalledPlugins(dir string) ([]PluginInfo, error) {
 		// Check if file is executable
 		info, err := entry.Info()
 		if err != nil {
-			LogWarn("Failed to get file info for " + name + ": " + err.Error())
+			log.Warn().Str("name", name).Err(err).Msg("Failed to get file info")
 			continue
 		}
 
@@ -89,7 +90,7 @@ func DetectInstalledPlugins(dir string) ([]PluginInfo, error) {
 		}
 
 		plugins = append(plugins, plugin)
-		LogDebug("Detected installed plugin: " + name)
+		log.Debug().Str("name", name).Msg("Detected installed plugin")
 	}
 
 	return plugins, nil
@@ -152,7 +153,7 @@ func GetAvailablePlugins(version, os, arch string) ([]PluginInfo, error) {
 					URL:         downloadURL,
 				}
 				plugins = append(plugins, plugin)
-				LogDebug("Found available plugin: " + pluginName + " v" + releaseVersion)
+				log.Debug().Str("pluginName", pluginName).Str("releaseVersion", releaseVersion).Msg("Found available plugin")
 				break
 			}
 		}
@@ -163,7 +164,7 @@ func GetAvailablePlugins(version, os, arch string) ([]PluginInfo, error) {
 
 // DownloadAndExtractPlugin downloads and extracts a single plugin
 func DownloadAndExtractPlugin(plugin PluginInfo, pluginDir string) error {
-	LogDebug("Downloading plugin: " + plugin.Name + " from " + plugin.URL)
+	log.Debug().Str("pluginName", plugin.Name).Str("pluginURL", plugin.URL).Msg("Downloading plugin")
 
 	resp, err := http.Get(plugin.URL)
 	if err != nil {
@@ -239,7 +240,7 @@ func DownloadAndExtractPlugin(plugin PluginInfo, pluginDir string) error {
 				os.Remove(backupPath)
 			}
 
-			LogDebug("Successfully updated plugin: " + plugin.Name)
+			log.Debug().Str("pluginName", plugin.Name).Msg("Successfully updated plugin")
 			return nil
 		}
 	}
@@ -289,7 +290,7 @@ func UpdatePlugins(version string, specificPlugins []string, pluginDir string, f
 				}
 			}
 			if !found {
-				LogWarn("Specified plugin not available: " + specifiedPlugin)
+				log.Warn().Str("specifiedPlugin", specifiedPlugin).Msg("Specified plugin not available")
 			}
 		}
 	} else {
@@ -347,7 +348,7 @@ func UpdatePlugins(version string, specificPlugins []string, pluginDir string, f
 	if len(errors) > 0 {
 		fmt.Printf("Plugin update completed with %d successes and %d errors:\n", successCount, len(errors))
 		for _, err := range errors {
-			LogError(err.Error())
+			log.Error().Msg(err.Error())
 		}
 		return fmt.Errorf("some plugin updates failed")
 	}
@@ -360,13 +361,13 @@ func DownloadAndExtract(url string) {
 	MonokitPath, err := os.Executable()
 
 	if err != nil {
-		LogError("Couldn't get executable path: " + err.Error())
+		log.Error().Err(err).Msg("Couldn't get executable path")
 	}
 
 	// Download the release
 	resp, err := http.Get(url)
 	if err != nil {
-		LogError("Couldn't download the release: " + err.Error())
+		log.Error().Err(err).Msg("Couldn't download the release")
 	}
 	defer resp.Body.Close()
 
@@ -374,7 +375,7 @@ func DownloadAndExtract(url string) {
 	gzr, err := gzip.NewReader(resp.Body)
 
 	if err != nil {
-		LogError("Couldn't extract the release: " + err.Error())
+		log.Error().Err(err).Msg("Couldn't extract the release")
 	}
 
 	defer gzr.Close()
@@ -389,13 +390,13 @@ func DownloadAndExtract(url string) {
 		if hdr.Name == "monokit" {
 			f, err := os.Create(TmpDir + "monokit")
 			if err != nil {
-				LogError("Couldn't create monokit binary: " + err.Error())
+				log.Error().Err(err).Msg("Couldn't create monokit binary")
 			}
 			defer f.Close()
 
 			_, err = f.ReadFrom(tr)
 			if err != nil {
-				LogError("Couldn't write monokit binary: " + err.Error())
+				log.Error().Err(err).Msg("Couldn't write monokit binary")
 			}
 		}
 	}
@@ -421,14 +422,14 @@ func Update(specificVersion string, force bool, updatePlugins bool, specificPlug
 		url = "https://api.github.com/repos/monobilisim/monokit/releases/latest"
 		resp, err := http.Get(url)
 		if err != nil {
-			LogError("Couldn't get latest release: " + err.Error())
+			log.Error().Err(err).Msg("Couldn't get latest release")
 		}
 		defer resp.Body.Close()
 
 		var release map[string]interface{}
 		err = json.NewDecoder(resp.Body).Decode(&release)
 		if err != nil {
-			LogError("Couldn't decode latest release: " + err.Error())
+			log.Error().Err(err).Msg("Couldn't decode latest release")
 		}
 
 		assets := release["assets"].([]interface{})
@@ -486,7 +487,7 @@ func Update(specificVersion string, force bool, updatePlugins bool, specificPlug
 	if updatePlugins {
 		fmt.Println("Updating plugins...")
 		if err := UpdatePlugins(version, specificPlugins, pluginDir, force); err != nil {
-			LogError("Plugin update failed: " + err.Error())
+			log.Error().Err(err).Msg("Plugin update failed")
 			fmt.Println("Main binary updated successfully, but plugin updates failed")
 		}
 	}

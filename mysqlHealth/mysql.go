@@ -15,6 +15,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"      // Keep anonymous import for side effects
 	_mysql "github.com/go-sql-driver/mysql" // Import with alias
 	"github.com/monobilisim/monokit/common"
+	"github.com/rs/zerolog/log"
 )
 
 var Connection *sql.DB
@@ -33,7 +34,7 @@ func FindMyCnf() []string {
 	_, err := exec.LookPath(daemonBinary)
 	if err != nil {
 		// Log as debug because this is expected on systems without MySQL/MariaDB server installed
-		common.LogDebug(fmt.Sprintf("Daemon binary %s not found, cannot determine config paths via --help. Error: %v", daemonBinary, err))
+		log.Debug().Msg(fmt.Sprintf("Daemon binary %s not found, cannot determine config paths via --help. Error: %v", daemonBinary, err))
 		return nil // Cannot proceed without the daemon binary
 	}
 
@@ -41,7 +42,7 @@ func FindMyCnf() []string {
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		// Log as error here because LookPath succeeded but execution failed
-		common.LogError(fmt.Sprintf("Error running %s command: %v", daemonBinary, err))
+		log.Error().Msg(fmt.Sprintf("Error running %s command: %v", daemonBinary, err))
 		return nil
 	}
 
@@ -84,7 +85,12 @@ func ParseMyCnfAndConnect(profile string) (string, error) {
 			cfg, err := ini.LoadSources(ini.LoadOptions{AllowBooleanKeys: true}, path)
 			if err != nil {
 				// Log or store this error, but continue trying other paths
-				common.LogDebug(fmt.Sprintf("Error loading config file %s: %v", path, err))
+				log.Debug().
+					Str("component", "mysqlHealth").
+					Str("function", "ParseMyCnfAndConnect").
+					Str("path", path).
+					Err(err).
+					Msg("Error loading config file")
 				lastErr = fmt.Errorf("error loading config file %s: %w", path, err)
 				continue
 			}
@@ -137,7 +143,13 @@ func ParseMyCnfAndConnect(profile string) (string, error) {
 				} else { // No socket defined, try host
 					if host == "" { // Host is also empty, default it
 						host = "127.0.0.1"
-						common.LogDebug(fmt.Sprintf("Host not specified for profile [%s] in %s, defaulting to %s", s.Name(), path, host))
+						log.Debug().
+							Str("component", "mysqlHealth").
+							Str("function", "ParseMyCnfAndConnect").
+							Str("profile", s.Name()).
+							Str("path", path).
+							Str("host", host).
+							Msg("Host not specified for profile, defaulting to 127.0.0.1")
 					}
 					// Now host is guaranteed to be non-empty (either original or defaulted)
 					config.Net = "tcp"
@@ -151,8 +163,13 @@ func ParseMyCnfAndConnect(profile string) (string, error) {
 
 				// Validate required fields before attempting connection
 				if config.User == "" {
-					common.LogDebug(fmt.Sprintf("Defaulting user for 'root' profile [%s] in %s", s.Name(), path))
-					config.User	= "root" // Default to 'root' if no user specified
+					log.Debug().
+						Str("component", "mysqlHealth").
+						Str("function", "ParseMyCnfAndConnect").
+						Str("profile", s.Name()).
+						Str("path", path).
+						Msg("Defaulting user for 'root' profile")
+					config.User = "root" // Default to 'root' if no user specified
 				}
 
 				currentConnStr = config.FormatDSN()
@@ -161,7 +178,7 @@ func ParseMyCnfAndConnect(profile string) (string, error) {
 				tempDb, err := sql.Open("mysql", currentConnStr)
 				if err != nil {
 					lastErr = fmt.Errorf("error opening connection for profile [%s] in %s (DSN: %s): %w", s.Name(), path, currentConnStr, err)
-					common.LogDebug(lastErr.Error())
+					log.Debug().Msg(lastErr.Error())
 					if tempDb != nil {
 						tempDb.Close()
 					} // Close if open failed but returned a non-nil db
@@ -192,7 +209,13 @@ func ParseMyCnfAndConnect(profile string) (string, error) {
 					// Ping failed, store error, close temp connection, continue loop
 					// Log the DSN directly; FormatDSN generally avoids embedding the password.
 					lastErr = fmt.Errorf("error pinging connection for profile [%s] in %s (DSN: %s): %w", s.Name(), path, currentConnStr, pingErr)
-					common.LogDebug(lastErr.Error())
+					log.Debug().
+						Str("component", "mysqlHealth").
+						Str("function", "ParseMyCnfAndConnect").
+						Str("profile", s.Name()).
+						Str("path", path).
+						Err(lastErr).
+						Msg("Error pinging connection")
 					tempDb.Close() // Close the connection that failed to ping
 					// Continue to the next section
 				}
@@ -203,7 +226,7 @@ func ParseMyCnfAndConnect(profile string) (string, error) {
 			}
 		} else {
 			// Log if file doesn't exist, might be ignorable depending on FindMyCnf behavior
-			// common.LogDebug(fmt.Sprintf("Config file not found or not accessible: %s", path))
+			// log.Debug().Msg(fmt.Sprintf("Config file not found or not accessible: %s", path))
 		}
 	} // End paths loop
 
@@ -240,7 +263,7 @@ func Connect(connStr string) error {
 func SelectNow() {
 	rows, err := Connection.Query("SELECT NOW() as now")
 	if err != nil {
-		common.LogError(err.Error())
+		log.Error().Err(err).Msg("Failed to execute SELECT NOW() query")
 		common.AlarmCheckDown("access", "Failed to execute SELECT NOW() query", false, "", "")
 		// Update health data
 		healthData.ConnectionInfo.Error = err.Error()
@@ -261,7 +284,7 @@ func SelectNow() {
 func CheckProcessCount() {
 	rows, err := Connection.Query("SHOW PROCESSLIST")
 	if err != nil {
-		common.LogError(err.Error())
+		log.Error().Err(err).Msg("Failed to execute SHOW PROCESSLIST query")
 		return
 	}
 	defer rows.Close()
@@ -299,7 +322,7 @@ func InaccessibleClusters() {
 	// Check node is part of the cluster
 	rows, err := Connection.Query("SELECT @@wsrep_on")
 	if err != nil || err == sql.ErrNoRows {
-		common.LogDebug(fmt.Sprintf("wsrep_on query failed: %v", err))
+		log.Debug().Msg(fmt.Sprintf("wsrep_on query failed: %v", err))
 		return
 	}
 	defer rows.Close()
@@ -307,7 +330,7 @@ func InaccessibleClusters() {
 	var wsrepOn string
 	if rows.Next() {
 		if err := rows.Scan(&wsrepOn); err != nil {
-			common.LogError(fmt.Sprintf("Error scanning wsrep_on: %v", err))
+			log.Error().Err(err).Msg("Error scanning wsrep_on")
 			return
 		}
 	}
@@ -322,7 +345,7 @@ func InaccessibleClusters() {
 	rows, err = Connection.Query(query)
 
 	if err != nil || err == sql.ErrNoRows {
-		common.LogDebug(fmt.Sprintf("InaccessibleClusters query failed: %v", err))
+		log.Debug().Err(err).Msg("InaccessibleClusters query failed")
 		return
 	}
 	defer rows.Close()
@@ -330,7 +353,7 @@ func InaccessibleClusters() {
 	var variableName, wsrepClusterStatus string
 	if rows.Next() {
 		if err := rows.Scan(&variableName, &wsrepClusterStatus); err != nil {
-			common.LogError(fmt.Sprintf("Error scanning rows: %v", err))
+			log.Error().Err(err).Msg("Error scanning rows")
 			return
 		}
 	}
@@ -345,7 +368,7 @@ func InaccessibleClusters() {
 	query = "SHOW STATUS WHERE Variable_name='wsrep_cluster_size'"
 	rows, err = Connection.Query(query)
 	if err != nil {
-		common.LogError(fmt.Sprintf("Error querying wsrep_cluster_size: %v", err))
+		log.Error().Err(err).Msg("Error querying wsrep_cluster_size")
 		return
 	}
 	defer rows.Close()
@@ -353,7 +376,7 @@ func InaccessibleClusters() {
 	var clusterSize string
 	if rows.Next() {
 		if err := rows.Scan(&variableName, &clusterSize); err != nil {
-			common.LogError(fmt.Sprintf("Error scanning wsrep_cluster_size: %v", err))
+			log.Error().Err(err).Msg("Error scanning wsrep_cluster_size")
 			return
 		}
 	}
@@ -373,7 +396,7 @@ func CheckClusterStatus() {
 	query := "SHOW GLOBAL STATUS WHERE Variable_name = 'wsrep_cluster_status'"
 	rows, err := Connection.Query(query)
 	if err != nil {
-		common.LogError(fmt.Sprintf("CheckClusterStatus query failed: %v", err))
+		log.Error().Err(err).Msg("CheckClusterStatus query failed")
 		return
 	}
 	defer rows.Close()
@@ -381,7 +404,7 @@ func CheckClusterStatus() {
 	var variableName, wsrepClusterStatus string
 	if rows.Next() {
 		if err := rows.Scan(&variableName, &wsrepClusterStatus); err != nil {
-			common.LogError(fmt.Sprintf("Error scanning rows: %v", err))
+			log.Error().Err(err).Msg("Error scanning rows")
 			return
 		}
 	}
@@ -400,7 +423,7 @@ func CheckNodeStatus() {
 	query := "SHOW GLOBAL STATUS WHERE Variable_name = 'wsrep_local_state_comment'"
 	rows, err := Connection.Query(query)
 	if err != nil {
-		common.LogError(fmt.Sprintf("CheckNodeStatus query failed: %v", err))
+		log.Error().Err(err).Msg("CheckNodeStatus query failed")
 		return
 	}
 	defer rows.Close()
@@ -408,7 +431,7 @@ func CheckNodeStatus() {
 	var variableName, wsrepLocalStateComment string
 	if rows.Next() {
 		if err := rows.Scan(&variableName, &wsrepLocalStateComment); err != nil {
-			common.LogError(fmt.Sprintf("Error scanning rows: %v", err))
+			log.Error().Err(err).Msg("Error scanning rows")
 			return
 		}
 	}
@@ -417,7 +440,7 @@ func CheckNodeStatus() {
 	query = "SHOW GLOBAL STATUS WHERE Variable_name = 'wsrep_node_name'"
 	rows, err = Connection.Query(query)
 	if err != nil {
-		common.LogError(fmt.Sprintf("wsrep_node_name query failed: %v", err))
+		log.Error().Err(err).Msg("wsrep_node_name query failed")
 		return
 	}
 	defer rows.Close()
@@ -425,7 +448,7 @@ func CheckNodeStatus() {
 	var nodeName string
 	if rows.Next() {
 		if err := rows.Scan(&variableName, &nodeName); err != nil {
-			common.LogError(fmt.Sprintf("Error scanning node name: %v", err))
+			log.Error().Err(err).Msg("Error scanning node name")
 			return
 		}
 	}
@@ -449,7 +472,7 @@ func CheckClusterSynced() {
 	query := "SHOW GLOBAL STATUS WHERE Variable_name = 'wsrep_local_state_comment'"
 	rows, err := Connection.Query(query)
 	if err != nil {
-		common.LogError(fmt.Sprintf("CheckClusterSynced query failed: %v", err))
+		log.Error().Err(err).Msg("CheckClusterSynced query failed")
 		return
 	}
 	defer rows.Close()
@@ -457,7 +480,7 @@ func CheckClusterSynced() {
 	var variableName, wsrepLocalStateComment string
 	if rows.Next() {
 		if err := rows.Scan(&variableName, &wsrepLocalStateComment); err != nil {
-			common.LogError(fmt.Sprintf("Error scanning rows: %v", err))
+			log.Error().Err(err).Msg("Error scanning rows")
 			return
 		}
 	}
@@ -477,7 +500,7 @@ func CheckDB() {
 	cmd := exec.Command("/usr/bin/"+mariadbOrMysql(), "--auto-repair", "--all-databases")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		common.LogError("Error running " + "/usr/bin/" + mariadbOrMysql() + " command:" + err.Error())
+		log.Error().Err(err).Str("path", "/usr/bin/"+mariadbOrMysql()).Msg("Error running command")
 		return
 	}
 
@@ -509,7 +532,7 @@ func CheckCertificationWaiting() {
 
 	rows, err := Connection.Query("SELECT COUNT(*) FROM INFORMATION_SCHEMA.PROCESSLIST WHERE STATE LIKE '% for certificate%'")
 	if err != nil {
-		common.LogError(err.Error())
+		log.Error().Err(err).Msg("Failed to execute SELECT COUNT(*) FROM INFORMATION_SCHEMA.PROCESSLIST WHERE STATE LIKE '% for certificate%' query")
 		return
 	}
 	defer rows.Close()

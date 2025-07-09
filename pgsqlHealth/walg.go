@@ -13,6 +13,7 @@ import (
 
 	"github.com/monobilisim/monokit/common"
 	issues "github.com/monobilisim/monokit/common/redmine/issues"
+	"github.com/rs/zerolog/log"
 )
 
 // WalGData holds information about WAL-G backup status
@@ -66,7 +67,7 @@ func WalgVerify() (*WalGData, error) {
 	err = cmd.Run()
 	if err != nil {
 		errMsg := fmt.Sprintf("Error executing command: %v", err)
-		common.LogError(errMsg)
+		log.Error().Err(err).Str("component", "pgsqlHealth").Str("operation", "WalgVerify").Str("action", "command_execution_failed").Str("command", "wal-g wal-verify integrity timeline").Msg("Error executing command")
 		walGData.Status = "Error: " + errMsg
 		walGData.Healthy = false
 		return walGData, err

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/monobilisim/monokit/common" // For ConfInit, ConfExists
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 )
 
@@ -27,21 +28,19 @@ func (p *K8sHealthProvider) Name() string {
 func (p *K8sHealthProvider) Collect(hostname string) (interface{}, error) {
 	// Initialize config if not already done
 	if !k8sConfigLoaded {
-		common.LogDebug(fmt.Sprintf("Before config load: K8sHealthConfig.Alarm.Enabled=%v", K8sHealthConfig.Alarm.Enabled))
+		log.Debug().Str("component", "k8sHealth").Str("operation", "Collect").Str("action", "config_check").Msg(fmt.Sprintf("Before config load: K8sHealthConfig.Alarm.Enabled=%v", K8sHealthConfig.Alarm.Enabled))
 		if common.ConfExists("k8s") {
-			common.LogDebug("k8s config file exists, loading...")
+			log.Debug().Str("component", "k8sHealth").Str("operation", "Collect").Str("action", "config_exists").Msg("k8s config file exists, loading...")
 			// Use our clean config loader to avoid global Viper state pollution
 			if err := loadK8sConfig(); err != nil {
-				common.LogError(fmt.Sprintf("Failed to load k8s config: %v", err))
+				log.Error().Err(err).Str("component", "k8sHealth").Str("operation", "Collect").Str("action", "load_config_failed").Msg("Failed to load k8s config")
 			} else {
-				common.LogDebug("k8s config loaded successfully")
-				common.LogDebug(fmt.Sprintf("Alarm.Enabled loaded as: %v", K8sHealthConfig.Alarm.Enabled))
+				log.Debug().Str("component", "k8sHealth").Str("operation", "Collect").Str("action", "config_loaded").Msg("k8s config loaded successfully")
 			}
 		} else {
-			common.LogDebug("k8s config file not found")
+			log.Debug().Str("component", "k8sHealth").Str("operation", "Collect").Str("action", "config_not_found").Msg("k8s config file not found")
 		}
 		k8sConfigLoaded = true // Mark as loaded regardless of success/failure to avoid repeated attempts
-		common.LogDebug(fmt.Sprintf("After config load: K8sHealthConfig.Alarm.Enabled=%v", K8sHealthConfig.Alarm.Enabled))
 	}
 
 	// Initialize clientset if not already done.

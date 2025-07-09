@@ -5,7 +5,7 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/monobilisim/monokit/common"
+	"github.com/rs/zerolog/log"
 )
 
 // VaultCheck detects the installed Vault version, compares it with the previously stored version,
@@ -14,7 +14,7 @@ func VaultCheck() (string, error) {
 	// Check if Vault binary is installed
 	_, err := exec.LookPath("vault")
 	if err != nil {
-		common.LogDebug("Vault binary not found, skipping version check")
+		log.Debug().Msg("Vault binary not found, skipping version check")
 		return "", nil // Not an error, just not installed
 	}
 
@@ -23,7 +23,7 @@ func VaultCheck() (string, error) {
 	out, err := cmd.Output()
 	if err != nil {
 		errMsg := "Error getting Vault version: " + err.Error()
-		common.LogError(errMsg)
+		log.Error().Msg(errMsg)
 		return "", fmt.Errorf("%s", errMsg)
 	}
 
@@ -34,7 +34,7 @@ func VaultCheck() (string, error) {
 	versionParts := strings.Split(versionOutput, "v")
 	if len(versionParts) < 2 {
 		errMsg := "Unexpected output format from vault version: " + versionOutput
-		common.LogError(errMsg)
+		log.Error().Msg(errMsg)
 		return "", fmt.Errorf("%s", errMsg)
 	}
 
@@ -44,19 +44,18 @@ func VaultCheck() (string, error) {
 		version = strings.TrimSpace(version[:spaceIndex])
 	}
 
-	common.LogDebug("Detected Vault version: " + version)
+	log.Debug().Str("version", version).Msg("Detected Vault version")
 
 	oldVersion := GatherVersion("vault")
 
 	if oldVersion != "" && oldVersion == version {
-		common.LogDebug("Vault version unchanged.")
+		log.Debug().Msg("Vault version unchanged.")
 	} else if oldVersion != "" && oldVersion != version {
-		common.LogInfo("Vault has been updated.")
-		common.LogInfo("Old version: " + oldVersion)
-		common.LogInfo("New version: " + version)
+		log.Debug().Msg("Vault has been updated.")
+		log.Debug().Str("old_version", oldVersion).Str("new_version", version).Msg("Vault has been updated")
 		CreateNews("Vault", oldVersion, version, false)
 	} else {
-		common.LogInfo("Storing initial Vault version: " + version)
+		log.Debug().Msg("Storing initial Vault version: " + version)
 	}
 
 	StoreVersion("vault", version)

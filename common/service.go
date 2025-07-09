@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+
+	"github.com/rs/zerolog/log"
 )
 
 var ClientURL string
@@ -18,7 +20,7 @@ func GetServiceStatus(serviceName string) (bool, string) {
 	req, err := http.NewRequest("GET", ClientURL+"/api/v"+apiVersion+"/hosts/"+Config.Identifier+"/"+serviceName, nil)
 
 	if err != nil {
-		LogError(err.Error())
+		log.Error().Err(err).Msg("Failed to create GET request")
 		return true, ""
 	}
 
@@ -33,7 +35,7 @@ func GetServiceStatus(serviceName string) (bool, string) {
 	resp, err := client.Do(req)
 
 	if err != nil {
-		LogError(err.Error())
+		log.Error().Err(err).Msg("Failed to send GET request")
 		return true, ""
 	}
 
@@ -121,7 +123,7 @@ func PostHostHealth(toolName string, payload interface{}) error {
 		// Log this, but proceed? Or fail?
 		// For now, let's make it a hard requirement for posting health.
 		// If the agent is running, it should have its key.
-		LogError(fmt.Sprintf("PostHostHealth: Failed to read host key from %s: %v. Health data for %s will not be sent.", keyPath, err, toolName))
+		log.Error().Str("keyPath", keyPath).Err(err).Str("toolName", toolName).Msg("Failed to read host key")
 		return fmt.Errorf("failed to read host key from %s: %w. Cannot authenticate health POST", keyPath, err)
 	}
 	// The server expects the host token in the "Authorization" header for routes protected by hostAuthMiddleware.

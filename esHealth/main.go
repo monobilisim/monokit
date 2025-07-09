@@ -10,18 +10,19 @@ import (
 
 	"github.com/monobilisim/monokit/common"
 	api "github.com/monobilisim/monokit/common/api"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
 
 // DetectElasticsearch checks if the Elasticsearch configuration file exists.
 // It returns true if 'es.yaml' or 'es.yml' is found in /etc/mono/, false otherwise.
 func DetectElasticsearch() bool {
-	common.LogFunctionEntry()
+	log.Debug().Msg("Function entry")
 	exists := common.ConfExists("es")
 	if exists {
-		common.LogDebug("esHealth auto-detected successfully (config file found).")
+		log.Debug().Msg("esHealth auto-detected successfully (config file found).")
 	} else {
-		common.LogDebug("esHealth auto-detection failed (config file not found).")
+		log.Debug().Msg("esHealth auto-detection failed (config file not found).")
 	}
 	return exists
 }
@@ -60,7 +61,7 @@ func collectEsHealthData() *EsHealthData {
 
 	if Config.Api_url == "" {
 		healthData.Error = "API URL is not configured in es.yml"
-		common.LogError(healthData.Error)
+		log.Error().Msg(healthData.Error)
 		// Alarm for configuration error
 		common.AlarmCheckDown("elasticsearch_config", healthData.Error, false, "", "")
 		return healthData
@@ -71,7 +72,7 @@ func collectEsHealthData() *EsHealthData {
 	clusterHealth, err := getClusterHealth()
 	if err != nil {
 		healthData.Error = fmt.Sprintf("Failed to get cluster health: %v", err)
-		common.LogError(healthData.Error)
+		log.Error().Msg(healthData.Error)
 		// Alarm is handled by getClusterHealth for connection/request errors
 		return healthData
 	}
@@ -107,8 +108,9 @@ func collectEsHealthData() *EsHealthData {
 	if clusterHealth.UnassignedShards > 0 || clusterHealth.Status != "green" {
 		allocationInfo, allocErr := getShardAllocation()
 		if allocErr != nil {
-			allocationErrorMsg := fmt.Sprintf("Failed to get shard allocation details: %v", allocErr)
-			common.LogError(allocationErrorMsg)
+			allocationErrorMsgInitial := "Failed to get shard allocation details"
+			allocationErrorMsg := fmt.Sprintf("%v: %v", allocationErrorMsgInitial, allocErr)
+			log.Error().Err(allocErr).Msg(allocationErrorMsgInitial)
 			if healthData.Error != "" {
 				healthData.Error += "; " + allocationErrorMsg
 			} else {
@@ -153,7 +155,6 @@ func displayBoxUI(healthData *EsHealthData, version string) {
 // getClusterHealth fetches the Elasticsearch cluster health status.
 // It returns a ClusterHealthAPIResponse struct or an error.
 func getClusterHealth() (*ClusterHealthAPIResponse, error) {
-	common.LogFunctionEntry()
 	url := Config.Api_url
 
 	// Make sure URL ends with "/"
@@ -213,7 +214,6 @@ func getClusterHealth() (*ClusterHealthAPIResponse, error) {
 // getShardAllocation fetches shard allocation status using _cluster/allocation/explain API.
 // It returns an AllocationInfo struct or an error.
 func getShardAllocation() (*AllocationInfo, error) {
-	common.LogFunctionEntry()
 	url := Config.Api_url
 
 	if url[len(url)-1:] != "/" {
@@ -254,7 +254,7 @@ func getShardAllocation() (*AllocationInfo, error) {
 	// If the status code is 400, it typically means there are no unassigned shards to explain.
 	// This is considered a "good" state for this specific endpoint call.
 	if resp.StatusCode == http.StatusBadRequest {
-		common.LogDebug("Shard allocation explain returned 400, likely no unassigned shards.")
+		log.Debug().Msg("Shard allocation explain returned 400, likely no unassigned shards.")
 		common.AlarmCheckUp("elasticsearch_allocation_connection", "Successfully connected for shard allocation (400 implies no unassigned).", false)
 		return &AllocationInfo{
 			CanAllocate:   "OK", // Representing no issues found by this endpoint

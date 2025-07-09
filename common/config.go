@@ -4,6 +4,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
 )
 
@@ -57,7 +58,7 @@ func ConfInit(configName string, config interface{}) interface{} {
 	err := viper.ReadInConfig()
 
 	if err != nil {
-		LogError("Fatal error while trying to parse the config file: \n" + err.Error())
+		log.Error().Str("configName", configName).Err(err).Msg("Fatal error while trying to parse the config file")
 		panic(err)
 	}
 
@@ -73,7 +74,7 @@ func ConfInit(configName string, config interface{}) interface{} {
 	err = viper.Unmarshal(&config)
 
 	if err != nil {
-		LogError("Fatal error while trying to unmarshal the config file: \n" + err.Error())
+		log.Error().Str("configName", configName).Err(err).Msg("Fatal error while trying to unmarshal the config file")
 		panic(err)
 	}
 

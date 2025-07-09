@@ -10,6 +10,7 @@ import (
 	"github.com/monobilisim/monokit/common"
 	"github.com/monobilisim/monokit/common/health"
 	issues "github.com/monobilisim/monokit/common/redmine/issues"
+	"github.com/rs/zerolog/log"
 	"github.com/shirou/gopsutil/v4/disk" // For GetDiskPartitions
 	"github.com/spf13/cobra"
 )
@@ -77,7 +78,7 @@ func Main(cmd *cobra.Command, args []string) {
 
 	// Attempt to POST health data to the Monokit server
 	if err := common.PostHostHealth("osHealth", healthData); err != nil {
-		common.LogError(fmt.Sprintf("osHealth: failed to POST health data: %v", err))
+		log.Error().Err(err).Msg("osHealth: failed to POST health data")
 		// Continue execution even if POST fails, e.g., to display UI locally
 	}
 
@@ -138,7 +139,7 @@ func displayBoxUI(healthData *HealthData) {
 func collectDiskInfo() []DiskInfo {
 	gopsutilDiskPartitions, err := disk.Partitions(false) // Using gopsutil/disk directly
 	if err != nil {
-		common.LogError("An error occurred while fetching disk partitions\n" + err.Error())
+		log.Error().Err(err).Msg("An error occurred while fetching disk partitions")
 		return []DiskInfo{} // Return empty list on error
 	}
 
@@ -157,7 +158,7 @@ func collectDiskInfo() []DiskInfo {
 			fullMsg = fullMsg + "\n\n" + "Redmine Issue: " + common.Config.Redmine.Url + "/issues/" + id
 			common.AlarmCheckUp("disk_redmineissue", "Redmine issue exists for disk usage", false)
 		} else {
-			common.LogDebug("osHealth/main.go: issues.Show(\"disk\") returned empty. Proceeding without Redmine link in alarm.")
+			log.Debug().Msg("osHealth/main.go: issues.Show(\"disk\") returned empty. Proceeding without Redmine link in alarm.")
 		}
 		common.AlarmCheckDown("disk", fullMsg, false, "", "")
 
@@ -180,7 +181,7 @@ func collectMemoryInfo() MemoryInfo {
 
 	virtualMemory, err := GetVirtualMemory() // from osHealth/utils.go
 	if err != nil {
-		common.LogError("Error getting virtual memory stats: " + err.Error())
+		log.Error().Err(err).Msg("Error getting virtual memory stats")
 		// memInfo will have default (zero) values and Exceeded will be false.
 		return memInfo
 	}

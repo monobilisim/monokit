@@ -26,6 +26,7 @@ import (
 	"time"
 
 	"github.com/monobilisim/monokit/common"
+	"github.com/rs/zerolog/log"
 )
 
 // SystemdLogEntry represents a systemd journal log entry
@@ -121,7 +122,7 @@ func collectSystemdLogs(since time.Time, maxEntries int) ([]SystemdLogEntry, err
 		// Parse JSON entry
 		var rawEntry map[string]interface{}
 		if err := json.Unmarshal([]byte(line), &rawEntry); err != nil {
-			common.LogError("Failed to parse journal entry: " + err.Error())
+			log.Error().Err(err).Msg("Failed to parse journal entry")
 			continue
 		}
 
@@ -188,7 +189,7 @@ func collectSystemdLogs(since time.Time, maxEntries int) ([]SystemdLogEntry, err
 		// Save the newest timestamp for next time
 		err = saveLastSentTimestamp(newestTimestamp)
 		if err != nil {
-			common.LogError("Failed to save last sent timestamp: " + err.Error())
+			log.Error().Err(err).Msg("Failed to save last sent timestamp")
 		}
 	}
 
@@ -247,18 +248,39 @@ func pushLogsToAPI(entries []SystemdLogEntry) error {
 		return fmt.Errorf("host key is not available: %w", err)
 	}
 
+	log.Debug().
+		Str("component", "systemd_logs").
+		Str("action", "push_to_api").
+		Str("api_url", clientConf.URL).
+		Str("hostname", hostName).
+		Int("total_entries", len(entries)).
+		Msg("Starting API push for systemd logs")
+
+	successCount := 0
+	failureCount := 0
+
 	// Send each log entry individually
-	for _, entry := range entries {
+	for i, entry := range entries {
 		// Skip empty messages
 		if entry.Message == "" {
-			common.LogDebug("Skipping empty message")
+			log.Debug().
+				Str("component", "systemd_logs").
+				Str("action", "push_to_api").
+				Int("entry_index", i).
+				Msg("Skipping entry with empty message")
 			continue
 		}
 
 		// Convert metadata map to JSON string
 		metadataBytes, err := json.Marshal(entry.Metadata)
 		if err != nil {
-			common.LogError("Failed to marshal metadata: " + err.Error())
+			log.Error().
+				Err(err).
+				Str("component", "systemd_logs").
+				Str("action", "marshal_metadata").
+				Int("entry_index", i).
+				Msg("Failed to marshal metadata for log entry")
+			failureCount++
 			continue
 		}
 
@@ -280,20 +302,39 @@ func pushLogsToAPI(entries []SystemdLogEntry) error {
 		}
 
 		// Debug log the request being sent
-		requestJson, _ := json.Marshal(logRequest)
-		common.LogDebug("Sending log request: " + string(requestJson))
+		if log.Debug().Enabled() {
+			requestJson, _ := json.Marshal(logRequest)
+			log.Debug().
+				Str("component", "systemd_logs").
+				Str("action", "push_to_api").
+				Int("entry_index", i).
+				RawJSON("request", requestJson).
+				Msg("Sending log request to API")
+		}
 
 		// Marshal to JSON
 		jsonData, err := json.Marshal(logRequest)
 		if err != nil {
-			common.LogError("Failed to marshal log request: " + err.Error())
+			log.Error().
+				Err(err).
+				Str("component", "systemd_logs").
+				Str("action", "marshal_request").
+				Int("entry_index", i).
+				Msg("Failed to marshal log request")
+			failureCount++
 			continue
 		}
 
 		// Send log to API
 		req, err := http.NewRequest("POST", clientConf.URL+"/api/v1/host/logs", bytes.NewBuffer(jsonData))
 		if err != nil {
-			common.LogError("Failed to create request: " + err.Error())
+			log.Error().
+				Err(err).
+				Str("component", "systemd_logs").
+				Str("action", "create_request").
+				Int("entry_index", i).
+				Msg("Failed to create HTTP request")
+			failureCount++
 			continue
 		}
 
@@ -306,7 +347,14 @@ func pushLogsToAPI(entries []SystemdLogEntry) error {
 		client := &http.Client{Timeout: 10 * time.Second}
 		resp, err := client.Do(req)
 		if err != nil {
-			common.LogError("Failed to send request: " + err.Error())
+			log.Error().
+				Err(err).
+				Str("component", "systemd_logs").
+				Str("action", "send_request").
+				Int("entry_index", i).
+				Str("url", clientConf.URL+"/api/v1/host/logs").
+				Msg("Failed to send HTTP request to API")
+			failureCount++
 			continue
 		}
 
@@ -314,11 +362,31 @@ func pushLogsToAPI(entries []SystemdLogEntry) error {
 		if resp.StatusCode != http.StatusCreated && resp.StatusCode != http.StatusOK {
 			// Read response body for more details
 			respBody, _ := io.ReadAll(resp.Body)
-			common.LogError(fmt.Sprintf("Failed to push log: status code %d - %s", resp.StatusCode, string(respBody)))
+			log.Error().
+				Str("component", "systemd_logs").
+				Str("action", "api_response").
+				Int("entry_index", i).
+				Int("status_code", resp.StatusCode).
+				Str("response_body", string(respBody)).
+				Str("log_level", logRequest.Level).
+				Str("log_message", logRequest.Message).
+				Msg("API rejected log entry")
+			failureCount++
+		} else {
+			successCount++
 		}
 
 		resp.Body.Close()
 	}
+
+	log.Debug().
+		Str("component", "systemd_logs").
+		Str("action", "push_to_api").
+		Int("total_entries", len(entries)).
+		Int("success_count", successCount).
+		Int("failure_count", failureCount).
+		Float64("success_rate", float64(successCount)/float64(len(entries))*100).
+		Msg("Completed pushing systemd logs to API")
 
 	return nil
 }
@@ -335,36 +403,86 @@ func SystemdLogs() {
 		return
 	}
 
+	startTime := time.Now()
 	common.SplitSection("Systemd Logs")
 	fmt.Println("Collecting systemd logs...")
+
+	log.Debug().
+		Str("component", "systemd_logs").
+		Str("action", "start").
+		Msg("Starting systemd log collection and submission")
 
 	// Get the timestamp of the last sent log
 	lastTimestamp, err := getLastSentTimestamp()
 	if err != nil {
-		common.LogError("Failed to get last sent timestamp, using default: " + err.Error())
+		log.Error().
+			Err(err).
+			Str("component", "systemd_logs").
+			Str("action", "get_last_timestamp").
+			Dur("fallback_hours", 1*time.Hour).
+			Msg("Failed to get last sent timestamp, using default fallback")
 		// We continue with the default timestamp (1 hour ago)
 	}
+
+	log.Debug().
+		Str("component", "systemd_logs").
+		Str("action", "collect").
+		Time("since", lastTimestamp).
+		Int("max_entries", 1000).
+		Msg("Collecting systemd logs since last timestamp")
 
 	fmt.Printf("Collecting logs since %s\n", lastTimestamp.Format(time.RFC3339))
 
 	// Collect logs since the last sent timestamp, max 1000 entries
 	entries, err := collectSystemdLogs(lastTimestamp, 1000)
 	if err != nil {
-		common.LogError("Failed to collect systemd logs: " + err.Error())
+		log.Error().
+			Err(err).
+			Str("component", "systemd_logs").
+			Str("action", "collect").
+			Time("since", lastTimestamp).
+			Msg("Failed to collect systemd logs")
 		return
 	}
+
+	log.Debug().
+		Str("component", "systemd_logs").
+		Str("action", "collect").
+		Int("entries_collected", len(entries)).
+		Time("since", lastTimestamp).
+		Dur("collection_duration", time.Since(startTime)).
+		Msg("Systemd log collection completed")
 
 	fmt.Printf("Collected %d systemd log entries\n", len(entries))
 
 	// Push logs to API
 	if len(entries) > 0 {
+		pushStartTime := time.Now()
 		err = pushLogsToAPI(entries)
 		if err != nil {
-			common.LogError("Failed to push systemd logs to API: " + err.Error())
+			log.Error().
+				Err(err).
+				Str("component", "systemd_logs").
+				Str("action", "push_to_api").
+				Int("entries_count", len(entries)).
+				Msg("Failed to push systemd logs to API")
 			return
 		}
+
+		log.Debug().
+			Str("component", "systemd_logs").
+			Str("action", "push_to_api").
+			Int("entries_pushed", len(entries)).
+			Dur("push_duration", time.Since(pushStartTime)).
+			Dur("total_duration", time.Since(startTime)).
+			Msg("Successfully pushed systemd logs to API")
+
 		fmt.Println("Successfully pushed systemd logs to API")
 	} else {
+		log.Debug().
+			Str("component", "systemd_logs").
+			Str("action", "push_to_api").
+			Msg("No systemd logs to push")
 		fmt.Println("No systemd logs to push")
 	}
 }

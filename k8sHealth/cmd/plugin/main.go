@@ -3,12 +3,12 @@
 package main
 
 import (
-	"context" // Added for GRPCClient
+	"context"
 	"encoding/json"
-	"fmt"     // For fmt.Errorf in stubs
-	"net/rpc" // For plugin.Plugin interface (for netrpc stubs)
-	"os"      // Add for os.Getenv
-	"strings" // Add for strings.ToLower
+	"fmt"
+	"net/rpc"
+	"os"
+	"strings"
 
 	"github.com/charmbracelet/lipgloss" // Add for color profile setting
 	"github.com/hashicorp/go-plugin"
@@ -124,13 +124,13 @@ func main() {
 	if noColorEnv != "1" && noColorEnv != "true" {
 		// Colors are enabled, force TrueColor profile for consistent rendering
 		lipgloss.SetColorProfile(termenv.TrueColor)
-		//common.LogDebug("[PLUGIN] Colors enabled, set lipgloss to TrueColor profile")
+		//log.Debug().Msg("[PLUGIN] Colors enabled, set lipgloss to TrueColor profile")
 	} else {
-		//common.LogDebug("[PLUGIN] Colors disabled via MONOKIT_NOCOLOR")
+		//log.Debug().Msg("[PLUGIN] Colors disabled via MONOKIT_NOCOLOR")
 	}
 
 	// Config loading is now handled in the Collect() method to avoid duplicate loading
-	//common.LogDebug("[PLUGIN] Config will be loaded on first Collect() call")
+	//log.Debug().Msg("[PLUGIN] Config will be loaded on first Collect() call")
 
 	pluginMap := map[string]plugin.Plugin{
 		"provider": &HealthPlugin{Impl: k8sHealth.K8sHealthProvider{}},
@@ -143,7 +143,7 @@ func main() {
 		MagicCookieValue: "1",
 	}
 
-	//common.LogDebug("[PLUGIN] k8sHealth plugin starting, serving gRPC plugin...")
+	//log.Debug().Msg("[PLUGIN] k8sHealth plugin starting, serving gRPC plugin...")
 
 	plugin.Serve(&plugin.ServeConfig{
 		HandshakeConfig: handshake,

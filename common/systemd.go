@@ -4,10 +4,10 @@ package common
 
 import (
 	"context"
-	"fmt"
 	"os"
 
 	"github.com/coreos/go-systemd/v22/dbus"
+	"github.com/rs/zerolog/log"
 )
 
 func SystemdUnitActive(unitName string) bool {
@@ -17,7 +17,7 @@ func SystemdUnitActive(unitName string) bool {
 	systemdConnection, err := dbus.NewSystemConnectionContext(ctx)
 
 	if err != nil {
-		LogError("Error connecting to systemd: " + err.Error())
+		log.Error().Err(err).Msg("Error connecting to systemd")
 	}
 
 	defer systemdConnection.Close()
@@ -25,7 +25,7 @@ func SystemdUnitActive(unitName string) bool {
 	listOfUnits, err := systemdConnection.ListUnitsContext(ctx)
 
 	if err != nil {
-		LogError("Error listing systemd units: " + err.Error())
+		log.Error().Err(err).Msg("Error listing systemd units")
 	}
 
 	for _, unit := range listOfUnits {
@@ -50,14 +50,14 @@ func SystemdUnitExists(unit string) bool {
 	for _, p := range paths {
 		filePath := p + unit
 		if _, err := os.Stat(filePath); err == nil {
-			LogDebug(fmt.Sprintf("Found systemd unit file at: %s", filePath))
+			log.Debug().Str("filePath", filePath).Msg("Found systemd unit file")
 			return true // File exists
 		} else if !os.IsNotExist(err) {
 			// Log error if it's something other than "not found"
-			LogError(fmt.Sprintf("Error checking for systemd unit file %s: %v", filePath, err))
+			log.Error().Str("filePath", filePath).Err(err).Msg("Error checking for systemd unit file")
 		}
 	}
 
-	LogDebug(fmt.Sprintf("Systemd unit file %s not found in common locations.", unit))
+	log.Debug().Str("unit", unit).Msg("Systemd unit file not found in common locations")
 	return false // File does not exist in any common location
 }

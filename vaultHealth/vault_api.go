@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/monobilisim/monokit/common"
+	"github.com/rs/zerolog/log"
 )
 
 // createHTTPClient creates an HTTP client with appropriate TLS settings
@@ -46,7 +47,7 @@ func makeVaultAPIRequest(endpoint string) (*http.Response, error) {
 	}
 
 	fullURL := baseURL + endpoint
-	common.LogDebug(fmt.Sprintf("Making Vault API request to: %s", fullURL))
+	log.Debug().Str("url", fullURL).Msg("Making Vault API request")
 
 	req, err := http.NewRequest("GET", fullURL, nil)
 	if err != nil {
@@ -56,9 +57,9 @@ func makeVaultAPIRequest(endpoint string) (*http.Response, error) {
 	// Add token if configured
 	if VaultHealthConfig.Vault.Token != "" {
 		req.Header.Set("X-Vault-Token", VaultHealthConfig.Vault.Token)
-		common.LogDebug("Using Vault token for authentication")
+		log.Debug().Msg("Using Vault token for authentication")
 	} else {
-		common.LogDebug("No Vault token configured")
+		log.Debug().Msg("No Vault token configured")
 	}
 
 	req.Header.Set("User-Agent", "MonoKit-VaultHealth/1.0.0")
@@ -127,7 +128,7 @@ func checkVaultAPI(healthData *VaultHealthData) error {
 		healthData.Cluster.IsLeader = false
 	}
 
-	common.LogDebug(fmt.Sprintf("Vault API check successful, mode: %s, status: %d", healthData.Cluster.Mode, resp.StatusCode))
+	log.Debug().Str("mode", healthData.Cluster.Mode).Int("status", resp.StatusCode).Msg("Vault API check successful")
 	return nil
 }
 
@@ -179,7 +180,7 @@ func checkSealStatus(healthData *VaultHealthData) error {
 		}
 	}
 
-	common.LogDebug(fmt.Sprintf("Vault seal status: sealed=%t, type=%s", sealResp.Sealed, sealResp.Type))
+	log.Debug().Bool("sealed", sealResp.Sealed).Str("type", sealResp.Type).Msg("Vault seal status")
 	return nil
 }
 
@@ -241,7 +242,7 @@ func checkClusterStatus(healthData *VaultHealthData) error {
 	// If using Raft storage, get detailed cluster state
 	if healthData.Storage.Type == "raft" {
 		if err := checkRaftClusterState(healthData); err != nil {
-			common.LogDebug(fmt.Sprintf("Failed to get Raft cluster state: %v", err))
+			log.Debug().Err(err).Msg("Failed to get Raft cluster state")
 			healthData.Cluster.HealthIssues = append(healthData.Cluster.HealthIssues, "Failed to retrieve Raft cluster state")
 			basicHealthy = false
 		}
@@ -250,14 +251,14 @@ func checkClusterStatus(healthData *VaultHealthData) error {
 		if VaultHealthConfig.Vault.ClusterChecks.Enabled {
 			if VaultHealthConfig.Vault.ClusterChecks.Check_configuration {
 				if err := checkRaftConfiguration(healthData); err != nil {
-					common.LogDebug(fmt.Sprintf("Failed to get Raft configuration: %v", err))
+					log.Debug().Err(err).Msg("Failed to get Raft configuration")
 					healthData.Cluster.HealthIssues = append(healthData.Cluster.HealthIssues, "Raft configuration check failed")
 				}
 			}
 
 			if VaultHealthConfig.Vault.ClusterChecks.Check_node_health {
 				if err := checkClusterNodeHealth(healthData); err != nil {
-					common.LogDebug(fmt.Sprintf("Failed to check cluster node health: %v", err))
+					log.Debug().Err(err).Msg("Failed to check cluster node health")
 					healthData.Cluster.HealthIssues = append(healthData.Cluster.HealthIssues, "Node health check failed")
 				}
 			}
@@ -268,12 +269,12 @@ func checkClusterStatus(healthData *VaultHealthData) error {
 
 			if VaultHealthConfig.Vault.ClusterChecks.Check_performance {
 				if err := checkClusterPerformance(healthData); err != nil {
-					common.LogDebug(fmt.Sprintf("Failed to check cluster performance: %v", err))
+					log.Debug().Err(err).Msg("Failed to check cluster performance")
 					healthData.Cluster.HealthIssues = append(healthData.Cluster.HealthIssues, "Performance check failed")
 				}
 			}
 		} else {
-			common.LogDebug("Advanced cluster checks disabled in configuration")
+			log.Debug().Msg("Advanced cluster checks disabled in configuration")
 		}
 	} else {
 		// For non-Raft storage (consul, postgresql, etc.), use basic health assessment
@@ -313,8 +314,7 @@ func checkClusterStatus(healthData *VaultHealthData) error {
 	// Check for leader changes and alerts
 	if VaultHealthConfig.Vault.Alerts.Leader_changes && healthData.Cluster.HAEnabled {
 		// Log current leader status
-		common.LogDebug(fmt.Sprintf("Current Vault leader: %s (this node: %t)",
-			healthData.Cluster.LeaderAddr, healthData.Cluster.IsLeader))
+		log.Debug().Str("leader", healthData.Cluster.LeaderAddr).Bool("is_leader", healthData.Cluster.IsLeader).Msg("Current Vault leader")
 
 		// Alert if no leader is available
 		if healthData.Cluster.LeaderAddr == "" && healthData.Cluster.HAEnabled {
@@ -324,8 +324,7 @@ func checkClusterStatus(healthData *VaultHealthData) error {
 		}
 	}
 
-	common.LogDebug(fmt.Sprintf("Cluster health assessment: healthy=%t, reason=%s, issues=%d",
-		healthData.Cluster.Healthy, healthData.Cluster.HealthReason, len(healthData.Cluster.HealthIssues)))
+	log.Debug().Bool("healthy", healthData.Cluster.Healthy).Str("reason", healthData.Cluster.HealthReason).Int("issues", len(healthData.Cluster.HealthIssues)).Msg("Cluster health assessment")
 
 	return nil
 }
@@ -340,7 +339,7 @@ func checkRaftClusterState(healthData *VaultHealthData) error {
 
 	// Check if we got permission denied or other auth error
 	if resp.StatusCode == 403 {
-		common.LogDebug("Insufficient permissions to read Raft cluster state")
+		log.Debug().Msg("Insufficient permissions to read Raft cluster state")
 		return nil
 	}
 
@@ -386,8 +385,7 @@ func checkRaftClusterState(healthData *VaultHealthData) error {
 		healthData.Cluster.Nodes = append(healthData.Cluster.Nodes, node)
 	}
 
-	common.LogDebug(fmt.Sprintf("Raft cluster state: healthy=%t, nodes=%d, leader=%s",
-		raftResp.Healthy, len(raftResp.Servers), raftResp.Leader))
+	log.Debug().Bool("healthy", raftResp.Healthy).Int("nodes", len(raftResp.Servers)).Str("leader", raftResp.Leader).Msg("Raft cluster state")
 
 	return nil
 }
@@ -410,7 +408,7 @@ func checkReplicationStatus(healthData *VaultHealthData) error {
 
 	// Check for permission denied
 	if resp.StatusCode == 403 {
-		common.LogDebug("Insufficient permissions to read replication status")
+		log.Debug().Msg("Insufficient permissions to read replication status")
 		return nil
 	}
 
@@ -439,8 +437,7 @@ func checkReplicationStatus(healthData *VaultHealthData) error {
 	healthData.Replication.KnownSecondaries = replResp.Data.KnownSecondaries
 	healthData.Replication.ConnectionState = replResp.Data.ConnectionState
 
-	common.LogDebug(fmt.Sprintf("Replication status: mode=%s, state=%s",
-		replResp.Data.Mode, replResp.Data.State))
+	log.Debug().Str("mode", replResp.Data.Mode).Str("state", replResp.Data.State).Msg("Replication status")
 
 	return nil
 }
@@ -468,7 +465,7 @@ func checkRaftConfiguration(healthData *VaultHealthData) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode == 403 {
-		common.LogDebug("Insufficient permissions to read Raft configuration")
+		log.Debug().Msg("Insufficient permissions to read Raft configuration")
 		return nil
 	}
 
@@ -521,8 +518,7 @@ func checkRaftConfiguration(healthData *VaultHealthData) error {
 	healthData.Storage.RaftInfo.CommittedIndex = int64(configResp.Data.Config.Index)
 
 	// Log configuration status
-	common.LogDebug(fmt.Sprintf("Raft configuration: %d total servers, %d voters, %d leaders",
-		len(configResp.Data.Config.Servers), voterCount, leaderCount))
+	log.Debug().Int("total_servers", len(configResp.Data.Config.Servers)).Int("voters", voterCount).Int("leaders", leaderCount).Msg("Raft configuration")
 
 	// Alert on configuration issues
 	if leaderCount != 1 {
@@ -649,8 +645,7 @@ func checkClusterNodeHealth(healthData *VaultHealthData) error {
 		common.AlarmCheckUp("vault_cluster_partitions", "No network partitions detected", false)
 	}
 
-	common.LogDebug(fmt.Sprintf("Cluster node health: %d/%d healthy, %d partitioned",
-		healthyNodes, totalNodes, partitionedNodes))
+	log.Debug().Int("healthy", healthyNodes).Int("total", totalNodes).Int("partitioned", partitionedNodes).Msg("Cluster node health")
 	return nil
 }
 
@@ -662,7 +657,7 @@ func validateClusterQuorum(healthData *VaultHealthData) {
 
 	totalNodes := len(healthData.Cluster.Nodes)
 	if totalNodes == 0 {
-		common.LogDebug("No cluster nodes information available for quorum validation")
+		log.Debug().Msg("No cluster nodes information available for quorum validation")
 		return
 	}
 
@@ -697,8 +692,7 @@ func validateClusterQuorum(healthData *VaultHealthData) {
 		common.AlarmCheckUp("vault_cluster_quorum", "Vault cluster has sufficient quorum", false)
 	}
 
-	common.LogDebug(fmt.Sprintf("Cluster quorum status: %d/%d healthy voters, quorum=%t (need %d)",
-		healthyVoters, totalVoters, hasQuorum, requiredQuorum))
+	log.Debug().Int("healthy_voters", healthyVoters).Int("total_voters", totalVoters).Bool("has_quorum", hasQuorum).Int("required_quorum", requiredQuorum).Msg("Cluster quorum status")
 }
 
 // checkClusterPerformance monitors cluster performance metrics
@@ -729,7 +723,7 @@ func checkClusterPerformance(healthData *VaultHealthData) error {
 	isResponseTimeOK := responseTime <= maxResponseTime
 
 	// Log performance metrics
-	common.LogDebug(fmt.Sprintf("Cluster response time: %v (limit: %v)", responseTime, maxResponseTime))
+	log.Debug().Str("response_time", responseTime.String()).Str("max_response_time", maxResponseTime.String()).Msg("Cluster response time")
 
 	// Generate alerts for performance issues
 	if !isResponseTimeOK {
@@ -743,7 +737,7 @@ func checkClusterPerformance(healthData *VaultHealthData) error {
 	// Additional Raft-specific performance checks
 	if healthData.Storage.Type == "raft" {
 		if err := checkRaftPerformance(healthData); err != nil {
-			common.LogDebug(fmt.Sprintf("Failed to check Raft performance: %v", err))
+			log.Debug().Err(err).Msg("Failed to check Raft performance")
 		}
 	}
 
@@ -760,7 +754,7 @@ func checkRaftPerformance(healthData *VaultHealthData) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode == 403 {
-		common.LogDebug("Insufficient permissions to read Raft metrics")
+		log.Debug().Msg("Insufficient permissions to read Raft metrics")
 		return nil
 	}
 
@@ -770,7 +764,7 @@ func checkRaftPerformance(healthData *VaultHealthData) error {
 
 	// For now, just verify we can access metrics
 	// In the future, this could parse Prometheus metrics for detailed analysis
-	common.LogDebug("Successfully accessed Raft performance metrics")
+	log.Debug().Msg("Successfully accessed Raft performance metrics")
 
 	return nil
 }
@@ -778,7 +772,7 @@ func checkRaftPerformance(healthData *VaultHealthData) error {
 // checkVaultVersionUpdates checks for new Vault versions and sends alerts
 func checkVaultVersionUpdates(healthData *VaultHealthData) error {
 	if !VaultHealthConfig.Vault.Alerts.Version_updates {
-		common.LogDebug("Version update alerts disabled in configuration")
+		log.Debug().Msg("Version update alerts disabled in configuration")
 		// Set default message when version updates are disabled
 		healthData.VersionInfo.UpdateMessage = "Version checking disabled"
 		healthData.VersionInfo.NeedsUpdate = false
@@ -786,27 +780,27 @@ func checkVaultVersionUpdates(healthData *VaultHealthData) error {
 	}
 
 	if healthData.VersionInfo.Version == "" {
-		common.LogDebug("Cannot check version updates: current version unknown")
+		log.Debug().Msg("Cannot check version updates: current version unknown")
 		return nil
 	}
 
 	currentVersion := healthData.VersionInfo.Version
-	common.LogDebug(fmt.Sprintf("Checking for updates to current Vault version: %s", currentVersion))
+	log.Debug().Str("current_version", currentVersion).Msg("Checking for updates to current Vault version")
 
 	// Get latest version from HashiCorp releases API
 	latestVersion, err := getLatestVaultVersion()
 	if err != nil {
-		common.LogError(fmt.Sprintf("Failed to check for Vault updates: %v", err))
+		log.Error().Err(err).Msg("Failed to check for Vault updates")
 		return err
 	}
 
-	common.LogDebug(fmt.Sprintf("Latest Vault version available: %s", latestVersion))
+	log.Debug().Str("latest_version", latestVersion).Msg("Latest Vault version available")
 
 	// Compare versions
 	if latestVersion != currentVersion {
 		updateAvailable, err := isNewerVersion(latestVersion, currentVersion)
 		if err != nil {
-			common.LogError(fmt.Sprintf("Failed to compare versions: %v", err))
+			log.Error().Err(err).Msg("Failed to compare versions")
 			return err
 		}
 
@@ -819,7 +813,7 @@ func checkVaultVersionUpdates(healthData *VaultHealthData) error {
 			alarmMessage := fmt.Sprintf("New Vault version available: %s (current: %s)", latestVersion, currentVersion)
 			common.AlarmCheckDown("vault_version_update", alarmMessage, false, "", "")
 
-			common.LogInfo(fmt.Sprintf("Vault update available: %s -> %s", currentVersion, latestVersion))
+			log.Info().Str("current_version", currentVersion).Str("latest_version", latestVersion).Msg("Vault update available")
 		} else {
 			// Current version is newer or same (maybe dev/beta version)
 			healthData.VersionInfo.NeedsUpdate = false

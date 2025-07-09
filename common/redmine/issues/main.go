@@ -12,17 +12,8 @@ import (
 	"time"
 
 	"github.com/monobilisim/monokit/common"
+	"github.com/rs/zerolog/log"
 )
-
-// Helper function to convert string to int
-func atoi(s string) int {
-	i, err := strconv.Atoi(s)
-	if err != nil {
-		common.LogError("strconv.Atoi error: " + err.Error())
-		return 0
-	}
-	return i
-}
 
 type Issue struct {
 	Id           int    `json:"id,omitempty"`
@@ -50,7 +41,7 @@ func redmineCheckIssueLog(service string) bool {
 		if common.IsEmptyOrWhitespace(filePath) {
 			err := os.Remove(filePath)
 			if err != nil {
-				common.LogError("os.Remove error: " + err.Error())
+				log.Error().Err(err).Msg("os.Remove error")
 			}
 			return false
 		}
@@ -59,13 +50,13 @@ func redmineCheckIssueLog(service string) bool {
 		read, err := os.ReadFile(filePath)
 
 		if err != nil {
-			common.LogError("os.ReadFile error: " + err.Error())
+			log.Error().Err(err).Str("component", "redmine").Str("operation", "check_issue_log").Str("file_path", filePath).Msg("Failed to read issue log file")
 		}
 
 		if string(read) == "0" {
 			err := os.Remove(filePath)
 			if err != nil {
-				common.LogError("os.Remove error: " + err.Error())
+				log.Error().Err(err).Str("component", "redmine").Str("operation", "check_issue_log").Str("file_path", filePath).Msg("Failed to remove zero-content issue log file")
 			}
 			return false
 		}
@@ -78,7 +69,7 @@ func redmineCheckIssueLog(service string) bool {
 
 func redmineWrapper(service string, subject string, message string) {
 
-	if redmineCheckIssueLog(service) == false {
+	if !redmineCheckIssueLog(service) {
 		Create(service, subject, message)
 	} else {
 		Update(service, message, true)
@@ -119,7 +110,7 @@ func CheckDown(service string, subject string, message string, EnableCustomInter
 		defer file.Close()
 
 		if err != nil {
-			common.LogError("Error opening file for writing: \n" + err.Error())
+			log.Error().Err(err).Str("file_path", filePath).Msg("Failed to open file for reading")
 		}
 
 		var j common.ServiceFile
@@ -127,19 +118,19 @@ func CheckDown(service string, subject string, message string, EnableCustomInter
 		fileRead, err := io.ReadAll(file)
 
 		if err != nil {
-			common.LogError("Error reading file: \n" + err.Error())
+			log.Error().Err(err).Str("file_path", filePath).Msg("Failed to read file content")
 			return
 		}
 
 		err = json.Unmarshal(fileRead, &j)
 
 		if err != nil {
-			common.LogError("Error parsing JSON: \n" + err.Error())
+			log.Error().Err(err).Str("file_path", filePath).Msg("Failed to parse JSON from file")
 			return
 		}
 
 		// Return if locked == true
-		if j.Locked == true {
+		if j.Locked {
 			return
 		}
 
@@ -147,7 +138,7 @@ func CheckDown(service string, subject string, message string, EnableCustomInter
 		oldDateParsed, err := time.Parse("2006-01-02 15:04:05 -0700", oldDate)
 
 		if err != nil {
-			common.LogError("Error parsing date: \n" + err.Error())
+			log.Error().Err(err).Str("date", oldDate).Msg("Failed to parse date from file")
 		}
 
 		finJson := &common.ServiceFile{
@@ -160,45 +151,45 @@ func CheckDown(service string, subject string, message string, EnableCustomInter
 				jsonData, err := json.Marshal(&common.ServiceFile{Date: currentDate, Locked: false})
 
 				if err != nil {
-					common.LogError("Error marshalling JSON: \n" + err.Error())
+					log.Error().Err(err).Msg("Failed to marshal service file JSON")
 				}
 
-				err = os.WriteFile(filePath, jsonData, 0644)
+				_ = os.WriteFile(filePath, jsonData, 0644)
 
 				redmineWrapper(service, subject, message)
 			}
 			return
 		}
 
-		if time.Now().Sub(oldDateParsed).Hours() > 24 {
+		if time.Since(oldDateParsed).Hours() > 24 {
 			jsonData, err := json.Marshal(finJson)
 
 			if err != nil {
-				common.LogError("Error marshalling JSON: \n" + err.Error())
+				log.Error().Err(err).Msg("Failed to marshal service file JSON")
 			}
 
 			err = os.WriteFile(filePath, jsonData, 0644)
 
 			if err != nil {
-				common.LogError("Error writing to file: \n" + err.Error())
+				log.Error().Err(err).Str("file_path", filePath).Msg("Failed to write service file")
 			}
 
 			redmineWrapper(service, subject, message)
 		} else {
-			if j.Locked == false {
+			if !j.Locked {
 				// currentDate - oldDate in minutes
 				timeDiff := time.Now().Sub(oldDateParsed) //.Minutes()
 
 				if timeDiff.Minutes() >= interval {
 					jsonData, err := json.Marshal(finJson)
 					if err != nil {
-						common.LogError("Error marshalling JSON: \n" + err.Error())
+						log.Error().Err(err).Msg("Failed to marshal service file JSON")
 					}
 
 					err = os.WriteFile(filePath, jsonData, 0644)
 
 					if err != nil {
-						common.LogError("Error writing to file: \n" + err.Error())
+						log.Error().Err(err).Str("file_path", filePath).Msg("Failed to write service file")
 					}
 
 					redmineWrapper(service, subject, message)
@@ -211,20 +202,20 @@ func CheckDown(service string, subject string, message string, EnableCustomInter
 		defer file.Close()
 
 		if err != nil {
-			common.LogError("Error opening file for writing: \n" + err.Error())
+			log.Error().Err(err).Str("file_path", filePath).Msg("Failed to open file for writing")
 			return
 		}
 
 		jsonData, err := json.Marshal(&common.ServiceFile{Date: currentDate, Locked: false})
 
 		if err != nil {
-			common.LogError("Error marshalling JSON: \n" + err.Error())
+			log.Error().Err(err).Msg("Failed to marshal service file JSON")
 		}
 
 		err = os.WriteFile(filePath, jsonData, 0644)
 
 		if err != nil {
-			common.LogError("Error writing to file: \n" + err.Error())
+			log.Error().Err(err).Str("file_path", filePath).Msg("Failed to write service file")
 		}
 
 		if interval == 0 {
@@ -235,7 +226,12 @@ func CheckDown(service string, subject string, message string, EnableCustomInter
 
 // Function to check for recent issues
 func findRecentIssue(subject string, hoursBack int) string {
-	common.LogDebug("findRecentIssue - Looking for recent issues with subject: " + subject + " in last " + strconv.Itoa(hoursBack) + " hours")
+	log.Debug().
+		Str("component", "redmine").
+		Str("operation", "find_recent_issue").
+		Str("subject", subject).
+		Int("hours_back", hoursBack).
+		Msg("Looking for recent issues")
 
 	var projectId string
 	if common.Config.Redmine.Project_id == "" {
@@ -244,8 +240,8 @@ func findRecentIssue(subject string, hoursBack int) string {
 		projectId = common.Config.Redmine.Project_id
 	}
 
-	if common.Config.Redmine.Enabled == false {
-		common.LogDebug("findRecentIssue - Redmine is disabled")
+	if !common.Config.Redmine.Enabled {
+		log.Debug().Str("component", "redmine").Msg("Redmine integration is disabled")
 		return ""
 	}
 
@@ -263,18 +259,24 @@ func findRecentIssue(subject string, hoursBack int) string {
 		">=" + hoursAgo.Format(time.RFC3339),          // Full RFC3339 with >=
 	}
 
-	common.LogDebug("findRecentIssue - Current time: " + now.Format(time.RFC3339))
-	common.LogDebug("findRecentIssue - Looking back to: " + hoursAgo.Format(time.RFC3339))
+	log.Debug().
+		Str("component", "redmine").
+		Str("current_time", now.Format(time.RFC3339)).
+		Str("search_from", hoursAgo.Format(time.RFC3339)).
+		Msg("Time range for recent issue search")
 
 	// Try each date format
 	for _, dateFormat := range dateFormats {
-		common.LogDebug("findRecentIssue - Trying date format: " + dateFormat)
+		log.Debug().
+			Str("component", "redmine").
+			Str("date_format", dateFormat).
+			Msg("Attempting date format for issue search")
 
 		// Build URL, let http.NewRequest handle URL encoding
 		baseUrl := common.Config.Redmine.Url + "/issues.json"
 		req, err := http.NewRequest("GET", baseUrl, nil)
 		if err != nil {
-			common.LogError("http.NewRequest error: " + err.Error())
+			log.Error().Err(err).Str("base_url", baseUrl).Msg("Failed to create HTTP request")
 			continue
 		}
 
@@ -286,7 +288,10 @@ func findRecentIssue(subject string, hoursBack int) string {
 		q.Add("status_id", "*") // All statuses
 		req.URL.RawQuery = q.Encode()
 
-		common.LogDebug("findRecentIssue - Request URL: " + req.URL.String())
+		log.Debug().
+			Str("component", "redmine").
+			Str("request_url", req.URL.String()).
+			Msg("Sending request to find recent issues")
 
 		// Set headers
 		common.AddUserAgent(req)
@@ -297,74 +302,95 @@ func findRecentIssue(subject string, hoursBack int) string {
 		client := &http.Client{Timeout: time.Second * 10}
 		resp, err := client.Do(req)
 		if err != nil {
-			common.LogError("client.Do error: " + err.Error())
+			log.Error().Err(err).Str("url", req.URL.String()).Msg("Failed to send HTTP request")
 			continue
 		}
 
 		// Process response
 		defer resp.Body.Close()
-		common.LogDebug("findRecentIssue - Response status: " + resp.Status)
+		log.Debug().
+			Str("component", "redmine").
+			Int("status_code", resp.StatusCode).
+			Msg("Received response from Redmine API")
 
 		// Read full response for debugging
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
-			common.LogError("Error reading response: " + err.Error())
+			log.Error().Err(err).Msg("Failed to read response body")
 			continue
 		}
 
-		common.LogDebug("findRecentIssue - Response body: " + string(body))
+		log.Debug().
+			Str("component", "redmine").
+			Int("response_size", len(body)).
+			Msg("Read response body from Redmine API")
 
 		// Parse JSON
 		var data map[string]interface{}
 		if err := json.Unmarshal(body, &data); err != nil {
-			common.LogError("JSON unmarshal error: " + err.Error())
+			log.Error().Err(err).Msg("Failed to parse JSON response")
 			continue
 		}
 
 		// Check if we have results
 		totalCount, ok := data["total_count"].(float64)
 		if !ok || totalCount == 0 {
-			common.LogDebug("findRecentIssue - No issues found with exact subject match")
+			log.Debug().
+				Str("component", "redmine").
+				Msg("No issues found with exact subject match, trying partial match")
 
 			// Try with partial match if exact match failed
 			q.Set("subject", "~"+subject)
 			req.URL.RawQuery = q.Encode()
 
-			common.LogDebug("findRecentIssue - Trying with partial match: " + req.URL.String())
+			log.Debug().
+				Str("component", "redmine").
+				Str("partial_match_url", req.URL.String()).
+				Msg("Trying partial subject match")
 
 			resp2, err := client.Do(req)
 			if err != nil {
-				common.LogError("client.Do error (partial match): " + err.Error())
+				log.Error().Err(err).Str("url", req.URL.String()).Msg("Failed to send partial match request")
 				continue
 			}
 
 			defer resp2.Body.Close()
 			body2, err := io.ReadAll(resp2.Body)
 			if err != nil {
-				common.LogError("Error reading response (partial match): " + err.Error())
+				log.Error().Err(err).Msg("Failed to read partial match response")
 				continue
 			}
 
-			common.LogDebug("findRecentIssue - Partial match response: " + string(body2))
+			log.Debug().
+				Str("component", "redmine").
+				Int("response_size", len(body2)).
+				Msg("Read partial match response body")
 
 			if err := json.Unmarshal(body2, &data); err != nil {
-				common.LogError("JSON unmarshal error (partial match): " + err.Error())
+				log.Error().Err(err).Msg("Failed to parse partial match JSON response")
 				continue
 			}
 
 			totalCount, ok = data["total_count"].(float64)
 			if !ok || totalCount == 0 {
-				common.LogDebug("findRecentIssue - No issues found with partial subject match either")
+				log.Debug().
+					Str("component", "redmine").
+					Msg("No issues found with partial subject match either")
 				continue
 			}
 		}
 
 		// We have results - find the most recent relevant issue
-		common.LogDebug("findRecentIssue - Found " + strconv.Itoa(int(totalCount)) + " issues")
+		log.Debug().
+			Str("component", "redmine").
+			Int("total_count", int(totalCount)).
+			Msg("Found matching issues")
 
 		issues, ok := data["issues"].([]interface{})
 		if !ok || len(issues) == 0 {
-			common.LogDebug("findRecentIssue - Issues array is empty or invalid")
+			log.Debug().
+				Str("component", "redmine").
+				Msg("Issues array is empty or invalid")
 			continue
 		}
 
@@ -384,21 +410,27 @@ func findRecentIssue(subject string, hoursBack int) string {
 			statusId := int(status["id"].(float64))
 			statusName := status["name"].(string)
 
-			common.LogDebug(fmt.Sprintf("findRecentIssue - Found issue #%d with status %s (ID: %d)",
-				issueId, statusName, statusId))
+			log.Debug().
+				Str("component", "redmine").
+				Int("issue_id", issueId).
+				Str("status_name", statusName).
+				Int("status_id", statusId).
+				Msg("Found matching issue")
 
 			// Return the first issue that matches (they should be sorted by creation date, newest first)
 			return strconv.Itoa(issueId)
 		}
 	}
 
-	common.LogDebug("findRecentIssue - No recent issues found after trying all date formats")
+	log.Debug().
+		Str("component", "redmine").
+		Msg("No recent issues found after trying all date formats")
 	return ""
 }
 
 func getCurrentUserId() (string, error) {
 	if !common.Config.Redmine.Enabled {
-		common.LogDebug("getCurrentUserId - Redmine is disabled")
+		log.Debug().Str("component", "redmine").Msg("Redmine integration is disabled")
 		return "", fmt.Errorf("redmine is disabled")
 	}
 
@@ -408,7 +440,7 @@ func getCurrentUserId() (string, error) {
 	// Create request
 	req, err := http.NewRequest("GET", redmineUrl, nil)
 	if err != nil {
-		common.LogError("getCurrentUserId - http.NewRequest error: " + err.Error())
+		log.Error().Err(err).Str("url", redmineUrl).Msg("Failed to create HTTP request for current user")
 		return "", err
 	}
 
@@ -420,66 +452,89 @@ func getCurrentUserId() (string, error) {
 	client := &http.Client{Timeout: time.Second * 10}
 	resp, err := client.Do(req)
 	if err != nil {
-		common.LogError("getCurrentUserId - client.Do error: " + err.Error())
+		log.Error().Err(err).Str("url", redmineUrl).Msg("Failed to send HTTP request for current user")
 		return "", err
 	}
 	defer resp.Body.Close()
 
 	// Check response status
 	if resp.StatusCode != 200 {
-		errMsg := fmt.Sprintf("getCurrentUserId - Redmine API returned status code %d instead of 200", resp.StatusCode)
-		common.LogError(errMsg)
+		errMsg := fmt.Sprintf("Redmine API returned status code %d instead of 200", resp.StatusCode)
+		log.Error().
+			Str("component", "redmine").
+			Int("status_code", resp.StatusCode).
+			Str("url", redmineUrl).
+			Msg("Failed to get current user from Redmine API")
 		return "", fmt.Errorf(errMsg)
 	}
 
 	// Parse response
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		common.LogError("getCurrentUserId - error reading response body: " + err.Error())
+		log.Error().Err(err).Msg("Failed to read current user response body")
 		return "", err
 	}
 
 	var data map[string]interface{}
 	if err := json.Unmarshal(body, &data); err != nil {
-		common.LogError("getCurrentUserId - json.Unmarshal error: " + err.Error())
+		log.Error().Err(err).Msg("Failed to parse current user JSON response")
 		return "", err
 	}
 
 	// Extract user ID
 	user, ok := data["user"].(map[string]interface{})
 	if !ok {
-		return "", fmt.Errorf("getCurrentUserId - couldn't find user in response")
+		return "", fmt.Errorf("could not find user in response")
 	}
 
 	userId, ok := user["id"].(float64)
 	if !ok {
-		return "", fmt.Errorf("getCurrentUserId - couldn't find user id in response")
+		return "", fmt.Errorf("could not find user id in response")
 	}
 
 	return strconv.Itoa(int(userId)), nil
 }
 
 func Create(service string, subject string, message string) {
-	common.LogDebug("Create - Creating/reopening issue for service: " + service + ", subject: " + subject)
+	log.Debug().
+		Str("component", "redmine").
+		Str("operation", "create_issue").
+		Str("service", service).
+		Str("subject", subject).
+		Msg("Starting issue creation process")
 
 	serviceReplaced := strings.Replace(service, "/", "-", -1)
 	filePath := common.TmpDir + "/" + serviceReplaced + "-redmine.log"
-	common.LogDebug("Create - Using log file: " + filePath)
 
-	if common.Config.Redmine.Enabled == false {
-		common.LogDebug("Create - Redmine is disabled, returning")
+	log.Debug().
+		Str("component", "redmine").
+		Str("operation", "create_issue").
+		Str("file_path", filePath).
+		Msg("Using service log file")
+
+	if !common.Config.Redmine.Enabled {
+		log.Debug().Str("component", "redmine").Msg("Redmine integration is disabled")
 		return
 	}
 
-	if redmineCheckIssueLog(service) == true {
-		common.LogDebug("Create - Issue log already exists, returning")
+	if redmineCheckIssueLog(service) {
+		log.Debug().
+			Str("component", "redmine").
+			Str("operation", "create_issue").
+			Str("service", service).
+			Msg("Issue log already exists, skipping creation")
 		return
 	}
 
 	// Check if a similar issue exists in the last 6 hours
 	existingIssueId := findRecentIssue(subject, 6)
 	if existingIssueId != "" {
-		common.LogDebug("Create - Found existing issue #" + existingIssueId + ", reopening instead of creating a new one")
+		log.Debug().
+			Str("component", "redmine").
+			Str("operation", "create_issue").
+			Str("existing_issue_id", existingIssueId).
+			Str("service", service).
+			Msg("Found existing issue, attempting to reopen instead of creating new one")
 
 		// Get the assigned user
 		assignedToId := getAssignedToId(existingIssueId)
@@ -487,19 +542,31 @@ func Create(service string, subject string, message string) {
 		// Get current user
 		currentUserId, err := getCurrentUserId()
 		if err != nil {
-			common.LogError("getCurrentUserId error: " + err.Error())
+			log.Error().Err(err).Msg("Failed to get current user ID")
 			return
 		}
-		common.LogDebug("Create - Current user ID: " + currentUserId)
-		common.LogDebug("Create - Assigned user ID: " + assignedToId)
+
+		log.Debug().
+			Str("component", "redmine").
+			Str("operation", "create_issue").
+			Str("current_user_id", currentUserId).
+			Str("assigned_to_id", assignedToId).
+			Str("issue_id", existingIssueId).
+			Msg("User assignment details for issue reopening")
 
 		if assignedToId == currentUserId {
 			assignedToId = ""
 		}
 
-		// Reopen the issue (status ID 2 = "In Progress")
+		existingIssueIdAtoi, err := strconv.Atoi(existingIssueId)
+		if err != nil {
+			log.Error().Err(err).Str("component", "redmine").Str("operation", "create_issue").Str("input", existingIssueId).Msg("Failed to convert existing issue ID to integer")
+			return
+		}
+
+		// Reopen the issue (status ID 8 = "In Progress")
 		body := RedmineIssue{Issue: Issue{
-			Id:           atoi(existingIssueId),
+			Id:           existingIssueIdAtoi,
 			Notes:        "Sorun devam ettiğinden iş yeniden açıldı.\n" + message,
 			StatusId:     8,
 			AssignedToId: assignedToId,
@@ -507,54 +574,82 @@ func Create(service string, subject string, message string) {
 
 		jsonBody, err := json.Marshal(body)
 		if err != nil {
-			common.LogError("json.Marshal error: " + err.Error())
+			log.Error().Err(err).Str("component", "redmine").Str("operation", "create_issue").Str("issue_id", existingIssueId).Msg("Failed to marshal issue reopen request")
 			// Continue to creating new issue if reopening fails
 		} else {
 			// PUT request to update the issue
-			req, err := http.NewRequest("PUT", common.Config.Redmine.Url+"/issues/"+existingIssueId+".json", bytes.NewBuffer(jsonBody))
+			updateUrl := common.Config.Redmine.Url + "/issues/" + existingIssueId + ".json"
+			req, err := http.NewRequest("PUT", updateUrl, bytes.NewBuffer(jsonBody))
 			if err != nil {
-				common.LogError("http.NewRequest error: " + err.Error())
+				log.Error().Err(err).Str("component", "redmine").Str("operation", "create_issue").Str("url", updateUrl).Str("issue_id", existingIssueId).Msg("Failed to create issue reopen request")
 				// Continue to creating new issue if reopening fails
 			} else {
 				common.AddUserAgent(req)
 				req.Header.Set("Content-Type", "application/json")
 				req.Header.Set("X-Redmine-API-Key", common.Config.Redmine.Api_key)
 
-				common.LogDebug("Create - Sending PUT request to reopen issue: " + common.Config.Redmine.Url + "/issues/" + existingIssueId + ".json")
-				common.LogDebug("Create - Request body: " + string(jsonBody))
+				log.Debug().
+					Str("component", "redmine").
+					Str("operation", "create_issue").
+					Str("method", "PUT").
+					Str("url", updateUrl).
+					Str("issue_id", existingIssueId).
+					Msg("Sending request to reopen existing issue")
 
 				client := &http.Client{Timeout: time.Second * 10}
 				resp, err := client.Do(req)
 
 				if err != nil {
-					common.LogError("client.Do error: " + err.Error())
+					log.Error().Err(err).Str("component", "redmine").Str("operation", "create_issue").Str("url", updateUrl).Str("issue_id", existingIssueId).Msg("Failed to send issue reopen request")
 					// Continue to creating new issue
 				} else {
 					defer resp.Body.Close()
 
 					// Check response
 					if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-						common.LogDebug("Create - Successfully reopened issue #" + existingIssueId)
+						log.Debug().
+							Str("component", "redmine").
+							Str("operation", "create_issue").
+							Str("issue_id", existingIssueId).
+							Str("service", service).
+							Msg("Successfully reopened existing issue")
 
 						// Write the issue ID to the service's log file
 						err = os.WriteFile(filePath, []byte(existingIssueId), 0644)
 						if err != nil {
-							common.LogError("os.WriteFile error: " + err.Error())
+							log.Error().Err(err).Str("component", "redmine").Str("operation", "create_issue").Str("file_path", filePath).Str("issue_id", existingIssueId).Msg("Failed to write reopened issue ID to log file")
 						}
 						return
 					} else {
 						respBody, _ := io.ReadAll(resp.Body)
-						common.LogError("Failed to reopen issue, status: " + resp.Status + ", response: " + string(respBody))
+						log.Warn().
+							Str("component", "redmine").
+							Str("operation", "create_issue").
+							Int("status_code", resp.StatusCode).
+							Int("response_size", len(respBody)).
+							Str("issue_id", existingIssueId).
+							Str("service", service).
+							Msg("Failed to reopen existing issue, will create new one")
 						// Continue to creating new issue
 					}
 				}
 			}
 		}
 
-		common.LogDebug("Create - Failed to reopen existing issue, will create a new one")
+		log.Debug().
+			Str("component", "redmine").
+			Str("operation", "create_issue").
+			Str("service", service).
+			Msg("Failed to reopen existing issue, proceeding to create new one")
 	}
 
-	common.LogDebug("Create - Creating a new issue")
+	log.Debug().
+		Str("component", "redmine").
+		Str("operation", "create_issue").
+		Str("subject", subject).
+		Str("service", service).
+		Msg("Creating new Redmine issue")
+
 	var priorityId int
 	var projectId string
 
@@ -575,12 +670,13 @@ func Create(service string, subject string, message string) {
 	jsonBody, err := json.Marshal(body)
 
 	if err != nil {
-		common.LogError("json.Marshal error: " + err.Error())
+		log.Error().Err(err).Str("component", "redmine").Str("operation", "create_issue").Str("service", service).Msg("Failed to marshal new issue request")
 	}
 
-	req, err := http.NewRequest("POST", common.Config.Redmine.Url+"/issues.json", bytes.NewBuffer(jsonBody))
+	createUrl := common.Config.Redmine.Url + "/issues.json"
+	req, err := http.NewRequest("POST", createUrl, bytes.NewBuffer(jsonBody))
 	if err != nil {
-		common.LogError("http.NewRequest error: " + err.Error())
+		log.Error().Err(err).Str("component", "redmine").Str("operation", "create_issue").Str("url", createUrl).Str("service", service).Msg("Failed to create new issue request")
 	}
 	common.AddUserAgent(req)
 	req.Header.Set("Content-Type", "application/json")
@@ -593,7 +689,7 @@ func Create(service string, subject string, message string) {
 	resp, err := client.Do(req)
 
 	if err != nil {
-		common.LogError("client.Do error: " + err.Error() + "\n" + "Redmine URL: " + common.Config.Redmine.Url + "/issues.json" + "\n" + "Redmine JSON: " + string(jsonBody))
+		log.Error().Err(err).Str("component", "redmine").Str("operation", "create_issue").Str("url", createUrl).Str("service", service).Msg("Failed to send new issue creation request")
 		return
 	}
 
@@ -605,7 +701,7 @@ func Create(service string, subject string, message string) {
 	err = json.NewDecoder(resp.Body).Decode(&data)
 
 	if err != nil {
-		common.LogError("json.NewDecoder error: " + err.Error())
+		log.Error().Err(err).Str("component", "redmine").Str("operation", "create_issue").Str("service", service).Msg("Failed to decode new issue response")
 	}
 
 	// get issue id, convert to string
@@ -615,8 +711,16 @@ func Create(service string, subject string, message string) {
 	err = os.WriteFile(filePath, issueId, 0644)
 
 	if err != nil {
-		common.LogError("os.WriteFile error while trying to read '" + filePath + "'" + err.Error())
+		log.Error().Err(err).Str("component", "redmine").Str("operation", "create_issue").Str("file_path", filePath).Int("issue_id", data.Issue.Id).Str("service", service).Msg("Failed to write new issue ID to log file")
 	}
+
+	log.Info().
+		Str("component", "redmine").
+		Str("operation", "create_issue").
+		Int("issue_id", data.Issue.Id).
+		Str("service", service).
+		Str("subject", subject).
+		Msg("Successfully created new Redmine issue")
 }
 
 func ExistsNote(service string, message string) bool {
@@ -633,7 +737,7 @@ func ExistsNote(service string, message string) bool {
 	if common.IsEmptyOrWhitespace(filePath) {
 		err := os.Remove(filePath)
 		if err != nil {
-			common.LogError("os.Remove error: " + err.Error())
+			log.Error().Err(err).Str("component", "redmine").Str("operation", "exists_note").Str("file_path", filePath).Str("service", service).Msg("Failed to remove empty log file")
 		}
 		return false
 	}
@@ -642,14 +746,14 @@ func ExistsNote(service string, message string) bool {
 	file, err := os.ReadFile(filePath)
 
 	if err != nil {
-		common.LogError("os.ReadFile error: " + err.Error())
+		log.Error().Err(err).Str("component", "redmine").Str("operation", "exists_note").Str("file_path", filePath).Str("service", service).Msg("Failed to read issue log file")
 		return false
 	}
 
 	if string(file) == "0" {
 		err := os.Remove(filePath)
 		if err != nil {
-			common.LogError("os.Remove error: " + err.Error())
+			log.Error().Err(err).Str("component", "redmine").Str("operation", "exists_note").Str("file_path", filePath).Str("service", service).Msg("Failed to remove zero-content log file")
 		}
 	}
 
@@ -658,7 +762,7 @@ func ExistsNote(service string, message string) bool {
 	// Send a GET request to the Redmine API to get all issues
 	req, err := http.NewRequest("GET", redmineUrlFinal, nil)
 	if err != nil {
-		common.LogError("http.NewRequest error: " + err.Error())
+		log.Error().Err(err).Str("component", "redmine").Str("operation", "exists_note").Str("url", redmineUrlFinal).Str("service", service).Msg("Failed to create request for issue journals")
 		return false
 	}
 	common.AddUserAgent(req)
@@ -672,7 +776,7 @@ func ExistsNote(service string, message string) bool {
 	resp, err := client.Do(req)
 
 	if err != nil {
-		common.LogError("client.Do error: " + err.Error() + "\n" + "Redmine URL: " + redmineUrlFinal)
+		log.Error().Err(err).Str("component", "redmine").Str("operation", "exists_note").Str("url", redmineUrlFinal).Str("service", service).Msg("Failed to send request for issue journals")
 		return false
 	}
 
@@ -684,14 +788,19 @@ func ExistsNote(service string, message string) bool {
 	err = json.NewDecoder(resp.Body).Decode(&data)
 
 	if err != nil {
-		common.LogError("json.NewDecoder error: " + err.Error())
+		log.Error().Err(err).Str("component", "redmine").Str("operation", "exists_note").Str("service", service).Msg("Failed to decode issue journals response")
 		return false
 	}
 
 	// If not 200, log error
 	if resp.StatusCode != 200 {
-		// Unmarshal the response body
-		common.LogError("Redmine API returned status code " + strconv.Itoa(resp.StatusCode) + " instead of 200\n" + "Redmine URL: " + redmineUrlFinal)
+		log.Error().
+			Str("component", "redmine").
+			Str("operation", "exists_note").
+			Int("status_code", resp.StatusCode).
+			Str("url", redmineUrlFinal).
+			Str("service", service).
+			Msg("Redmine API returned non-200 status for issue journals")
 		return false
 	}
 
@@ -707,13 +816,14 @@ func ExistsNote(service string, message string) bool {
 
 func Delete(id int) {
 
-	if common.Config.Redmine.Enabled == false {
+	if !common.Config.Redmine.Enabled {
 		return
 	}
 
-	req, err := http.NewRequest("DELETE", common.Config.Redmine.Url+"/issues/"+strconv.Itoa(id)+".json", nil)
+	deleteUrl := common.Config.Redmine.Url + "/issues/" + strconv.Itoa(id) + ".json"
+	req, err := http.NewRequest("DELETE", deleteUrl, nil)
 	if err != nil {
-		common.LogError("http.NewRequest error: " + err.Error())
+		log.Error().Err(err).Str("component", "redmine").Str("operation", "delete_issue").Str("url", deleteUrl).Int("issue_id", id).Msg("Failed to create issue deletion request")
 	}
 	common.AddUserAgent(req)
 	req.Header.Set("Content-Type", "application/json")
@@ -726,7 +836,7 @@ func Delete(id int) {
 	resp, err := client.Do(req)
 
 	if err != nil {
-		common.LogError("client.Do error: " + err.Error() + "\n" + "Redmine URL: " + common.Config.Redmine.Url + "/issues/" + strconv.Itoa(id) + ".json")
+		log.Error().Err(err).Str("component", "redmine").Str("operation", "delete_issue").Str("url", deleteUrl).Int("issue_id", id).Msg("Failed to send issue deletion request")
 		return
 	}
 
@@ -735,7 +845,7 @@ func Delete(id int) {
 
 func Update(service string, message string, checkNote bool) {
 
-	if common.Config.Redmine.Enabled == false {
+	if !common.Config.Redmine.Enabled {
 		return
 	}
 
@@ -748,7 +858,7 @@ func Update(service string, message string, checkNote bool) {
 	serviceReplaced := strings.Replace(service, "/", "-", -1)
 	filePath := common.TmpDir + "/" + serviceReplaced + "-redmine.log"
 
-	if redmineCheckIssueLog(service) == false {
+	if !redmineCheckIssueLog(service) {
 		return
 	}
 
@@ -756,21 +866,21 @@ func Update(service string, message string, checkNote bool) {
 	file, err := os.ReadFile(filePath)
 
 	if err != nil {
-		common.LogError("os.ReadFile error: " + err.Error())
+		log.Error().Err(err).Str("component", "redmine").Str("operation", "update_issue").Str("file_path", filePath).Str("service", service).Msg("Failed to read issue log file for update")
 	}
 
 	// get issue id
 	issueId, err := strconv.Atoi(string(file))
 
 	if err != nil {
-		common.LogError("strconv.Atoi error: " + err.Error())
+		log.Error().Err(err).Str("component", "redmine").Str("operation", "update_issue").Str("content", string(file)).Str("service", service).Msg("Failed to convert issue ID to integer")
 	}
 
 	if issueId == 0 {
 		// Remove file
 		err := os.Remove(filePath)
 		if err != nil {
-			common.LogError("os.Remove error: " + err.Error())
+			log.Error().Err(err).Str("component", "redmine").Str("operation", "update_issue").Str("file_path", filePath).Str("service", service).Msg("Failed to remove invalid issue log file")
 		}
 		return
 	}
@@ -781,12 +891,13 @@ func Update(service string, message string, checkNote bool) {
 	jsonBody, err := json.Marshal(body)
 
 	if err != nil {
-		common.LogError("json.Marshal error: " + err.Error())
+		log.Error().Err(err).Str("component", "redmine").Str("operation", "update_issue").Str("service", service).Int("issue_id", issueId).Msg("Failed to marshal issue update request")
 	}
 
-	req, err := http.NewRequest("PUT", common.Config.Redmine.Url+"/issues/"+string(file)+".json", bytes.NewBuffer(jsonBody))
+	updateUrl := common.Config.Redmine.Url + "/issues/" + string(file) + ".json"
+	req, err := http.NewRequest("PUT", updateUrl, bytes.NewBuffer(jsonBody))
 	if err != nil {
-		common.LogError("http.NewRequest error: " + err.Error())
+		log.Error().Err(err).Str("component", "redmine").Str("operation", "update_issue").Str("url", updateUrl).Str("service", service).Int("issue_id", issueId).Msg("Failed to create issue update request")
 	}
 	common.AddUserAgent(req)
 	req.Header.Set("Content-Type", "application/json")
@@ -799,7 +910,7 @@ func Update(service string, message string, checkNote bool) {
 	resp, err := client.Do(req)
 
 	if err != nil {
-		common.LogError("client.Do error: " + err.Error() + "\n" + "Redmine URL: " + common.Config.Redmine.Url + "/issues/" + string(file) + ".json" + "\n" + "Redmine JSON: " + string(jsonBody))
+		log.Error().Err(err).Str("component", "redmine").Str("operation", "update_issue").Str("url", updateUrl).Str("service", service).Int("issue_id", issueId).Msg("Failed to send issue update request")
 		return
 	}
 
@@ -813,7 +924,7 @@ func getAssignedToId(id string) string {
 
 	req, err := http.NewRequest("GET", redmineUrlFinal, nil)
 	if err != nil {
-		common.LogError("http.NewRequest error: " + err.Error())
+		log.Error().Err(err).Str("component", "redmine").Str("operation", "get_assigned_to_id").Str("url", redmineUrlFinal).Str("issue_id", id).Msg("Failed to create request for issue assignment info")
 	}
 	common.AddUserAgent(req)
 	req.Header.Set("Content-Type", "application/json")
@@ -826,7 +937,7 @@ func getAssignedToId(id string) string {
 	resp, err := client.Do(req)
 
 	if err != nil {
-		common.LogError("client.Do error: " + err.Error() + "\n" + "Redmine URL: " + redmineUrlFinal)
+		log.Error().Err(err).Str("component", "redmine").Str("operation", "get_assigned_to_id").Str("url", redmineUrlFinal).Str("issue_id", id).Msg("Failed to send request for issue assignment info")
 		return ""
 	}
 
@@ -838,14 +949,19 @@ func getAssignedToId(id string) string {
 	err = json.NewDecoder(resp.Body).Decode(&data)
 
 	if err != nil {
-		common.LogError("json.NewDecoder error: " + err.Error())
+		log.Error().Err(err).Str("component", "redmine").Str("operation", "get_assigned_to_id").Str("issue_id", id).Msg("Failed to decode issue assignment response")
 	}
 
 	// If not 200, log error
 
 	if resp.StatusCode != 200 {
-		// Unmarshal the response body
-		common.LogError("Redmine API returned status code " + strconv.Itoa(resp.StatusCode) + " instead of 200\n" + "Redmine URL: " + redmineUrlFinal)
+		log.Error().
+			Str("component", "redmine").
+			Str("operation", "get_assigned_to_id").
+			Int("status_code", resp.StatusCode).
+			Str("url", redmineUrlFinal).
+			Str("issue_id", id).
+			Msg("Redmine API returned non-200 status for issue assignment info")
 		return ""
 	}
 
@@ -859,7 +975,7 @@ func getAssignedToId(id string) string {
 }
 
 func Close(service string, message string) {
-	if common.Config.Redmine.Enabled == false {
+	if !common.Config.Redmine.Enabled {
 		return
 	}
 
@@ -871,27 +987,27 @@ func Close(service string, message string) {
 		return
 	}
 
-	if redmineCheckIssueLog(service) == false {
+	if !redmineCheckIssueLog(service) {
 		return
 	}
 
 	// read file
 	file, err := os.ReadFile(filePath)
 	if err != nil {
-		common.LogError("os.ReadFile error while trying to read '" + filePath + "'" + err.Error())
+		log.Error().Err(err).Str("component", "redmine").Str("operation", "close_issue").Str("file_path", filePath).Str("service", service).Msg("Failed to read issue log file for closing")
 	}
 
 	issueId, err := strconv.Atoi(string(file))
 
 	if err != nil {
-		common.LogError("strconv.Atoi error: " + err.Error())
+		log.Error().Err(err).Str("component", "redmine").Str("operation", "close_issue").Str("content", string(file)).Str("service", service).Msg("Failed to convert issue ID to integer for closing")
 	}
 
 	if issueId == 0 {
 		// Remove file
 		err := os.Remove(filePath)
 		if err != nil {
-			common.LogError("os.Remove error: " + err.Error())
+			log.Error().Err(err).Str("component", "redmine").Str("operation", "close_issue").Str("file_path", filePath).Str("service", service).Msg("Failed to remove invalid issue log file")
 		}
 		return
 	}
@@ -907,12 +1023,13 @@ func Close(service string, message string) {
 	jsonBody, err := json.Marshal(body)
 
 	if err != nil {
-		common.LogError("json.Marshal error: " + err.Error())
+		log.Error().Err(err).Str("component", "redmine").Str("operation", "close_issue").Str("service", service).Int("issue_id", issueId).Msg("Failed to marshal issue close request")
 	}
 
-	req, err := http.NewRequest("PUT", common.Config.Redmine.Url+"/issues/"+string(file)+".json", bytes.NewBuffer(jsonBody))
+	closeUrl := common.Config.Redmine.Url + "/issues/" + string(file) + ".json"
+	req, err := http.NewRequest("PUT", closeUrl, bytes.NewBuffer(jsonBody))
 	if err != nil {
-		common.LogError("http.NewRequest error: " + err.Error())
+		log.Error().Err(err).Str("component", "redmine").Str("operation", "close_issue").Str("url", closeUrl).Str("service", service).Int("issue_id", issueId).Msg("Failed to create issue close request")
 	}
 	common.AddUserAgent(req)
 	req.Header.Set("Content-Type", "application/json")
@@ -925,7 +1042,7 @@ func Close(service string, message string) {
 	resp, err := client.Do(req)
 
 	if err != nil {
-		common.LogError("client.Do error: " + err.Error() + "\n" + "Redmine URL: " + common.Config.Redmine.Url + "/issues/" + string(file) + ".json" + "\n" + "Redmine JSON: " + string(jsonBody))
+		log.Error().Err(err).Str("component", "redmine").Str("operation", "close_issue").Str("url", closeUrl).Str("service", service).Int("issue_id", issueId).Msg("Failed to send issue close request")
 		return
 	}
 
@@ -935,26 +1052,33 @@ func Close(service string, message string) {
 	err = os.Remove(filePath)
 
 	if err != nil {
-		common.LogError("os.Remove error: " + err.Error())
+		log.Error().Err(err).Str("component", "redmine").Str("operation", "close_issue").Str("file_path", filePath).Str("service", service).Int("issue_id", issueId).Msg("Failed to remove issue log file after closing")
 	}
+
+	log.Info().
+		Str("component", "redmine").
+		Str("operation", "close_issue").
+		Int("issue_id", issueId).
+		Str("service", service).
+		Msg("Successfully closed Redmine issue")
 }
 
 func Show(service string) string {
-	if common.Config.Redmine.Enabled == false {
+	if !common.Config.Redmine.Enabled {
 		return ""
 	}
 
 	serviceReplaced := strings.Replace(service, "/", "-", -1)
 	filePath := common.TmpDir + "/" + serviceReplaced + "-redmine.log"
 
-	if redmineCheckIssueLog(service) == false {
+	if !redmineCheckIssueLog(service) {
 		return ""
 	}
 
 	// read file
 	file, err := os.ReadFile(filePath)
 	if err != nil {
-		common.LogError("os.ReadFile error: " + err.Error())
+		log.Error().Err(err).Str("component", "redmine").Str("operation", "show_issue").Str("file_path", filePath).Str("service", service).Msg("Failed to read issue log file for show")
 	}
 
 	// get issue ID
@@ -970,7 +1094,7 @@ func Exists(subject string, date string, search bool) string {
 		projectId = common.Config.Redmine.Project_id
 	}
 
-	if common.Config.Redmine.Enabled == false {
+	if !common.Config.Redmine.Enabled {
 		return ""
 	}
 
@@ -991,7 +1115,7 @@ func Exists(subject string, date string, search bool) string {
 	// Send a GET request to the Redmine API to get all issues
 	req, err := http.NewRequest("GET", redmineUrlFinal, nil)
 	if err != nil {
-		common.LogError("http.NewRequest error: " + err.Error())
+		log.Error().Err(err).Str("component", "redmine").Str("operation", "exists_issue").Str("url", redmineUrlFinal).Str("subject", subject).Msg("Failed to create issue search request")
 	}
 	common.AddUserAgent(req)
 	req.Header.Set("Content-Type", "application/json")
@@ -1004,7 +1128,7 @@ func Exists(subject string, date string, search bool) string {
 	resp, err := client.Do(req)
 
 	if err != nil {
-		common.LogError("client.Do error: " + err.Error() + "\n" + "Redmine URL: " + redmineUrlFinal)
+		log.Error().Err(err).Str("component", "redmine").Str("operation", "exists_issue").Str("url", redmineUrlFinal).Str("subject", subject).Msg("Failed to send issue search request")
 		return ""
 	}
 
@@ -1016,13 +1140,18 @@ func Exists(subject string, date string, search bool) string {
 	err = json.NewDecoder(resp.Body).Decode(&data)
 
 	if err != nil {
-		common.LogError("json.NewDecoder error: " + err.Error())
+		log.Error().Err(err).Str("component", "redmine").Str("operation", "exists_issue").Str("subject", subject).Msg("Failed to decode issue search response")
 	}
 
 	// If not 200, log error
 	if resp.StatusCode != 200 {
-		// Unmarshal the response body
-		common.LogError("Redmine API returned status code " + strconv.Itoa(resp.StatusCode) + " instead of 200\n" + "Redmine URL: " + redmineUrlFinal)
+		log.Error().
+			Str("component", "redmine").
+			Str("operation", "exists_issue").
+			Int("status_code", resp.StatusCode).
+			Str("url", redmineUrlFinal).
+			Str("subject", subject).
+			Msg("Redmine API returned non-200 status for issue search")
 		return ""
 	}
 

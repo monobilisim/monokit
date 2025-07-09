@@ -13,15 +13,15 @@ package pgsqlHealth
 
 import (
 	"database/sql"
-	"os"
-	"fmt"
 	"errors"
+	"fmt"
+	"os"
 	"strings"
-	"gopkg.in/yaml.v3"
-	"github.com/monobilisim/monokit/common"
-	_ "github.com/lib/pq"
-)
 
+	_ "github.com/lib/pq"
+	"github.com/rs/zerolog/log"
+	"gopkg.in/yaml.v3"
+)
 
 // getPatroniUrl reads the Patroni configuration file and returns the REST API
 // connection address for the Patroni cluster
@@ -29,7 +29,7 @@ func getPatroniUrl() (string, error) {
 	// Read the config file
 	data, err := os.ReadFile("/etc/patroni/patroni.yml")
 	if err != nil {
-		common.LogError(fmt.Sprintf("couldn't read patroni config file: %v\n", err))
+		log.Error().Err(err).Str("component", "pgsqlHealth").Str("operation", "getPatroniUrl").Str("action", "read_patroni_config_failed").Msg("couldn't read patroni config file")
 		return "", err
 	}
 
@@ -44,7 +44,7 @@ func getPatroniUrl() (string, error) {
 	// Unmarshal the YAML data into the struct
 	err = yaml.Unmarshal(data, &patroni)
 	if err != nil {
-		common.LogError(fmt.Sprintf("couldn't unmarshal patroni config file: %v\n", err))
+		log.Error().Err(err).Str("component", "pgsqlHealth").Str("operation", "getPatroniUrl").Str("action", "unmarshal_patroni_config_failed").Msg("couldn't unmarshal patroni config file")
 		return "", err
 	}
 	nodeName = patroni.Name
@@ -60,7 +60,7 @@ func Connect() error {
 	if _, err := os.Stat(pgPass); err == nil {
 		content, err := os.ReadFile(pgPass)
 		if err != nil {
-			common.LogError("Error reading file: " + err.Error())
+			log.Error().Err(err).Str("component", "pgsqlHealth").Str("operation", "Connect").Str("action", "read_pgpass_failed").Msg("Error reading file")
 			return err
 		}
 
@@ -75,7 +75,7 @@ func Connect() error {
 				// Parse the line using colon (:) as a separator
 				parts := strings.Split(strings.TrimSpace(line), ":")
 				if len(parts) != 5 {
-					common.LogError("Invalid .pgpass file format")
+					log.Error().Str("component", "pgsqlHealth").Str("operation", "Connect").Str("action", "invalid_pgpass_format").Msg("Invalid .pgpass file format")
 					return errors.New("invalid .pgpass file format")
 				}
 
@@ -98,13 +98,13 @@ func Connect() error {
 	// open database
 	db, err := sql.Open("postgres", psqlConn)
 	if err != nil {
-		common.LogError("Couldn't connect to postgresql: " + err.Error())
+		log.Error().Err(err).Str("component", "pgsqlHealth").Str("operation", "Connect").Str("action", "connect_to_postgresql_failed").Msg("Couldn't connect to postgresql")
 		return err
 	}
 
 	err = db.Ping()
 	if err != nil {
-		common.LogError("Couldn't ping postgresql: " + err.Error())
+		log.Error().Err(err).Str("component", "pgsqlHealth").Str("operation", "Connect").Str("action", "ping_postgresql_failed").Msg("Couldn't ping postgresql")
 		return err
 	}
 

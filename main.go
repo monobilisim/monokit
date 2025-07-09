@@ -6,22 +6,23 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/rs/zerolog/log"
+	"github.com/spf13/cobra"
+
 	"github.com/monobilisim/monokit/common"
 	api "github.com/monobilisim/monokit/common/api"
 	"github.com/monobilisim/monokit/common/health"
-	"github.com/monobilisim/monokit/common/health/plugin"
+	plugin "github.com/monobilisim/monokit/common/health/plugin"
 	issues "github.com/monobilisim/monokit/common/redmine/issues"
 	news "github.com/monobilisim/monokit/common/redmine/news"
 	verCheck "github.com/monobilisim/monokit/common/versionCheck"
 	"github.com/monobilisim/monokit/daemon"
 	"github.com/monobilisim/monokit/esHealth"
-
 	"github.com/monobilisim/monokit/lbPolicy"
 	"github.com/monobilisim/monokit/osHealth"
 	"github.com/monobilisim/monokit/shutdownNotifier"
 	"github.com/monobilisim/monokit/sshNotifier"
-	ufwApply "github.com/monobilisim/monokit/ufwApply"
-	"github.com/spf13/cobra"
+	"github.com/monobilisim/monokit/ufwApply"
 )
 
 var RootCmd = &cobra.Command{
@@ -45,11 +46,7 @@ func main() {
 
 	// Ensure plugins are always cleaned up before exit
 	defer func() {
-		if common.CleanupPluginsOnExit {
-			common.LogDebug("Cleaning up plugins before exit (--cleanup-plugins flag set)...")
-		} else {
-			common.LogDebug("Cleaning up plugins before exit...")
-		}
+
 		plugin.CleanupAll()
 	}()
 
@@ -60,9 +57,9 @@ func main() {
 		}
 	}
 
-	// Attempt to load plugins from /var/lib/monokit/plugins (with proper error handling)
+	// Load health plugins at startup
 	if err := plugin.LoadAll(common.DefaultPluginDir); err != nil {
-		common.LogWarn(fmt.Sprintf("Failed to load some plugins: %v", err))
+		log.Warn().Str("pluginDir", common.DefaultPluginDir).Err(err).Msg("Failed to load some plugins")
 	}
 
 	// Register bridge components for all loaded plugins
@@ -645,7 +642,7 @@ func setupGracefulShutdown() {
 
 	go func() {
 		<-c
-		common.LogDebug("Received shutdown signal, cleaning up plugins...")
+		log.Debug().Msg("Received shutdown signal, cleaning up plugins...")
 		plugin.CleanupAll()
 		os.Exit(0)
 	}()

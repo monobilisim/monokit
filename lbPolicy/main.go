@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/monobilisim/monokit/common"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
 
@@ -66,7 +67,7 @@ func LoopOverConfigs(server string, configs []string, t string) {
 		// Loop over all files at /etc/mono that start with glb-
 		entries, err := os.ReadDir("/etc/mono/")
 		if err != nil {
-			common.LogError(err.Error())
+			log.Error().Err(err).Str("component", "lbPolicy").Str("operation", "LoopOverConfigs").Str("action", "read_dir_failed").Msg("Error reading directory")
 		}
 		for _, file := range entries {
 			if strings.HasPrefix(file.Name(), "glb-") {
@@ -131,7 +132,7 @@ func PatroniMonitorStart(cmd *cobra.Command, args []string) {
 		// Loop over all files at /etc/mono that start with glb-
 		entries, err := os.ReadDir("/etc/mono/")
 		if err != nil {
-			common.LogError(err.Error())
+			log.Error().Err(err).Str("component", "lbPolicy").Str("operation", "PatroniMonitorStart").Str("action", "read_dir_failed").Msg("Error reading directory")
 			return
 		}
 
@@ -171,7 +172,7 @@ func PatroniCheck(cmd *cobra.Command, args []string) {
 		// Loop over all files at /etc/mono that start with glb-
 		entries, err := os.ReadDir("/etc/mono/")
 		if err != nil {
-			common.LogError(err.Error())
+			log.Error().Err(err).Str("component", "lbPolicy").Str("operation", "PatroniCheck").Str("action", "read_dir_failed").Msg("Error reading directory")
 			return
 		}
 
@@ -189,7 +190,7 @@ func startPatroniMonitor() {
 	monitor := NewPatroniMonitor(Config.Caddy.PatroniAutoSwitch)
 
 	if err := monitor.Start(); err != nil {
-		common.LogError(fmt.Sprintf("Failed to start Patroni monitor: %v", err))
+		log.Error().Err(err).Str("component", "lbPolicy").Str("operation", "startPatroniMonitor").Str("action", "start_failed").Msg("Failed to start Patroni monitor")
 		return
 	}
 

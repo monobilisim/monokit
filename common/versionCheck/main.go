@@ -12,6 +12,7 @@ import (
 	"github.com/monobilisim/monokit/common/health" // For getting plugin providers
 	news "github.com/monobilisim/monokit/common/redmine/news"
 	"github.com/monobilisim/monokit/common/types" // For RKE2Info struct
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
 
@@ -85,7 +86,7 @@ func VersionCheck(cmd *cobra.Command, args []string) {
 func handleRKE2VersionCheckViaPlugin() {
 	// Attempt RKE2 version check via k8sHealth plugin
 	if k8sHealthProvider := health.Get("k8sHealth"); k8sHealthProvider != nil {
-		common.LogDebug("Attempting RKE2 version check via plugin")
+		log.Debug().Msg("Attempting RKE2 version check via plugin")
 
 		// Check if the provider supports structured data collection
 		if structuredProvider, ok := k8sHealthProvider.(interface {
@@ -94,7 +95,7 @@ func handleRKE2VersionCheckViaPlugin() {
 			// Use the new CollectStructured method to get raw JSON data
 			jsonData, err := structuredProvider.CollectStructured("") // Hostname might not be relevant for k8sHealth
 			if err != nil {
-				common.LogDebug(fmt.Sprintf("Error collecting structured data from k8sHealth plugin: %v", err))
+				log.Debug().Err(err).Msg("Error collecting structured data from k8sHealth plugin")
 				return
 			}
 
@@ -105,7 +106,7 @@ func handleRKE2VersionCheckViaPlugin() {
 				}
 
 				if err := json.Unmarshal(jsonBytes, &k8sHealthData); err != nil {
-					common.LogDebug(fmt.Sprintf("Error unmarshaling k8sHealth plugin data: %v", err))
+					log.Debug().Err(err).Msg("Error unmarshaling k8sHealth plugin data")
 					return
 				}
 
@@ -150,7 +151,7 @@ func handleRKE2VersionCheckViaPlugin() {
 						if info.IsMasterNode {
 							CreateNews("RKE2 on "+clusterName, oldVersion, currentVersion, false)
 						} else {
-							common.LogDebug("Skipping news creation (not a master node)")
+							log.Debug().Msg("Skipping news creation (not a master node)")
 						}
 					} else { // oldVersion == ""
 						fmt.Printf("First time detecting RKE2 cluster '%s' version via plugin.\n", clusterName)
@@ -158,24 +159,24 @@ func handleRKE2VersionCheckViaPlugin() {
 
 					StoreVersion("rke2-"+clusterName, currentVersion)
 				} else {
-					common.LogDebug("No RKE2Info found in plugin data")
+					log.Debug().Msg("No RKE2Info found in plugin data")
 				}
 			} else {
-				common.LogDebug(fmt.Sprintf("Unexpected structured data type from k8sHealth plugin: expected []byte, got %T", jsonData))
+				log.Debug().Interface("data", jsonData).Msg("Unexpected structured data type from k8sHealth plugin")
 			}
 		} else {
 			// Fallback to old behavior for plugins that don't support structured data
-			common.LogDebug("Plugin doesn't support structured data collection, falling back to rendered output")
+			log.Debug().Msg("Plugin doesn't support structured data collection, falling back to rendered output")
 			pluginData, err := k8sHealthProvider.Collect("")
 			if err != nil {
-				common.LogDebug(fmt.Sprintf("Error collecting data from k8sHealth plugin: %v", err))
+				log.Debug().Err(err).Msg("Error collecting data from k8sHealth plugin")
 				return
 			}
 
 			// The k8sHealth plugin now returns a pre-rendered string, not a struct
 			// Skip RKE2 version checking via plugin since it returns rendered output
 			if _, ok := pluginData.(string); ok {
-				common.LogDebug("k8sHealth plugin returned string output, skipping RKE2 version extraction")
+				log.Debug().Msg("k8sHealth plugin returned string output, skipping RKE2 version extraction")
 				fmt.Println("RKE2 version check via plugin skipped (plugin returns rendered output)")
 				return
 			}
@@ -194,12 +195,12 @@ func handleRKE2VersionCheckViaPlugin() {
 
 			rke2InfoField := v.FieldByName("RKE2Info")
 			if !rke2InfoField.IsValid() {
-				common.LogDebug("No RKE2Info field found in k8sHealth plugin response")
+				log.Debug().Msg("No RKE2Info field found in k8sHealth plugin response")
 				return
 			}
 
 			if rke2InfoField.IsNil() {
-				common.LogDebug("No RKE2 information available from k8sHealth plugin")
+				log.Debug().Msg("No RKE2 information available from k8sHealth plugin")
 				return
 			}
 
@@ -258,7 +259,7 @@ func handleRKE2VersionCheckViaPlugin() {
 					// It uses common.Config.Identifier for node identification in news.
 					CreateNews("RKE2", oldVersion, currentVersion, false)
 				} else {
-					common.LogDebug("Skipping news creation (not a master node, or plugin indicated so)")
+					log.Debug().Msg("Skipping news creation (not a master node, or plugin indicated so)")
 				}
 			} else { // oldVersion == ""
 				fmt.Printf("First time detecting RKE2 cluster '%s' version via plugin.\n", clusterName)
@@ -267,7 +268,7 @@ func handleRKE2VersionCheckViaPlugin() {
 			StoreVersion("rke2-"+clusterName, currentVersion)
 		}
 	} else {
-		common.LogDebug("k8sHealth plugin not found or not loaded")
+		log.Debug().Msg("k8sHealth plugin not found or not loaded")
 		return
 	}
 }

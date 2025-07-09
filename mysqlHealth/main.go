@@ -10,7 +10,9 @@ import (
 	api "github.com/monobilisim/monokit/common/api"
 	db "github.com/monobilisim/monokit/common/db"
 	"github.com/spf13/cobra"
+
 	// NOTE: Removed viper import as it's not directly used here anymore
+	"github.com/rs/zerolog/log"
 )
 
 func DetectMySQL() bool {
@@ -21,7 +23,7 @@ func DetectMySQL() bool {
 
 	// First, check if the db config file exists. Detection shouldn't proceed if it doesn't.
 	if !common.ConfExists("db") {
-		common.LogDebug("mysqlHealth auto-detection skipped: db config file not found in /etc/mono.")
+		log.Debug().Msg("mysqlHealth auto-detection skipped: db config file not found in /etc/mono.")
 		return false
 	}
 
@@ -32,7 +34,11 @@ func DetectMySQL() bool {
 	// ParseMyCnfAndConnect implicitly tests the connection.
 	_, err := ParseMyCnfAndConnect("client")
 	if err != nil {
-		common.LogDebug(fmt.Sprintf("mysqlHealth auto-detection failed: ParseMyCnfAndConnect error: %v", err))
+		log.Debug().
+			Str("component", "mysqlHealth").
+			Str("function", "DetectMySQL").
+			Err(err).
+			Msg("mysqlHealth auto-detection failed: ParseMyCnfAndConnect error")
 		// Close the connection if ParseMyCnfAndConnect partially succeeded before erroring
 		if Connection != nil {
 			Connection.Close()
@@ -45,7 +51,7 @@ func DetectMySQL() bool {
 	if Connection != nil {
 		Connection.Close()
 	}
-	common.LogDebug("mysqlHealth auto-detected successfully.")
+	log.Debug().Msg("mysqlHealth auto-detected successfully.")
 	return true
 }
 
@@ -97,7 +103,7 @@ func Main(cmd *cobra.Command, args []string) {
 	if finalErr != nil {
 		// Log the specific error from ParseMyCnfAndConnect
 		errMsg := fmt.Sprintf("Failed to establish initial MySQL connection: %s", err.Error())
-		common.LogError(errMsg)
+		log.Error().Err(err).Msg("Failed to establish initial MySQL connection")
 		// Use the specific error for the alarm
 		common.AlarmCheckDown("ping", errMsg, false, "", "")
 		// Update health data with connection failure
@@ -112,7 +118,7 @@ func Main(cmd *cobra.Command, args []string) {
 	}
 
 	// If we reach here, ParseMyCnfAndConnect succeeded and set the global Connection.
-	common.LogDebug("Initial MySQL connection and ping successful.")
+	log.Debug().Msg("Initial MySQL connection and ping successful.")
 	// The defer Connection.Close() should be placed *after* successful connection.
 	defer Connection.Close()
 

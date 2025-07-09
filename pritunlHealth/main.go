@@ -9,6 +9,7 @@ import (
 
 	"github.com/monobilisim/monokit/common"
 	"github.com/monobilisim/monokit/common/health"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper" // Import viper for config reading in detection
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -28,12 +29,12 @@ func DetectPritunl() bool {
 	viper.AddConfigPath("/etc/mono") // Assuming standard config path
 	err := viper.ReadInConfig()
 	if err != nil {
-		common.LogDebug(fmt.Sprintf("pritunlHealth auto-detection failed: Cannot read config file: %v", err))
+		log.Debug().Err(err).Str("component", "pritunlHealth").Str("operation", "DetectPritunl").Str("action", "read_config_file_failed").Msg("pritunlHealth auto-detection failed: Cannot read config file")
 		return false
 	}
 	err = viper.Unmarshal(&tempConfig)
 	if err != nil {
-		common.LogDebug(fmt.Sprintf("pritunlHealth auto-detection failed: Cannot unmarshal config: %v", err))
+		log.Debug().Err(err).Str("component", "pritunlHealth").Str("operation", "DetectPritunl").Str("action", "unmarshal_config_failed").Msg("pritunlHealth auto-detection failed: Cannot unmarshal config")
 		return false
 	}
 
@@ -42,9 +43,9 @@ func DetectPritunl() bool {
 	if pritunlURL == "" {
 		// Default URL if not specified in config, consistent with Main function logic
 		pritunlURL = "mongodb://localhost:27017"
-		common.LogDebug("pritunlHealth auto-detection: Using default MongoDB URL: " + pritunlURL)
+		log.Debug().Str("component", "pritunlHealth").Str("operation", "DetectPritunl").Str("action", "using_default_url").Str("url", pritunlURL).Msg("pritunlHealth auto-detection: Using default MongoDB URL")
 	} else {
-		common.LogDebug("pritunlHealth auto-detection: Found MongoDB URL in config: " + pritunlURL)
+		log.Debug().Str("component", "pritunlHealth").Str("operation", "DetectPritunl").Str("action", "found_url_in_config").Str("url", pritunlURL).Msg("pritunlHealth auto-detection: Found MongoDB URL in config")
 	}
 
 	// 3. Attempt to connect and ping MongoDB
@@ -55,7 +56,7 @@ func DetectPritunl() bool {
 	// Remove ctx from Connect call
 	client, err := mongo.Connect(clientOptions)
 	if err != nil {
-		common.LogDebug(fmt.Sprintf("pritunlHealth auto-detection failed: Cannot connect to MongoDB at %s: %v", pritunlURL, err))
+		log.Debug().Err(err).Str("component", "pritunlHealth").Str("operation", "DetectPritunl").Str("action", "connect_failed").Str("url", pritunlURL).Msg("pritunlHealth auto-detection failed: Cannot connect to MongoDB")
 		return false
 	}
 	// Ensure disconnection even if ping fails
@@ -63,12 +64,12 @@ func DetectPritunl() bool {
 
 	err = client.Ping(ctx, readpref.Primary())
 	if err != nil {
-		common.LogDebug(fmt.Sprintf("pritunlHealth auto-detection failed: Cannot ping MongoDB at %s: %v", pritunlURL, err))
+		log.Debug().Err(err).Str("component", "pritunlHealth").Str("operation", "DetectPritunl").Str("action", "ping_failed").Str("url", pritunlURL).Msg("pritunlHealth auto-detection failed: Cannot ping MongoDB")
 		return false
 	}
 
-	common.LogDebug(fmt.Sprintf("pritunlHealth auto-detection: Successfully connected and pinged MongoDB at %s.", pritunlURL))
-	common.LogDebug("pritunlHealth auto-detected successfully.")
+	log.Debug().Str("component", "pritunlHealth").Str("operation", "DetectPritunl").Str("action", "success").Str("url", pritunlURL).Msg("pritunlHealth auto-detection: Successfully connected and pinged MongoDB")
+	log.Debug().Str("component", "pritunlHealth").Str("operation", "DetectPritunl").Str("action", "detection_complete").Msg("pritunlHealth auto-detected successfully")
 	return true
 }
 
@@ -92,7 +93,7 @@ func collectPritunlHealthData() (*PritunlHealthData, error) {
 	clientOptions := options.Client().ApplyURI(PritunlHealthConfig.Url)
 	client, err := mongo.Connect(clientOptions)
 	if err != nil {
-		common.LogError("Couldn't connect to the server: " + err.Error())
+		log.Error().Err(err).Str("component", "pritunlHealth").Str("operation", "collectPritunlHealthData").Str("action", "connect_failed").Str("url", PritunlHealthConfig.Url).Msg("Couldn't connect to the server")
 		common.AlarmCheckDown("pritunl_connect", "Couldn't connect to the server: "+err.Error(), false, "", "")
 		healthData.IsHealthy = false
 		return healthData, err
@@ -110,14 +111,14 @@ func collectPritunlHealthData() (*PritunlHealthData, error) {
 		defer cancelDisconnect()
 		if err = client.Disconnect(ctxDisconnect); err != nil {
 			// Log error instead of panic
-			common.LogError(fmt.Sprintf("Error disconnecting from MongoDB: %v", err))
+			log.Error().Err(err).Str("component", "pritunlHealth").Str("operation", "collectPritunlHealthData").Str("action", "disconnect_failed").Msg("Error disconnecting from MongoDB")
 		}
 	}()
 
 	// Use the operation context for ping
 	err = client.Ping(ctx, readpref.Primary())
 	if err != nil {
-		common.LogError("Couldn't ping the server: " + err.Error())
+		log.Error().Err(err).Str("component", "pritunlHealth").Str("operation", "collectPritunlHealthData").Str("action", "ping_failed").Str("url", PritunlHealthConfig.Url).Msg("Couldn't ping the server")
 		common.AlarmCheckDown("pritunl_ping", "Couldn't ping the server: "+err.Error(), false, "", "")
 		healthData.IsHealthy = false
 		return healthData, err
@@ -172,7 +173,7 @@ func Main(cmd *cobra.Command, args []string) {
 	// Collect health data
 	healthData, err := collectPritunlHealthData()
 	if err != nil {
-		common.LogError("Failed to collect Pritunl health data: " + err.Error())
+		log.Error().Err(err).Str("component", "pritunlHealth").Str("operation", "Main").Str("action", "collect_health_data_failed").Msg("Failed to collect Pritunl health data")
 		// Display error state and return
 		if healthData != nil {
 			fmt.Println(healthData.RenderAll())
@@ -182,7 +183,7 @@ func Main(cmd *cobra.Command, args []string) {
 
 	// Attempt to POST health data to the Monokit server
 	if err := common.PostHostHealth("pritunlHealth", healthData); err != nil {
-		common.LogError(fmt.Sprintf("pritunlHealth: failed to POST health data: %v", err))
+		log.Error().Err(err).Str("component", "pritunlHealth").Str("operation", "Main").Str("action", "post_health_data_failed").Msg("pritunlHealth: failed to POST health data")
 		// Continue execution even if POST fails, e.g., to display UI locally
 	}
 
@@ -197,7 +198,7 @@ func collectServerStatus(ctx context.Context, db *mongo.Database, healthData *Pr
 	// make a for loop to get all the servers
 	cursor, err := collection.Find(ctx, bson.D{})
 	if err != nil {
-		common.LogError("Couldn't get the collection: " + err.Error())
+		log.Error().Err(err).Str("component", "pritunlHealth").Str("operation", "collectServerStatus").Str("action", "find_servers_failed").Str("collection", "servers").Msg("Couldn't get the collection")
 		common.AlarmCheckDown("pritunl", "Couldn't get the collection: "+err.Error(), false, "", "")
 		return
 	} else {
@@ -210,7 +211,7 @@ func collectServerStatus(ctx context.Context, db *mongo.Database, healthData *Pr
 		var result bson.M
 		err := cursor.Decode(&result)
 		if err != nil {
-			common.LogError(fmt.Sprintf("Error decoding server document: %v", err))
+			log.Error().Err(err).Str("component", "pritunlHealth").Str("operation", "collectServerStatus").Str("action", "decode_server_failed").Interface("server_id", result["_id"]).Msg("Error decoding server document")
 			continue // Skip this document on error
 		}
 
@@ -221,14 +222,14 @@ func collectServerStatus(ctx context.Context, db *mongo.Database, healthData *Pr
 		if statusVal, ok := result["status"].(string); ok {
 			status = statusVal
 		} else {
-			common.LogDebug(fmt.Sprintf("Skipping server document due to missing or invalid 'status': %v", result["_id"]))
+			log.Debug().Str("component", "pritunlHealth").Str("operation", "collectServerStatus").Str("action", "skip_invalid_status").Interface("server_id", result["_id"]).Msg("Skipping server document due to missing or invalid 'status'")
 			continue
 		}
 
 		if nameVal, ok := result["name"].(string); ok {
 			name = nameVal
 		} else {
-			common.LogDebug(fmt.Sprintf("Skipping server document due to missing or invalid 'name': %v", result["_id"]))
+			log.Debug().Str("component", "pritunlHealth").Str("operation", "collectServerStatus").Str("action", "skip_invalid_name").Interface("server_id", result["_id"]).Msg("Skipping server document due to missing or invalid 'name'")
 			continue
 		}
 
@@ -256,7 +257,7 @@ func collectUserStatus(ctx context.Context, db *mongo.Database, healthData *Prit
 	// make a for loop to get all the users
 	cursor, err := collection.Find(ctx, bson.D{})
 	if err != nil {
-		common.LogError("Couldn't get the collection: " + err.Error())
+		log.Error().Err(err).Str("component", "pritunlHealth").Str("operation", "collectUserStatus").Str("action", "find_users_failed").Str("collection", "users").Msg("Couldn't get the collection")
 		common.AlarmCheckDown("pritunl_users", "Couldn't get the users collection: "+err.Error(), false, "", "")
 		return
 	} else {
@@ -269,7 +270,7 @@ func collectUserStatus(ctx context.Context, db *mongo.Database, healthData *Prit
 		var result bson.M
 		err := cursor.Decode(&result)
 		if err != nil {
-			common.LogError(fmt.Sprintf("Error decoding user document: %v", err))
+			log.Error().Err(err).Str("component", "pritunlHealth").Str("operation", "collectUserStatus").Str("action", "decode_user_failed").Interface("user_id", result["_id"]).Msg("Error decoding user document")
 			continue // Skip this document on error
 		}
 
@@ -281,7 +282,7 @@ func collectUserStatus(ctx context.Context, db *mongo.Database, healthData *Prit
 		if nameVal, ok := result["name"].(string); ok {
 			name = nameVal
 		} else {
-			common.LogDebug(fmt.Sprintf("Skipping user document due to missing or invalid 'name': %v", result["_id"]))
+			log.Debug().Str("component", "pritunlHealth").Str("operation", "collectUserStatus").Str("action", "skip_invalid_name").Interface("user_id", result["_id"]).Msg("Skipping user document due to missing or invalid 'name'")
 			continue
 		}
 
@@ -292,14 +293,14 @@ func collectUserStatus(ctx context.Context, db *mongo.Database, healthData *Prit
 		if orgIDVal, ok := result["org_id"].(bson.ObjectID); ok {
 			orgIdActual = orgIDVal
 		} else {
-			common.LogDebug(fmt.Sprintf("Skipping user '%s' due to missing or invalid 'org_id'", name))
+			log.Debug().Str("component", "pritunlHealth").Str("operation", "collectUserStatus").Str("action", "skip_invalid_org_id").Str("user_name", name).Msg("Skipping user due to missing or invalid 'org_id'")
 			continue
 		}
 
 		if userIDVal, ok := result["_id"].(bson.ObjectID); ok {
 			userIdActual = userIDVal
 		} else {
-			common.LogDebug(fmt.Sprintf("Skipping user '%s' due to missing or invalid '_id'", name))
+			log.Debug().Str("component", "pritunlHealth").Str("operation", "collectUserStatus").Str("action", "skip_invalid_user_id").Str("user_name", name).Msg("Skipping user due to missing or invalid '_id'")
 			continue
 		}
 
@@ -359,7 +360,7 @@ func collectOrganizationStatus(ctx context.Context, db *mongo.Database, healthDa
 	// make a for loop to get all the organizations
 	cursor, err := collection.Find(ctx, bson.D{})
 	if err != nil {
-		common.LogError("Couldn't get the collection: " + err.Error())
+		log.Error().Err(err).Str("component", "pritunlHealth").Str("operation", "collectOrganizationStatus").Str("action", "find_organizations_failed").Str("collection", "organizations").Msg("Couldn't get the collection")
 		common.AlarmCheckDown("pritunl_organizations", "Couldn't get the organizations collection: "+err.Error(), false, "", "")
 		return
 	} else {
@@ -372,7 +373,7 @@ func collectOrganizationStatus(ctx context.Context, db *mongo.Database, healthDa
 		var result bson.M
 		err := cursor.Decode(&result)
 		if err != nil {
-			common.LogError(fmt.Sprintf("Error decoding organization document: %v", err))
+			log.Error().Err(err).Str("component", "pritunlHealth").Str("operation", "collectOrganizationStatus").Str("action", "decode_organization_failed").Interface("org_id", result["_id"]).Msg("Error decoding organization document")
 			continue // Skip this document on error
 		}
 
@@ -382,7 +383,7 @@ func collectOrganizationStatus(ctx context.Context, db *mongo.Database, healthDa
 		if nameVal, ok := result["name"].(string); ok {
 			name = nameVal
 		} else {
-			common.LogDebug("Skipping organization document due to missing or invalid 'name'")
+			log.Debug().Str("component", "pritunlHealth").Str("operation", "collectOrganizationStatus").Str("action", "skip_invalid_name").Interface("org_id", result["_id"]).Msg("Skipping organization document due to missing or invalid 'name'")
 			continue
 		}
 
@@ -411,7 +412,7 @@ func getOrganizationName(ctx context.Context, db *mongo.Database, orgID bson.Obj
 	var result bson.M
 	err := collection.FindOne(ctx, bson.M{"_id": orgID}).Decode(&result)
 	if err != nil {
-		common.LogDebug(fmt.Sprintf("Error getting organization name for ID %v: %v", orgID, err))
+		log.Debug().Err(err).Str("component", "pritunlHealth").Str("operation", "getOrganizationName").Str("action", "find_organization_failed").Str("org_id", orgID.Hex()).Msg("Error getting organization name")
 		return ""
 	}
 
@@ -428,7 +429,7 @@ func ClientUpCheck(userIdActual bson.ObjectID, ctx context.Context, db *mongo.Da
 	// make a for loop to get all the clients
 	cursor, err := collection.Find(ctx, bson.D{})
 	if err != nil {
-		common.LogError("Couldn't get the collection: " + err.Error())
+		log.Error().Err(err).Str("component", "pritunlHealth").Str("operation", "ClientUpCheck").Str("action", "find_clients_failed").Str("collection", "clients").Msg("Couldn't get the collection")
 		common.AlarmCheckDown("pritunl_clients", "Couldn't get the clients collection: "+err.Error(), false, "", "")
 		return []Client{}
 	} else {
@@ -443,7 +444,7 @@ func ClientUpCheck(userIdActual bson.ObjectID, ctx context.Context, db *mongo.Da
 		var result bson.M
 		err := cursor.Decode(&result)
 		if err != nil {
-			common.LogError(fmt.Sprintf("Error decoding client document: %v", err))
+			log.Error().Err(err).Str("component", "pritunlHealth").Str("operation", "ClientUpCheck").Str("action", "decode_client_failed").Interface("client_id", result["_id"]).Msg("Error decoding client document")
 			continue // Skip this document on error
 		}
 
@@ -454,14 +455,14 @@ func ClientUpCheck(userIdActual bson.ObjectID, ctx context.Context, db *mongo.Da
 		if userIDVal, ok := result["user_id"].(bson.ObjectID); ok {
 			userId = userIDVal
 		} else {
-			common.LogDebug(fmt.Sprintf("Skipping client document due to missing or invalid 'user_id': %v", result["_id"]))
+			log.Debug().Str("component", "pritunlHealth").Str("operation", "ClientUpCheck").Str("action", "skip_invalid_user_id").Interface("client_id", result["_id"]).Msg("Skipping client document due to missing or invalid 'user_id'")
 			continue
 		}
 
 		if ipAddrVal, ok := result["real_address"].(string); ok {
 			ipAddr = ipAddrVal
 		} else {
-			common.LogDebug(fmt.Sprintf("Skipping client document due to missing or invalid 'real_address': %v", result["_id"]))
+			log.Debug().Str("component", "pritunlHealth").Str("operation", "ClientUpCheck").Str("action", "skip_invalid_ip_address").Interface("client_id", result["_id"]).Msg("Skipping client document due to missing or invalid 'real_address'")
 			continue
 		}
 
@@ -480,7 +481,7 @@ func OrgCheck(orgIdActual bson.ObjectID, ctx context.Context, db *mongo.Database
 	// make a for loop to get all the organizations
 	cursor, err := collection.Find(ctx, bson.D{})
 	if err != nil {
-		common.LogError("Couldn't get the collection: " + err.Error())
+		log.Error().Err(err).Str("component", "pritunlHealth").Str("operation", "OrgCheck").Str("action", "find_organizations_failed").Str("collection", "organizations").Msg("Couldn't get the collection")
 		common.AlarmCheckDown("pritunl_organizations", "Couldn't get the organizations collection: "+err.Error(), false, "", "")
 		return false
 	} else {
@@ -493,7 +494,7 @@ func OrgCheck(orgIdActual bson.ObjectID, ctx context.Context, db *mongo.Database
 		var result bson.M
 		err := cursor.Decode(&result)
 		if err != nil {
-			common.LogError(fmt.Sprintf("Error decoding organization document: %v", err))
+			log.Error().Err(err).Str("component", "pritunlHealth").Str("operation", "OrgCheck").Str("action", "decode_organization_failed").Interface("org_id", result["_id"]).Msg("Error decoding organization document")
 			continue // Skip this document on error
 		}
 
@@ -504,14 +505,14 @@ func OrgCheck(orgIdActual bson.ObjectID, ctx context.Context, db *mongo.Database
 		if idVal, ok := result["_id"].(bson.ObjectID); ok {
 			id = idVal
 		} else {
-			common.LogDebug("Skipping organization document due to missing or invalid '_id'")
+			log.Debug().Str("component", "pritunlHealth").Str("operation", "OrgCheck").Str("action", "skip_invalid_id").Interface("org_id", result["_id"]).Msg("Skipping organization document due to missing or invalid '_id'")
 			continue
 		}
 
 		if nameVal, ok := result["name"].(string); ok {
 			name = nameVal
 		} else {
-			common.LogDebug(fmt.Sprintf("Skipping organization document due to missing or invalid 'name': %v", id))
+			log.Debug().Str("component", "pritunlHealth").Str("operation", "OrgCheck").Str("action", "skip_invalid_name").Str("org_id", id.Hex()).Msg("Skipping organization document due to missing or invalid 'name'")
 			continue
 		}
 

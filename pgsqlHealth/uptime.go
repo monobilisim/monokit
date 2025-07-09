@@ -7,7 +7,7 @@ package pgsqlHealth
 import (
 	"fmt"
 
-	"github.com/monobilisim/monokit/common"
+	"github.com/rs/zerolog/log"
 )
 
 // UptimeData holds PostgreSQL uptime information
@@ -27,7 +27,7 @@ func uptime() (*UptimeData, error) {
 	query := `SELECT EXTRACT(EPOCH FROM current_timestamp - pg_postmaster_start_time())::int AS uptime_seconds`
 	err := Connection.QueryRow(query).Scan(&result)
 	if err != nil {
-		common.LogError(fmt.Sprintf("Error executing query: %s - Error: %v\n", query, err))
+		log.Error().Err(err).Str("component", "pgsqlHealth").Str("operation", "uptime").Str("action", "query_execution_failed").Str("query", query).Msg("Error executing query")
 		return nil, err
 	}
 

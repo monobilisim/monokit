@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/monobilisim/monokit/common"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
 
@@ -20,15 +21,15 @@ import (
 func DetectZimbraLdap() bool {
 	// Check for standard Zimbra path
 	if _, err := os.Stat("/opt/zimbra"); !os.IsNotExist(err) {
-		common.LogDebug("Zimbra detected at /opt/zimbra for zimbraLdap.")
+		log.Debug().Str("path", "/opt/zimbra").Msg("Zimbra detected for zimbraLdap.")
 		return true
 	}
 	// Check for Carbonio/Zextras path
 	if _, err := os.Stat("/opt/zextras"); !os.IsNotExist(err) {
-		common.LogDebug("Zextras/Carbonio detected at /opt/zextras for zimbraLdap.")
+		log.Debug().Str("path", "/opt/zextras").Msg("Zextras/Carbonio detected for zimbraLdap.")
 		return true
 	}
-	common.LogDebug("Neither /opt/zimbra nor /opt/zextras found. Zimbra LDAP not detected.")
+	log.Debug().Str("path", "none").Msg("Neither /opt/zimbra nor /opt/zextras found. Zimbra LDAP not detected for zimbraLdap.")
 	return false
 }
 
@@ -96,7 +97,7 @@ func Main(cmd *cobra.Command, args []string) {
 
 	b, e := c.Output()
 	if e != nil {
-		common.LogError(e.Error())
+		log.Error().Msg(e.Error())
 	}
 	fmt.Println(string(b))
 }

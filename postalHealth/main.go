@@ -18,6 +18,7 @@ import (
 	api "github.com/monobilisim/monokit/common/api"
 	mail "github.com/monobilisim/monokit/common/mail"
 	issue "github.com/monobilisim/monokit/common/redmine/issues"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 )
@@ -28,34 +29,34 @@ import (
 func DetectPostal() bool {
 	// 1. Check if postal.service exists
 	if !common.SystemdUnitExists("postal.service") {
-		common.LogDebug("postalHealth auto-detection failed: postal.service unit file not found.")
+		log.Debug().Msg("postalHealth auto-detection failed: postal.service unit file not found.")
 		return false
 	}
 
-	common.LogDebug("postalHealth auto-detection: postal.service exists.")
+	log.Debug().Msg("postalHealth auto-detection: postal.service exists.")
 
 	// 2. Check for Postal config file
 	viper.SetConfigName("postal")
 	viper.AddConfigPath("/opt/postal/config")
 	err := viper.ReadInConfig()
 	if err != nil {
-		common.LogDebug(fmt.Sprintf("postalHealth auto-detection failed: Cannot read /opt/postal/config/postal.yml: %v", err))
+		log.Debug().Err(err).Msg("postalHealth auto-detection failed: Cannot read /opt/postal/config/postal.yml")
 		return false
 	}
-	common.LogDebug("postalHealth auto-detection: Found /opt/postal/config/postal.yml.")
+	log.Debug().Msg("postalHealth auto-detection: Found /opt/postal/config/postal.yml.")
 
 	// 2. Check Docker connection and look for postal containers
 	apiClient, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
-		common.LogDebug(fmt.Sprintf("postalHealth auto-detection failed: Cannot connect to Docker API: %v", err))
+		log.Debug().Err(err).Msg("postalHealth auto-detection failed: Cannot connect to Docker API")
 		return false // Cannot detect without Docker access
 	}
 	defer apiClient.Close()
-	common.LogDebug("postalHealth auto-detection: Connected to Docker API.")
+	log.Debug().Msg("postalHealth auto-detection: Connected to Docker API.")
 
 	containers, err := apiClient.ContainerList(context.Background(), container.ListOptions{All: true})
 	if err != nil {
-		common.LogDebug(fmt.Sprintf("postalHealth auto-detection failed: Cannot list Docker containers: %v", err))
+		log.Debug().Err(err).Msg("postalHealth auto-detection failed: Cannot list Docker containers")
 		return false // Cannot detect if listing fails
 	}
 
@@ -63,7 +64,12 @@ func DetectPostal() bool {
 	for _, container := range containers {
 		for _, name := range container.Names {
 			if strings.Contains(name, "postal") {
-				common.LogDebug(fmt.Sprintf("postalHealth auto-detection: Found postal container: %s (State: %s)", name, container.State))
+				log.Debug().
+					Str("component", "postalHealth").
+					Str("function", "DetectPostal").
+					Str("container_name", name).
+					Str("container_state", container.State).
+					Msg("postalHealth auto-detection: Found postal container")
 				foundPostalContainer = true
 				break // Found one, no need to check others for detection purposes
 			}
@@ -74,11 +80,11 @@ func DetectPostal() bool {
 	}
 
 	if !foundPostalContainer {
-		common.LogDebug("postalHealth auto-detection failed: No containers with 'postal' in the name found.")
+		log.Debug().Msg("postalHealth auto-detection failed: No containers with 'postal' in the name found")
 		return false
 	}
 
-	common.LogDebug("postalHealth auto-detected successfully (config file found and at least one postal container exists).")
+	log.Debug().Msg("postalHealth auto-detected successfully (config file found and at least one postal container exists)")
 	return true
 }
 
@@ -210,14 +216,6 @@ func CheckServices(skipOutput bool) map[string]bool {
 	isActive := common.SystemdUnitActive("postal.service")
 	services["postal.service"] = isActive
 
-	if !skipOutput {
-		if isActive {
-			common.PrettyPrintStr("Postal service", true, "active")
-		} else {
-			common.PrettyPrintStr("Postal service", false, "active")
-		}
-	}
-
 	if isActive {
 		common.AlarmCheckUp("postal", "Postal service is active", false)
 	} else {
@@ -233,9 +231,8 @@ func CheckContainers(skipOutput bool) map[string]ContainerStatus {
 	apiClient, err := client.NewClientWithOpts(client.FromEnv, client.WithAPIVersionNegotiation())
 	if err != nil {
 		if !skipOutput {
-			common.LogError("Couldn't connect to Docker API: " + err.Error())
+			log.Error().Err(err).Msg("Couldn't connect to Docker API")
 			common.AlarmCheckDown("docker", "Couldn't connect to Docker API: "+err.Error(), false, "", "")
-			common.PrettyPrintStr("Docker API", false, "connected")
 		}
 		return containers
 	}
@@ -246,9 +243,8 @@ func CheckContainers(skipOutput bool) map[string]ContainerStatus {
 	containerList, err := apiClient.ContainerList(context.Background(), container.ListOptions{All: true})
 	if err != nil {
 		if !skipOutput {
-			common.LogError("Couldn't list containers: " + err.Error())
+			log.Error().Err(err).Msg("Couldn't list containers")
 			common.AlarmCheckDown("docker", "Couldn't list containers: "+err.Error(), false, "", "")
-			common.PrettyPrintStr("Docker containers", false, "listed")
 		}
 		return containers
 	}
@@ -263,14 +259,6 @@ func CheckContainers(skipOutput bool) map[string]ContainerStatus {
 					Name:      name,
 					IsRunning: isRunning,
 					State:     container.State,
-				}
-
-				if !skipOutput {
-					if isRunning {
-						common.PrettyPrintStr("Postal container "+name, true, "running")
-					} else {
-						common.PrettyPrintStr("Postal container "+name, false, "running")
-					}
 				}
 
 				if isRunning {
@@ -301,10 +289,8 @@ func CheckServiceHealth(skipOutput bool) map[string]bool {
 
 		if !skipOutput {
 			if isHealthy {
-				common.PrettyPrintStr("Service "+serviceName, true, "running")
 				common.AlarmCheckUp("service_"+serviceName, "Service health-"+serviceName+" is running", false)
 			} else {
-				common.PrettyPrintStr("Service "+serviceName, false, "running")
 				common.AlarmCheckDown("service_"+serviceName, "Service health-"+serviceName+" is not running", false, "", "")
 			}
 		}
@@ -318,7 +304,7 @@ func MySQLConnect(dbName string, dbPath string, skipOutput bool) *sql.DB {
 	viper.AddConfigPath("/opt/postal/config")
 	err := viper.ReadInConfig()
 	if err != nil {
-		common.LogError("Couldn't read Postal config file: " + err.Error())
+		log.Error().Err(err).Msg("Couldn't read Postal config file")
 		common.AlarmCheckDown("mysql", "Couldn't read Postal config file: "+err.Error(), false, "", "")
 		return nil
 	}
@@ -333,7 +319,7 @@ func MySQLConnect(dbName string, dbPath string, skipOutput bool) *sql.DB {
 
 	db, err := sql.Open("mysql", dbUser+":"+dbPass+"@tcp("+dbHost+":"+dbPort+")/"+dbPath)
 	if err != nil {
-		common.LogError("Couldn't connect to MySQL for " + dbName + ": " + err.Error())
+		log.Error().Err(err).Str("db_name", dbName).Msg("Couldn't connect to MySQL")
 		common.AlarmCheckDown("mysql_"+dbName, "Couldn't connect to MySQL for "+dbName+": "+err.Error(), false, "", "")
 		issue.CheckDown("mysql_"+dbName, common.Config.Identifier+" sunucusunda "+dbName+" veritabanına bağlanılamadı", "Bağlantı hatası: "+err.Error(), false, 0)
 		return nil
@@ -363,7 +349,7 @@ func GetMessageQueue(skipOutput bool) QueueStatus {
 
 	rows, err := MessageDB.Query("SELECT COUNT(*) FROM postal.queued_messages")
 	if err != nil {
-		common.LogError("Couldn't get message queue count: " + err.Error())
+		log.Error().Err(err).Msg("Couldn't get message queue count")
 		common.AlarmCheckDown("mysql_queue", "Couldn't get message queue count from database message_db: "+err.Error(), false, "", "")
 		return status
 	}
@@ -399,7 +385,7 @@ func GetHeldMessages(skipOutput bool) map[string]ServerHeldMessages {
 	// Get all servers
 	rows, err := MessageDB.Query("SELECT id, permalink FROM postal.servers")
 	if err != nil {
-		common.LogError("Couldn't get held messages: " + err.Error())
+		log.Error().Err(err).Msg("Couldn't get held messages")
 		common.AlarmCheckDown("mysql_held", "Couldn't get held messages from database message_db: "+err.Error(), false, "", "")
 		return servers
 	}
@@ -413,7 +399,7 @@ func GetHeldMessages(skipOutput bool) map[string]ServerHeldMessages {
 
 		err := rows.Scan(&id, &name)
 		if err != nil {
-			common.LogError("Error scanning server row: " + err.Error())
+			log.Error().Err(err).Msg("Error scanning server row")
 			continue
 		}
 
@@ -425,7 +411,7 @@ func GetHeldMessages(skipOutput bool) map[string]ServerHeldMessages {
 
 		dbMessageHeld, err := dbTemp.Query("SELECT COUNT(id) FROM messages WHERE status = 'Held'")
 		if err != nil {
-			common.LogError("Couldn't get held messages: " + err.Error())
+			log.Error().Err(err).Msg("Couldn't get held messages")
 			common.AlarmCheckDown("mysql_held", "Couldn't get held messages from database message_db: "+err.Error(), false, "", "")
 			MySQLDisconnect(dbTemp)
 			continue
@@ -436,7 +422,7 @@ func GetHeldMessages(skipOutput bool) map[string]ServerHeldMessages {
 		if dbMessageHeld.Next() {
 			err := dbMessageHeld.Scan(&count)
 			if err != nil {
-				common.LogError("Error scanning held messages count: " + err.Error())
+				log.Error().Err(err).Msg("Error scanning held messages count")
 			}
 		}
 		dbMessageHeld.Close()

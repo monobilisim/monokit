@@ -19,6 +19,7 @@ import (
 	"github.com/monobilisim/monokit/common"
 	// issues "github.com/monobilisim/monokit/common/redmine/issues" // No longer directly used here
 	"github.com/olekukonko/tablewriter"
+	"github.com/rs/zerolog/log"
 	"github.com/shirou/gopsutil/v4/disk"
 )
 
@@ -37,7 +38,7 @@ func analyzeDiskPartitions(diskPartitions []disk.PartitionStat) ([]DiskInfo, []D
 			}
 		}
 		if isExcluded {
-			common.LogDebug("Skipping excluded mountpoint: " + partition.Mountpoint)
+			log.Debug().Msg("Skipping excluded mountpoint: " + partition.Mountpoint)
 			continue
 		}
 
@@ -47,13 +48,16 @@ func analyzeDiskPartitions(diskPartitions []disk.PartitionStat) ([]DiskInfo, []D
 
 		usage, err := disk.Usage(partition.Mountpoint) // gopsutil disk.Usage
 		if err != nil {
-			common.LogError("An error occurred while fetching disk usage for " + partition.Mountpoint + "\n" + err.Error())
+			log.Error().Err(err).Msg("An error occurred while fetching disk usage for " + partition.Mountpoint + "\n")
 			continue
 		}
 
-		common.LogDebug("usage.Used: " + strconv.FormatUint(usage.Used, 10))
-		common.LogDebug("usage.Total: " + strconv.FormatUint(usage.Total, 10))
-		common.LogDebug("usage.UsedPercent: " + strconv.FormatFloat(usage.UsedPercent, 'f', 0, 64))
+		log.Debug().
+			Str("component", "osHealth").
+			Str("function", "analyzeDiskPartitions").
+			Str("mountpoint", partition.Mountpoint).
+			Float64("usage_percent", usage.UsedPercent).
+			Msg("Disk usage information")
 
 		currentDiskInfo := DiskInfo{ // DiskInfo is from osHealth/ui.go (same package)
 			Device:     partition.Device,
@@ -66,10 +70,7 @@ func analyzeDiskPartitions(diskPartitions []disk.PartitionStat) ([]DiskInfo, []D
 		allDIs = append(allDIs, currentDiskInfo)
 
 		if usage.UsedPercent > OsHealthConfig.Part_use_limit {
-			// common.PrettyPrint("Disk usage at "+partition.Mountpoint, common.Fail+" more than "+strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64)+"%", usage.UsedPercent, true, false, false, 0)
 			exceededDIs = append(exceededDIs, currentDiskInfo)
-		} else {
-			// common.PrettyPrint("Disk usage at "+partition.Mountpoint, common.Green+" less than "+strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64)+"%", usage.UsedPercent, true, false, false, 0)
 		}
 	}
 	return exceededDIs, allDIs
@@ -103,7 +104,7 @@ func createExceededTable(exceededParts []DiskInfo) (string, string) {
 	// Write message to file, creating it if it doesn't exist
 	err := os.WriteFile(common.TmpDir+"/"+common.Config.Identifier+"_disk_usage.txt", []byte(fullMsg), 0644)
 	if err != nil {
-		common.LogError("Failed to write disk usage report: " + err.Error())
+		log.Error().Err(err).Msg("Failed to write disk usage report: ")
 	}
 
 	return fullMsg, tableOnly

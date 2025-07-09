@@ -4,9 +4,10 @@ package osHealth
 
 import (
 	"github.com/monobilisim/monokit/common"
+	"github.com/rs/zerolog/log"
 )
 
 // SystemdLogs is a stub implementation for non-Linux platforms
 func SystemdLogs() {
-	common.LogDebug("Systemd logs collection not available on non-Linux platforms")
+	log.Debug().Msg("Systemd logs collection not available on non-Linux platforms")
 }

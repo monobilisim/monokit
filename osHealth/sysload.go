@@ -13,6 +13,7 @@ import (
 
 	"github.com/monobilisim/monokit/common"
 	issues "github.com/monobilisim/monokit/common/redmine/issues"
+	"github.com/rs/zerolog/log"
 	"github.com/shirou/gopsutil/v4/cpu"
 	"github.com/shirou/gopsutil/v4/load"
 )
@@ -34,19 +35,10 @@ func checkLoadIssues(loadAvg *load.AvgStat, loadLimitIssue float64, cpuCount int
 // checkLoadAlarms checks the system load and generates alarms
 func checkLoadAlarms(loadAvg *load.AvgStat, loadLimit float64) {
 	if loadAvg.Load1 > loadLimit {
-		common.PrettyPrint("System Load",
-			fmt.Sprintf("%s more than %.2f",
-				common.Fail, loadLimit),
-			loadAvg.Load1, false, true, false, 0)
-
 		common.AlarmCheckDown("sysload",
 			fmt.Sprintf("System load has been more than %.2f for the last %.2f minutes (%.2f)",
 				loadLimit, common.Config.Alarm.Interval, loadAvg.Load1), false, "", "")
 	} else {
-		common.PrettyPrint("System Load",
-			fmt.Sprintf("%s less than %.2f", common.Green, loadLimit),
-			loadAvg.Load1, false, true, false, 0)
-
 		common.AlarmCheckUp("sysload",
 			fmt.Sprintf("System load is now less than %.2f (%.2f)",
 				loadLimit, loadAvg.Load1), false)
@@ -58,7 +50,7 @@ func checkLoadAlarms(loadAvg *load.AvgStat, loadLimit float64) {
 func SysLoad() {
 	cpuCount, err := cpu.Counts(true)
 	if err != nil {
-		common.LogError(err.Error())
+		log.Error().Err(err).Msg("Error getting cpu count")
 		return
 	}
 
@@ -67,7 +59,7 @@ func SysLoad() {
 
 	loadAvg, err := load.Avg()
 	if err != nil {
-		common.LogError(err.Error())
+		log.Error().Err(err).Msg("Error getting load average")
 		return
 	}
 

@@ -122,9 +122,6 @@ func main() {
 	if noColorEnv != "1" && noColorEnv != "true" {
 		// Colors are enabled, force TrueColor profile for consistent rendering
 		lipgloss.SetColorProfile(termenv.TrueColor)
-		common.LogDebug("[PLUGIN] Colors enabled, set lipgloss to TrueColor profile")
-	} else {
-		common.LogDebug("[PLUGIN] Colors disabled via MONOKIT_NOCOLOR")
 	}
 
 	if common.ConfExists("wppconnect") {
@@ -132,9 +129,6 @@ func main() {
 		// common.ConfInit panics on actual error, so we don't check its return value here.
 		// It populates WppConnectHealthConfig by reference.
 		common.ConfInit("wppconnect", &wppconnectHealth.WppConnectHealthConfig)
-		common.LogDebug("[PLUGIN] wppconnect config loaded into wppconnectHealth.WppConnectHealthConfig")
-	} else {
-		common.LogDebug("wppconnect config not found, plugin will use default/empty WppConnectHealthConfig")
 	}
 
 	pluginMap := map[string]plugin.Plugin{
@@ -147,8 +141,6 @@ func main() {
 		MagicCookieKey:   "MONOKIT_HEALTH",
 		MagicCookieValue: "1",
 	}
-
-	common.LogDebug("[PLUGIN] wppconnectHealth plugin starting, serving gRPC plugin...")
 
 	plugin.Serve(&plugin.ServeConfig{
 		HandshakeConfig: handshake,

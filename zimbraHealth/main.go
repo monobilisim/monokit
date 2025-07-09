@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"io/ioutil"
 	"net/http"
 	"os"
 	"os/exec"
@@ -24,6 +23,7 @@ import (
 	mail "github.com/monobilisim/monokit/common/mail"
 	issues "github.com/monobilisim/monokit/common/redmine/issues"
 	ver "github.com/monobilisim/monokit/common/versionCheck"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
 
@@ -31,15 +31,15 @@ import (
 func DetectZimbra() bool {
 	// Check for standard Zimbra path
 	if _, err := os.Stat("/opt/zimbra"); !os.IsNotExist(err) {
-		common.LogDebug("Zimbra detected at /opt/zimbra.")
+		log.Debug().Msg("Zimbra detected at /opt/zimbra.")
 		return true
 	}
 	// Check for Carbonio/Zextras path
 	if _, err := os.Stat("/opt/zextras"); !os.IsNotExist(err) {
-		common.LogDebug("Zextras/Carbonio detected at /opt/zextras.")
+		log.Debug().Str("path", "/opt/zextras").Msg("Zextras/Carbonio detected")
 		return true
 	}
-	common.LogDebug("Neither /opt/zimbra nor /opt/zextras found. Zimbra not detected.")
+	log.Debug().Str("path", "neither /opt/zimbra nor /opt/zextras").Msg("Zimbra not detected")
 	return false
 }
 
@@ -67,10 +67,10 @@ func Main(cmd *cobra.Command, args []string) {
 	common.ConfInit("mail", &MailHealthConfig)
 	api.WrapperGetServiceStatus("zimbraHealth") // Keep this for service status reporting
 
-	// common.LogInfo("Starting Zimbra Health Check - v" + version) // Removed LogInfo
+	// log.Debug().Msg("Starting Zimbra Health Check - v" + version) // Removed LogInfo
 
 	if common.ProcGrep("install.sh", true) {
-		// common.LogInfo("Installation is running. Exiting.") // Removed LogInfo
+		// log.Debug().Msg("Installation is running. Exiting.") // Removed LogInfo
 		fmt.Println("Installation is running. Exiting.") // Keep user-facing message
 		return
 	}
@@ -98,7 +98,7 @@ func collectHealthData() *ZimbraHealthData {
 		zimbraPath = "/opt/zextras"
 		healthData.System.ProductPath = zimbraPath
 	} else {
-		common.LogError("Neither /opt/zimbra nor /opt/zextras found. Cannot proceed.")
+		log.Error().Str("path", "neither /opt/zimbra nor /opt/zextras").Msg("Zimbra not detected")
 		// Return partially filled data or handle error appropriately
 		return healthData // Or perhaps os.Exit(1) if unusable
 	}
@@ -160,7 +160,7 @@ func runPeriodicTasks(healthData *ZimbraHealthData) {
 	//date := time.Now().Format("15:04") // Use 15:04 for HH:MM format
 	// Get env variable ZIMBRA_HEALTH_TEST_ZMFIXPERMS
 	//if date == "01:00" || (os.Getenv("ZIMBRA_HEALTH_TEST_ZMFIXPERMS") == "true" || os.Getenv("ZIMBRA_HEALTH_TEST_ZMFIXPERMS") == "1") {
-	// common.LogInfo("Running scheduled 01:00 tasks...") // Removed LogInfo
+	// log.Debug().Msg("Running scheduled 01:00 tasks...") // Removed LogInfo
 	// common.SplitSection("Running zmfixperms") // Removed SplitSection
 	//Zmfixperms() // Zmfixperms has its own logging
 	// Note: SSL check data is already collected in collectHealthData for UI display.
@@ -190,7 +190,7 @@ func TailWebhook(filePath string, quotaLimit int) {
 	// Open the file
 	file, err := os.Open(filePath)
 	if err != nil {
-		common.LogError("Error opening file: " + err.Error())
+		log.Error().Err(err).Str("file_path", filePath).Msg("Failed to open webhook log file")
 		// Consider returning error or handling differently
 		return // Exit if file cannot be opened
 	}
@@ -205,8 +205,8 @@ func TailWebhook(filePath string, quotaLimit int) {
 		re := regexp.MustCompile(`- (\d+)\]`)
 		matches := re.FindStringSubmatch(line)
 		if len(matches) < 2 {
-			common.LogWarn("Could not match ID in webhook log line: " + line) // Changed to Warn
-			continue                                                          // Skip this line if ID not found
+			log.Warn().Str("line", line).Msg("Could not match ID in webhook log line") // Changed to Warn
+			continue                                                                   // Skip this line if ID not found
 		}
 		id := matches[1]
 
@@ -220,7 +220,7 @@ func TailWebhook(filePath string, quotaLimit int) {
 		var percentage float64
 		percentage, err = strconv.ParseFloat(matches[3], 64) // Use 64-bit float and check error
 		if err != nil {
-			common.LogWarn(fmt.Sprintf("Could not parse quota percentage '%s': %v", matches[3], err))
+			log.Warn().Str("line", line).Str("percentage", matches[3]).Err(err).Msg("Could not parse quota percentage")
 			continue
 		}
 		quotaLimitFloat := float64(quotaLimit) // Convert limit once
@@ -235,26 +235,26 @@ func TailWebhook(filePath string, quotaLimit int) {
 			// Create the marker file
 			markerHandle, createErr := os.Create(markerFile)
 			if createErr != nil {
-				common.LogError("Failed to create webhook marker file " + markerFile + ": " + createErr.Error())
+				log.Error().Str("marker_file", markerFile).Err(createErr).Msg("Failed to create webhook marker file")
 				// Continue without marker, might re-alarm
 			} else {
 				markerHandle.Close() // Close file handle immediately after creation
 			}
 
 			// Send the alarm
-			common.LogWarn("Webhook quota limit exceeded: " + line) // Log the event as Warn
+			log.Warn().Str("line", line).Msg("Webhook quota limit exceeded") // Log the event as Warn
 			common.Alarm("[zimbraHealth - "+common.Config.Identifier+"] Quota limit is above "+strconv.Itoa(quotaLimit)+"% "+escapeJSON(line), MailHealthConfig.Zimbra.Webhook_tail.Stream, MailHealthConfig.Zimbra.Webhook_tail.Topic, true)
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
-		common.LogError("Error reading webhook file: " + err.Error())
+		log.Error().Err(err).Str("file_path", filePath).Msg("Failed to read webhook file content")
 	}
 } // <-- Correct end of TailWebhook
 
 // Zmfixperms remains unchanged, but remove internal LogInfo
 func Zmfixperms() {
-	// common.LogInfo("Running zmfixperms...") // Removed LogInfo
+	// log.Debug().Msg("Running zmfixperms...") // Removed LogInfo
 	out, err := ExecZimbraCommand("libexec/zmfixperms", true, true)
 
 	if err != nil {
@@ -280,7 +280,7 @@ func CheckIpAccess() IPAccessInfo {
 	// zimbraPath and templateFile should be available globally or passed
 	if zimbraPath == "" {
 		info.Message = "Zimbra path not determined."
-		common.LogError(info.Message)
+		log.Error().Str("zimbra_path", zimbraPath).Msg("Zimbra path not determined")
 		return info
 	}
 	if strings.Contains(zimbraPath, "zextras") {
@@ -294,7 +294,7 @@ func CheckIpAccess() IPAccessInfo {
 
 	if _, err := os.Stat(templateFile); os.IsNotExist(err) {
 		info.Message = "Nginx template file not found: " + templateFile
-		common.LogError(info.Message)
+		log.Error().Str("template_file", templateFile).Msg("Nginx template file not found")
 		return info
 	}
 
@@ -302,7 +302,7 @@ func CheckIpAccess() IPAccessInfo {
 	if _, err := os.Stat(zimbraPath + "/conf/nginx/external_ip.txt"); !os.IsNotExist(err) {
 		fileContent, err := os.ReadFile(zimbraPath + "/conf/nginx/external_ip.txt")
 		if err != nil {
-			common.LogWarn("Error reading external_ip.txt: " + err.Error() + ". Falling back to ifconfig.co.")
+			log.Warn().Str("error", err.Error()).Msg("Error reading external_ip.txt. Falling back to ifconfig.co")
 			// Fallback below
 		} else {
 			info.IPAddress = strings.TrimSpace(string(fileContent))
@@ -313,14 +313,14 @@ func CheckIpAccess() IPAccessInfo {
 		resp, err := http.Get("https://ifconfig.co")
 		if err != nil {
 			info.Message = "Error getting external IP from ifconfig.co: " + err.Error()
-			common.LogError(info.Message)
+			log.Error().Str("message", info.Message).Msg("Error getting external IP from ifconfig.co")
 			return info
 		}
 		defer resp.Body.Close()
 		respBody, err := io.ReadAll(resp.Body)
 		if err != nil {
 			info.Message = "Error reading external IP response: " + err.Error()
-			common.LogError(info.Message)
+			log.Error().Str("message", info.Message).Msg("Error reading external IP response")
 			return info
 		}
 		info.IPAddress = strings.TrimSpace(string(respBody))
@@ -332,7 +332,7 @@ func CheckIpAccess() IPAccessInfo {
 	matches := re.FindAllString(info.IPAddress, -1)
 	if len(matches) == 0 {
 		info.Message = "External IP address format is invalid: " + info.IPAddress
-		common.LogError(info.Message)
+		log.Error().Str("ip_address", info.IPAddress).Msg("External IP address format is invalid")
 		return info
 	}
 	info.IPAddress = matches[0] // Use the first valid IP found
@@ -355,7 +355,7 @@ location / {
 	templateContent, err := os.ReadFile(templateFile)
 	if err != nil {
 		info.Message = "Error reading template file: " + err.Error()
-		common.LogError(info.Message)
+		log.Error().Str("template_file", templateFile).Err(err).Msg("Error reading template file")
 		return info
 	}
 
@@ -366,24 +366,24 @@ location / {
 	}
 
 	if output == "" { // Block not found
-		common.LogWarn("Adding proxy control block in " + templateFile + " file...") // Changed to Warn as it's modifying config
-		fileHandle, err := os.OpenFile(templateFile, os.O_APPEND|os.O_WRONLY, 0644)  // Don't create if not exists
+		log.Warn().Str("template_file", templateFile).Msg("Adding proxy control block in template file") // Changed to Warn as it's modifying config
+		fileHandle, err := os.OpenFile(templateFile, os.O_APPEND|os.O_WRONLY, 0644)                      // Don't create if not exists
 		if err != nil {
 			info.Message = fmt.Sprintf("Error opening template file for append: %v", err)
-			common.LogError(info.Message)
+			log.Error().Str("template_file", templateFile).Err(err).Msg("Error opening template file for append")
 			return info
 		}
 		defer fileHandle.Close()
 		if _, err := fileHandle.WriteString("\n" + proxyBlock + "\n"); err != nil {
 			info.Message = fmt.Sprintf("Error writing proxy block to template file: %v", err)
-			common.LogError(info.Message)
+			log.Error().Str("template_file", templateFile).Err(err).Msg("Error writing proxy block to template file")
 			return info
 		}
-		common.LogWarn("Proxy control block added. Restarting proxy service...") // Changed to Warn
+		log.Warn().Msg("Proxy control block added. Restarting proxy service") // Changed to Warn
 		// Consider if restart should happen here or be handled separately
 		_, err = ExecZimbraCommand("zmproxyctl restart", false, false)
 		if err != nil {
-			common.LogWarn("Failed to restart proxy after adding IP block: " + err.Error())
+			log.Warn().Str("error", err.Error()).Msg("Failed to restart proxy after adding IP block")
 			// Continue check anyway
 		}
 	}
@@ -398,7 +398,7 @@ location / {
 	req, err := http.NewRequest("GET", "https://"+info.IPAddress, nil)
 	if err != nil {
 		info.Message = "Failed to create HTTP request: " + err.Error()
-		common.LogError(info.Message)
+		log.Error().Str("ip_address", info.IPAddress).Err(err).Msg("Failed to create HTTP request")
 		common.AlarmCheckDown("accesswithip", "Check failed: "+info.Message, false, "", "")
 		return info
 	}
@@ -406,7 +406,7 @@ location / {
 	resp, err := httpClient.Do(req)
 	if err != nil {
 		info.Message = "HTTP request failed: " + err.Error()
-		common.LogError(info.Message)
+		log.Error().Str("ip_address", info.IPAddress).Err(err).Msg("HTTP request failed")
 		common.AlarmCheckDown("accesswithip", "Cannot access IP "+info.IPAddress+": "+err.Error(), false, "", "")
 		return info
 	}
@@ -415,7 +415,7 @@ location / {
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		info.Message = "Failed to read response body: " + err.Error()
-		common.LogError(info.Message)
+		log.Error().Str("ip_address", info.IPAddress).Err(err).Msg("Failed to read response body")
 		common.AlarmCheckDown("accesswithip", "Check failed reading response from "+info.IPAddress+": "+err.Error(), false, "", "")
 		return info
 	}
@@ -427,13 +427,13 @@ location / {
 		// This means the IP access IS possible (didn't get the specific message)
 		info.Accessible = false // For data structure: false means accessible
 		info.Message = "Direct access via IP is possible."
-		common.LogWarn(info.Message)
+		log.Warn().Str("ip_address", info.IPAddress).Msg("Direct access via IP is possible")
 		common.AlarmCheckDown("accesswithip", "Can access Zimbra through plain IP: "+info.IPAddress, false, "", "")
 	} else {
 		// This means the IP access IS blocked (got the specific message)
 		info.Accessible = true // For data structure: true means blocked/not accessible
 		info.Message = "Direct access via IP is blocked."
-		// common.LogInfo(info.Message) // Removed LogInfo
+		// log.Debug().Str("message", info.Message).Msg("Direct access via IP is blocked") // Removed LogInfo
 		common.AlarmCheckUp("accesswithip", "Cannot access Zimbra through plain IP: "+info.IPAddress, false)
 	}
 
@@ -449,33 +449,32 @@ func RestartZimbraService(service string) bool {
 	}
 
 	interval := time.Duration(restartInterval) * time.Minute
-	common.LogDebug("Restart interval: " + interval.String())
+	log.Debug().Str("interval", interval.String()).Msg("Restart interval")
 
 	if !lastRestart.IsZero() {
 		timeSinceLastRestart := time.Since(lastRestart)
-		common.LogDebug("Last restart: " + fmt.Sprintf("%v ago", timeSinceLastRestart.Round(time.Second)))
+		log.Debug().Str("time_since_last_restart", timeSinceLastRestart.Round(time.Second).String()).Msg("Last restart")
 
 		if timeSinceLastRestart < interval {
-			common.LogWarn(fmt.Sprintf("Skipping restart for %s - only %v since last attempt (need %v)",
-				service, timeSinceLastRestart.Round(time.Second), interval))
+			log.Warn().Str("service", service).Str("time_since_last_restart", timeSinceLastRestart.Round(time.Second).String()).Str("interval", interval.String()).Msg("Skipping restart")
 			return false
 		}
 	} else {
-		common.LogDebug("No previous restart recorded - proceeding with restart")
+		log.Debug().Msg("No previous restart recorded - proceeding with restart")
 	}
 
 	if restartCounter >= MailHealthConfig.Zimbra.Restart_Limit { // Use >= for clarity
-		common.LogWarn("Restart limit reached for " + service + ". Not restarting.")
+		log.Warn().Str("service", service).Msg("Restart limit reached")
 		common.AlarmCheckDown("service_restart_limit_"+service, "Restart limit reached for "+service, false, "", "")
 		return false
 	}
 
-	common.LogWarn("Attempting to restart Zimbra services (triggered by failure in " + service + ")...") // Changed to Warn
+	log.Warn().Str("service", service).Msg("Attempting to restart Zimbra services") // Changed to Warn
 	output, err := ExecZimbraCommand("zmcontrol start", false, false)
-	common.LogInfo("zmcontrol start output: " + output) // Try starting all services
+	log.Debug().Str("output", output).Msg("zmcontrol start output") // Try starting all services
 
 	if err != nil {
-		common.LogError("Error attempting to start Zimbra services: " + err.Error())
+		log.Error().Err(err).Str("service", service).Msg("Failed to start Zimbra services")
 		common.AlarmCheckDown("service_restart_failed_"+service, "Failed to execute zmcontrol start for "+service+": "+err.Error(), false, "", "")
 		return false // Restart command failed
 	}
@@ -483,7 +482,7 @@ func RestartZimbraService(service string) bool {
 	// Update tracking variables after successful restart command
 	restartCounter++
 	lastRestart = time.Now()
-	common.LogWarn(fmt.Sprintf("Zimbra services restart attempted (%d/%d). Re-check will occur in the next cycle.", restartCounter, MailHealthConfig.Zimbra.Restart_Limit)) // Changed to Warn
+	log.Warn().Str("restart_counter", strconv.Itoa(restartCounter)).Str("restart_limit", strconv.Itoa(MailHealthConfig.Zimbra.Restart_Limit)).Msg("Zimbra services restart attempted") // Changed to Warn
 	// Do not call CheckZimbraServices recursively. Let the next run verify.
 	return true // Restart command executed
 }
@@ -495,7 +494,7 @@ func CheckZimbraServices() []ServiceInfo {
 
 	statusOutput, err := ExecZimbraCommand("zmcontrol status", false, false)
 	if err != nil {
-		common.LogError("Failed to get zmcontrol status: " + err.Error())
+		log.Error().Err(err).Msg("Failed to get zmcontrol status")
 		return currentServices
 	}
 
@@ -522,7 +521,7 @@ func CheckZimbraServices() []ServiceInfo {
 			isRunning = false
 			serviceName = strings.TrimSpace(strings.Split(svc, "is not running")[0])
 		} else {
-			common.LogWarn("Could not parse service status line: " + line)
+			log.Warn().Str("line", line).Msg("Could not parse service status line")
 			continue
 		}
 
@@ -535,7 +534,7 @@ func CheckZimbraServices() []ServiceInfo {
 
 		// Handle down services for restart logic (existing behavior)
 		if !isRunning {
-			common.LogWarn(serviceName + " is NOT running.")
+			log.Warn().Str("service", serviceName).Msg("Service is not running")
 			common.WriteToFile(common.TmpDir+"/"+"zmcontrol_status_"+time.Now().Format("2006-01-02_15.04.05")+".log", statusOutput)
 			common.AlarmCheckDown("service_"+serviceName, serviceName+" is not running ````spoiler zmcontrol status\n"+statusOutput+"\n```", false, "", "")
 			if MailHealthConfig.Zimbra.Restart {
@@ -688,15 +687,9 @@ func displayServiceSummary(states []*ServiceState) {
 	}
 
 	if len(relevantStates) == 0 {
-		common.LogDebug("No service failures recorded.")
+		log.Debug().Msg("No service failures recorded")
 		return
 	}
-
-	common.LogDebug("Service Recovery Summary:")
-	common.LogDebug("================================================================================")
-	common.LogDebug(fmt.Sprintf("%-15s %-20s %-10s %-20s %-10s",
-		"Service", "Last Failure", "Restarts", "Recovery Time", "Status"))
-	common.LogDebug("================================================================================")
 
 	for _, state := range relevantStates {
 		lastFailure := "–"
@@ -726,10 +719,9 @@ func displayServiceSummary(states []*ServiceState) {
 			statusIcon = state.Status
 		}
 
-		common.LogDebug(fmt.Sprintf("%-15s %-20s %-10s %-20s %-10s",
-			state.Name, lastFailure, restartInfo, recoveryTime, statusIcon))
+		log.Debug().Str("name", state.Name).Str("last_failure", lastFailure).Str("restart_info", restartInfo).Str("recovery_time", recoveryTime).Str("status_icon", statusIcon).Msg("Service state")
 	}
-	common.LogDebug("================================================================================")
+	log.Debug().Msg("================================================================================")
 }
 
 // changeImmutable remains unchanged
@@ -739,9 +731,9 @@ func changeImmutable(filePath string, add bool) {
 // modifyFile remains unchanged (called by CheckZPush if needed)
 func modifyFile(templateFile string) {
 	// Read the file content
-	content, err := ioutil.ReadFile(templateFile)
+	content, err := os.ReadFile(templateFile)
 	if err != nil {
-		common.LogError("Error reading file: " + err.Error())
+		log.Error().Err(err).Str("template_file", templateFile).Msg("Failed to read template file")
 	}
 
 	text := string(content)
@@ -764,14 +756,14 @@ func modifyFile(templateFile string) {
 	})
 
 	// Write the modified content back to the file
-	if err := ioutil.WriteFile(templateFile, []byte(modifiedBlock), 0644); err != nil {
-		common.LogError("Error writing to file: " + err.Error())
+	if err := os.WriteFile(templateFile, []byte(modifiedBlock), 0644); err != nil {
+		log.Error().Err(err).Str("template_file", templateFile).Msg("Failed to write modified content to template file")
 	}
 
-	common.LogWarn("Added Z-Push block to " + templateFile + " file, restarting zimbra proxy service...") // Changed to Warn
+	log.Warn().Str("template_file", templateFile).Msg("Added Z-Push block to template file, restarting zimbra proxy service") // Changed to Warn
 	_, err = ExecZimbraCommand("zmproxyctl restart", false, false)
 	if err != nil {
-		common.LogError("Error restarting zimbra proxy service: " + err.Error())
+		log.Error().Err(err).Msg("Failed to restart Zimbra proxy service")
 	}
 }
 
@@ -829,7 +821,7 @@ func CheckZPush() ZPushInfo {
 	req, err := http.NewRequest("GET", info.URL, nil)
 	if err != nil {
 		info.Message = "Error creating Z-Push request: " + err.Error()
-		common.LogError(info.Message)
+		log.Error().Err(err).Msg("Error creating Z-Push request")
 		common.AlarmCheckDown("zpush", "Check failed: "+info.Message, false, "", "")
 		return info
 	}
@@ -837,7 +829,7 @@ func CheckZPush() ZPushInfo {
 	resp, err := client.Do(req)
 	if err != nil {
 		info.Message = "Error performing Z-Push request: " + err.Error()
-		common.LogError(info.Message)
+		log.Error().Err(err).Msg("Error performing Z-Push request")
 		common.AlarmCheckDown("zpush", "Z-Push request failed: "+err.Error(), false, "", "")
 		return info
 	}
@@ -864,24 +856,24 @@ func CheckZPush() ZPushInfo {
 
 	// Handle alarms and potential file modification
 	if info.HeaderFound {
-		// common.LogInfo("Z-Push headers detected.") // Removed LogInfo
+		// log.Debug().Msg("Z-Push headers detected.") // Removed LogInfo
 		common.AlarmCheckUp("zpush", "Z-Push is responding correctly", false)
 	} else {
 		info.Message = "Z-Push headers not found in response."
-		common.LogWarn(info.Message)
+		log.Warn().Msg("Z-Push headers not found in response") // Changed to Warn
 		common.AlarmCheckDown("zpush", "Z-Push headers not found", false, "", "")
 	}
 
 	if !info.NginxConfig {
-		common.LogWarn("Z-Push Nginx config file (/etc/nginx-php-fpm.conf) not found.")
+		log.Warn().Str("template_file", templateFile).Msg("Z-Push Nginx config file not found")
 		// Alarm? Or just log? Depends on requirements.
 	} else {
-		// common.LogInfo("Z-Push Nginx config file found.") // Removed LogInfo
+		// log.Debug().Msg("Z-Push Nginx config file found.") // Removed LogInfo
 		// Check if modification is needed (this logic might need refinement)
-		contentBytes, _ := ioutil.ReadFile(templateFile) // Read template again
+		contentBytes, _ := os.ReadFile(templateFile) // Read template again
 		if !strings.Contains(string(contentBytes), "nginx-php-fpm.conf") {
-			common.LogWarn("Nginx template needs Z-Push include. Modifying...") // Changed to Warn
-			modifyFile(templateFile)                                            // This function handles its own logging/errors
+			log.Warn().Str("template_file", templateFile).Msg("Nginx template needs Z-Push include. Modifying") // Changed to Warn
+			modifyFile(templateFile)                                                                            // This function handles its own logging/errors
 		}
 	}
 
@@ -898,7 +890,7 @@ func CheckQueuedMessages() QueuedMessagesInfo {
 	// zimbraPath should be set globally
 	if zimbraPath == "" {
 		info.Message = "Zimbra path not determined."
-		common.LogError(info.Message)
+		log.Error().Msg(info.Message)
 		return info
 	}
 
@@ -913,10 +905,10 @@ func CheckQueuedMessages() QueuedMessagesInfo {
 		if strings.Contains(out.String(), "Mail queue is empty") {
 			info.Count = 0
 			info.CheckStatus = true
-			// common.LogInfo("Mail queue is empty.") // Removed LogInfo
+			// log.Debug().Msg("Mail queue is empty.") // Removed LogInfo
 		} else {
 			info.Message = "Error running mailq: " + err.Error() + " - Output: " + out.String()
-			common.LogError(info.Message)
+			log.Error().Msg(info.Message)
 			common.AlarmCheckDown("mailq_error", "Failed to run mailq: "+err.Error(), false, "", "")
 			return info
 		}
@@ -933,7 +925,7 @@ func CheckQueuedMessages() QueuedMessagesInfo {
 		}
 		if err := scanner.Err(); err != nil {
 			info.Message = "Error reading mailq output: " + err.Error()
-			common.LogError(info.Message)
+			log.Error().Msg(info.Message)
 			common.AlarmCheckDown("mailq_error", "Failed to read mailq output: "+err.Error(), false, "", "")
 			return info
 		}
@@ -944,10 +936,10 @@ func CheckQueuedMessages() QueuedMessagesInfo {
 	// Process results if check was successful
 	if info.CheckStatus {
 		info.Exceeded = info.Count > info.Limit
-		// common.LogInfo(fmt.Sprintf("Queued messages: %d (Limit: %d)", info.Count, info.Limit)) // Removed LogInfo
+		// log.Debug().Msg(fmt.Sprintf("Queued messages: %d (Limit: %d)", info.Count, info.Limit)) // Removed LogInfo
 
 		if info.Exceeded {
-			common.LogWarn("Mail queue limit exceeded.")
+			log.Warn().Msg("Mail queue limit exceeded.")
 			common.AlarmCheckDown("mailq", fmt.Sprintf("Mail queue is over the limit (%d/%d)", info.Count, info.Limit), false, "", "")
 		} else {
 			common.AlarmCheckUp("mailq", fmt.Sprintf("Mail queue is under the limit (%d/%d)", info.Count, info.Limit), false)
@@ -966,7 +958,7 @@ func CheckSSL() SSLCertInfo {
 	zmHostname, err := ExecZimbraCommand("zmhostname", false, false)
 	if err != nil {
 		info.Message = "Error getting zimbra hostname: " + err.Error()
-		common.LogError(info.Message)
+		log.Error().Msg(info.Message)
 		return info
 	}
 	zmHostname = strings.TrimSpace(zmHostname)
@@ -975,7 +967,7 @@ func CheckSSL() SSLCertInfo {
 	provOutput, err := ExecZimbraCommand("zmprov gs "+zmHostname+" zimbraServiceHostname", false, false)
 	if err != nil {
 		info.Message = "Error getting zimbraServiceHostname: " + err.Error()
-		common.LogError(info.Message)
+		log.Error().Msg(info.Message)
 		return info
 	}
 
@@ -984,10 +976,10 @@ func CheckSSL() SSLCertInfo {
 	matches := re.FindStringSubmatch(provOutput)
 	if len(matches) < 2 {
 		info.Message = "Could not parse zimbraServiceHostname from zmprov output: " + provOutput
-		common.LogError(info.Message)
+		log.Error().Msg(info.Message)
 		// Fallback to zmHostname itself?
 		info.MailHost = zmHostname
-		common.LogWarn("Falling back to using zmhostname for SSL check.")
+		log.Warn().Msg("Falling back to using zmhostname for SSL check.")
 		// return info // Decide if fallback is acceptable or should fail
 	} else {
 		info.MailHost = strings.TrimSpace(matches[1])
@@ -995,11 +987,11 @@ func CheckSSL() SSLCertInfo {
 
 	if info.MailHost == "" {
 		info.Message = "Mail host for SSL check could not be determined."
-		common.LogError(info.Message)
+		log.Error().Msg(info.Message)
 		return info
 	}
 
-	common.LogDebug("Checking SSL certificate for host: " + info.MailHost)
+	log.Debug().Msg("Checking SSL certificate for host: " + info.MailHost)
 
 	// Dial to get certificate
 	conn, err := tls.Dial("tcp", info.MailHost+":443", &tls.Config{
@@ -1008,7 +1000,7 @@ func CheckSSL() SSLCertInfo {
 	})
 	if err != nil {
 		info.Message = "Error connecting to " + info.MailHost + ":443 for SSL check: " + err.Error()
-		common.LogError(info.Message)
+		log.Error().Msg(info.Message)
 		common.AlarmCheckDown("sslcert_conn", "Failed to connect for SSL check: "+err.Error(), false, "", "")
 		return info
 	}
@@ -1018,7 +1010,7 @@ func CheckSSL() SSLCertInfo {
 	certs := conn.ConnectionState().PeerCertificates
 	if len(certs) == 0 {
 		info.Message = "No SSL certificates found for " + info.MailHost
-		common.LogError(info.Message)
+		log.Error().Msg(info.Message)
 		common.AlarmCheckDown("sslcert_nocert", info.Message, false, "", "")
 		return info
 	}
@@ -1030,17 +1022,17 @@ func CheckSSL() SSLCertInfo {
 	info.DaysUntilExpiry = int(time.Until(cert.NotAfter).Hours() / 24)
 	info.ExpiringSoon = info.DaysUntilExpiry < expiryThresholdDays
 
-	// common.LogInfo(fmt.Sprintf("SSL Certificate for %s expires in %d days.", info.MailHost, info.DaysUntilExpiry)) // Removed LogInfo
+	// log.Debug().Msg(fmt.Sprintf("SSL Certificate for %s expires in %d days.", info.MailHost, info.DaysUntilExpiry)) // Removed LogInfo
 
 	// Handle alarms and Redmine issues
 	alarmMsg := fmt.Sprintf("SSL Certificate for %s expires in %d days", info.MailHost, info.DaysUntilExpiry)
 	if info.ExpiringSoon {
-		common.LogWarn("SSL Certificate is expiring soon.")
+		log.Warn().Msg("SSL Certificate is expiring soon.")
 		common.AlarmCheckDown("sslcert", alarmMsg, false, "", "")
 		// Only create/update Redmine issue if expiring soon
 		viewDeployedCert, err := ExecZimbraCommand("zmcertmgr viewdeployedcrt", false, false)
 		if err != nil {
-			common.LogWarn("Failed to get deployed cert details for Redmine issue: " + err.Error())
+			log.Warn().Err(err).Msg("Failed to get deployed cert details for Redmine issue")
 			viewDeployedCert = "Could not retrieve certificate details."
 		}
 		issueBody := fmt.Sprintf("Certificate for %s expires on %s.\n\n```\n%s\n```", info.MailHost, cert.NotAfter.Format("2006-01-02"), viewDeployedCert)

@@ -6,6 +6,7 @@ import (
 	"reflect"
 
 	"github.com/monobilisim/monokit/common/health"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
 
@@ -18,7 +19,7 @@ func isActualPlugin(provider interface{}) bool {
 		// Get the type name, which should be "ProviderProxy" for actual plugins
 		typeName := providerType.Elem().Name() // Use Elem() since it's likely a pointer
 		isProxy := typeName == "ProviderProxy"
-		LogDebug(fmt.Sprintf("Provider type check: %s, isProxy: %t", typeName, isProxy))
+		log.Debug().Str("typeName", typeName).Bool("isProxy", isProxy).Msg("Provider type check")
 		return isProxy
 	}
 	return false
@@ -28,13 +29,13 @@ func isActualPlugin(provider interface{}) bool {
 // for only actual plugin binaries (not built-in components). This should be called after plugins are loaded.
 func RegisterPluginBridgeComponents() {
 	providers := health.GetAllProviders()
-	LogDebug(fmt.Sprintf("Scanning health registry for providers, found %d total", len(providers)))
+	log.Debug().Int("providers", len(providers)).Msg("Scanning health registry for providers")
 
 	for pluginName, provider := range providers {
 		if provider != nil {
 			// Check if this is actually a plugin (ProviderProxy) vs a built-in component
 			if isActualPlugin(provider) {
-				LogDebug(fmt.Sprintf("Creating bridge component for actual plugin: %s", pluginName))
+				log.Debug().Str("pluginName", pluginName).Msg("Creating bridge component for actual plugin")
 
 				// Create a closure to capture the plugin name for each component
 				pluginNameCopy := pluginName // Important: capture the value, not the reference
@@ -46,7 +47,7 @@ func RegisterPluginBridgeComponents() {
 					AutoDetect: createPluginDetector(pluginNameCopy),
 				})
 			} else {
-				LogDebug(fmt.Sprintf("Skipping built-in component: %s (not a plugin binary)", pluginName))
+				log.Debug().Str("pluginName", pluginName).Msg("Skipping built-in component (not a plugin binary)")
 			}
 		}
 	}
@@ -56,11 +57,11 @@ func RegisterPluginBridgeComponents() {
 // for actual plugin binaries. This should be called after plugins are loaded.
 func RegisterPluginCLICommands(rootCmd *cobra.Command) {
 	providers := health.GetAllProviders()
-	LogDebug(fmt.Sprintf("Scanning health registry for CLI commands, found %d providers", len(providers)))
+	log.Debug().Int("providers", len(providers)).Msg("Scanning health registry for CLI commands")
 
 	for pluginName, provider := range providers {
 		if provider != nil && isActualPlugin(provider) {
-			LogDebug(fmt.Sprintf("Creating CLI command for plugin: %s", pluginName))
+			log.Debug().Str("pluginName", pluginName).Msg("Creating CLI command")
 
 			// Create a closure to capture the plugin name
 			pluginNameCopy := pluginName
@@ -73,7 +74,7 @@ func RegisterPluginCLICommands(rootCmd *cobra.Command) {
 			}
 
 			rootCmd.AddCommand(pluginCmd)
-			LogDebug(fmt.Sprintf("Added CLI command: %s", pluginNameCopy))
+			log.Debug().Str("pluginName", pluginNameCopy).Msg("Added CLI command")
 		}
 	}
 }
@@ -83,7 +84,7 @@ func createPluginDetector(pluginName string) func() bool {
 	return func() bool {
 		provider := health.Get(pluginName)
 		detected := provider != nil
-		LogDebug(fmt.Sprintf("Plugin %s AutoDetect check: provider found = %t", pluginName, detected))
+		log.Debug().Str("pluginName", pluginName).Bool("detected", detected).Msg("Plugin AutoDetect check")
 		return detected
 	}
 }
@@ -95,14 +96,14 @@ func createPluginExecutor(pluginName string) func(cmd *cobra.Command, args []str
 		if pluginProvider := health.Get(pluginName); pluginProvider != nil {
 			hostname, err := os.Hostname()
 			if err != nil {
-				LogDebug(fmt.Sprintf("Error getting hostname: %v, using localhost", err))
+				log.Debug().Err(err).Msg("Error getting hostname, using localhost")
 				hostname = "localhost"
 			}
 
-			LogDebug(fmt.Sprintf("Executing %s plugin with hostname: %s", pluginName, hostname))
+			log.Debug().Str("pluginName", pluginName).Str("hostname", hostname).Msg("Executing plugin")
 			data, err := pluginProvider.Collect(hostname)
 			if err != nil {
-				LogError(fmt.Sprintf("Error collecting %s data from plugin: %v", pluginName, err))
+				log.Error().Str("pluginName", pluginName).Err(err).Msg("Error collecting data from plugin")
 				fmt.Fprintf(os.Stderr, "Error collecting %s data from plugin: %v\n", pluginName, err)
 				os.Exit(1)
 			}
@@ -111,12 +112,12 @@ func createPluginExecutor(pluginName string) func(cmd *cobra.Command, args []str
 			if renderedString, ok := data.(string); ok {
 				fmt.Println(renderedString)
 			} else {
-				LogError(fmt.Sprintf("%s plugin returned unexpected type %T, expected string", pluginName, data))
+				log.Error().Str("pluginName", pluginName).Str("data", fmt.Sprintf("%T", data)).Msg("Plugin returned unexpected type")
 				fmt.Fprintf(os.Stderr, "Error: %s plugin returned unexpected type %T, expected string\n", pluginName, data)
 				os.Exit(1)
 			}
 		} else {
-			LogError(fmt.Sprintf("%s plugin not available in health registry", pluginName))
+			log.Error().Str("pluginName", pluginName).Msg("Plugin not available in health registry")
 			fmt.Fprintf(os.Stderr, "%s plugin not available\n", pluginName)
 			os.Exit(1)
 		}

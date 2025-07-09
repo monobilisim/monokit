@@ -6,6 +6,7 @@ import (
 	"os/exec"
 
 	"github.com/monobilisim/monokit/common"
+	"github.com/rs/zerolog/log"
 )
 
 // DetectVault checks if Vault is installed and available
@@ -13,17 +14,17 @@ func DetectVault() bool {
 	// Check if vault binary exists in PATH
 	_, err := exec.LookPath("vault")
 	if err != nil {
-		common.LogDebug("Vault detection failed: vault binary not found in PATH")
+		log.Debug().Msg("Vault detection failed: vault binary not found in PATH")
 		return false
 	}
 
 	// Check if vault service unit file exists
 	if !common.SystemdUnitExists("vault.service") {
-		common.LogDebug("Vault detection failed: vault.service systemd unit not found")
+		log.Debug().Msg("Vault detection failed: vault.service systemd unit not found")
 		return false
 	}
 
-	common.LogDebug("Vault detected: binary and service unit found")
+	log.Debug().Msg("Vault detected: binary and service unit found")
 	return true
 }
 

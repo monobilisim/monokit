@@ -9,6 +9,7 @@ import (
 	"github.com/monobilisim/monokit/common"
 	api "github.com/monobilisim/monokit/common/api"
 	"github.com/monobilisim/monokit/common/health"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
 
@@ -101,13 +102,13 @@ func Main(cmd *cobra.Command, args []string) {
 	// Collect health data using the shared function
 	healthData, err := collectRedisHealthData()
 	if err != nil {
-		common.LogError("Failed to collect Redis health data: " + err.Error())
+		log.Error().Err(err).Str("component", "redisHealth").Str("operation", "Main").Str("action", "collect_health_data_failed").Msg("Failed to collect Redis health data")
 		return
 	}
 
 	// Attempt to POST health data to the Monokit server
 	if err := common.PostHostHealth("redisHealth", healthData); err != nil {
-		common.LogError(fmt.Sprintf("redisHealth: failed to POST health data: %v", err))
+		log.Error().Err(err).Str("component", "redisHealth").Str("operation", "Main").Str("action", "post_health_data_failed").Msg("Failed to POST health data")
 		// Continue execution even if POST fails, e.g., to display UI locally
 	}
 

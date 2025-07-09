@@ -16,6 +16,7 @@ import (
 	"github.com/monobilisim/monokit/common"
 	db "github.com/monobilisim/monokit/common/db"
 	versionCheck "github.com/monobilisim/monokit/common/versionCheck"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
 
@@ -28,19 +29,19 @@ func DetectPostgres() bool {
 		common.SystemdUnitExists("postgresql@15-main.service")
 
 	if !postgresServiceExists {
-		common.LogDebug("PostgreSQL detection failed: No common postgresql systemd unit file found.")
+		log.Debug().Msg("PostgreSQL detection failed: No common postgresql systemd unit file found.")
 		return false
 	}
 
 	// Check if psql binary exists
 	_, err := exec.LookPath("psql")
 	if err != nil {
-		common.LogDebug("PostgreSQL detection failed: psql binary not found in PATH")
+		log.Debug().Msg("PostgreSQL detection failed: psql binary not found in PATH")
 		return false
 	}
 
 	// If service unit exists and binary exists, assume PostgreSQL is present
-	common.LogDebug("PostgreSQL detected: Service unit file exists and psql binary found.")
+	log.Debug().Msg("PostgreSQL detected: Service unit file exists and psql binary found.")
 	return true
 }
 
@@ -95,7 +96,7 @@ func Main(cmd *cobra.Command, args []string) {
 
 	// Check if user is postgres
 	if os.Getenv("USER") != "postgres" {
-		common.LogError("This script must be run as the postgres user")
+		log.Error().Msg("This script must be run as the postgres user")
 		return
 	}
 
@@ -112,7 +113,7 @@ func Main(cmd *cobra.Command, args []string) {
 	if _, err := os.Stat("/etc/patroni/patroni.yml"); !errors.Is(err, os.ErrNotExist) {
 		patroniApiUrl, err = getPatroniUrl()
 		if err != nil {
-			common.LogError(fmt.Sprintf("Error getting patroni url: %v\n", err))
+			log.Error().Err(err).Str("component", "pgsqlHealth").Str("operation", "Main").Str("action", "get_patroni_url_failed").Msg("Error getting patroni url")
 			// Update health data with error
 			healthData.ClusterInfo.Enabled = true
 			healthData.ClusterInfo.IsHealthy = false
@@ -130,7 +131,7 @@ func Main(cmd *cobra.Command, args []string) {
 	// connection.go
 	err := Connect()
 	if err != nil {
-		common.LogError(fmt.Sprintf("Error connecting to PostgreSQL: %v\n", err))
+		log.Error().Err(err).Str("component", "pgsqlHealth").Str("operation", "Main").Str("action", "connect_to_postgresql_failed").Msg("Error connecting to PostgreSQL")
 		common.AlarmCheckDown("pgsql_conn", "PostgreSQL connection failed: "+err.Error(), false, "", "")
 
 		// Update health data with connection failure
@@ -244,19 +245,19 @@ func Main(cmd *cobra.Command, args []string) {
 		// Get patroni role
 		patroniRole, err := http.Get("http://" + patroniApiUrl + "/patroni")
 		if err != nil {
-			common.LogError(fmt.Sprintf("Error getting patroni role: %v\n", err))
+			log.Error().Err(err).Str("component", "pgsqlHealth").Str("operation", "Main").Str("action", "get_patroni_role_failed").Msg("Error getting patroni role")
 		} else {
 			defer patroniRole.Body.Close()
 
 			body, err := io.ReadAll(patroniRole.Body)
 			if err != nil {
-				common.LogError(fmt.Sprintf("Error reading patroni role body: %v\n", err))
+				log.Error().Err(err).Str("component", "pgsqlHealth").Str("operation", "Main").Str("action", "read_patroni_role_body_failed").Msg("Error reading patroni role body")
 			} else {
 				var patroniRoleJson map[string]interface{}
 				err = json.Unmarshal(body, &patroniRoleJson)
 
 				if err != nil {
-					common.LogError(fmt.Sprintf("Error decoding patroni role json: %v\n", err))
+					log.Error().Err(err).Str("component", "pgsqlHealth").Str("operation", "Main").Str("action", "decode_patroni_role_json_failed").Msg("Error decoding patroni role json")
 				} else {
 					role = patroniRoleJson["role"].(string)
 					healthData.ClusterInfo.Role = role

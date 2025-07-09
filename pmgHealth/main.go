@@ -14,6 +14,7 @@ import (
 	"github.com/monobilisim/monokit/common"
 	api "github.com/monobilisim/monokit/common/api"
 	mail "github.com/monobilisim/monokit/common/mail"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
 
@@ -22,27 +23,27 @@ import (
 func DetectPmg() bool {
 	// 1. Check for pmgversion command
 	if _, err := exec.LookPath("pmgversion"); err != nil {
-		common.LogDebug("pmgHealth auto-detection failed: 'pmgversion' command not found in PATH.")
+		log.Debug().Msg("pmgHealth auto-detection failed: 'pmgversion' command not found in PATH.")
 		return false
 	}
-	common.LogDebug("pmgHealth auto-detection: 'pmgversion' command found.")
+	log.Debug().Msg("pmgHealth auto-detection: 'pmgversion' command found.")
 
 	// 2. Check for /etc/pmg directory
 	if _, err := os.Stat("/etc/pmg"); os.IsNotExist(err) {
-		common.LogDebug("pmgHealth auto-detection failed: '/etc/pmg' directory not found.")
+		log.Debug().Msg("pmgHealth auto-detection failed: '/etc/pmg' directory not found.")
 		return false
 	}
-	common.LogDebug("pmgHealth auto-detection: '/etc/pmg' directory found.")
+	log.Debug().Msg("pmgHealth auto-detection: '/etc/pmg' directory found.")
 
 	// 3. Check if pmgproxy service exists/is active (using common function)
 	// We can just check for one key service. If pmgproxy is there, it's likely PMG.
 	if !common.SystemdUnitExists("pmgproxy.service") {
-		common.LogDebug("pmgHealth auto-detection failed: 'pmgproxy.service' systemd unit not found.")
+		log.Debug().Msg("pmgHealth auto-detection failed: 'pmgproxy.service' systemd unit not found.")
 		return false
 	}
-	common.LogDebug("pmgHealth auto-detection: 'pmgproxy.service' systemd unit found.")
+	log.Debug().Msg("pmgHealth auto-detection: 'pmgproxy.service' systemd unit found.")
 
-	common.LogDebug("pmgHealth auto-detected successfully.")
+	log.Debug().Msg("pmgHealth auto-detected successfully.")
 	return true
 }
 
@@ -67,14 +68,8 @@ func CheckPmgServices(skipOutput bool) map[string]bool {
 		serviceStatus[service] = isActive
 
 		if isActive {
-			if !skipOutput {
-				common.PrettyPrintStr(service, true, "running")
-			}
 			common.AlarmCheckUp(service, service+" is working again", false)
 		} else {
-			if !skipOutput {
-				common.PrettyPrintStr(service, false, "running")
-			}
 			common.AlarmCheckDown(service, service+" is not running", false, "", "")
 		}
 	}
@@ -90,14 +85,8 @@ func PostgreSQLStatus(skipOutput bool) bool {
 
 	if !isRunning {
 		common.AlarmCheckDown("postgres", "PostgreSQL is not running", false, "", "")
-		if !skipOutput {
-			common.PrettyPrintStr("PostgreSQL", false, "running")
-		}
 	} else {
 		common.AlarmCheckUp("postgres", "PostgreSQL is now running", false)
-		if !skipOutput {
-			common.PrettyPrintStr("PostgreSQL", true, "running")
-		}
 	}
 
 	return isRunning
@@ -112,7 +101,7 @@ func QueuedMessages(skipOutput bool) (int, int, bool) {
 	err := cmd.Run()
 
 	if err != nil {
-		common.LogError("Error running mailq: " + err.Error())
+		log.Error().Err(err).Msg("Error running mailq: ")
 		common.AlarmCheckDown("mailq_run", "Error running mailq: "+err.Error(), false, "", "")
 		return 0, MailHealthConfig.Pmg.Queue_Limit, false
 	} else {
@@ -135,14 +124,8 @@ func QueuedMessages(skipOutput bool) (int, int, bool) {
 
 	if isHealthy {
 		common.AlarmCheckUp("queued_msg", "Number of queued messages is acceptable - "+strconv.Itoa(count)+"/"+strconv.Itoa(MailHealthConfig.Pmg.Queue_Limit), false)
-		if !skipOutput {
-			common.PrettyPrintStr("Number of queued messages", true, strconv.Itoa(count)+"/"+strconv.Itoa(MailHealthConfig.Pmg.Queue_Limit))
-		}
 	} else {
 		common.AlarmCheckDown("queued_msg", "Number of queued messages is above limit - "+strconv.Itoa(count)+"/"+strconv.Itoa(MailHealthConfig.Pmg.Queue_Limit), false, "", "")
-		if !skipOutput {
-			common.PrettyPrintStr("Number of queued messages", false, strconv.Itoa(count)+"/"+strconv.Itoa(MailHealthConfig.Pmg.Queue_Limit))
-		}
 	}
 
 	return count, MailHealthConfig.Pmg.Queue_Limit, isHealthy

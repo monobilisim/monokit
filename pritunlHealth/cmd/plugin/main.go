@@ -122,9 +122,6 @@ func main() {
 	if noColorEnv != "1" && noColorEnv != "true" {
 		// Colors are enabled, force TrueColor profile for consistent rendering
 		lipgloss.SetColorProfile(termenv.TrueColor)
-		common.LogDebug("[PLUGIN] Colors enabled, set lipgloss to TrueColor profile")
-	} else {
-		common.LogDebug("[PLUGIN] Colors disabled via MONOKIT_NOCOLOR")
 	}
 
 	if common.ConfExists("pritunl") {
@@ -132,9 +129,6 @@ func main() {
 		// common.ConfInit panics on actual error, so we don't check its return value here.
 		// It populates PritunlHealthConfig by reference.
 		common.ConfInit("pritunl", &pritunlHealth.PritunlHealthConfig)
-		common.LogDebug("[PLUGIN] pritunl config loaded into pritunlHealth.PritunlHealthConfig")
-	} else {
-		common.LogDebug("pritunl config not found, plugin will use default/empty PritunlHealthConfig")
 	}
 
 	pluginMap := map[string]plugin.Plugin{
@@ -147,8 +141,6 @@ func main() {
 		MagicCookieKey:   "MONOKIT_HEALTH",
 		MagicCookieValue: "1",
 	}
-
-	common.LogDebug("[PLUGIN] pritunlHealth plugin starting, serving gRPC plugin...")
 
 	plugin.Serve(&plugin.ServeConfig{
 		HandshakeConfig: handshake,

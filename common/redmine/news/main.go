@@ -4,12 +4,13 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"strings"
 	"time"
 
 	"github.com/monobilisim/monokit/common"
+	"github.com/rs/zerolog/log"
 )
 
 type News struct {
@@ -22,7 +23,7 @@ type RedmineNews struct {
 }
 
 func Create(title string, description string, noDuplicate bool) string {
-	if common.Config.Redmine.Enabled == false {
+	if !common.Config.Redmine.Enabled {
 		return ""
 	}
 
@@ -46,13 +47,13 @@ func Create(title string, description string, noDuplicate bool) string {
 	jsonBody, err := json.Marshal(body)
 
 	if err != nil {
-		common.LogError("json.Marshal error: " + err.Error())
+		log.Error().Err(err).Str("component", "redmine").Str("operation", "create_news").Str("title", title).Msg("Failed to marshal news creation request")
 	}
 
 	req, err := http.NewRequest("POST", common.Config.Redmine.Url+"/projects/"+projectId+"/news.json", bytes.NewBuffer(jsonBody))
 
 	if err != nil {
-		common.LogError("http.NewRequest error: " + err.Error())
+		log.Error().Err(err).Str("component", "redmine").Str("operation", "create_news").Str("title", title).Str("project_id", projectId).Msg("Failed to create news HTTP request")
 	}
 
 	common.AddUserAgent(req)
@@ -66,21 +67,18 @@ func Create(title string, description string, noDuplicate bool) string {
 	resp, err := client.Do(req)
 
 	if err != nil {
-		common.LogError("client.Do error: " + err.Error() + "\n" + "Redmine URL: " + common.Config.Redmine.Url + "/issues.json" + "\n" + "Redmine JSON: " + string(jsonBody))
+		log.Error().Err(err).Str("component", "redmine").Str("operation", "create_news").Str("title", title).Str("url", common.Config.Redmine.Url+"/projects/"+projectId+"/news.json").Str("request_body", string(jsonBody)).Msg("Failed to send news creation request")
 		return ""
 	}
-	
+
 	defer resp.Body.Close()
-    
-    respBody, err := ioutil.ReadAll(resp.Body)
+
+	respBody, _ := io.ReadAll(resp.Body)
 
 	newsId := Exists(title, description)
 
 	if newsId == "" {
-		common.LogError("News couldn't be created, id returns empty")
-        common.LogError("Redmine URL: " + common.Config.Redmine.Url + "/projects/" + projectId + "/news.json")
-        common.LogError("Redmine JSON: " + string(jsonBody))
-        common.LogError("Response body: " + string(respBody))
+		log.Error().Str("component", "redmine").Str("operation", "create_news").Str("title", title).Str("url", common.Config.Redmine.Url+"/projects/"+projectId+"/news.json").Str("request_body", string(jsonBody)).Str("response_body", string(respBody)).Msg("Failed to create news - ID not found after creation")
 		return ""
 	} else {
 		return newsId
@@ -89,14 +87,14 @@ func Create(title string, description string, noDuplicate bool) string {
 }
 
 func Delete(id string) {
-	if common.Config.Redmine.Enabled == false {
+	if !common.Config.Redmine.Enabled {
 		return
 	}
 
 	req, err := http.NewRequest("DELETE", common.Config.Redmine.Url+"/news/"+id+".json", nil)
 
 	if err != nil {
-		common.LogError("http.NewRequest error: " + err.Error())
+		log.Error().Err(err).Str("component", "redmine").Str("operation", "delete_news").Str("news_id", id).Msg("Failed to create news deletion HTTP request")
 	}
 
 	common.AddUserAgent(req)
@@ -110,7 +108,7 @@ func Delete(id string) {
 	resp, err := client.Do(req)
 
 	if err != nil {
-		common.LogError("client.Do error: " + err.Error() + "\n" + "Redmine URL: " + common.Config.Redmine.Url + "/issues.json")
+		log.Error().Err(err).Str("component", "redmine").Str("operation", "delete_news").Str("news_id", id).Str("url", common.Config.Redmine.Url+"/news/"+id+".json").Msg("Failed to send news deletion request")
 		return
 	}
 
@@ -120,7 +118,7 @@ func Delete(id string) {
 func Exists(title string, description string) string {
 	// Check if the news already exist with the same title and description, return id if exists
 
-	if common.Config.Redmine.Enabled == false {
+	if !common.Config.Redmine.Enabled {
 		return ""
 	}
 
@@ -135,7 +133,7 @@ func Exists(title string, description string) string {
 	req, err := http.NewRequest("GET", common.Config.Redmine.Url+"/projects/"+projectId+"/news.json", nil)
 
 	if err != nil {
-		common.LogError("http.NewRequest error: " + err.Error())
+		log.Error().Err(err).Str("component", "redmine").Str("operation", "exists_news").Str("title", title).Str("project_id", projectId).Msg("Failed to create news search HTTP request")
 	}
 
 	common.AddUserAgent(req)
@@ -149,16 +147,16 @@ func Exists(title string, description string) string {
 	resp, err := client.Do(req)
 
 	if err != nil {
-		common.LogError("client.Do error: " + err.Error() + "\n" + "Redmine URL: " + common.Config.Redmine.Url + "/issues.json")
+		log.Error().Err(err).Str("component", "redmine").Str("operation", "exists_news").Str("title", title).Str("url", common.Config.Redmine.Url+"/projects/"+projectId+"/news.json").Msg("Failed to send news search request")
 		return ""
 	}
 
 	defer resp.Body.Close()
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 
 	if err != nil {
-		common.LogError("ioutil.ReadAll error: " + err.Error())
+		log.Error().Err(err).Str("component", "redmine").Str("operation", "exists_news").Str("title", title).Msg("Failed to read news search response body")
 		return ""
 	}
 
@@ -167,7 +165,7 @@ func Exists(title string, description string) string {
 	err = json.Unmarshal(body, &newsList)
 
 	if err != nil {
-		common.LogError("json.Unmarshal error: " + err.Error())
+		log.Error().Err(err).Str("component", "redmine").Str("operation", "exists_news").Str("title", title).Msg("Failed to unmarshal news search response")
 		return ""
 	}
 

@@ -27,6 +27,7 @@ import (
 	"github.com/monobilisim/monokit/common"
 	db "github.com/monobilisim/monokit/common/db"
 	issues "github.com/monobilisim/monokit/common/redmine/issues"
+	"github.com/rs/zerolog/log"
 )
 
 // ClusterStatusData holds information about the PostgreSQL cluster status
@@ -96,12 +97,8 @@ func clusterStatus(patroniApiUrl string, dbConfig db.DbHealth) (*ClusterStatusDa
 // and updates the alarm status accordingly
 func checkPatroniService() {
 	if common.SystemdUnitActive("patroni.service") {
-		// No direct console output
-		// common.PrettyPrintStr("Patroni Service", true, "accessible")
 		common.AlarmCheckUp("patroni_service", "Patroni service is now accessible", false)
 	} else {
-		// No direct console output
-		// common.PrettyPrintStr("Patroni Service", false, "accessible")
 		common.AlarmCheckDown("patroni_service", "Patroni service is not accessible", false, "", "")
 	}
 }
@@ -114,24 +111,18 @@ func getClusterStatus(patroniApiUrl string) (*Response, *Response) { // Added pa
 
 	resp, err := client.Get(clusterURL)
 	if err != nil {
-		common.LogError(fmt.Sprintf("Error executing query: %s - Error: %v\n", clusterURL, err))
-		// Remove direct console output
-		// common.PrettyPrintStr("Patroni API", false, "accessible")
+		log.Error().Str("component", "pgsqlHealth").Str("operation", "getClusterStatus").Str("action", "http_request_failed").Msg(fmt.Sprintf("Error executing query: %s - Error: %v", clusterURL, err))
 		return nil, nil
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 400 {
-		// Remove direct console output
-		// common.PrettyPrintStr("Patroni API", false, "accessible")
 		return nil, nil
 	}
-	// Remove direct console output
-	// common.PrettyPrintStr("Patroni API", true, "accessible")
 
 	var result Response
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		common.LogError(fmt.Sprintf("Error decoding JSON: %v\n", err))
+		log.Error().Err(err).Str("component", "pgsqlHealth").Str("operation", "getClusterStatus").Str("action", "decode_json_failed").Msg("Error decoding JSON")
 		return nil, nil
 	}
 
@@ -146,12 +137,12 @@ func loadOldResult() *Response {
 	if _, err := os.Stat(oldOutputFile); err == nil {
 		oldOutput, err := os.ReadFile(oldOutputFile)
 		if err != nil {
-			common.LogError(fmt.Sprintf("Error reading file: %v\n", err))
+			log.Error().Str("component", "pgsqlHealth").Str("operation", "loadOldResult").Str("action", "read_file_failed").Msg(fmt.Sprintf("Error reading file: %v", err))
 			return nil
 		}
 		var oldResult Response
 		if err := json.Unmarshal(oldOutput, &oldResult); err != nil {
-			common.LogError(fmt.Sprintf("Error during Unmarshal(): %v", err))
+			log.Error().Str("component", "pgsqlHealth").Str("operation", "loadOldResult").Str("action", "unmarshal_failed").Msg(fmt.Sprintf("Error during Unmarshal(): %v", err))
 			return nil
 		}
 		return &oldResult
@@ -185,7 +176,7 @@ func handleLeaderSwitch(member Member, client *http.Client, dbConfig db.DbHealth
 func runLeaderSwitchHook(dbConfig db.DbHealth) { // Added dbConfig parameter
 	cmd := exec.Command("sh", "-c", dbConfig.Postgres.Leader_switch_hook) // Use passed dbConfig
 	if err := cmd.Run(); err != nil {
-		common.LogError(fmt.Sprintf("Error running leader switch hook: %v\n", err))
+		log.Error().Str("component", "pgsqlHealth").Str("operation", "runLeaderSwitchHook").Str("action", "hook_execution_failed").Msg(fmt.Sprintf("Error running leader switch hook: %v", err))
 		common.Alarm("[ Patroni - "+common.Config.Identifier+" ] [:red_circle:] Error running leader switch hook: "+err.Error(), "", "", false)
 	} else {
 		common.Alarm("[ Patroni - "+common.Config.Identifier+" ] [:check:] Leader switch hook has been run successfully!", "", "", false)
@@ -201,8 +192,6 @@ func checkClusterRoleChanges(result, oldResult *Response, dbConfig db.DbHealth, 
 	// }
 
 	for _, member := range result.Members {
-		// Already commented out PrettyPrintStr calls
-
 		// Check if oldResult is nil before dereferencing
 		if oldResult == nil || reflect.DeepEqual(*oldResult, Response{}) {
 			continue
@@ -210,8 +199,6 @@ func checkClusterRoleChanges(result, oldResult *Response, dbConfig db.DbHealth, 
 		for _, oldMember := range oldResult.Members {
 			if oldMember.Name == member.Name {
 				if oldMember.Role != member.Role {
-					// Already commented out PrettyPrintStr calls
-
 					if oldMember.Name == nodeName {
 						common.Alarm("[ Patroni - "+common.Config.Identifier+" ] [:info:] Role of "+member.Name+" has changed! Old: **"+oldMember.Role+"** New: **"+member.Role+"**", "", "", false)
 					}
@@ -219,7 +206,7 @@ func checkClusterRoleChanges(result, oldResult *Response, dbConfig db.DbHealth, 
 						common.Alarm("[ Patroni - "+common.Config.Identifier+" ] [:check:] "+member.Name+" is now the leader!", "", "", false)
 						// Only run the leader switch hook if this node is the one that became leader
 						if member.Name == nodeName {
-							common.LogInfo("Running leader switch hook for " + member.Name + " with role " + member.Role + "on nodeName:" + nodeName)
+							log.Info().Str("component", "pgsqlHealth").Str("operation", "checkClusterRoleChanges").Str("action", "leader_switch_hook_triggered").Msg("Running leader switch hook for " + member.Name + " with role " + member.Role + "on nodeName:" + nodeName)
 							handleLeaderSwitch(member, &http.Client{}, dbConfig)
 						}
 					}
@@ -244,17 +231,9 @@ func checkClusterStates(result *Response, skipOutput bool) ([]Member, []Member) 
 
 	for _, member := range result.Members {
 		if member.State == "running" || member.State == "streaming" {
-			if !skipOutput {
-				// No direct console output
-				// common.PrettyPrintStr(member.Name, true, member.State)
-			}
 			common.AlarmCheckUp("patroni_size", "Node "+member.Name+" state: "+member.State, false)
 			runningClusters = append(runningClusters, member)
 		} else {
-			if !skipOutput {
-				// No direct console output
-				// fmt.Println(common.Blue + member.Name + common.Reset + " is " + common.Fail + member.State + common.Reset)
-			}
 			common.AlarmCheckDown("patroni_size", "Node "+member.Name+" state: "+member.State, false, "", "")
 			stoppedClusters = append(stoppedClusters, member)
 		}
@@ -266,7 +245,7 @@ func checkClusterStates(result *Response, skipOutput bool) ([]Member, []Member) 
 	var listTable string
 
 	if listErr != nil {
-		common.LogError(fmt.Sprintf("Error reading file: %v\n", listErr))
+		log.Error().Str("component", "pgsqlHealth").Str("operation", "checkClusterStates").Str("action", "patronictl_command_failed").Msg(fmt.Sprintf("Error reading file: %v", listErr))
 		listTable = fmt.Sprintf("Couln't get tables from command `patronictl list`\n Error: %v", listErr)
 	} else {
 		listTable = manipulatePatroniListOutput(string(out))
@@ -276,7 +255,7 @@ func checkClusterStates(result *Response, skipOutput bool) ([]Member, []Member) 
 		var oldResult Response
 		oldOutput, err := os.ReadFile(oldOutputFile)
 		if err != nil {
-			common.LogError(fmt.Sprintf("Error reading file: %v\n", err))
+			log.Error().Str("component", "pgsqlHealth").Str("operation", "checkClusterStates").Str("action", "read_old_output_failed").Msg(fmt.Sprintf("Error reading file: %v", err))
 			return runningClusters, stoppedClusters
 		}
 		err = json.Unmarshal(oldOutput, &oldResult)
@@ -285,7 +264,7 @@ func checkClusterStates(result *Response, skipOutput bool) ([]Member, []Member) 
 			issues.CheckDown("cluster_size_issue", "Patroni Cluster Size: "+rcLen+"/"+clusterLen, "Patroni cluster size: "+rcLen+"/"+clusterLen+"\n"+listTable, false, 0)
 		}
 		if err != nil {
-			common.LogError(fmt.Sprintf("Error during Unmarshal(): %v", err))
+			log.Error().Str("component", "pgsqlHealth").Str("operation", "checkClusterStates").Str("action", "unmarshal_old_result_failed").Msg(fmt.Sprintf("Error during Unmarshal(): %v", err))
 			return runningClusters, stoppedClusters
 		}
 
@@ -293,7 +272,7 @@ func checkClusterStates(result *Response, skipOutput bool) ([]Member, []Member) 
 			issues.CheckUp("cluster_size_issue", "Patroni cluster size returnerd to normal: "+rcLen+"/"+clusterLen+"\n"+listTable)
 			err := os.Remove(oldOutputFile)
 			if err != nil {
-				common.LogError(fmt.Sprintf("Error deleting file: %v\n", err))
+				log.Error().Str("component", "pgsqlHealth").Str("operation", "checkClusterStates").Str("action", "delete_old_output_failed").Msg(fmt.Sprintf("Error deleting file: %v", err))
 			}
 		} else {
 			issues.Update("cluster_size_issue", "Patroni cluster size: "+rcLen+"/"+clusterLen+"\n"+listTable, true)
@@ -307,7 +286,7 @@ func checkClusterStates(result *Response, skipOutput bool) ([]Member, []Member) 
 		if len(stoppedClusters) > 0 {
 			f, err := os.Create(oldOutputFile)
 			if err != nil {
-				common.LogError(fmt.Sprintf("Error creating file: %v\n", err))
+				log.Error().Str("component", "pgsqlHealth").Str("operation", "checkClusterStates").Str("action", "create_old_output_failed").Msg(fmt.Sprintf("Error creating file: %v", err))
 				return runningClusters, stoppedClusters
 			}
 			defer f.Close()
@@ -329,7 +308,7 @@ func saveOutputJSON(result *Response) {
 	outputJSON := common.TmpDir + "/raw_output.json"
 	f, err := os.Create(outputJSON)
 	if err != nil {
-		common.LogError(fmt.Sprintf("Error creating file: %v\n", err))
+		log.Error().Str("component", "pgsqlHealth").Str("operation", "saveOutputJSON").Str("action", "create_output_failed").Msg(fmt.Sprintf("Error creating file: %v", err))
 		return
 	}
 	defer f.Close()
