@@ -364,6 +364,7 @@ func setupRoutes(r *gin.Engine, db *gorm.DB, monokitHostname string) {
 
 		// Log management - ensure these endpoints use the same auth chain
 		api.GET("/logs", getAllLogs(db))
+		api.GET("/logs/hourly", getHourlyLogStats(db))
 		api.GET("/logs/:hostname", getHostLogs(db))
 		api.POST("/logs/search", searchLogs(db))
 		api.DELETE("/logs/:id", deleteLog(db))
@@ -3725,6 +3726,60 @@ func searchLogs(db *gorm.DB) gin.HandlerFunc {
 				Pages:    totalPages,
 			},
 		})
+	}
+}
+
+// @Summary Get hourly log statistics
+// @Description Get log statistics for the last hour broken down by 5-minute intervals
+// @Tags Logs
+// @Security ApiKeyAuth
+// @Accept json
+// @Produce json
+// @Success 200 {array} map[string]int "Array of 12 objects containing log counts for each 5-minute interval"
+// @Failure 401 {object} ErrorResponse "Unauthorized"
+// @Failure 500 {object} ErrorResponse "Internal server error"
+// @Router /logs/hourly [get]
+func getHourlyLogStats(db *gorm.DB) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		// Calculate the time range - last hour
+		now := time.Now()
+		oneHourAgo := now.Add(-time.Hour)
+
+		// Initialize the result array with 12 intervals (5 minutes each)
+		result := make([]map[string]int, 12)
+		for i := 0; i < 12; i++ {
+			result[i] = map[string]int{
+				"critical": 0,
+				"error":    0,
+				"warning":  0,
+				"info":     0,
+			}
+		}
+
+		// Query logs from the last hour
+		var logs []HostLog
+		if err := db.Where("timestamp >= ? AND timestamp <= ? AND deleted_at IS NULL", oneHourAgo, now).Find(&logs).Error; err != nil {
+			commonPkg.LogDebug(fmt.Sprintf("Error fetching hourly log statistics: %v", err))
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve hourly log statistics"})
+			return
+		}
+
+		// Process each log and assign it to the correct 5-minute interval
+		for _, log := range logs {
+			// Calculate which 5-minute interval this log belongs to
+			timeDiff := log.Timestamp.Sub(oneHourAgo)
+			intervalIndex := int(timeDiff.Minutes()) / 5
+
+			// Ensure the interval index is within bounds (0-11)
+			if intervalIndex >= 0 && intervalIndex < 12 {
+				level := strings.ToLower(log.Level)
+				if _, exists := result[intervalIndex][level]; exists {
+					result[intervalIndex][level]++
+				}
+			}
+		}
+
+		c.JSON(http.StatusOK, result)
 	}
 }
 
