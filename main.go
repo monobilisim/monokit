@@ -35,6 +35,8 @@ var RootCmd = &cobra.Command{
 }
 
 func init() {
+	common.InitZerolog()
+
 	// Define persistent flags in init() so they are available early.
 	RootCmd.PersistentFlags().BoolVar(&common.IgnoreLockfile, "ignore-lockfile", false, "Ignore lockfile check during initialization")
 	RootCmd.PersistentFlags().BoolVar(&common.CleanupPluginsOnExit, "cleanup-plugins", false, "Clean up plugin processes before exit (used internally by daemon)")

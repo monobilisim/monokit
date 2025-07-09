@@ -165,9 +165,6 @@ func Init() {
 		}
 	}
 
-	// Configure zerolog
-	initZerolog(userMode)
-
 	// Check if env variable MONOKIT_NOCOLOR is set to true
 	if os.Getenv("MONOKIT_NOCOLOR") == "true" || os.Getenv("MONOKIT_NOCOLOR") == "1" {
 		RemoveColors()
@@ -184,8 +181,16 @@ func Init() {
 		Msg("Monokit initialization completed")
 }
 
-// initZerolog configures zerolog with enhanced structured logging
-func initZerolog(userMode bool) {
+// InitZerolog configures zerolog with enhanced structured logging
+func InitZerolog() {
+	// We also check userMode here because InitZerolog is the first thing that is called
+	var userMode bool = false
+
+	// Check if user is root
+	if os.Geteuid() != 0 {
+		userMode = true
+	}
+
 	// Set log level from environment variable
 	lvl := os.Getenv("MONOKIT_LOGLEVEL")
 	if lvl == "" {
@@ -300,7 +305,7 @@ func initZerolog(userMode bool) {
 	log.Logger = finalLogger
 
 	// Log successful initialization with comprehensive context
-	log.Info().
+	log.Debug().
 		Str("component", "logging").
 		Str("level", level.String()).
 		Str("log_file", logfilePath).
