@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 
@@ -53,7 +54,9 @@ var AlarmSendCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		Init()
 		message, _ := cmd.Flags().GetString("message")
-		Alarm(message, "", "", false)
+		customStream, _ := cmd.Flags().GetString("stream")
+		customTopic, _ := cmd.Flags().GetString("topic")
+		Alarm(message, customStream, customTopic, false)
 	},
 }
 
@@ -478,10 +481,22 @@ func Alarm(m string, customStream string, customTopic string, onlyFirstWebhook b
 	for i, webhook_url := range Config.Alarm.Webhook_urls {
 		webhookStartTime := time.Now()
 
-		if customStream != "" && customTopic != "" {
-			// Remove everything after &
-			webhook_url = strings.Split(webhook_url, "&")[0]
-			webhook_url = webhook_url + "&stream=" + customStream + "&topic=" + customTopic
+		if customStream != "" {
+			if strings.Contains(webhook_url, "&stream=") {
+				re := regexp.MustCompile(`&stream=[^&]*`)
+				webhook_url = re.ReplaceAllString(webhook_url, "&stream="+customStream)
+			} else {
+				webhook_url = webhook_url + "&stream=" + customStream
+			}
+		}
+
+		if customTopic != "" {
+			if strings.Contains(webhook_url, "&topic=") {
+				re := regexp.MustCompile(`&topic=[^&]*`)
+				webhook_url = re.ReplaceAllString(webhook_url, "&topic="+customTopic)
+			} else {
+				webhook_url = webhook_url + "&topic=" + customTopic
+			}
 		}
 
 		r, err := http.NewRequest("POST", webhook_url, bytes.NewBuffer(body))

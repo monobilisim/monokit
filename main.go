@@ -341,6 +341,8 @@ Supports pagination for large log sets.`,
 	common.AlarmCmd.AddCommand(common.AlarmSendCmd)
 
 	common.AlarmSendCmd.Flags().StringP("message", "m", "", "Message")
+	common.AlarmSendCmd.Flags().StringP("stream", "s", "", "Stream")
+	common.AlarmSendCmd.Flags().StringP("topic", "t", "", "Topic")
 	common.AlarmSendCmd.MarkFlagRequired("message")
 
 	// AlarmCheckUp
