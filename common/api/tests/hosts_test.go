@@ -373,26 +373,26 @@ func TestGetAssignedHosts(t *testing.T) {
 	models.HostsList = []models.Host{devHost, stagingHost, prodHost}
 
 	// Test: Admin sees all hosts
-	c, w := CreateRequestContext("GET", "/api/v1/hosts/assigned", nil)
-	AuthorizeContext(c, adminUser)
+	c1, w1 := CreateRequestContext("GET", "/api/v1/hosts/assigned", nil)
+	AuthorizeContext(c1, adminUser)
 
 	handler := server.ExportGetAssignedHosts(db)
-	handler(c)
+	handler(c1)
 
-	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, http.StatusOK, w1.Code)
 	var adminHostsResponse []models.Host
-	ExtractJSONResponse(t, w, &adminHostsResponse)
+	ExtractJSONResponse(t, w1, &adminHostsResponse)
 	assert.Len(t, adminHostsResponse, 3)
 
 	// Test: Regular user sees only their assigned hosts
-	c, w = CreateRequestContext("GET", "/api/v1/hosts/assigned", nil)
-	AuthorizeContext(c, regularUser)
+	c2, w2 := CreateRequestContext("GET", "/api/v1/hosts/assigned", nil)
+	AuthorizeContext(c2, regularUser)
 
-	handler(c)
+	handler(c2)
 
-	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, http.StatusOK, w2.Code)
 	var userHostsResponse []models.Host
-	ExtractJSONResponse(t, w, &userHostsResponse)
+	ExtractJSONResponse(t, w2, &userHostsResponse)
 	assert.Len(t, userHostsResponse, 2)
 
 	// Verify the correct hosts are returned
@@ -405,12 +405,12 @@ func TestGetAssignedHosts(t *testing.T) {
 	assert.NotContains(t, hostNames, "prodhost")
 
 	// Test: Without authentication
-	c, w = CreateRequestContext("GET", "/api/v1/hosts/assigned", nil)
-	handler(c)
+	c3, w3 := CreateRequestContext("GET", "/api/v1/hosts/assigned", nil)
+	handler(c3)
 
-	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, http.StatusOK, w3.Code)
 	var noAuthHostsResponse []models.Host
-	ExtractJSONResponse(t, w, &noAuthHostsResponse)
+	ExtractJSONResponse(t, w3, &noAuthHostsResponse)
 	assert.Len(t, noAuthHostsResponse, 0)
 }
 
