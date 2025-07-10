@@ -27,9 +27,9 @@ func TestListGroups_Unauthorized(t *testing.T) {
 func TestDeleteGroup_GroupNotFound(t *testing.T) {
 	db := SetupTestDB(t)
 	defer CleanupTestDB(db)
-	admin := SetupTestAdmin(t, db)
+	adminUser := SetupTestAdmin(t, db)
 	c, w := CreateRequestContext("DELETE", "/api/v1/admin/groups/missing", nil)
-	AuthorizeContext(c, admin)
+	AuthorizeContext(c, adminUser)
 	SetPathParams(c, map[string]string{"name": "missing"})
 	handler := admin.ExportDeleteGroup(db)
 	handler(c)
@@ -146,12 +146,12 @@ func TestUpdateUser_Unauthorized(t *testing.T) {
 func TestUpdateUser_UsernameConflict(t *testing.T) {
 	db := SetupTestDB(t)
 	defer CleanupTestDB(db)
-	admin := SetupTestAdmin(t, db)
+	adminUser := SetupTestAdmin(t, db)
 	SetupTestUser(t, db, "victim")
 	SetupTestUser(t, db, "existing")
 	updateReq := models.UpdateUserRequest{Username: "existing"}
 	c, w := CreateRequestContext("PUT", "/api/v1/admin/users/victim", updateReq)
-	AuthorizeContext(c, admin)
+	AuthorizeContext(c, adminUser)
 	SetPathParams(c, map[string]string{"username": "victim"})
 	handler := admin.ExportUpdateUser(db)
 	handler(c)

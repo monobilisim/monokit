@@ -62,10 +62,10 @@ func setupMockDB(t *testing.T) *MockGormDB {
 func TestDeleteGroup_FindHostsError(t *testing.T) {
 	m := setupMockDB(t)
 	_ = SetupTestGroup(t, m.DB, "g")
-	admin := SetupTestAdmin(t, m.DB)
+	adminUser := SetupTestAdmin(t, m.DB)
 	m.ErrorOnFindHosts = true
 	c, w := CreateRequestContext("DELETE", "/api/v1/admin/groups/g", nil)
-	AuthorizeContext(c, admin)
+	AuthorizeContext(c, adminUser)
 	SetPathParams(c, map[string]string{"name": "g"})
 	handler := admin.ExportDeleteGroup(m)
 	handler(c)
@@ -75,14 +75,14 @@ func TestDeleteGroup_FindHostsError(t *testing.T) {
 
 func TestDeleteGroup_SaveHostError(t *testing.T) {
 	m := setupMockDB(t)
-	admin := SetupTestAdmin(t, m.DB)
+	adminUser := SetupTestAdmin(t, m.DB)
 	_ = SetupTestGroup(t, m.DB, "g3")
 	h2 := SetupTestHost(t, m.DB, "h2")
 	h2.Groups = "g3"
 	m.DB.Save(&h2)
 	m.ErrorOnSaveHost = true
 	c, w := CreateRequestContext("DELETE", "/api/v1/admin/groups/g3", nil)
-	AuthorizeContext(c, admin)
+	AuthorizeContext(c, adminUser)
 	SetPathParams(c, map[string]string{"name": "g3"})
 	handler := admin.ExportDeleteGroup(m)
 	handler(c)
@@ -92,11 +92,11 @@ func TestDeleteGroup_SaveHostError(t *testing.T) {
 
 func TestDeleteGroup_FindUsersError(t *testing.T) {
 	m := setupMockDB(t)
-	admin := SetupTestAdmin(t, m.DB)
+	adminUser := SetupTestAdmin(t, m.DB)
 	_ = SetupTestGroup(t, m.DB, "g4")
 	m.ErrorOnFindUsers = true
 	c, w := CreateRequestContext("DELETE", "/api/v1/admin/groups/g4", nil)
-	AuthorizeContext(c, admin)
+	AuthorizeContext(c, adminUser)
 	SetPathParams(c, map[string]string{"name": "g4"})
 	handler := admin.ExportDeleteGroup(m)
 	handler(c)
@@ -106,14 +106,14 @@ func TestDeleteGroup_FindUsersError(t *testing.T) {
 
 func TestDeleteGroup_SaveUserError(t *testing.T) {
 	m := setupMockDB(t)
-	admin := SetupTestAdmin(t, m.DB)
+	adminUser := SetupTestAdmin(t, m.DB)
 	_ = SetupTestGroup(t, m.DB, "g5")
 	u := SetupTestUser(t, m.DB, "u5")
 	u.Groups = "g5"
 	m.DB.Save(&u)
 	m.ErrorOnSaveUser = true
 	c, w := CreateRequestContext("DELETE", "/api/v1/admin/groups/g5", nil)
-	AuthorizeContext(c, admin)
+	AuthorizeContext(c, adminUser)
 	SetPathParams(c, map[string]string{"name": "g5"})
 	handler := admin.ExportDeleteGroup(m)
 	handler(c)
@@ -123,11 +123,11 @@ func TestDeleteGroup_SaveUserError(t *testing.T) {
 
 func TestDeleteGroup_GroupDeleteError(t *testing.T) {
 	m := setupMockDB(t)
-	admin := SetupTestAdmin(t, m.DB)
+	adminUser := SetupTestAdmin(t, m.DB)
 	_ = SetupTestGroup(t, m.DB, "g6")
 	m.ErrorOnDeleteGroup = true
 	c, w := CreateRequestContext("DELETE", "/api/v1/admin/groups/g6", nil)
-	AuthorizeContext(c, admin)
+	AuthorizeContext(c, adminUser)
 	SetPathParams(c, map[string]string{"name": "g6"})
 	handler := admin.ExportDeleteGroup(m)
 	handler(c)
@@ -140,14 +140,14 @@ func TestDeleteGroup_GroupDeleteError(t *testing.T) {
 // -- 5. UpdateUser with HashPassword failure
 func TestUpdateUser_HashPasswordError(t *testing.T) {
 	db := SetupTestDB(t)
-	admin := SetupTestAdmin(t, db)
+	adminUser := SetupTestAdmin(t, db)
 	_ = SetupTestUser(t, db, "target")
 	// We cannot monkey-patch HashPassword in Go; skipping this test until dependency injection is available.
 	t.Skip("Cannot monkey-patch HashPassword in Go; skipping test.")
 
 	req := models.UpdateUserRequest{Password: "testx"}
 	c, w := CreateRequestContext("PUT", "/api/v1/admin/users/target", req)
-	AuthorizeContext(c, admin)
+	AuthorizeContext(c, adminUser)
 	SetPathParams(c, map[string]string{"username": "target"})
 	handler := admin.ExportUpdateUser(db)
 	handler(c)
@@ -158,11 +158,11 @@ func TestUpdateUser_HashPasswordError(t *testing.T) {
 // -- 6. ScheduleHostDeletion Save host error
 func TestScheduleHostDeletion_SaveHostError(t *testing.T) {
 	m := setupMockDB(t)
-	admin := SetupTestAdmin(t, m.DB)
+	adminUser := SetupTestAdmin(t, m.DB)
 	_ = SetupTestHost(t, m.DB, "hostxx")
 	m.ErrorOnSaveHost = true
 	c, w := CreateRequestContext("DELETE", "/api/v1/admin/hosts/hostxx", nil)
-	AuthorizeContext(c, admin)
+	AuthorizeContext(c, adminUser)
 	SetPathParams(c, map[string]string{"hostname": "hostxx"})
 	handler := admin.ExportScheduleHostDeletion(m)
 	handler(c)
@@ -173,12 +173,12 @@ func TestScheduleHostDeletion_SaveHostError(t *testing.T) {
 // -- 7. MoveHostToInventory Save host error
 func TestMoveHostToInventory_SaveHostError(t *testing.T) {
 	m := setupMockDB(t)
-	admin := SetupTestAdmin(t, m.DB)
+	adminUser := SetupTestAdmin(t, m.DB)
 	_ = SetupTestHost(t, m.DB, "hostyy")
 	i := &models.Inventory{Name: "inv2"}
 	m.DB.Create(i)
 	c, w := CreateRequestContext("POST", "/api/v1/admin/hosts/hostyy/move/inv2", nil)
-	AuthorizeContext(c, admin)
+	AuthorizeContext(c, adminUser)
 	SetPathParams(c, map[string]string{
 		"hostname":  "hostyy",
 		"inventory": "inv2",
