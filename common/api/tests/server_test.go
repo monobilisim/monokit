@@ -5,7 +5,7 @@ package tests
 import (
 	"testing"
 
-	common "github.com/monobilisim/monokit/common/api"
+	"github.com/monobilisim/monokit/common/api/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -18,19 +18,19 @@ func TestFixDuplicateHosts_NoDuplicates(t *testing.T) {
 	SetupTestHost(t, db, "alpha")
 	SetupTestHost(t, db, "beta")
 
-	common.HostsList = nil
-	common.FixDuplicateHosts(db)
+	models.HostsList = nil
+	models.FixDuplicateHosts(db)
 
 	// Ensure no renames
-	var hosts []common.Host
+	var hosts []models.Host
 	db.Find(&hosts)
 	require.Equal(t, 2, len(hosts))
 	assert.ElementsMatch(t, []string{"alpha", "beta"}, []string{hosts[0].Name, hosts[1].Name})
 
 	// Ensure HostsList matches DB
-	assert.Equal(t, 2, len(common.HostsList))
+	assert.Equal(t, 2, len(models.HostsList))
 	hostNames := make(map[string]bool)
-	for _, h := range common.HostsList {
+	for _, h := range models.HostsList {
 		hostNames[h.Name] = true
 	}
 	assert.True(t, hostNames["alpha"])
@@ -46,11 +46,11 @@ func TestFixDuplicateHosts_TwoDuplicates(t *testing.T) {
 	SetupTestHost(t, db, "dupehost")
 	SetupTestHost(t, db, "dupehost") // duplicate name
 
-	common.HostsList = nil
-	common.FixDuplicateHosts(db)
+	models.HostsList = nil
+	models.FixDuplicateHosts(db)
 
 	// Fetch from DB and check names
-	var hosts []common.Host
+	var hosts []models.Host
 	db.Find(&hosts)
 	require.Equal(t, 2, len(hosts))
 	var foundBase, foundRenamed bool
@@ -65,7 +65,7 @@ func TestFixDuplicateHosts_TwoDuplicates(t *testing.T) {
 	assert.True(t, foundRenamed)
 
 	// Ensure HostsList matches DB
-	assert.ElementsMatch(t, hosts, common.HostsList)
+	assert.ElementsMatch(t, hosts, models.HostsList)
 }
 
 func TestFixDuplicateHosts_ThreeDuplicates(t *testing.T) {
@@ -78,10 +78,10 @@ func TestFixDuplicateHosts_ThreeDuplicates(t *testing.T) {
 	SetupTestHost(t, db, "clash")
 	SetupTestHost(t, db, "clash")
 
-	common.HostsList = nil
-	common.FixDuplicateHosts(db)
+	models.HostsList = nil
+	models.FixDuplicateHosts(db)
 
-	var hosts []common.Host
+	var hosts []models.Host
 	db.Find(&hosts)
 	require.Equal(t, 3, len(hosts))
 	counts := map[string]bool{"clash": false, "clash-1": false, "clash-2": false}
@@ -115,10 +115,10 @@ func TestFixDuplicateHosts_Mixed(t *testing.T) {
 	SetupTestHost(t, db, "N")
 	SetupTestHost(t, db, "O")
 
-	common.HostsList = nil
-	common.FixDuplicateHosts(db)
+	models.HostsList = nil
+	models.FixDuplicateHosts(db)
 
-	var hosts []common.Host
+	var hosts []models.Host
 	db.Find(&hosts)
 	require.Equal(t, 6, len(hosts))
 	expected := map[string]int{"M": 1, "M-1": 1, "N": 1, "N-1": 1, "N-2": 1, "O": 1}
@@ -130,9 +130,9 @@ func TestFixDuplicateHosts_Mixed(t *testing.T) {
 	}
 
 	// Ensure HostsList matches DB and has only unique names
-	assert.Equal(t, 6, len(common.HostsList))
+	assert.Equal(t, 6, len(models.HostsList))
 	nameSet := map[string]bool{}
-	for _, h := range common.HostsList {
+	for _, h := range models.HostsList {
 		assert.False(t, nameSet[h.Name], "HostsList not unique")
 		nameSet[h.Name] = true
 	}

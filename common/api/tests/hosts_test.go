@@ -6,7 +6,8 @@ import (
 	"net/http"
 	"testing"
 
-	common "github.com/monobilisim/monokit/common/api"
+	"github.com/monobilisim/monokit/common/api/admin"
+	"github.com/monobilisim/monokit/common/api/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -17,7 +18,7 @@ func TestRegisterHost(t *testing.T) {
 	defer CleanupTestDB(db)
 
 	// Test: Successful new host registration
-	newHost := common.Host{
+	newHost := models.Host{
 		Name:                "testhost",
 		CpuCores:            4,
 		Ram:                 "8GB",
@@ -32,13 +33,13 @@ func TestRegisterHost(t *testing.T) {
 	}
 
 	c, w := CreateRequestContext("POST", "/api/v1/host/register", newHost)
-	handler := common.ExportRegisterHost(db)
+	handler := admin.ExportRegisterHost(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusCreated, w.Code)
 
 	var response struct {
-		Host   common.Host `json:"host"`
+		Host   models.Host `json:"host"`
 		ApiKey string      `json:"apiKey"`
 	}
 	ExtractJSONResponse(t, w, &response)
@@ -46,14 +47,14 @@ func TestRegisterHost(t *testing.T) {
 	assert.NotEmpty(t, response.ApiKey)
 
 	// Verify host was created in database
-	var dbHost common.Host
+	var dbHost models.Host
 	result := db.Where("name = ?", "testhost").First(&dbHost)
 	require.NoError(t, result.Error)
 	assert.Equal(t, "testhost", dbHost.Name)
 	assert.Equal(t, "192.168.1.100", dbHost.IpAddress)
 
 	// Verify host key was created
-	var hostKey common.HostKey
+	var hostKey models.HostKey
 	result = db.Where("host_name = ?", "testhost").First(&hostKey)
 	require.NoError(t, result.Error)
 	assert.Equal(t, response.ApiKey, hostKey.Token)
@@ -98,7 +99,7 @@ func TestRegisterHost(t *testing.T) {
 	assert.Equal(t, http.StatusCreated, w.Code)
 
 	// Verify inventory was created
-	var inventory common.Inventory
+	var inventory models.Inventory
 	result = db.Where("name = ?", "newinventory").First(&inventory)
 	require.NoError(t, result.Error)
 
@@ -111,7 +112,7 @@ func TestRegisterHost(t *testing.T) {
 	assert.Equal(t, http.StatusCreated, w.Code)
 
 	// Clean up the invalid host
-	db.Where("name = ?", "").Delete(&common.Host{})
+	db.Where("name = ?", "").Delete(&models.Host{})
 }
 
 func TestGetAllHosts(t *testing.T) {
@@ -138,17 +139,17 @@ func TestGetAllHosts(t *testing.T) {
 	db.Save(&host5)
 
 	// Populate the global HostsList that the API uses
-	db.Find(&common.HostsList)
+	db.Find(&models.HostsList)
 
 	// Test: Get all hosts without filters
 	c, w := CreateRequestContext("GET", "/api/v1/hosts", nil)
 	AuthorizeContext(c, admin)
 
-	handler := common.ExportGetAllHosts(db)
+	handler := admin.ExportGetAllHosts(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	var hostsResponse []common.HostResponse
+	var hostsResponse []models.HostResponse
 	ExtractJSONResponse(t, w, &hostsResponse)
 	assert.Len(t, hostsResponse, 5)
 
@@ -180,17 +181,17 @@ func TestGetHostByName(t *testing.T) {
 
 	testHost := SetupTestHost(t, db, "testhost")
 	// Add host to HostsList
-	common.HostsList = []common.Host{testHost}
+	models.HostsList = []models.Host{testHost}
 
 	// Test: Get existing host
 	c, w := CreateRequestContext("GET", "/api/v1/hosts/testhost", nil)
 	SetPathParams(c, map[string]string{"name": "testhost"})
 
-	handler := common.ExportGetHostByName()
+	handler := admin.ExportGetHostByName()
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	var response common.HostResponse
+	var response models.HostResponse
 	ExtractJSONResponse(t, w, &response)
 	assert.Equal(t, "testhost", response.Name)
 	assert.Equal(t, "online", response.Status)
@@ -216,18 +217,18 @@ func TestDeleteHost(t *testing.T) {
 	AuthorizeContext(c, admin)
 	SetPathParams(c, map[string]string{"name": "hosttodelete"})
 
-	handler := common.ExportDeleteHost(db)
+	handler := admin.ExportDeleteHost(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	// Verify host is soft deleted (GORM sets deleted_at timestamp)
-	var updatedHost common.Host
+	var updatedHost models.Host
 	result := db.Where("name = ?", "hosttodelete").First(&updatedHost)
 	assert.Error(t, result.Error, "Host should be soft deleted and not found without Unscoped")
 
 	// Check with Unscoped to verify soft delete
-	var deletedHost common.Host
+	var deletedHost models.Host
 	db.Unscoped().Where("name = ?", "hosttodelete").First(&deletedHost)
 	assert.NotNil(t, deletedHost.DeletedAt)
 
@@ -259,10 +260,10 @@ func TestForceDeleteHost(t *testing.T) {
 
 	admin := SetupTestAdmin(t, db)
 	host := SetupTestHost(t, db, "hosttoforce")
-	common.HostsList = []common.Host{host}
+	models.HostsList = []models.Host{host}
 
 	// Create host key
-	hostKey := common.HostKey{
+	hostKey := models.HostKey{
 		Token:    "test-token",
 		HostName: "hosttoforce",
 	}
@@ -273,18 +274,18 @@ func TestForceDeleteHost(t *testing.T) {
 	AuthorizeContext(c, admin)
 	SetPathParams(c, map[string]string{"name": "hosttoforce"})
 
-	handler := common.ExportForceDeleteHost(db)
+	handler := admin.ExportForceDeleteHost(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	// Verify host was permanently deleted
 	var count int64
-	db.Model(&common.Host{}).Where("name = ?", "hosttoforce").Count(&count)
+	db.Model(&models.Host{}).Where("name = ?", "hosttoforce").Count(&count)
 	assert.Equal(t, int64(0), count)
 
 	// Verify host key was deleted
-	db.Model(&common.HostKey{}).Where("host_name = ?", "hosttoforce").Count(&count)
+	db.Model(&models.HostKey{}).Where("host_name = ?", "hosttoforce").Count(&count)
 	assert.Equal(t, int64(0), count)
 
 	// Test: Force delete non-existent host
@@ -303,10 +304,10 @@ func TestUpdateHost(t *testing.T) {
 
 	admin := SetupTestAdmin(t, db)
 	host := SetupTestHost(t, db, "hosttoupdate")
-	common.HostsList = []common.Host{host}
+	models.HostsList = []models.Host{host}
 
 	// Test: Successful update
-	updateData := common.Host{
+	updateData := models.Host{
 		Status: "offline",
 		Groups: "group1,group2",
 	}
@@ -315,13 +316,13 @@ func TestUpdateHost(t *testing.T) {
 	AuthorizeContext(c, admin)
 	SetPathParams(c, map[string]string{"name": "hosttoupdate"})
 
-	handler := common.ExportUpdateHost(db)
+	handler := admin.ExportUpdateHost(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	// Verify host was updated
-	var updatedHost common.Host
+	var updatedHost models.Host
 	db.Where("name = ?", "hosttoupdate").First(&updatedHost)
 	assert.Equal(t, "offline", updatedHost.Status)
 	assert.Equal(t, "group1,group2", updatedHost.Groups)
@@ -351,8 +352,8 @@ func TestGetAssignedHosts(t *testing.T) {
 	defer CleanupTestDB(db)
 
 	// Create inventories
-	db.Create(&common.Inventory{Name: "production"})
-	db.Create(&common.Inventory{Name: "staging"})
+	db.Create(&models.Inventory{Name: "production"})
+	db.Create(&models.Inventory{Name: "staging"})
 
 	// Create users with different inventories
 	user1 := SetupTestUser(t, db, "user1")
@@ -377,17 +378,17 @@ func TestGetAssignedHosts(t *testing.T) {
 	db.Save(&host3)
 
 	// Populate the global HostsList
-	db.Find(&common.HostsList)
+	db.Find(&models.HostsList)
 
 	// Test: User1 should see host1 and host2 (default and production inventories)
 	c, w := CreateRequestContext("GET", "/api/v1/hosts/assigned", nil)
 	AuthorizeContext(c, user1)
 
-	handler := common.ExportGetAssignedHosts(db)
+	handler := admin.ExportGetAssignedHosts(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	var hostsResponse []common.HostResponse
+	var hostsResponse []models.HostResponse
 	ExtractJSONResponse(t, w, &hostsResponse)
 	assert.Len(t, hostsResponse, 2)
 
@@ -431,7 +432,7 @@ func TestHostAuthMiddleware(t *testing.T) {
 
 	// Create a host and its key
 	SetupTestHost(t, db, "authmiddlewarehost")
-	hostKey := common.HostKey{
+	hostKey := models.HostKey{
 		Token:    "valid-host-token",
 		HostName: "authmiddlewarehost",
 	}
@@ -441,7 +442,7 @@ func TestHostAuthMiddleware(t *testing.T) {
 	c, w := CreateRequestContext("GET", "/api/v1/test", nil)
 	c.Request.Header.Set("Authorization", "valid-host-token")
 
-	middleware := common.ExportHostAuthMiddleware(db)
+	middleware := admin.ExportHostAuthMiddleware(db)
 
 	var middlewareCalled bool
 	var hostNameInContext string
@@ -474,11 +475,11 @@ func TestHostAuthMiddleware(t *testing.T) {
 
 func TestGenerateToken(t *testing.T) {
 	// Test token generation
-	token1 := common.ExportGenerateToken()
+	token1 := admin.ExportGenerateToken()
 	assert.NotEmpty(t, token1)
 	assert.Len(t, token1, 64) // Token should be 64 characters (32 bytes * 2 for hex)
 
 	// Test that tokens are unique
-	token2 := common.ExportGenerateToken()
+	token2 := admin.ExportGenerateToken()
 	assert.NotEqual(t, token1, token2)
 }

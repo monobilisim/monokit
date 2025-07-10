@@ -6,9 +6,10 @@ import (
 	"net/http"
 	"testing"
 
-	common "github.com/monobilisim/monokit/common/api"
-	"github.com/stretchr/testify/assert"
-)
+	"github.com/monobilisim/monokit/common/api/models"
+	"github.com/monobilisim/monokit/common/api/admin"
+	"github.com/monobilisim/monokit/common/api/auth"
+	"github.com/monobilisim/monokit/common/api/server")
 
 func TestListGroups(t *testing.T) {
 	// Setup
@@ -24,12 +25,12 @@ func TestListGroups(t *testing.T) {
 	AuthorizeContext(c, admin)
 
 	// Create the handler and call it directly
-	handler := common.ExportListGroups(db)
+	handler := admin.ExportListGroups(db)
 	handler(c)
 
 	// Assertions
 	assert.Equal(t, http.StatusOK, w.Code)
-	var groups []common.Group
+	var groups []models.Group
 	ExtractJSONResponse(t, w, &groups)
 	assert.Len(t, groups, 2)
 	assert.Contains(t, []string{"testgroup", "anothergroup"}, groups[0].Name)
@@ -56,12 +57,12 @@ func TestCreateGroup(t *testing.T) {
 	c, w := CreateRequestContext("POST", "/api/v1/admin/groups", groupReq)
 	AuthorizeContext(c, admin)
 
-	handler := common.ExportCreateGroup(db)
+	handler := admin.ExportCreateGroup(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusCreated, w.Code)
 	var count int64
-	db.Model(&common.Group{}).Where("name = ?", "newgroup").Count(&count)
+	db.Model(&models.Group{}).Where("name = ?", "newgroup").Count(&count)
 	assert.Equal(t, int64(1), count)
 
 	// Test: Create existing group
@@ -98,14 +99,14 @@ func TestDeleteGroup(t *testing.T) {
 	AuthorizeContext(c, admin)
 	SetPathParams(c, map[string]string{"name": "testgroup"})
 
-	handler := common.ExportDeleteGroup(db)
+	handler := admin.ExportDeleteGroup(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	// Verify group is gone
 	var count int64
-	db.Model(&common.Group{}).Where("name = ?", "testgroup").Count(&count)
+	db.Model(&models.Group{}).Where("name = ?", "testgroup").Count(&count)
 	assert.Equal(t, int64(0), count)
 
 	// Verify host's group reference was updated
@@ -128,7 +129,7 @@ func TestDeleteGroup(t *testing.T) {
 
 	// Verify host was deleted
 	var host2Count int64
-	db.Model(&common.Host{}).Where("name = ?", "hostfordeletion").Count(&host2Count)
+	db.Model(&models.Host{}).Where("name = ?", "hostfordeletion").Count(&host2Count)
 	assert.Equal(t, int64(0), host2Count)
 
 	// Test: Unauthorized request
@@ -158,13 +159,13 @@ func TestAddHostToGroup(t *testing.T) {
 		"hostname": "testhost",
 	})
 
-	handler := common.ExportAddHostToGroup(db)
+	handler := admin.ExportAddHostToGroup(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	// Verify host was added to group
-	var updatedHost common.Host
+	var updatedHost models.Host
 	db.Where("name = ?", "testhost").First(&updatedHost)
 	assert.Contains(t, updatedHost.Groups, "testgroup")
 
@@ -210,13 +211,13 @@ func TestRemoveHostFromGroup(t *testing.T) {
 		"hostname": "testhost",
 	})
 
-	handler := common.ExportRemoveHostFromGroup(db)
+	handler := admin.ExportRemoveHostFromGroup(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	// Verify host was removed from group
-	var updatedHost common.Host
+	var updatedHost models.Host
 	db.Where("name = ?", "testhost").First(&updatedHost)
 	assert.NotContains(t, updatedHost.Groups, "testgroup")
 	assert.Contains(t, updatedHost.Groups, "othergroup")
@@ -250,20 +251,20 @@ func TestUpdateUserGroups(t *testing.T) {
 	SetupTestUser(t, db, "testuser")
 
 	// Test: Successful update
-	updateReq := common.UpdateUserGroupsRequest{
+	updateReq := models.UpdateUserGroupsRequest{
 		Groups: "group1,group2",
 	}
 	c, w := CreateRequestContext("PUT", "/api/v1/admin/users/testuser/groups", updateReq)
 	AuthorizeContext(c, admin)
 	SetPathParams(c, map[string]string{"username": "testuser"})
 
-	handler := common.ExportUpdateUserGroups(db)
+	handler := admin.ExportUpdateUserGroups(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	// Verify groups were updated
-	var updatedUser common.User
+	var updatedUser models.User
 	db.Where("username = ?", "testuser").First(&updatedUser)
 	assert.Equal(t, "group1,group2", updatedUser.Groups)
 
@@ -284,7 +285,7 @@ func TestCreateUser(t *testing.T) {
 	admin := SetupTestAdmin(t, db)
 
 	// Test: Successful user creation
-	userReq := common.RegisterRequest{
+	userReq := models.RegisterRequest{
 		Username:  "newuser",
 		Password:  "password123",
 		Email:     "new@example.com",
@@ -295,14 +296,14 @@ func TestCreateUser(t *testing.T) {
 	c, w := CreateRequestContext("POST", "/api/v1/admin/users", userReq)
 	AuthorizeContext(c, admin)
 
-	handler := common.ExportCreateUser(db)
+	handler := admin.ExportCreateUser(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusCreated, w.Code)
 
 	// Verify user was created
 	var count int64
-	db.Model(&common.User{}).Where("username = ?", "newuser").Count(&count)
+	db.Model(&models.User{}).Where("username = ?", "newuser").Count(&count)
 	assert.Equal(t, int64(1), count)
 
 	// Test: Create duplicate user
@@ -326,14 +327,14 @@ func TestDeleteUser(t *testing.T) {
 	AuthorizeContext(c, admin)
 	SetPathParams(c, map[string]string{"username": "usertoremove"})
 
-	handler := common.ExportDeleteUser(db)
+	handler := admin.ExportDeleteUser(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	// Verify user was deleted
 	var count int64
-	db.Model(&common.User{}).Where("username = ?", "usertoremove").Count(&count)
+	db.Model(&models.User{}).Where("username = ?", "usertoremove").Count(&count)
 	assert.Equal(t, int64(0), count)
 
 	// Test: Deleting own account
@@ -354,7 +355,7 @@ func TestUpdateUser(t *testing.T) {
 	SetupTestUser(t, db, "usertoupdate")
 
 	// Test: Successful update
-	updateReq := common.UpdateUserRequest{
+	updateReq := models.UpdateUserRequest{
 		Email:  "updated@example.com",
 		Role:   "admin",
 		Groups: "newgroup1,newgroup2",
@@ -363,20 +364,20 @@ func TestUpdateUser(t *testing.T) {
 	AuthorizeContext(c, admin)
 	SetPathParams(c, map[string]string{"username": "usertoupdate"})
 
-	handler := common.ExportUpdateUser(db)
+	handler := admin.ExportUpdateUser(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	// Verify user was updated
-	var updatedUser common.User
+	var updatedUser models.User
 	db.Where("username = ?", "usertoupdate").First(&updatedUser)
 	assert.Equal(t, "updated@example.com", updatedUser.Email)
 	assert.Equal(t, "admin", updatedUser.Role)
 	assert.Equal(t, "newgroup1,newgroup2", updatedUser.Groups)
 
 	// Test: Update username
-	updateReq2 := common.UpdateUserRequest{
+	updateReq2 := models.UpdateUserRequest{
 		Username: "newusername",
 	}
 	c, w = CreateRequestContext("PUT", "/api/v1/admin/users/usertoupdate", updateReq2)
@@ -388,7 +389,7 @@ func TestUpdateUser(t *testing.T) {
 
 	// Verify username was changed
 	var count int64
-	db.Model(&common.User{}).Where("username = ?", "newusername").Count(&count)
+	db.Model(&models.User{}).Where("username = ?", "newusername").Count(&count)
 	assert.Equal(t, int64(1), count)
 
 	// Test: User not found
@@ -413,11 +414,11 @@ func TestGetAllUsers(t *testing.T) {
 	c, w := CreateRequestContext("GET", "/api/v1/admin/users", nil)
 	AuthorizeContext(c, admin)
 
-	handler := common.ExportGetAllUsers(db)
+	handler := admin.ExportGetAllUsers(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	var users []common.UserResponse
+	var users []models.UserResponse
 	ExtractJSONResponse(t, w, &users)
 	assert.GreaterOrEqual(t, len(users), 3) // Admin + at least 2 users
 
@@ -446,20 +447,20 @@ func TestScheduleHostDeletion(t *testing.T) {
 
 	admin := SetupTestAdmin(t, db)
 	host := SetupTestHost(t, db, "hosttodelete")
-	common.HostsList = []common.Host{host}
+	models.HostsList = []models.Host{host}
 
 	// Test: Successful request
 	c, w := CreateRequestContext("DELETE", "/api/v1/admin/hosts/hosttodelete", nil)
 	AuthorizeContext(c, admin)
 	SetPathParams(c, map[string]string{"hostname": "hosttodelete"})
 
-	handler := common.ExportScheduleHostDeletion(db)
+	handler := admin.ExportScheduleHostDeletion(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	// Verify host is marked for deletion
-	var updatedHost common.Host
+	var updatedHost models.Host
 	db.Where("name = ?", "hosttodelete").First(&updatedHost)
 	assert.True(t, updatedHost.UpForDeletion)
 
@@ -481,8 +482,8 @@ func TestMoveHostToInventory(t *testing.T) {
 	host := SetupTestHost(t, db, "hosttomove")
 
 	// Create another inventory
-	db.Create(&common.Inventory{Name: "newinventory"})
-	common.HostsList = []common.Host{host}
+	db.Create(&models.Inventory{Name: "newinventory"})
+	models.HostsList = []models.Host{host}
 
 	// Test: Successful request
 	c, w := CreateRequestContext("POST", "/api/v1/admin/hosts/hosttomove/move/newinventory", nil)
@@ -492,13 +493,13 @@ func TestMoveHostToInventory(t *testing.T) {
 		"inventory": "newinventory",
 	})
 
-	handler := common.ExportMoveHostToInventory(db)
+	handler := admin.ExportMoveHostToInventory(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
 	// Verify host was moved
-	var updatedHost common.Host
+	var updatedHost models.Host
 	db.Where("name = ?", "hosttomove").First(&updatedHost)
 	assert.Equal(t, "newinventory", updatedHost.Inventory)
 
@@ -529,11 +530,11 @@ func TestGetUser(t *testing.T) {
 	AuthorizeContext(c, admin)
 	SetPathParams(c, map[string]string{"username": "usertofetch"})
 
-	handler := common.ExportGetUser(db)
+	handler := admin.ExportGetUser(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	var response common.UserResponse
+	var response models.UserResponse
 	ExtractJSONResponse(t, w, &response)
 	assert.Equal(t, "usertofetch", response.Username)
 	assert.Equal(t, "fetch@example.com", response.Email)

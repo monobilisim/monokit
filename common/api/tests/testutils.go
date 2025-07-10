@@ -13,7 +13,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	common "github.com/monobilisim/monokit/common/api"
+	"github.com/monobilisim/monokit/common/api/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"golang.org/x/crypto/bcrypt"
@@ -29,23 +29,22 @@ func SetupTestDB(t require.TestingT) *gorm.DB {
 
 	// Migrate the schema in the correct order to avoid foreign key issues
 	err = db.AutoMigrate(
-		&common.APILogEntry{},
-		&common.Inventory{},
-		&common.Host{},
-		&common.User{},
-		&common.HostKey{},
-		&common.Session{},
-		&common.Group{},
-		&common.HostLog{},
-		&common.HostFileConfig{},
+		&models.Inventory{},
+		&models.Host{},
+		&models.User{},
+		&models.HostKey{},
+		&models.Session{},
+		&models.Group{},
+		&models.HostLog{},
+		&models.HostFileConfig{},
 	)
 	require.NoError(t, err, "Failed to migrate test database schema")
 
 	// Create default inventory required by many tests
-	db.Create(&common.Inventory{Name: "default"})
+	db.Create(&models.Inventory{Name: "default"})
 
 	// Clear global state
-	common.HostsList = []common.Host{}
+	models.HostsList = []models.Host{}
 
 	return db
 }
@@ -61,11 +60,11 @@ func CleanupTestDB(db *gorm.DB) {
 }
 
 // SetupTestAdmin creates an admin user for testing
-func SetupTestAdmin(t require.TestingT, db *gorm.DB) common.User {
+func SetupTestAdmin(t require.TestingT, db *gorm.DB) models.User {
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte("adminpass"), 14)
 	require.NoError(t, err)
 
-	admin := common.User{
+	admin := models.User{
 		Username:    "admin",
 		Password:    string(hashedPassword),
 		Email:       "admin@example.com",
@@ -79,11 +78,11 @@ func SetupTestAdmin(t require.TestingT, db *gorm.DB) common.User {
 }
 
 // SetupTestUser creates a regular user for testing
-func SetupTestUser(t require.TestingT, db *gorm.DB, username string) common.User {
+func SetupTestUser(t require.TestingT, db *gorm.DB, username string) models.User {
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte("userpass"), 14)
 	require.NoError(t, err)
 
-	user := common.User{
+	user := models.User{
 		Username:    username,
 		Password:    string(hashedPassword),
 		Email:       fmt.Sprintf("%s@example.com", username),
@@ -97,8 +96,8 @@ func SetupTestUser(t require.TestingT, db *gorm.DB, username string) common.User
 }
 
 // SetupTestHost creates a host for testing
-func SetupTestHost(t require.TestingT, db *gorm.DB, hostname string) common.Host {
-	host := common.Host{
+func SetupTestHost(t require.TestingT, db *gorm.DB, hostname string) models.Host {
+	host := models.Host{
 		Name:                hostname,
 		CpuCores:            4,
 		Ram:                 "8GB",
@@ -118,8 +117,8 @@ func SetupTestHost(t require.TestingT, db *gorm.DB, hostname string) common.Host
 }
 
 // SetupTestGroup creates a group for testing
-func SetupTestGroup(t require.TestingT, db *gorm.DB, name string) common.Group {
-	group := common.Group{
+func SetupTestGroup(t require.TestingT, db *gorm.DB, name string) models.Group {
+	group := models.Group{
 		Name: name,
 	}
 	result := db.Create(&group)
@@ -136,7 +135,7 @@ func CreateTestContext() (*gin.Context, *httptest.ResponseRecorder) {
 }
 
 // AuthorizeContext sets up context with authenticated user
-func AuthorizeContext(c *gin.Context, user common.User) {
+func AuthorizeContext(c *gin.Context, user models.User) {
 	c.Set("user", user)
 }
 
@@ -160,8 +159,8 @@ func CreateRequestContext(method, url string, body interface{}) (*gin.Context, *
 }
 
 // SetupSession creates a session for testing
-func SetupSession(t require.TestingT, db *gorm.DB, user common.User) common.Session {
-	session := common.Session{
+func SetupSession(t require.TestingT, db *gorm.DB, user models.User) models.Session {
+	session := models.Session{
 		Token:     "test-session-token",
 		UserID:    user.ID,
 		User:      user,
@@ -225,11 +224,11 @@ type MockGormDB struct {
 
 func (m *MockGormDB) Find(dest interface{}, conds ...interface{}) *gorm.DB {
 	switch dest.(type) {
-	case *[]common.Host:
+	case *[]models.Host:
 		if m.ErrorOnFindHosts {
 			return &gorm.DB{Error: fmt.Errorf("mock db error: find hosts")}
 		}
-	case *[]common.User:
+	case *[]models.User:
 		if m.ErrorOnFindUsers {
 			return &gorm.DB{Error: fmt.Errorf("mock db error: find users")}
 		}
@@ -239,11 +238,11 @@ func (m *MockGormDB) Find(dest interface{}, conds ...interface{}) *gorm.DB {
 
 func (m *MockGormDB) Delete(value interface{}, conds ...interface{}) *gorm.DB {
 	switch value.(type) {
-	case *common.Host:
+	case *models.Host:
 		if m.ErrorOnDeleteHost {
 			return &gorm.DB{Error: fmt.Errorf("mock db error: delete host")}
 		}
-	case *common.Group:
+	case *models.Group:
 		if m.ErrorOnDeleteGroup {
 			return &gorm.DB{Error: fmt.Errorf("mock db error: delete group")}
 		}
@@ -256,11 +255,11 @@ func (m *MockGormDB) Delete(value interface{}, conds ...interface{}) *gorm.DB {
 
 func (m *MockGormDB) Save(value interface{}) *gorm.DB {
 	switch value.(type) {
-	case *common.Host:
+	case *models.Host:
 		if m.ErrorOnSaveHost {
 			return &gorm.DB{Error: fmt.Errorf("mock db error: save host")}
 		}
-	case *common.User:
+	case *models.User:
 		if m.ErrorOnSaveUser {
 			return &gorm.DB{Error: fmt.Errorf("mock db error: save user")}
 		}
@@ -301,7 +300,7 @@ func (m *MockGormDB) Preload(query string, args ...interface{}) *gorm.DB {
 // Model returns a new MockGormDB instance that will be used for Association.
 func (m *MockGormDB) Model(value interface{}) *gorm.DB {
 	switch value.(type) {
-	case *common.User:
+	case *models.User:
 		if m.ErrorOnUpdate {
 			return &gorm.DB{Error: fmt.Errorf("mock db error: update")}
 		}

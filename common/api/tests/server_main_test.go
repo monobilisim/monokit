@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	commonApi "github.com/monobilisim/monokit/common/api"
+	"github.com/monobilisim/monokit/common/api/models"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
@@ -21,7 +21,7 @@ func TestServerMain_WithStubs(t *testing.T) {
 		t.Fatalf("Failed to open in-memory DB: %v", err)
 	}
 
-	deps := commonApi.ServerDeps{
+	deps := models.ServerDeps{
 		LoadConfig: func() {
 			configLoaded = true
 		},
@@ -43,7 +43,7 @@ func TestServerMain_WithStubs(t *testing.T) {
 
 	done := make(chan struct{})
 	go func() {
-		commonApi.ServerMainWithDeps(deps)
+		models.ServerMainWithDeps(deps)
 		close(done)
 	}()
 	select {

@@ -6,13 +6,14 @@ import (
 	"net/http"
 	"testing"
 
-	common "github.com/monobilisim/monokit/common/api"
-	"github.com/stretchr/testify/assert"
-)
+	"github.com/monobilisim/monokit/common/api/models"
+	"github.com/monobilisim/monokit/common/api/admin"
+	"github.com/monobilisim/monokit/common/api/auth"
+	"github.com/monobilisim/monokit/common/api/server")
 
 // Setup AWX configuration for testing
 func setupAwxConfig() {
-	common.ServerConfig.Awx = common.AwxConfig{
+	models.ServerConfig.Awx = models.AwxConfig{
 		Enabled:            true,
 		Url:                "https://awx.example.com",
 		Username:           "admin",
@@ -43,12 +44,12 @@ func TestCreateAwxHost(t *testing.T) {
 	}
 
 	// Set the default inventory ID in config
-	common.ServerConfig.Awx.DefaultInventoryID = 12
+	models.ServerConfig.Awx.DefaultInventoryID = 12
 
 	c, w := CreateRequestContext("POST", "/api/v1/hosts/awx", requestData)
 	AuthorizeContext(c, admin)
 
-	handler := common.ExportCreateAwxHost(db)
+	handler := admin.ExportCreateAwxHost(db)
 	handler(c)
 
 	// Expect error since AWX server is not reachable
@@ -58,7 +59,7 @@ func TestCreateAwxHost(t *testing.T) {
 	assert.Contains(t, response["error"], "Failed to execute request")
 
 	// Test: AWX disabled
-	common.ServerConfig.Awx.Enabled = false
+	models.ServerConfig.Awx.Enabled = false
 	c, w = CreateRequestContext("POST", "/api/v1/hosts/awx", requestData)
 	AuthorizeContext(c, admin)
 
@@ -68,7 +69,7 @@ func TestCreateAwxHost(t *testing.T) {
 	assert.Equal(t, "AWX integration is not enabled", response["error"])
 
 	// Test: Missing required fields
-	common.ServerConfig.Awx.Enabled = true
+	models.ServerConfig.Awx.Enabled = true
 	invalidData := map[string]interface{}{
 		"name": "test", // Missing ip_address
 	}
@@ -97,7 +98,7 @@ func TestDeleteAwxHost(t *testing.T) {
 	AuthorizeContext(c, admin)
 	SetPathParams(c, map[string]string{"name": "awxhosttodelete"})
 
-	handler := common.ExportDeleteAwxHost(db)
+	handler := admin.ExportDeleteAwxHost(db)
 	handler(c)
 
 	// Expect error since AWX server is not reachable
@@ -117,7 +118,7 @@ func TestDeleteAwxHost(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 
 	// Test: AWX disabled
-	common.ServerConfig.Awx.Enabled = false
+	models.ServerConfig.Awx.Enabled = false
 	c, w = CreateRequestContext("DELETE", "/api/v1/hosts/awxhosttodelete/awx", nil)
 	AuthorizeContext(c, admin)
 	SetPathParams(c, map[string]string{"name": "awxhosttodelete"})
@@ -138,7 +139,7 @@ func TestGetAwxTemplatesGlobal(t *testing.T) {
 	c, w := CreateRequestContext("GET", "/api/v1/awx/templates", nil)
 	AuthorizeContext(c, user)
 
-	handler := common.ExportGetAwxTemplatesGlobal(db)
+	handler := admin.ExportGetAwxTemplatesGlobal(db)
 	handler(c)
 
 	// Expect error since AWX server is not reachable
@@ -148,7 +149,7 @@ func TestGetAwxTemplatesGlobal(t *testing.T) {
 	assert.Contains(t, response["error"], "Failed to execute request")
 
 	// Test: AWX disabled
-	common.ServerConfig.Awx.Enabled = false
+	models.ServerConfig.Awx.Enabled = false
 	c, w = CreateRequestContext("GET", "/api/v1/awx/templates", nil)
 	AuthorizeContext(c, user)
 
@@ -183,7 +184,7 @@ func TestExecuteAwxJob(t *testing.T) {
 		"templateID": "10",
 	})
 
-	handler := common.ExportExecuteAwxJob(db)
+	handler := admin.ExportExecuteAwxJob(db)
 	handler(c)
 
 	// Expect error since AWX server is not reachable - but it fails earlier due to missing template ID
@@ -232,7 +233,7 @@ func TestGetAwxJobStatus(t *testing.T) {
 	AuthorizeContext(c, user)
 	SetPathParams(c, map[string]string{"jobID": "200"})
 
-	handler := common.ExportGetAwxJobStatus(db)
+	handler := admin.ExportGetAwxJobStatus(db)
 	handler(c)
 
 	// Expect error since AWX server is not reachable
@@ -260,22 +261,22 @@ func TestEnsureHostInAwx(t *testing.T) {
 
 	// Test case 1: Host already has AWX ID - but function still checks AWX
 	host.AwxHostId = "existing-123"
-	awxId, err := common.ExportEnsureHostInAwx(db, host)
+	awxId, err := admin.ExportEnsureHostInAwx(db, host)
 	// Will fail due to unreachable AWX
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "failed to execute search request")
 
 	// Test case 2: AWX disabled
-	common.ServerConfig.Awx.Enabled = false
+	models.ServerConfig.Awx.Enabled = false
 	host.AwxHostId = ""
-	awxId, err = common.ExportEnsureHostInAwx(db, host)
+	awxId, err = admin.ExportEnsureHostInAwx(db, host)
 	assert.EqualError(t, err, "AWX integration is not enabled")
 	assert.Empty(t, awxId)
 
 	// Test case 3: Host needs to be created in AWX (will fail due to unreachable server)
-	common.ServerConfig.Awx.Enabled = true
+	models.ServerConfig.Awx.Enabled = true
 	host.AwxHostId = ""
-	awxId, err = common.ExportEnsureHostInAwx(db, host)
+	awxId, err = admin.ExportEnsureHostInAwx(db, host)
 	assert.Error(t, err)
 	assert.Empty(t, awxId)
 }

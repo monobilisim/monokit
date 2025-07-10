@@ -10,9 +10,9 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	// Provide access to common.Config for tests that call client.go logic directly
+	// Provide access to models.Config for tests that call client.go logic directly
 	commonmain "github.com/monobilisim/monokit/common"
-	common "github.com/monobilisim/monokit/common/api"
+	"github.com/monobilisim/monokit/common/api/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -38,32 +38,32 @@ func TestGetServiceStatus(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	common.ClientConf.URL = srv.URL
+	models.ClientConf.URL = srv.URL
 	// Needed for identifier reference
 	commonmain.Config.Identifier = "testhost"
 
 	t.Run("status enabled", func(t *testing.T) {
-		enabled, wants := common.GetServiceStatus("serviceA")
+		enabled, wants := models.GetServiceStatus("serviceA")
 		assert.True(t, enabled)
 		assert.Equal(t, "", wants)
 	})
 
 	t.Run("disabled with wantsUpdate", func(t *testing.T) {
-		enabled, wants := common.GetServiceStatus("serviceB")
+		enabled, wants := models.GetServiceStatus("serviceB")
 		assert.False(t, enabled)
 		assert.Equal(t, "2.1.0", wants)
 	})
 
 	t.Run("http error", func(t *testing.T) {
-		enabled, wants := common.GetServiceStatus("serviceC")
+		enabled, wants := models.GetServiceStatus("serviceC")
 		assert.True(t, enabled) // fallback is true on error
 		assert.Empty(t, wants)
 	})
 }
 
 func TestGetHosts(t *testing.T) {
-	host := common.Host{Name: "hostA", CpuCores: 4, Ram: "8GB", MonokitVersion: "1.0", Os: "TestOS", DisabledComponents: "nil", InstalledComponents: "test", IpAddress: "1.2.3.4", Status: "Online", Groups: "grp", Inventory: "default"}
-	list := []common.Host{host}
+	host := models.Host{Name: "hostA", CpuCores: 4, Ram: "8GB", MonokitVersion: "1.0", Os: "TestOS", DisabledComponents: "nil", InstalledComponents: "test", IpAddress: "1.2.3.4", Status: "Online", Groups: "grp", Inventory: "default"}
+	list := []models.Host{host}
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
@@ -77,16 +77,16 @@ func TestGetHosts(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	common.ClientConf.URL = srv.URL
+	models.ClientConf.URL = srv.URL
 
 	t.Run("list hosts", func(t *testing.T) {
-		res := common.GetHosts("1", "")
+		res := models.GetHosts("1", "")
 		require.Len(t, res, 1)
 		assert.Equal(t, "hostA", res[0].Name)
 	})
 
 	t.Run("single host", func(t *testing.T) {
-		res := common.GetHosts("1", "hostA")
+		res := models.GetHosts("1", "hostA")
 		require.Len(t, res, 1)
 		assert.Equal(t, "hostA", res[0].Name)
 	})
@@ -101,33 +101,33 @@ func TestSendUpdateTo_Disable_Enable(t *testing.T) {
 		w.WriteHeader(200)
 	}))
 	defer srv.Close()
-	common.ClientConf.URL = srv.URL
+	models.ClientConf.URL = srv.URL
 
 	t.Run("SendUpdateTo", func(t *testing.T) {
-		common.SendUpdateTo("1", "hostA", "v2")
+		models.SendUpdateTo("1", "hostA", "v2")
 		assert.Equal(t, "/api/v1/hosts/hostA/updateTo/v2", called.path)
 		assert.Equal(t, "POST", called.method)
 	})
 	t.Run("SendDisable", func(t *testing.T) {
-		common.SendDisable("1", "hostA", "compA")
+		models.SendDisable("1", "hostA", "compA")
 		assert.Equal(t, "/api/v1/hosts/hostA/disable/compA", called.path)
 		assert.Equal(t, "POST", called.method)
 	})
 	t.Run("SendEnable", func(t *testing.T) {
-		common.SendEnable("1", "hostA", "compA")
+		models.SendEnable("1", "hostA", "compA")
 		assert.Equal(t, "/api/v1/hosts/hostA/enable/compA", called.path)
 		assert.Equal(t, "POST", called.method)
 	})
 }
 
 func TestGetCPUCores_GetRAM_GetOS(t *testing.T) {
-	cores := common.GetCPUCores()
+	cores := models.GetCPUCores()
 	assert.GreaterOrEqual(t, cores, 0)
 
-	ram := common.GetRAM()
+	ram := models.GetRAM()
 	assert.NotEmpty(t, ram)
 
-	osver := common.GetOS()
+	osver := models.GetOS()
 	assert.NotEmpty(t, osver)
 }
 

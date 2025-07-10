@@ -7,7 +7,8 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	common "github.com/monobilisim/monokit/common/api"
+	"github.com/monobilisim/monokit/common/api/admin"
+	"github.com/monobilisim/monokit/common/api/models"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -22,7 +23,7 @@ func TestSetupAdminRoutes_CoversAll(t *testing.T) {
 		}
 	}()
 
-	common.SetupAdminRoutes(r, db)
+	admin.SetupAdminRoutes(r, db)
 
 	want := []string{
 		"/api/v1/admin/groups",
@@ -66,7 +67,7 @@ func TestDeleteGroup_FindHostsError(t *testing.T) {
 	c, w := CreateRequestContext("DELETE", "/api/v1/admin/groups/g", nil)
 	AuthorizeContext(c, admin)
 	SetPathParams(c, map[string]string{"name": "g"})
-	handler := common.ExportDeleteGroup(m)
+	handler := admin.ExportDeleteGroup(m)
 	handler(c)
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	AssertErrorResponse(t, w, "Failed to fetch hosts")
@@ -83,7 +84,7 @@ func TestDeleteGroup_SaveHostError(t *testing.T) {
 	c, w := CreateRequestContext("DELETE", "/api/v1/admin/groups/g3", nil)
 	AuthorizeContext(c, admin)
 	SetPathParams(c, map[string]string{"name": "g3"})
-	handler := common.ExportDeleteGroup(m)
+	handler := admin.ExportDeleteGroup(m)
 	handler(c)
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	AssertErrorResponse(t, w, "Failed to update host groups")
@@ -97,7 +98,7 @@ func TestDeleteGroup_FindUsersError(t *testing.T) {
 	c, w := CreateRequestContext("DELETE", "/api/v1/admin/groups/g4", nil)
 	AuthorizeContext(c, admin)
 	SetPathParams(c, map[string]string{"name": "g4"})
-	handler := common.ExportDeleteGroup(m)
+	handler := admin.ExportDeleteGroup(m)
 	handler(c)
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	AssertErrorResponse(t, w, "Failed to fetch users")
@@ -114,7 +115,7 @@ func TestDeleteGroup_SaveUserError(t *testing.T) {
 	c, w := CreateRequestContext("DELETE", "/api/v1/admin/groups/g5", nil)
 	AuthorizeContext(c, admin)
 	SetPathParams(c, map[string]string{"name": "g5"})
-	handler := common.ExportDeleteGroup(m)
+	handler := admin.ExportDeleteGroup(m)
 	handler(c)
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	AssertErrorResponse(t, w, "Failed to update user groups")
@@ -128,7 +129,7 @@ func TestDeleteGroup_GroupDeleteError(t *testing.T) {
 	c, w := CreateRequestContext("DELETE", "/api/v1/admin/groups/g6", nil)
 	AuthorizeContext(c, admin)
 	SetPathParams(c, map[string]string{"name": "g6"})
-	handler := common.ExportDeleteGroup(m)
+	handler := admin.ExportDeleteGroup(m)
 	handler(c)
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	AssertErrorResponse(t, w, "Failed to delete group")
@@ -144,11 +145,11 @@ func TestUpdateUser_HashPasswordError(t *testing.T) {
 	// We cannot monkey-patch HashPassword in Go; skipping this test until dependency injection is available.
 	t.Skip("Cannot monkey-patch HashPassword in Go; skipping test.")
 
-	req := common.UpdateUserRequest{Password: "testx"}
+	req := models.UpdateUserRequest{Password: "testx"}
 	c, w := CreateRequestContext("PUT", "/api/v1/admin/users/target", req)
 	AuthorizeContext(c, admin)
 	SetPathParams(c, map[string]string{"username": "target"})
-	handler := common.ExportUpdateUser(db)
+	handler := admin.ExportUpdateUser(db)
 	handler(c)
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	AssertErrorResponse(t, w, "Failed to hash password")
@@ -163,7 +164,7 @@ func TestScheduleHostDeletion_SaveHostError(t *testing.T) {
 	c, w := CreateRequestContext("DELETE", "/api/v1/admin/hosts/hostxx", nil)
 	AuthorizeContext(c, admin)
 	SetPathParams(c, map[string]string{"hostname": "hostxx"})
-	handler := common.ExportScheduleHostDeletion(m)
+	handler := admin.ExportScheduleHostDeletion(m)
 	handler(c)
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	AssertErrorResponse(t, w, "Failed to schedule host for deletion")
@@ -174,7 +175,7 @@ func TestMoveHostToInventory_SaveHostError(t *testing.T) {
 	m := setupMockDB(t)
 	admin := SetupTestAdmin(t, m.DB)
 	_ = SetupTestHost(t, m.DB, "hostyy")
-	i := &common.Inventory{Name: "inv2"}
+	i := &models.Inventory{Name: "inv2"}
 	m.DB.Create(i)
 	c, w := CreateRequestContext("POST", "/api/v1/admin/hosts/hostyy/move/inv2", nil)
 	AuthorizeContext(c, admin)
@@ -183,7 +184,7 @@ func TestMoveHostToInventory_SaveHostError(t *testing.T) {
 		"inventory": "inv2",
 	})
 	m.ErrorOnSaveHost = true
-	handler := common.ExportMoveHostToInventory(m)
+	handler := admin.ExportMoveHostToInventory(m)
 	handler(c)
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	AssertErrorResponse(t, w, "Failed to move host")

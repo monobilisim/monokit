@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	common "github.com/monobilisim/monokit/common/api"
+	"github.com/monobilisim/monokit/common/api/models"
 	"github.com/stretchr/testify/assert"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
@@ -17,7 +17,7 @@ import (
 func TestServerMain_OpenDBFailure(t *testing.T) {
 	var configLoaded, dbSetup, routerBuilt, routerRan bool
 
-	deps := common.ServerDeps{
+	deps := models.ServerDeps{
 		LoadConfig: func() {
 			configLoaded = true
 		},
@@ -39,7 +39,7 @@ func TestServerMain_OpenDBFailure(t *testing.T) {
 
 	// Test that the function panics with the expected message
 	assert.PanicsWithValue(t, "failed to connect database", func() {
-		common.ServerMainWithDeps(deps)
+		models.ServerMainWithDeps(deps)
 	})
 
 	// Verify that only LoadConfig was called before the panic
@@ -58,7 +58,7 @@ func TestServerMain_RunRouterFailure(t *testing.T) {
 		t.Fatalf("Failed to open in-memory DB: %v", err)
 	}
 
-	deps := common.ServerDeps{
+	deps := models.ServerDeps{
 		LoadConfig: func() {
 			configLoaded = true
 		},
@@ -80,7 +80,7 @@ func TestServerMain_RunRouterFailure(t *testing.T) {
 
 	// Test that the function panics with the expected message
 	assert.PanicsWithValue(t, "failed to run router", func() {
-		common.ServerMainWithDeps(deps)
+		models.ServerMainWithDeps(deps)
 	})
 
 	// Verify that all steps were called except RunRouter completed successfully
@@ -99,7 +99,7 @@ func TestServerMain_SuccessfulFlow(t *testing.T) {
 		t.Fatalf("Failed to open in-memory DB: %v", err)
 	}
 
-	deps := common.ServerDeps{
+	deps := models.ServerDeps{
 		LoadConfig: func() {
 			configLoaded = true
 		},
@@ -127,7 +127,7 @@ func TestServerMain_SuccessfulFlow(t *testing.T) {
 			}
 			close(done)
 		}()
-		common.ServerMainWithDeps(deps)
+		models.ServerMainWithDeps(deps)
 	}()
 
 	select {
