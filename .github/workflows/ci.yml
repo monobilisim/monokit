@@ -29,7 +29,7 @@ jobs:
           export PATH=$PATH:$HOME/go/bin
           make gen-health-plugin-proto
           make build-plugins
-          mkdir /var/lib/monokit/plugins
+          mkdir -p /var/lib/monokit/plugins
           cp -r plugins/* /var/lib/monokit/plugins/
           make with-api
 
