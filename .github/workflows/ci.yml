@@ -29,8 +29,8 @@ jobs:
           export PATH=$PATH:$HOME/go/bin
           make gen-health-plugin-proto
           make build-plugins
-          mkdir -p /var/lib/monokit/plugins
-          cp -r plugins/* /var/lib/monokit/plugins/
+          sudo mkdir -p /var/lib/monokit/plugins
+          sudo cp -r plugins/* /var/lib/monokit/plugins/
           make with-api
 
       - name: Create required instances
