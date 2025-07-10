@@ -27,6 +27,7 @@ jobs:
           sudo apt install -y protobuf-compiler
           make install-deps
           export PATH=$PATH:$HOME/go/bin
+          make gen-health-plugin-proto
           make with-api
 
       - name: Create required instances
