@@ -1739,10 +1739,18 @@ func getAssignedHosts(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		currentUser, ok := user.(User)
-		if !ok {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid user type in context"})
-			return
+		// Try to cast to both User and models.User for compatibility
+		var currentUser User
+		var ok bool
+
+		if currentUser, ok = user.(User); !ok {
+			// Try models.User in case of type mismatch
+			if modelsUser, modelsOk := user.(models.User); modelsOk {
+				currentUser = User(modelsUser)
+			} else {
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid user type in context"})
+				return
+			}
 		}
 
 		var filteredHosts []Host
