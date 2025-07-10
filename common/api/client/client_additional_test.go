@@ -1,6 +1,6 @@
 //go:build !integration
 
-package common
+package client
 
 import (
 	"io"

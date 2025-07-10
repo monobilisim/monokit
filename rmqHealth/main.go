@@ -12,7 +12,7 @@ import (
 
 	rabbithole "github.com/michaelklishin/rabbit-hole/v2"
 	"github.com/monobilisim/monokit/common"
-	api "github.com/monobilisim/monokit/common/api"
+	"github.com/monobilisim/monokit/common/api/client"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
@@ -157,7 +157,7 @@ func Main(cmd *cobra.Command, args []string) {
 	healthData = NewRmqHealthData()
 	healthData.Version = version
 
-	api.WrapperGetServiceStatus("rmqHealth")
+	client.WrapperGetServiceStatus("rmqHealth")
 
 	// Check service status
 	checkService()

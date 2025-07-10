@@ -45,7 +45,7 @@ test:
 # Run tests with API support
 test-with-api:
 	@echo "$(BLUE)Running tests with API...$(RESET)"
-	go test -tags=with_api -coverprofile=coverage.out -coverpkg=github.com/monobilisim/monokit/common/api ./common/api/tests
+	go test -tags=with_api -coverprofile=coverage.out -coverpkg=github.com/monobilisim/monokit/common/api/... ./common/api/tests
 	go tool cover -html=coverage.out -o coverage.html
 	@echo "$(GREEN)Tests complete, coverage report written to coverage.html$(RESET)"
 

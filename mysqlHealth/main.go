@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/monobilisim/monokit/common"
-	api "github.com/monobilisim/monokit/common/api"
+	"github.com/monobilisim/monokit/common/api/client"
 	db "github.com/monobilisim/monokit/common/db"
 	"github.com/spf13/cobra"
 
@@ -86,7 +86,7 @@ func Main(cmd *cobra.Command, args []string) {
 	// Set cluster enabled status in health data
 	healthData.ClusterInfo.Enabled = DbHealthConfig.Mysql.Cluster.Enabled
 
-	api.WrapperGetServiceStatus("mysqlHealth")
+	client.WrapperGetServiceStatus("mysqlHealth")
 
 	// ParseMyCnfAndConnect now handles setting the global Connection on success.
 	// We don't need the returned connection string here anymore.

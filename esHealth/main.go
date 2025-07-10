@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/monobilisim/monokit/common"
-	api "github.com/monobilisim/monokit/common/api"
+	"github.com/monobilisim/monokit/common/api/client"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
@@ -46,7 +46,7 @@ func Main(cmd *cobra.Command, args []string) {
 	common.Init()
 	common.ConfInit("es", &Config) // Config is from types.go
 
-	api.WrapperGetServiceStatus("esHealth") // Keep this for service status reporting
+	client.WrapperGetServiceStatus("esHealth") // Keep this for service status reporting
 
 	// Collect health data
 	healthData := collectEsHealthData()

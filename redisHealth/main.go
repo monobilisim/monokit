@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/monobilisim/monokit/common"
-	api "github.com/monobilisim/monokit/common/api"
+	"github.com/monobilisim/monokit/common/api/client"
 	"github.com/monobilisim/monokit/common/health"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -97,7 +97,7 @@ func Main(cmd *cobra.Command, args []string) {
 	common.TmpDir = common.TmpDir + "redisHealth"
 	common.Init()
 
-	api.WrapperGetServiceStatus("redisHealth")
+	client.WrapperGetServiceStatus("redisHealth")
 
 	// Collect health data using the shared function
 	healthData, err := collectRedisHealthData()

@@ -1,11 +1,18 @@
 //go:build with_api
 
-package common
+package host
 
 import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+
+	"github.com/monobilisim/monokit/common/api/models"
+)
+
+// Type aliases for commonly used types from models package
+type (
+	Host = models.Host
 )
 
 // GetHosts retrieves a list of hosts or a single host by name (decoupled for testability).

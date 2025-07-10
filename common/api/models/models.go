@@ -1,12 +1,26 @@
 //go:build with_api
 
-package common
+package models
 
 import (
 	"time"
 
 	"gorm.io/gorm"
 )
+
+// KeycloakConfig represents Keycloak SSO configuration
+type KeycloakConfig struct {
+	Enabled          bool   `mapstructure:"enabled"`
+	URL              string `mapstructure:"url"`
+	Realm            string `mapstructure:"realm"`
+	ClientID         string `mapstructure:"client_id"`
+	ClientSecret     string `mapstructure:"client_secret"`
+	DisableLocalAuth bool   `mapstructure:"disable_local_auth"`
+	AdminRole        string `mapstructure:"admin_role"`
+	DefaultRole      string `mapstructure:"default_role"`
+	DefaultInventory string `mapstructure:"default_inventory"`
+	DefaultGroups    string `mapstructure:"default_groups"`
+}
 
 // Server represents the server configuration
 type Server struct {

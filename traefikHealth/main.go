@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/monobilisim/monokit/common"
-	api "github.com/monobilisim/monokit/common/api"
+	"github.com/monobilisim/monokit/common/api/client"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
@@ -260,7 +260,7 @@ func Main(cmd *cobra.Command, args []string) {
 		TraefikHealthConfig.Ports_To_Check = []uint32{80, 443}
 	}
 
-	api.WrapperGetServiceStatus("traefikHealth")
+	client.WrapperGetServiceStatus("traefikHealth")
 
 	// Check service status
 	checkService()

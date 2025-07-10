@@ -1,6 +1,6 @@
-//go:build with_api
+//go:build !with_api
 
-package common
+package host
 
 import (
 	"bytes"
@@ -13,7 +13,6 @@ import (
 	"github.com/monobilisim/monokit/common/api/clientport"
 )
 
-// Config represents host-specific configuration for API interaction.
 type Config struct {
 	URL        string
 	Identifier string
@@ -21,7 +20,6 @@ type Config struct {
 	APIKeyDir  string
 }
 
-// HostService provides methods for host registration and service status checks.
 type HostService struct {
 	HTTP clientport.HTTPDoer
 	FS   clientport.FS
@@ -30,7 +28,11 @@ type HostService struct {
 	Conf *Config
 }
 
-// SendHostReport uploads or updates this host's registration/status to the server.
+/*
+The Host struct was removed; use the definition from types_base.go (which includes all fields and tags).
+*/
+
+// SendHostReport mimics SendReq() logic.
 func (s *HostService) SendHostReport() error {
 	hostObj := Host{
 		Name:                s.Conf.Identifier,
@@ -96,5 +98,3 @@ func (s *HostService) SendHostReport() error {
 	}
 	return nil
 }
-
-// GetHosts retrieves a list of hosts or a single host by name.

@@ -1,13 +1,19 @@
 //go:build with_api
 
-package common
+package host
 
 import (
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/monobilisim/monokit/common/api/models"
 	"gorm.io/gorm"
+)
+
+// Type aliases for commonly used types from models package
+type (
+	HostFileConfig = models.HostFileConfig
 )
 
 // HandleGetHostConfig retrieves host configuration from the database.

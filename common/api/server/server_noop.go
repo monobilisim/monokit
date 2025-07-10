@@ -1,6 +1,6 @@
 //go:build !with_api
 
-package common
+package server
 
 import (
 	"fmt"

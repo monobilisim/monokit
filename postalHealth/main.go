@@ -15,7 +15,7 @@ import (
 	"github.com/docker/docker/client"
 	_ "github.com/go-sql-driver/mysql"
 	"github.com/monobilisim/monokit/common"
-	api "github.com/monobilisim/monokit/common/api"
+	apiclient "github.com/monobilisim/monokit/common/api/client"
 	mail "github.com/monobilisim/monokit/common/mail"
 	issue "github.com/monobilisim/monokit/common/redmine/issues"
 	"github.com/rs/zerolog/log"
@@ -194,7 +194,7 @@ func Main(cmd *cobra.Command, args []string) {
 	viper.SetDefault("postal.check_message", true)
 	common.ConfInit("mail", &MailHealthConfig)
 
-	api.WrapperGetServiceStatus("postalHealth")
+	apiclient.WrapperGetServiceStatus("postalHealth")
 
 	// Collect all health data with skipOutput=true since we'll use our UI rendering
 	healthData := CheckPostalHealth(true)

@@ -1,6 +1,6 @@
 //go:build with_api
 
-package common
+package admin
 
 import (
 	"fmt"
@@ -9,8 +9,35 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/monobilisim/monokit/common/api/auth"
+	"github.com/monobilisim/monokit/common/api/models"
 	"gorm.io/gorm"
-	// "gorm.io/gorm" // No longer directly needed for function signatures if DBTX is used
+)
+
+// Type aliases for commonly used types from models package
+type (
+	Host                    = models.Host
+	User                    = models.User
+	Group                   = models.Group
+	DBTX                    = models.DBTX
+	RegisterRequest         = models.RegisterRequest
+	UpdateUserGroupsRequest = models.UpdateUserGroupsRequest
+	CreateGroupRequest      = models.CreateGroupRequest
+	UpdateUserRequest       = models.UpdateUserRequest
+	UserResponse            = models.UserResponse
+	Inventory               = models.Inventory
+)
+
+// Variable aliases
+var (
+	HostsList = &models.HostsList
+)
+
+// Function aliases
+var (
+	CreateUser     = auth.CreateUser
+	HashPassword   = auth.HashPassword
+	AuthMiddleware = auth.AuthMiddleware
 )
 
 // Export functions for testing

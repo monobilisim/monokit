@@ -1,4 +1,4 @@
-package common
+package client
 
 import (
 	"bytes"
@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/monobilisim/monokit/common"
+	"github.com/monobilisim/monokit/common/api/models"
 	"github.com/rs/zerolog/log"
 	"github.com/shirou/gopsutil/v4/cpu"
 	"github.com/shirou/gopsutil/v4/host"
@@ -18,6 +19,17 @@ import (
 	"github.com/shirou/gopsutil/v4/net"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
+)
+
+// Type aliases for commonly used types from models package
+type (
+	Host              = models.Host
+	User              = models.User
+	LoginRequest      = models.LoginRequest
+	LoginResponse     = models.LoginResponse
+	RegisterRequest   = models.RegisterRequest
+	UpdateMeRequest   = models.UpdateMeRequest
+	InventoryResponse = models.InventoryResponse
 )
 
 type Client struct {

@@ -19,7 +19,7 @@ import (
 	"time"
 
 	"github.com/monobilisim/monokit/common"
-	api "github.com/monobilisim/monokit/common/api"
+	"github.com/monobilisim/monokit/common/api/client"
 	mail "github.com/monobilisim/monokit/common/mail"
 	issues "github.com/monobilisim/monokit/common/redmine/issues"
 	ver "github.com/monobilisim/monokit/common/versionCheck"
@@ -65,7 +65,7 @@ func Main(cmd *cobra.Command, args []string) {
 	common.TmpDir = common.TmpDir + "zimbraHealth"
 	common.Init()
 	common.ConfInit("mail", &MailHealthConfig)
-	api.WrapperGetServiceStatus("zimbraHealth") // Keep this for service status reporting
+	client.WrapperGetServiceStatus("zimbraHealth") // Keep this for service status reporting
 
 	// log.Debug().Msg("Starting Zimbra Health Check - v" + version) // Removed LogInfo
 

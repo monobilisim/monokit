@@ -12,7 +12,7 @@ import (
 	"strings"
 
 	"github.com/monobilisim/monokit/common"
-	api "github.com/monobilisim/monokit/common/api"
+	"github.com/monobilisim/monokit/common/api/client"
 	mail "github.com/monobilisim/monokit/common/mail"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -187,7 +187,7 @@ func Main(cmd *cobra.Command, args []string) {
 	common.TmpDir = common.TmpDir + "pmgHealth"
 	common.Init()
 	common.ConfInit("mail", &MailHealthConfig)
-	api.WrapperGetServiceStatus("pmgHealth")
+	client.WrapperGetServiceStatus("pmgHealth")
 
 	// Collect all health data with skipOutput=true since we'll use our UI rendering
 	healthData := CheckPmgHealth(true)

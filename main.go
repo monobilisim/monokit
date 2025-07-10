@@ -10,7 +10,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/monobilisim/monokit/common"
-	api "github.com/monobilisim/monokit/common/api"
+	"github.com/monobilisim/monokit/common/api/client"
+	"github.com/monobilisim/monokit/common/api/server"
 	"github.com/monobilisim/monokit/common/health"
 	plugin "github.com/monobilisim/monokit/common/health/plugin"
 	issues "github.com/monobilisim/monokit/common/redmine/issues"
@@ -150,7 +151,7 @@ func main() {
 	var serverCmd = &cobra.Command{
 		Use:   "server",
 		Short: "Monokit API Server",
-		Run:   api.ServerMain,
+		Run:   server.ServerMain,
 	}
 
 	var clientCmd = &cobra.Command{
@@ -161,55 +162,55 @@ func main() {
 	var clientUpdateCmd = &cobra.Command{
 		Use:   "update",
 		Short: "Update the server info",
-		Run:   api.Update,
+		Run:   client.Update,
 	}
 
 	var clientGetCmd = &cobra.Command{
 		Use:   "get",
 		Short: "Get server(s) info",
-		Run:   api.Get,
+		Run:   client.Get,
 	}
 
 	var clientUpgradeCmd = &cobra.Command{
 		Use:   "upgrade",
 		Short: "Upgrade server(s) with specified version",
-		Run:   api.Upgrade,
+		Run:   client.Upgrade,
 	}
 
 	var clientEnableCmd = &cobra.Command{
 		Use:   "enable",
 		Short: "Enable monokit component(s) on server(s)",
-		Run:   api.Enable,
+		Run:   client.Enable,
 	}
 
 	var clientDisableCmd = &cobra.Command{
 		Use:   "disable",
 		Short: "Disable monokit component(s) on server(s)",
-		Run:   api.Disable,
+		Run:   client.Disable,
 	}
 
 	var clientLoginCmd = &cobra.Command{
 		Use:   "login",
 		Short: "Login to the API server",
-		Run:   api.LoginCmd,
+		Run:   client.LoginCmd,
 	}
 
 	var clientUpdateMeCmd = &cobra.Command{
 		Use:   "update-me",
 		Short: "Update your own user details",
-		Run:   api.UpdateMe,
+		Run:   client.UpdateMe,
 	}
 
 	var clientDeleteMeCmd = &cobra.Command{
 		Use:   "delete-me",
 		Short: "Delete your own account",
-		Run:   api.DeleteMe,
+		Run:   client.DeleteMe,
 	}
 
 	var clientReqCmd = &cobra.Command{
 		Use:   "req [path]",
 		Short: "Send a request to the API",
-		Run:   api.RequestCmd,
+		Run:   client.RequestCmd,
 	}
 
 	var clientLogsCmd = &cobra.Command{
@@ -218,7 +219,7 @@ func main() {
 		Long: `View system logs with filtering options.
 You can filter logs by host, level, component, and time range.
 Supports pagination for large log sets.`,
-		Run: api.LogsCmd,
+		Run: client.LogsCmd,
 	}
 
 	clientReqCmd.Flags().StringP("X", "X", "", "HTTP method (GET, POST, PUT, DELETE)")
@@ -237,31 +238,31 @@ Supports pagination for large log sets.`,
 	var adminGroupsAddCmd = &cobra.Command{
 		Use:   "add [groupname]",
 		Short: "Add a new group",
-		Run:   api.AdminGroupsAdd,
+		Run:   client.AdminGroupsAdd,
 	}
 
 	var adminGroupsRmCmd = &cobra.Command{
 		Use:   "rm [groupname]",
 		Short: "Remove a group",
-		Run:   api.AdminGroupsRm,
+		Run:   client.AdminGroupsRm,
 	}
 
 	var adminGroupsGetCmd = &cobra.Command{
 		Use:   "get",
 		Short: "List all groups",
-		Run:   api.AdminGroupsGet,
+		Run:   client.AdminGroupsGet,
 	}
 
 	var adminGroupsAddHostCmd = &cobra.Command{
 		Use:   "addHost [hostname]",
 		Short: "Add a host to a group",
-		Run:   api.AdminGroupsAddHost,
+		Run:   client.AdminGroupsAddHost,
 	}
 
 	var adminGroupsRemoveHostCmd = &cobra.Command{
 		Use:   "rmHost [hostname]",
 		Short: "Remove a host from a group",
-		Run:   api.AdminGroupsRemoveHost,
+		Run:   client.AdminGroupsRemoveHost,
 	}
 
 	var adminUsersCmd = &cobra.Command{
@@ -272,19 +273,19 @@ Supports pagination for large log sets.`,
 	var adminUsersCreateCmd = &cobra.Command{
 		Use:   "create",
 		Short: "Create a new user",
-		Run:   api.AdminUsersCreate,
+		Run:   client.AdminUsersCreate,
 	}
 
 	var adminUsersDeleteCmd = &cobra.Command{
 		Use:   "delete [username]",
 		Short: "Delete a user",
-		Run:   api.AdminUsersDelete,
+		Run:   client.AdminUsersDelete,
 	}
 
 	var adminUsersUpdateCmd = &cobra.Command{
 		Use:   "update [username]",
 		Short: "Update a user's details",
-		Run:   api.AdminUsersUpdate,
+		Run:   client.AdminUsersUpdate,
 	}
 
 	var adminHostsCmd = &cobra.Command{
@@ -295,7 +296,7 @@ Supports pagination for large log sets.`,
 	var adminHostsDeleteCmd = &cobra.Command{
 		Use:   "delete [hostname]",
 		Short: "Schedule a host for deletion",
-		Run:   api.AdminHostsDelete,
+		Run:   client.AdminHostsDelete,
 	}
 
 	var adminInventoryCmd = &cobra.Command{
@@ -306,19 +307,19 @@ Supports pagination for large log sets.`,
 	var adminInventoryDeleteCmd = &cobra.Command{
 		Use:   "delete [inventory-name]",
 		Short: "Delete an inventory and all its hosts",
-		Run:   api.AdminInventoryDelete,
+		Run:   client.AdminInventoryDelete,
 	}
 
 	var adminInventoryListCmd = &cobra.Command{
 		Use:   "list",
 		Short: "List all inventories",
-		Run:   api.AdminInventoryList,
+		Run:   client.AdminInventoryList,
 	}
 
 	var adminInventoryCreateCmd = &cobra.Command{
 		Use:   "create [inventory-name]",
 		Short: "Create a new inventory",
-		Run:   api.AdminInventoryCreate,
+		Run:   client.AdminInventoryCreate,
 	}
 
 	//// Common

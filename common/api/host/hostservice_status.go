@@ -1,6 +1,6 @@
 //go:build with_api
 
-package common
+package host
 
 import (
 	"encoding/json"

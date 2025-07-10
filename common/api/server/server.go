@@ -1,6 +1,6 @@
 //go:build with_api
 
-// Package common Monokit API.
+// Package server implements the Monokit API server components.
 // @title           Monokit API
 // @version         1.0
 // @description     API Server for Monokit monitoring and management system
@@ -37,7 +37,7 @@
 // @tag.name logs
 // @tag.description Log management operations
 
-package common
+package server
 
 import (
 	"fmt"
@@ -47,6 +47,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/monobilisim/monokit/common"
+	"github.com/monobilisim/monokit/common/api/auth"
+	"github.com/monobilisim/monokit/common/api/models"
 	_ "github.com/monobilisim/monokit/docs"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -55,6 +57,25 @@ import (
 	ginSwagger "github.com/swaggo/gin-swagger"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+)
+
+// Type aliases for models
+type (
+	Host           = models.Host
+	User           = models.User
+	Session        = models.Session
+	Group          = models.Group
+	Inventory      = models.Inventory
+	HostKey        = models.HostKey
+	HostLog        = models.HostLog
+	HostFileConfig = models.HostFileConfig
+	HostHealthData = models.HostHealthData
+)
+
+// Variable aliases
+var (
+	ServerConfig = &models.ServerConfig
+	HostsList    = &models.HostsList
 )
 
 type ServerDeps struct {
@@ -114,7 +135,7 @@ func ServerMain(cmd *cobra.Command, args []string) {
 				db.Create(&Inventory{Name: "default"})
 			}
 			// Create initial admin user if no users exist
-			if err := createInitialAdmin(db); err != nil {
+			if err := auth.CreateInitialAdmin(db); err != nil {
 				fmt.Printf("Warning: Failed to create initial admin user: %v\n", err)
 			}
 			// Get the hosts list from the pgsql database

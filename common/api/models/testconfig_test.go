@@ -1,7 +1,7 @@
 //go:build test
 // +build test
 
-package common
+package models
 
 import "github.com/spf13/viper"
 

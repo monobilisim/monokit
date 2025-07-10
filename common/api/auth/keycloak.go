@@ -1,6 +1,6 @@
 //go:build with_api
 
-package common
+package auth
 
 import (
 	"crypto/rand"
@@ -42,6 +42,7 @@ func SetTestJWKS(testJWKS *keyfunc.JWKS) {
 	jwks = testJWKS
 }
 
+/*
 // KeycloakConfig holds the settings for Keycloak integration
 type KeycloakConfig struct {
 	Enabled          bool   `mapstructure:"enabled"`
@@ -51,6 +52,7 @@ type KeycloakConfig struct {
 	ClientSecret     string `mapstructure:"clientSecret"`
 	DisableLocalAuth bool   `mapstructure:"disableLocalAuth"`
 }
+*/
 
 // Define claims structure to match Keycloak JWT
 type KeycloakClaims struct {

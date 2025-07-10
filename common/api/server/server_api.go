@@ -1,6 +1,6 @@
 //go:build with_api
 
-package common
+package server
 
 import (
 	"bytes"
@@ -24,6 +24,10 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
+	"github.com/monobilisim/monokit/common/api/admin"
+	"github.com/monobilisim/monokit/common/api/auth"
+	"github.com/monobilisim/monokit/common/api/host"
+	"github.com/monobilisim/monokit/common/api/models"
 	"github.com/monobilisim/monokit/common/health"
 	_ "github.com/monobilisim/monokit/docs"
 	"github.com/rs/zerolog/log"
@@ -294,12 +298,12 @@ func setupDatabase() *gorm.DB {
 	}
 
 	// Create initial admin user if no users exist
-	if err := createInitialAdmin(db); err != nil {
+	if err := auth.CreateInitialAdmin(db); err != nil {
 		fmt.Printf("Warning: Failed to create initial admin user: %v\n", err)
 	}
 
 	// Load all hosts into memory
-	db.Find(&HostsList)
+	db.Find(&models.HostsList)
 
 	// Note: fixDuplicateHosts is now called from ServerMain in server.go
 
@@ -309,18 +313,18 @@ func setupDatabase() *gorm.DB {
 func setupRoutes(r *gin.Engine, db *gorm.DB, monokitHostname string) {
 	// Setup API routes first
 	// Swagger route is already set up in server.go
-	SetupAuthRoutes(r, db)
+	auth.SetupAuthRoutes(r, db)
 	// Setup Keycloak routes if enabled
 	if ServerConfig.Keycloak.Enabled {
-		SetupKeycloakRoutes(r, db)
+		auth.SetupKeycloakRoutes(r, db)
 	}
 	r.POST("/api/v1/hosts", registerHost(db))
-	SetupAdminRoutes(r, db)
+	admin.SetupAdminRoutes(r, db)
 
 	api := r.Group("/api/v1")
 	// Apply Keycloak middleware first if enabled, then fall back to standard auth
 	if ServerConfig.Keycloak.Enabled {
-		api.Use(KeycloakAuthMiddleware(db))
+		api.Use(auth.KeycloakAuthMiddleware(db))
 	}
 	api.Use(authMiddleware(db))
 	{
@@ -344,10 +348,10 @@ func setupRoutes(r *gin.Engine, db *gorm.DB, monokitHostname string) {
 		api.GET("/awx/workflow-templates", getAwxWorkflowTemplatesGlobal(db))
 
 		// Config endpoints - using handlers from host_config.go
-		api.GET("/hosts/:name/config", HandleGetHostConfig(db))                 // GET config - get all configs for a host
-		api.POST("/hosts/:name/config", HandlePostHostConfig(db))               // POST config - create or update host configs
-		api.PUT("/hosts/:name/config", HandlePutHostConfig(db))                 // PUT config - update host configs (same as POST)
-		api.DELETE("/hosts/:name/config/:filename", HandleDeleteHostConfig(db)) // DELETE config - delete a specific config file
+		api.GET("/hosts/:name/config", host.HandleGetHostConfig(db))                 // GET config - get all configs for a host
+		api.POST("/hosts/:name/config", host.HandlePostHostConfig(db))               // POST config - create or update host configs
+		api.PUT("/hosts/:name/config", host.HandlePutHostConfig(db))                 // PUT config - update host configs (same as POST)
+		api.DELETE("/hosts/:name/config/:filename", host.HandleDeleteHostConfig(db)) // DELETE config - delete a specific config file
 
 		api.POST("/hosts/:name/updateTo/:version", updateHostVersion(db))
 		api.POST("/hosts/:name/enable/:service", enableComponent(db))
@@ -383,8 +387,8 @@ func setupRoutes(r *gin.Engine, db *gorm.DB, monokitHostname string) {
 	hostApi.Use(hostAuthMiddleware(db))
 	{
 		// Config endpoints - with self-host auto-detection
-		hostApi.GET("/config", HandleGetHostConfig(db))
-		hostApi.PUT("/config", HandlePutHostConfig(db))
+		hostApi.GET("/config", host.HandleGetHostConfig(db))
+		hostApi.PUT("/config", host.HandlePutHostConfig(db))
 
 		// Status endpoints - make the parameter name more explicit
 		hostApi.GET("/status/:service", getComponentStatus()) // Changed from "/:service" to "/status/:service"
@@ -435,7 +439,7 @@ func authMiddleware(db *gorm.DB) gin.HandlerFunc {
 			// For Bearer tokens, if Keycloak is enabled, we should try to validate as Keycloak token first
 			if ServerConfig.Keycloak.Enabled {
 				// Attempt Keycloak authentication
-				authAttempt := attemptKeycloakAuth(tokenValue, db, c)
+				authAttempt := auth.AttemptKeycloakAuth(tokenValue, db, c)
 				if authAttempt {
 					// Successfully authenticated with Keycloak
 					fmt.Println("Successfully authenticated with Keycloak via authMiddleware")
@@ -678,7 +682,7 @@ func registerHost(db *gorm.DB) gin.HandlerFunc {
 			fmt.Printf("Host updated successfully: %s (ID=%d)\n", host.Name, host.ID)
 
 			// Refresh hosts list
-			if err := db.Find(&HostsList).Error; err != nil {
+			if err := db.Find(&models.HostsList).Error; err != nil {
 				fmt.Printf("Warning: Error refreshing hosts list: %v\n", err)
 			}
 
@@ -710,7 +714,7 @@ func registerHost(db *gorm.DB) gin.HandlerFunc {
 		fmt.Printf("Host key created successfully\n")
 
 		// Refresh hosts list
-		if err := db.Find(&HostsList).Error; err != nil {
+		if err := db.Find(&models.HostsList).Error; err != nil {
 			fmt.Printf("Warning: Error refreshing hosts list: %v\n", err)
 		}
 
@@ -724,9 +728,9 @@ func registerHost(db *gorm.DB) gin.HandlerFunc {
 // Get all hosts handler
 func getAllHosts(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		for i := range HostsList {
-			syncHostGroups(db, &HostsList[i])
-			db.Save(&HostsList[i])
+		for i := range models.HostsList {
+			syncHostGroups(db, &models.HostsList[i])
+			db.Save(&models.HostsList[i])
 		}
 
 		user, exists := c.Get("user")
@@ -740,7 +744,7 @@ func getAllHosts(db *gorm.DB) gin.HandlerFunc {
 
 		// First filter out AWX-only hosts that should not be shown in dashboard
 		var visibleHosts []Host
-		for _, host := range HostsList {
+		for _, host := range models.HostsList {
 			if !host.AwxOnly {
 				visibleHosts = append(visibleHosts, host)
 			}
@@ -791,7 +795,7 @@ func getHostByName() gin.HandlerFunc {
 		name := c.Param("name")
 		fmt.Printf("Looking up host by name: %s\n", name)
 
-		idx := slices.IndexFunc(HostsList, func(h Host) bool {
+		idx := slices.IndexFunc(models.HostsList, func(h Host) bool {
 			return h.Name == name
 		})
 
@@ -801,8 +805,8 @@ func getHostByName() gin.HandlerFunc {
 			return
 		}
 
-		fmt.Printf("Found host: %s (ID=%d)\n", HostsList[idx].Name, HostsList[idx].ID)
-		c.JSON(http.StatusOK, HostsList[idx])
+		fmt.Printf("Found host: %s (ID=%d)\n", models.HostsList[idx].Name, models.HostsList[idx].ID)
+		c.JSON(http.StatusOK, models.HostsList[idx])
 	}
 }
 
@@ -830,7 +834,7 @@ func deleteHost(db *gorm.DB) gin.HandlerFunc {
 		fmt.Printf("Host deleted successfully: %s (ID=%d)\n", host.Name, host.ID)
 
 		// Refresh the hosts list
-		db.Find(&HostsList)
+		db.Find(&models.HostsList)
 		c.JSON(http.StatusOK, gin.H{"status": "deleted"})
 	}
 }
@@ -1047,7 +1051,7 @@ func createAwxHost(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// Refresh the hosts list
-		if err := db.Find(&HostsList).Error; err != nil {
+		if err := db.Find(&models.HostsList).Error; err != nil {
 			fmt.Printf("Warning: Error refreshing hosts list: %v\n", err)
 		}
 
@@ -1103,7 +1107,7 @@ func deleteAwxHost(db *gorm.DB) gin.HandlerFunc {
 			}
 
 			// Refresh hosts list
-			if err := db.Find(&HostsList).Error; err != nil {
+			if err := db.Find(&models.HostsList).Error; err != nil {
 				fmt.Printf("Warning: Error refreshing hosts list: %v\n", err)
 			}
 		} else {
@@ -1695,7 +1699,7 @@ func forceDeleteHost(db *gorm.DB) gin.HandlerFunc {
 		// Also delete any host config files associated with this host
 		db.Where("host_name = ?", name).Unscoped().Delete(&HostFileConfig{})
 
-		db.Find(&HostsList)
+		db.Find(&models.HostsList)
 		c.JSON(http.StatusOK, gin.H{"status": "force_deleted"})
 	}
 }
@@ -1721,7 +1725,7 @@ func updateHost(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		db.Find(&HostsList)
+		db.Find(&models.HostsList)
 		c.JSON(http.StatusOK, host)
 	}
 }
@@ -1738,7 +1742,7 @@ func getAssignedHosts(db *gorm.DB) gin.HandlerFunc {
 		currentUser := user.(User)
 		var filteredHosts []Host
 
-		for _, host := range HostsList {
+		for _, host := range models.HostsList {
 			userInventories := strings.Split(currentUser.Inventories, ",")
 			for _, inv := range userInventories {
 				if host.Inventory == strings.TrimSpace(inv) {
@@ -1756,7 +1760,7 @@ func getAssignedHosts(db *gorm.DB) gin.HandlerFunc {
 func getAllGroups(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var groups []string
-		for _, host := range HostsList {
+		for _, host := range models.HostsList {
 			if host.Groups != "nil" {
 				hostGroups := strings.Split(host.Groups, ",")
 				for _, group := range hostGroups {
@@ -1840,9 +1844,9 @@ func updateHostVersion(db *gorm.DB) gin.HandlerFunc {
 		name := c.Param("name")
 		version := c.Param("version")
 
-		db.Find(&HostsList)
+		db.Find(&models.HostsList)
 
-		idx := slices.IndexFunc(HostsList, func(h Host) bool {
+		idx := slices.IndexFunc(models.HostsList, func(h Host) bool {
 			return h.Name == name
 		})
 
@@ -1851,10 +1855,10 @@ func updateHostVersion(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		HostsList[idx].WantsUpdateTo = version
+		models.HostsList[idx].WantsUpdateTo = version
 
 		// Update the host in the pgsql database
-		db.Model(&Host{}).Where("name = ?", name).Updates(&HostsList[idx])
+		db.Model(&Host{}).Where("name = ?", name).Updates(&models.HostsList[idx])
 	}
 }
 
@@ -3248,9 +3252,9 @@ func enableComponent(db *gorm.DB) gin.HandlerFunc {
 		name := c.Param("name")
 		service := c.Param("service")
 
-		db.Find(&HostsList)
+		db.Find(&models.HostsList)
 
-		idx := slices.IndexFunc(HostsList, func(h Host) bool {
+		idx := slices.IndexFunc(models.HostsList, func(h Host) bool {
 			return h.Name == name
 		})
 
@@ -3259,7 +3263,7 @@ func enableComponent(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		host := HostsList[idx]
+		host := models.HostsList[idx]
 		var enabled bool
 
 		disabledComponents := strings.Split(host.DisabledComponents, "::")
@@ -3282,7 +3286,7 @@ func enableComponent(db *gorm.DB) gin.HandlerFunc {
 		db.Model(&Host{}).Where("name = ?", name).Updates(&host)
 
 		// Sync the hosts list
-		db.Find(&HostsList)
+		db.Find(&models.HostsList)
 
 		if enabled {
 			return
@@ -3307,9 +3311,9 @@ func disableComponent(db *gorm.DB) gin.HandlerFunc {
 		name := c.Param("name")
 		service := c.Param("service")
 
-		db.Find(&HostsList)
+		db.Find(&models.HostsList)
 
-		idx := slices.IndexFunc(HostsList, func(h Host) bool {
+		idx := slices.IndexFunc(models.HostsList, func(h Host) bool {
 			return h.Name == name
 		})
 
@@ -3318,7 +3322,7 @@ func disableComponent(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		host := HostsList[idx]
+		host := models.HostsList[idx]
 
 		disabledComponents := strings.Split(host.DisabledComponents, "::")
 
@@ -3337,7 +3341,7 @@ func disableComponent(db *gorm.DB) gin.HandlerFunc {
 		db.Model(&Host{}).Where("name = ?", name).Updates(&host)
 
 		// Sync the hosts list
-		db.Find(&HostsList)
+		db.Find(&models.HostsList)
 
 		c.JSON(http.StatusOK, gin.H{"status": "disabled"})
 	}
@@ -3370,7 +3374,7 @@ func getComponentStatus() gin.HandlerFunc {
 			return
 		}
 
-		for _, host := range HostsList {
+		for _, host := range models.HostsList {
 			if host.Name == name {
 				components := strings.Split(host.DisabledComponents, "::")
 				isDisabled := slices.Contains(components, service)
