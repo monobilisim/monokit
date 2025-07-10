@@ -56,7 +56,7 @@ clean-coverage:
 	@echo "$(GREEN)Coverage files cleaned$(RESET)"
 
 # Build with API support
-with-api: build-plugins bin/monokit-with-api
+with-api: bin/monokit-with-api
 
 # Clean all build artifacts
 clean: clean-coverage clean-plugins
