@@ -1742,12 +1742,24 @@ func getAssignedHosts(db *gorm.DB) gin.HandlerFunc {
 		currentUser := user.(User)
 		var filteredHosts []Host
 
+		// First filter out AWX-only hosts that should not be shown in dashboard
+		var visibleHosts []Host
 		for _, host := range models.HostsList {
-			userInventories := strings.Split(currentUser.Inventories, ",")
-			for _, inv := range userInventories {
-				if host.Inventory == strings.TrimSpace(inv) {
-					filteredHosts = append(filteredHosts, host)
-					break
+			if !host.AwxOnly {
+				visibleHosts = append(visibleHosts, host)
+			}
+		}
+
+		if currentUser.Role == "admin" {
+			filteredHosts = visibleHosts
+		} else {
+			for _, host := range visibleHosts {
+				userInventories := strings.Split(currentUser.Inventories, ",")
+				for _, inv := range userInventories {
+					if host.Inventory == strings.TrimSpace(inv) {
+						filteredHosts = append(filteredHosts, host)
+						break
+					}
 				}
 			}
 		}
