@@ -1,4 +1,4 @@
-.PHONY: help all with-api clean clean-coverage clean-plugins docs build-frontend clean-frontend install install-with-api test test-with-api build-plugins build-plugin-k8sHealth build-plugin-redisHealth install-deps .FORCE
+.PHONY: help all with-api clean clean-coverage clean-plugins docs install install-with-api test test-with-api build-plugins build-plugin-k8sHealth build-plugin-redisHealth install-deps .FORCE
 
 # Colors for help target
 BLUE := \033[34m
@@ -27,7 +27,6 @@ help:
 	@echo "  $(GREEN)make gen-health-plugin-proto$(RESET) Generate protobuf code for health plugins"
 	@echo "  $(GREEN)make install-deps$(RESET)       Install Go dependencies for protobuf generation"
 	@echo "  $(GREEN)make clean$(RESET)              Clean all build artifacts"
-	@echo "  $(GREEN)make clean-frontend$(RESET)     Clean only frontend build artifacts"
 	@echo "  $(GREEN)make clean-plugins$(RESET)      Clean only plugin build artifacts"
 	@echo "  $(GREEN)make clean-coverage$(RESET)     Clean coverage files"
 	@echo "  $(GREEN)make docs$(RESET)               Generate swagger documentation"
@@ -56,26 +55,11 @@ clean-coverage:
 	rm -f coverage.out coverage.html *.coverprofile
 	@echo "$(GREEN)Coverage files cleaned$(RESET)"
 
-# Build with API support (includes frontend)
-with-api: clean-frontend build-frontend build-plugins bin/monokit-with-api
-
-# Build the frontend assets
-build-frontend:
-	@echo "$(BLUE)Building frontend assets...$(RESET)"
-	cd frontend && npm ci && npm run build
-	mkdir -p common/api/frontend/build
-	cp -r frontend/build/* common/api/frontend/build/
-	@echo "$(GREEN)Frontend build complete$(RESET)"
-
-# Clean frontend build artifacts
-clean-frontend:
-	@echo "$(BLUE)Cleaning frontend artifacts...$(RESET)"
-	rm -rf frontend/build
-	rm -rf common/api/frontend/build
-	@echo "$(GREEN)Frontend clean complete$(RESET)"
+# Build with API support
+with-api: build-plugins bin/monokit-with-api
 
 # Clean all build artifacts
-clean: clean-frontend clean-coverage clean-plugins
+clean: clean-coverage clean-plugins
 	@echo "$(BLUE)Cleaning all build artifacts...$(RESET)"
 	rm -rf bin/
 	@echo "$(GREEN)Clean complete$(RESET)"

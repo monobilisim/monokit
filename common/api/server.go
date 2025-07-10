@@ -140,7 +140,6 @@ func ServerMain(cmd *cobra.Command, args []string) {
 			}
 
 			setupRoutes(r, db, monokitHostname)
-			SetupFrontend(r)
 			return r
 		},
 		RunRouter: func(r *gin.Engine) error {

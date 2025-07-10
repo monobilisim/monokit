@@ -169,7 +169,6 @@ func StartAPIServer(cmd *cobra.Command, args []string) error {
 	}
 
 	setupRoutes(r, db, monokitHostname)
-	SetupFrontend(r) // This will be a no-op if frontend is not included
 	return r.Run(fmt.Sprintf(":%s", ServerConfig.Port))
 }
 
