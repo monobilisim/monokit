@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
-	"github.com/monobilisim/monokit/common/api/admin"
+	"github.com/monobilisim/monokit/common/api/auth"
 	"github.com/monobilisim/monokit/common/api/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -19,7 +19,7 @@ func TestRegisterUser(t *testing.T) {
 	db := SetupTestDB(t)
 	defer CleanupTestDB(db)
 
-	admin := SetupTestAdmin(t, db)
+	adminUser := SetupTestAdmin(t, db)
 
 	// Test: Successful registration
 	registerReq := models.RegisterRequest{
@@ -31,9 +31,9 @@ func TestRegisterUser(t *testing.T) {
 		Inventory: "default",
 	}
 	c, w := CreateRequestContext("POST", "/api/v1/auth/register", registerReq)
-	AuthorizeContext(c, admin)
+	AuthorizeContext(c, adminUser)
 
-	handler := admin.ExportRegisterUser(db)
+	handler := auth.ExportRegisterUser(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusCreated, w.Code)
@@ -55,7 +55,7 @@ func TestRegisterUser(t *testing.T) {
 
 	// Test: Duplicate username
 	c, w = CreateRequestContext("POST", "/api/v1/auth/register", registerReq)
-	AuthorizeContext(c, admin)
+	AuthorizeContext(c, adminUser)
 
 	handler(c)
 	assert.Equal(t, http.StatusConflict, w.Code)
@@ -67,7 +67,7 @@ func TestLoginUser(t *testing.T) {
 	defer CleanupTestDB(db)
 
 	// Create a user with known password
-	hashedPassword, err := models.HashPassword("testpass")
+	hashedPassword, err := auth.HashPassword("testpass")
 	require.NoError(t, err)
 	db.Create(&models.User{
 		Username:    "testuser",
@@ -86,7 +86,7 @@ func TestLoginUser(t *testing.T) {
 	}
 	c, w := CreateRequestContext("POST", "/api/v1/auth/login", loginReq)
 
-	handler := admin.ExportLoginUser(db)
+	handler := auth.ExportLoginUser(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -131,7 +131,7 @@ func TestLogoutUser(t *testing.T) {
 	c, w := CreateRequestContext("POST", "/api/v1/auth/logout", nil)
 	c.Request.Header.Set("Authorization", session.Token)
 
-	handler := admin.ExportLogoutUser(db)
+	handler := auth.ExportLogoutUser(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -168,7 +168,7 @@ func TestUpdateMe(t *testing.T) {
 	c, w := CreateRequestContext("PUT", "/api/v1/auth/me", updateReq)
 	AuthorizeContext(c, user)
 
-	handler := admin.ExportUpdateMe(db)
+	handler := auth.ExportUpdateMe(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -176,8 +176,8 @@ func TestUpdateMe(t *testing.T) {
 	// Verify password was changed
 	var updatedUser models.User
 	db.Where("username = ?", "testuser").First(&updatedUser)
-	assert.True(t, models.VerifyPassword("newpassword", updatedUser.Password))
-	assert.False(t, models.VerifyPassword("userpass", updatedUser.Password))
+	assert.True(t, auth.VerifyPassword("newpassword", updatedUser.Password))
+	assert.False(t, auth.VerifyPassword("userpass", updatedUser.Password))
 
 	// Test: Update email
 	updateEmailReq := models.UpdateMeRequest{
@@ -210,7 +210,7 @@ func TestDeleteMe(t *testing.T) {
 	c, w := CreateRequestContext("DELETE", "/api/v1/auth/me", nil)
 	AuthorizeContext(c, user)
 
-	handler := admin.ExportDeleteMe(db)
+	handler := auth.ExportDeleteMe(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -239,7 +239,7 @@ func TestGetCurrentUser(t *testing.T) {
 	c, w := CreateRequestContext("GET", "/api/v1/auth/me", nil)
 	AuthorizeContext(c, user)
 
-	handler := admin.ExportGetCurrentUser()
+	handler := auth.ExportGetCurrentUser()
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -266,7 +266,7 @@ func TestAuthMiddleware(t *testing.T) {
 	// Set up a gin router with the middleware and a test handler
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.Use(admin.ExportAuthMiddleware(db))
+	router.Use(auth.ExportAuthMiddleware(db))
 	handlerCalled := false
 	router.GET("/api/v1/protected", func(c *gin.Context) {
 		userObj, exists := c.Get("user")
