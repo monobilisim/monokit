@@ -7,22 +7,21 @@ import (
 	"testing"
 
 	"github.com/monobilisim/monokit/common/api/models"
-	"github.com/monobilisim/monokit/common/api/admin"
-	"github.com/monobilisim/monokit/common/api/auth"
-	"github.com/monobilisim/monokit/common/api/server")
+	"github.com/stretchr/testify/assert"
+)
 
 func TestListGroups(t *testing.T) {
 	// Setup
 	db := SetupTestDB(t)
 	defer CleanupTestDB(db)
 
-	admin := SetupTestAdmin(t, db)
+	adminUser := SetupTestAdmin(t, db)
 	SetupTestGroup(t, db, "testgroup")
 	SetupTestGroup(t, db, "anothergroup")
 
 	// Test: Successful request as admin
 	c, w := CreateRequestContext("GET", "/api/v1/admin/groups", nil)
-	AuthorizeContext(c, admin)
+	AuthorizeContext(c, adminUser)
 
 	// Create the handler and call it directly
 	handler := admin.ExportListGroups(db)
@@ -50,12 +49,12 @@ func TestCreateGroup(t *testing.T) {
 	db := SetupTestDB(t)
 	defer CleanupTestDB(db)
 
-	admin := SetupTestAdmin(t, db)
+	adminUser := SetupTestAdmin(t, db)
 
 	// Test: Successful group creation
 	groupReq := map[string]string{"name": "newgroup"}
 	c, w := CreateRequestContext("POST", "/api/v1/admin/groups", groupReq)
-	AuthorizeContext(c, admin)
+	AuthorizeContext(c, adminUser)
 
 	handler := admin.ExportCreateGroup(db)
 	handler(c)
@@ -67,7 +66,7 @@ func TestCreateGroup(t *testing.T) {
 
 	// Test: Create existing group
 	c, w = CreateRequestContext("POST", "/api/v1/admin/groups", groupReq)
-	AuthorizeContext(c, admin)
+	AuthorizeContext(c, adminUser)
 
 	handler(c)
 	assert.Equal(t, http.StatusConflict, w.Code)
@@ -86,7 +85,7 @@ func TestDeleteGroup(t *testing.T) {
 	db := SetupTestDB(t)
 	defer CleanupTestDB(db)
 
-	admin := SetupTestAdmin(t, db)
+	adminUser := SetupTestAdmin(t, db)
 	SetupTestGroup(t, db, "testgroup")
 
 	// Add a host to the group for testing removal
@@ -96,7 +95,7 @@ func TestDeleteGroup(t *testing.T) {
 
 	// Test: Successful delete
 	c, w := CreateRequestContext("DELETE", "/api/v1/admin/groups/testgroup", nil)
-	AuthorizeContext(c, admin)
+	AuthorizeContext(c, adminUser)
 	SetPathParams(c, map[string]string{"name": "testgroup"})
 
 	handler := admin.ExportDeleteGroup(db)
@@ -120,7 +119,7 @@ func TestDeleteGroup(t *testing.T) {
 	db.Save(&host2)
 
 	c, w = CreateRequestContext("DELETE", "/api/v1/admin/groups/deletegroup?withHosts=true", nil)
-	AuthorizeContext(c, admin)
+	AuthorizeContext(c, adminUser)
 	SetPathParams(c, map[string]string{"name": "deletegroup"})
 	SetQueryParams(c, map[string]string{"withHosts": "true"})
 
@@ -147,13 +146,13 @@ func TestAddHostToGroup(t *testing.T) {
 	db := SetupTestDB(t)
 	defer CleanupTestDB(db)
 
-	admin := SetupTestAdmin(t, db)
+	adminUser := SetupTestAdmin(t, db)
 	SetupTestGroup(t, db, "testgroup")
 	SetupTestHost(t, db, "testhost")
 
 	// Test: Successful add
 	c, w := CreateRequestContext("POST", "/api/v1/admin/groups/testgroup/hosts/testhost", nil)
-	AuthorizeContext(c, admin)
+	AuthorizeContext(c, adminUser)
 	SetPathParams(c, map[string]string{
 		"name":     "testgroup",
 		"hostname": "testhost",
@@ -171,7 +170,7 @@ func TestAddHostToGroup(t *testing.T) {
 
 	// Test: Group not found
 	c, w = CreateRequestContext("POST", "/api/v1/admin/groups/nonexistent/hosts/testhost", nil)
-	AuthorizeContext(c, admin)
+	AuthorizeContext(c, adminUser)
 	SetPathParams(c, map[string]string{
 		"name":     "nonexistent",
 		"hostname": "testhost",
@@ -182,7 +181,7 @@ func TestAddHostToGroup(t *testing.T) {
 
 	// Test: Host not found
 	c, w = CreateRequestContext("POST", "/api/v1/admin/groups/testgroup/hosts/nonexistent", nil)
-	AuthorizeContext(c, admin)
+	AuthorizeContext(c, adminUser)
 	SetPathParams(c, map[string]string{
 		"name":     "testgroup",
 		"hostname": "nonexistent",
@@ -197,7 +196,7 @@ func TestRemoveHostFromGroup(t *testing.T) {
 	db := SetupTestDB(t)
 	defer CleanupTestDB(db)
 
-	admin := SetupTestAdmin(t, db)
+	adminUser := SetupTestAdmin(t, db)
 	SetupTestGroup(t, db, "testgroup")
 	host := SetupTestHost(t, db, "testhost")
 	host.Groups = "testgroup,othergroup"
@@ -205,7 +204,7 @@ func TestRemoveHostFromGroup(t *testing.T) {
 
 	// Test: Successful remove
 	c, w := CreateRequestContext("DELETE", "/api/v1/admin/groups/testgroup/hosts/testhost", nil)
-	AuthorizeContext(c, admin)
+	AuthorizeContext(c, adminUser)
 	SetPathParams(c, map[string]string{
 		"name":     "testgroup",
 		"hostname": "testhost",
@@ -229,7 +228,7 @@ func TestRemoveHostFromGroup(t *testing.T) {
 	db.Save(&host)
 
 	c, w = CreateRequestContext("DELETE", "/api/v1/admin/groups/lastgroup/hosts/testhost", nil)
-	AuthorizeContext(c, admin)
+	AuthorizeContext(c, adminUser)
 	SetPathParams(c, map[string]string{
 		"name":     "lastgroup",
 		"hostname": "testhost",
@@ -247,7 +246,7 @@ func TestUpdateUserGroups(t *testing.T) {
 	db := SetupTestDB(t)
 	defer CleanupTestDB(db)
 
-	admin := SetupTestAdmin(t, db)
+	adminUser := SetupTestAdmin(t, db)
 	SetupTestUser(t, db, "testuser")
 
 	// Test: Successful update
@@ -255,7 +254,7 @@ func TestUpdateUserGroups(t *testing.T) {
 		Groups: "group1,group2",
 	}
 	c, w := CreateRequestContext("PUT", "/api/v1/admin/users/testuser/groups", updateReq)
-	AuthorizeContext(c, admin)
+	AuthorizeContext(c, adminUser)
 	SetPathParams(c, map[string]string{"username": "testuser"})
 
 	handler := admin.ExportUpdateUserGroups(db)
@@ -270,7 +269,7 @@ func TestUpdateUserGroups(t *testing.T) {
 
 	// Test: User not found
 	c, w = CreateRequestContext("PUT", "/api/v1/admin/users/nonexistent/groups", updateReq)
-	AuthorizeContext(c, admin)
+	AuthorizeContext(c, adminUser)
 	SetPathParams(c, map[string]string{"username": "nonexistent"})
 
 	handler(c)
@@ -282,7 +281,7 @@ func TestCreateUser(t *testing.T) {
 	db := SetupTestDB(t)
 	defer CleanupTestDB(db)
 
-	admin := SetupTestAdmin(t, db)
+	adminUser := SetupTestAdmin(t, db)
 
 	// Test: Successful user creation
 	userReq := models.RegisterRequest{
@@ -294,7 +293,7 @@ func TestCreateUser(t *testing.T) {
 		Inventory: "default",
 	}
 	c, w := CreateRequestContext("POST", "/api/v1/admin/users", userReq)
-	AuthorizeContext(c, admin)
+	AuthorizeContext(c, adminUser)
 
 	handler := admin.ExportCreateUser(db)
 	handler(c)
@@ -308,7 +307,7 @@ func TestCreateUser(t *testing.T) {
 
 	// Test: Create duplicate user
 	c, w = CreateRequestContext("POST", "/api/v1/admin/users", userReq)
-	AuthorizeContext(c, admin)
+	AuthorizeContext(c, adminUser)
 
 	handler(c)
 	assert.Equal(t, http.StatusConflict, w.Code)
@@ -319,12 +318,12 @@ func TestDeleteUser(t *testing.T) {
 	db := SetupTestDB(t)
 	defer CleanupTestDB(db)
 
-	admin := SetupTestAdmin(t, db)
+	adminUser := SetupTestAdmin(t, db)
 	SetupTestUser(t, db, "usertoremove")
 
 	// Test: Successful delete
 	c, w := CreateRequestContext("DELETE", "/api/v1/admin/users/usertoremove", nil)
-	AuthorizeContext(c, admin)
+	AuthorizeContext(c, adminUser)
 	SetPathParams(c, map[string]string{"username": "usertoremove"})
 
 	handler := admin.ExportDeleteUser(db)
@@ -339,7 +338,7 @@ func TestDeleteUser(t *testing.T) {
 
 	// Test: Deleting own account
 	c, w = CreateRequestContext("DELETE", "/api/v1/admin/users/admin", nil)
-	AuthorizeContext(c, admin)
+	AuthorizeContext(c, adminUser)
 	SetPathParams(c, map[string]string{"username": "admin"})
 
 	handler(c)
@@ -351,7 +350,7 @@ func TestUpdateUser(t *testing.T) {
 	db := SetupTestDB(t)
 	defer CleanupTestDB(db)
 
-	admin := SetupTestAdmin(t, db)
+	adminUser := SetupTestAdmin(t, db)
 	SetupTestUser(t, db, "usertoupdate")
 
 	// Test: Successful update
@@ -361,7 +360,7 @@ func TestUpdateUser(t *testing.T) {
 		Groups: "newgroup1,newgroup2",
 	}
 	c, w := CreateRequestContext("PUT", "/api/v1/admin/users/usertoupdate", updateReq)
-	AuthorizeContext(c, admin)
+	AuthorizeContext(c, adminUser)
 	SetPathParams(c, map[string]string{"username": "usertoupdate"})
 
 	handler := admin.ExportUpdateUser(db)
@@ -381,7 +380,7 @@ func TestUpdateUser(t *testing.T) {
 		Username: "newusername",
 	}
 	c, w = CreateRequestContext("PUT", "/api/v1/admin/users/usertoupdate", updateReq2)
-	AuthorizeContext(c, admin)
+	AuthorizeContext(c, adminUser)
 	SetPathParams(c, map[string]string{"username": "usertoupdate"})
 
 	handler(c)
@@ -394,7 +393,7 @@ func TestUpdateUser(t *testing.T) {
 
 	// Test: User not found
 	c, w = CreateRequestContext("PUT", "/api/v1/admin/users/nonexistent", updateReq)
-	AuthorizeContext(c, admin)
+	AuthorizeContext(c, adminUser)
 	SetPathParams(c, map[string]string{"username": "nonexistent"})
 
 	handler(c)
@@ -406,13 +405,13 @@ func TestGetAllUsers(t *testing.T) {
 	db := SetupTestDB(t)
 	defer CleanupTestDB(db)
 
-	admin := SetupTestAdmin(t, db)
+	adminUser := SetupTestAdmin(t, db)
 	SetupTestUser(t, db, "user1")
 	SetupTestUser(t, db, "user2")
 
 	// Test: Successful request
 	c, w := CreateRequestContext("GET", "/api/v1/admin/users", nil)
-	AuthorizeContext(c, admin)
+	AuthorizeContext(c, adminUser)
 
 	handler := admin.ExportGetAllUsers(db)
 	handler(c)
@@ -445,13 +444,13 @@ func TestScheduleHostDeletion(t *testing.T) {
 	db := SetupTestDB(t)
 	defer CleanupTestDB(db)
 
-	admin := SetupTestAdmin(t, db)
+	adminUser := SetupTestAdmin(t, db)
 	host := SetupTestHost(t, db, "hosttodelete")
 	models.HostsList = []models.Host{host}
 
 	// Test: Successful request
 	c, w := CreateRequestContext("DELETE", "/api/v1/admin/hosts/hosttodelete", nil)
-	AuthorizeContext(c, admin)
+	AuthorizeContext(c, adminUser)
 	SetPathParams(c, map[string]string{"hostname": "hosttodelete"})
 
 	handler := admin.ExportScheduleHostDeletion(db)
@@ -466,7 +465,7 @@ func TestScheduleHostDeletion(t *testing.T) {
 
 	// Test: Host not found
 	c, w = CreateRequestContext("DELETE", "/api/v1/admin/hosts/nonexistent", nil)
-	AuthorizeContext(c, admin)
+	AuthorizeContext(c, adminUser)
 	SetPathParams(c, map[string]string{"hostname": "nonexistent"})
 
 	handler(c)
@@ -478,7 +477,7 @@ func TestMoveHostToInventory(t *testing.T) {
 	db := SetupTestDB(t)
 	defer CleanupTestDB(db)
 
-	admin := SetupTestAdmin(t, db)
+	adminUser := SetupTestAdmin(t, db)
 	host := SetupTestHost(t, db, "hosttomove")
 
 	// Create another inventory
@@ -487,7 +486,7 @@ func TestMoveHostToInventory(t *testing.T) {
 
 	// Test: Successful request
 	c, w := CreateRequestContext("POST", "/api/v1/admin/hosts/hosttomove/move/newinventory", nil)
-	AuthorizeContext(c, admin)
+	AuthorizeContext(c, adminUser)
 	SetPathParams(c, map[string]string{
 		"hostname":  "hosttomove",
 		"inventory": "newinventory",
@@ -505,7 +504,7 @@ func TestMoveHostToInventory(t *testing.T) {
 
 	// Test: Invalid inventory
 	c, w = CreateRequestContext("POST", "/api/v1/admin/hosts/hosttomove/move/nonexistent", nil)
-	AuthorizeContext(c, admin)
+	AuthorizeContext(c, adminUser)
 	SetPathParams(c, map[string]string{
 		"hostname":  "hosttomove",
 		"inventory": "nonexistent",
@@ -520,14 +519,14 @@ func TestGetUser(t *testing.T) {
 	db := SetupTestDB(t)
 	defer CleanupTestDB(db)
 
-	admin := SetupTestAdmin(t, db)
+	adminUser := SetupTestAdmin(t, db)
 	user := SetupTestUser(t, db, "usertofetch")
 	user.Email = "fetch@example.com"
 	db.Save(&user)
 
 	// Test: Successful request
 	c, w := CreateRequestContext("GET", "/api/v1/admin/users/usertofetch", nil)
-	AuthorizeContext(c, admin)
+	AuthorizeContext(c, adminUser)
 	SetPathParams(c, map[string]string{"username": "usertofetch"})
 
 	handler := admin.ExportGetUser(db)
@@ -542,7 +541,7 @@ func TestGetUser(t *testing.T) {
 
 	// Test: User not found
 	c, w = CreateRequestContext("GET", "/api/v1/admin/users/nonexistent", nil)
-	AuthorizeContext(c, admin)
+	AuthorizeContext(c, adminUser)
 	SetPathParams(c, map[string]string{"username": "nonexistent"})
 
 	handler(c)
