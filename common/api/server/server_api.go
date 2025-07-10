@@ -1735,9 +1735,14 @@ func getAssignedHosts(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user, exists := c.Get("user")
 		if !exists {
+			// DEBUG: Add temporary logging
+			fmt.Printf("DEBUG: getAssignedHosts - No user found in context\n")
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
 			return
 		}
+
+		// DEBUG: Log what type we got
+		fmt.Printf("DEBUG: getAssignedHosts - User found in context, type: %T\n", user)
 
 		// Try to cast to both User and models.User for compatibility
 		var currentUser User
@@ -1747,11 +1752,17 @@ func getAssignedHosts(db *gorm.DB) gin.HandlerFunc {
 			// Try models.User in case of type mismatch
 			if modelsUser, modelsOk := user.(models.User); modelsOk {
 				currentUser = User(modelsUser)
+				fmt.Printf("DEBUG: getAssignedHosts - Successfully cast from models.User to User\n")
 			} else {
+				fmt.Printf("DEBUG: getAssignedHosts - Failed to cast user, type was: %T\n", user)
 				c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid user type in context"})
 				return
 			}
+		} else {
+			fmt.Printf("DEBUG: getAssignedHosts - Successfully cast to User directly\n")
 		}
+
+		fmt.Printf("DEBUG: getAssignedHosts - User role: %s, inventories: %s\n", currentUser.Role, currentUser.Inventories)
 
 		var filteredHosts []Host
 
