@@ -16,7 +16,7 @@ import (
 	"github.com/MicahParks/keyfunc"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
-	"github.com/monobilisim/monokit/common/api/admin"
+	"github.com/monobilisim/monokit/common/api/auth"
 	"github.com/monobilisim/monokit/common/api/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -58,7 +58,7 @@ var testKeyID = "test-key-id"
 // Helper to create a mock JWT token for testing
 func createMockToken(t *testing.T, username string, role string, issuer string) string {
 	// Create claims with standard fields
-	claims := &models.KeycloakClaims{
+	claims := &auth.KeycloakClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
@@ -136,8 +136,8 @@ func setupMockJWKS(t *testing.T) {
 	require.NoError(t, err)
 
 	// Set both the export variable and the internal jwks variable
-	admin.ExportJWKS = mockJWKS
-	models.SetTestJWKS(mockJWKS) // This will set the internal jwks variable
+	auth.ExportJWKS = mockJWKS
+	auth.SetTestJWKS(mockJWKS) // This will set the internal jwks variable
 }
 
 // TestTokenValidation tests our token validation approach
@@ -162,7 +162,7 @@ func TestTokenValidation(t *testing.T) {
 	tokenString := createMockToken(t, "test-user", "user", expectedIssuer)
 
 	// Validate the token using our test key directly
-	token, err := jwt.ParseWithClaims(tokenString, &models.KeycloakClaims{}, func(token *jwt.Token) (interface{}, error) {
+	token, err := jwt.ParseWithClaims(tokenString, &auth.KeycloakClaims{}, func(token *jwt.Token) (interface{}, error) {
 		return testSigningKey, nil
 	})
 
@@ -171,7 +171,7 @@ func TestTokenValidation(t *testing.T) {
 	assert.True(t, token.Valid, "Token should be valid")
 
 	// Extract and verify claims
-	if claims, ok := token.Claims.(*models.KeycloakClaims); ok {
+	if claims, ok := token.Claims.(*auth.KeycloakClaims); ok {
 		assert.Equal(t, "test-user", claims.PreferredUsername)
 		assert.Equal(t, expectedIssuer, claims.Issuer)
 	} else {
@@ -181,7 +181,7 @@ func TestTokenValidation(t *testing.T) {
 
 func TestGenerateRandomState(t *testing.T) {
 	// Test that random state is generated with correct length
-	state, err := admin.ExportGenerateRandomState()
+	state, err := auth.ExportGenerateRandomState()
 	assert.NoError(t, err)
 	assert.NotEmpty(t, state)
 
@@ -191,7 +191,7 @@ func TestGenerateRandomState(t *testing.T) {
 	assert.Equal(t, 32, len(decoded))
 
 	// Ensure multiple calls generate different values
-	state2, err := admin.ExportGenerateRandomState()
+	state2, err := auth.ExportGenerateRandomState()
 	assert.NoError(t, err)
 	assert.NotEqual(t, state, state2)
 }
@@ -206,7 +206,7 @@ func TestHandleSSOLogin(t *testing.T) {
 	// Set a mock origin header
 	c.Request.Header.Set("Origin", "https://app.example.com")
 
-	handler := admin.ExportHandleSSOLogin()
+	handler := auth.ExportHandleSSOLogin()
 	handler(c)
 
 	// Assert redirect status
@@ -263,24 +263,24 @@ func TestHandleSSOCallback(t *testing.T) {
 	testSigningKey = []byte("test-signing-key")
 
 	// Override key function to use our simple key
-	originalKeyFunc := admin.ExportKeyFunc
-	defer func() { admin.ExportKeyFunc = originalKeyFunc }()
+	originalKeyFunc := auth.ExportKeyFunc
+	defer func() { auth.ExportKeyFunc = originalKeyFunc }()
 
-	admin.ExportKeyFunc = func(token *jwt.Token) (interface{}, error) {
+	auth.ExportKeyFunc = func(token *jwt.Token) (interface{}, error) {
 		return []byte("test-signing-key"), nil
 	}
 
 	// Mock exchange token code - this will be replaced in the test with a mock
-	originalExchangeCodeForToken := admin.ExportExchangeCodeForToken
+	originalExchangeCodeForToken := auth.ExportExchangeCodeForToken
 	defer func() {
-		admin.ExportExchangeCodeForToken = originalExchangeCodeForToken
+		auth.ExportExchangeCodeForToken = originalExchangeCodeForToken
 	}()
 
 	expectedIssuer := models.ServerConfig.Keycloak.URL + "/realms/" + models.ServerConfig.Keycloak.Realm
 
 	// Test 1: Error in callback
 	c, w := CreateRequestContext("GET", "/api/v1/auth/sso/callback?error=access_denied&error_description=User+cancelled", nil)
-	handler := admin.ExportHandleSSOCallback(db)
+	handler := auth.ExportHandleSSOCallback(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusTemporaryRedirect, w.Code)
@@ -298,7 +298,7 @@ func TestHandleSSOCallback(t *testing.T) {
 	// which is what we really want to test in this callback
 
 	// Test 3: Create a new user
-	claims := &models.KeycloakClaims{
+	claims := &auth.KeycloakClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
 			Issuer:    expectedIssuer,
@@ -310,7 +310,7 @@ func TestHandleSSOCallback(t *testing.T) {
 		},
 	}
 
-	user, err := admin.ExportSyncKeycloakUser(db, claims)
+	user, err := auth.ExportSyncKeycloakUser(db, claims)
 	assert.NoError(t, err)
 	assert.Equal(t, "new-keycloak-user", user.Username)
 	assert.Equal(t, "new-keycloak-user@example.com", user.Email)
@@ -322,7 +322,7 @@ func TestHandleSSOCallback(t *testing.T) {
 		"roles": []interface{}{"user"},
 	}
 
-	user, err = admin.ExportSyncKeycloakUser(db, claims)
+	user, err = auth.ExportSyncKeycloakUser(db, claims)
 	assert.NoError(t, err)
 	assert.Equal(t, "user", user.Role) // Role should be downgraded from admin to user
 }
@@ -335,8 +335,6 @@ func TestKeycloakAuthMiddleware(t *testing.T) {
 	setupKeycloakConfig()
 
 	// Create an admin user for fallback
-	admin := SetupTestAdmin(t, db)
-	_ = admin // avoid unused variable warning
 
 	expectedIssuer := models.ServerConfig.Keycloak.URL + "/realms/" + models.ServerConfig.Keycloak.Realm
 
@@ -366,10 +364,10 @@ func TestKeycloakAuthMiddleware(t *testing.T) {
 	testSigningKey = []byte("test-signing-key")
 
 	// Override key function to use our simple key
-	originalKeyFunc := admin.ExportKeyFunc
-	defer func() { admin.ExportKeyFunc = originalKeyFunc }()
+	originalKeyFunc := auth.ExportKeyFunc
+	defer func() { auth.ExportKeyFunc = originalKeyFunc }()
 
-	admin.ExportKeyFunc = func(token *jwt.Token) (interface{}, error) {
+	auth.ExportKeyFunc = func(token *jwt.Token) (interface{}, error) {
 		return []byte("test-signing-key"), nil
 	}
 
@@ -379,7 +377,7 @@ func TestKeycloakAuthMiddleware(t *testing.T) {
 	c.Request.Header.Set("Authorization", "Bearer "+validToken)
 
 	// Apply middleware
-	middleware := admin.ExportKeycloakAuthMiddleware(db)
+	middleware := auth.ExportKeycloakAuthMiddleware(db)
 	middleware(c)
 
 	// Check if user was set in context
@@ -432,7 +430,7 @@ func TestSyncKeycloakUser(t *testing.T) {
 	defer CleanupTestDB(db)
 
 	// Test 1: Create new user
-	claims := &models.KeycloakClaims{
+	claims := &auth.KeycloakClaims{
 		PreferredUsername: "new-sync-user",
 		Email:             "new-sync@example.com",
 		RealmAccess: map[string]interface{}{
@@ -440,7 +438,7 @@ func TestSyncKeycloakUser(t *testing.T) {
 		},
 	}
 
-	user, err := admin.ExportSyncKeycloakUser(db, claims)
+	user, err := auth.ExportSyncKeycloakUser(db, claims)
 	assert.NoError(t, err)
 	assert.Equal(t, "new-sync-user", user.Username)
 	assert.Equal(t, "new-sync@example.com", user.Email)
@@ -453,19 +451,19 @@ func TestSyncKeycloakUser(t *testing.T) {
 	}
 	claims.Email = "updated-email@example.com"
 
-	user, err = admin.ExportSyncKeycloakUser(db, claims)
+	user, err = auth.ExportSyncKeycloakUser(db, claims)
 	assert.NoError(t, err)
 	assert.Equal(t, "new-sync-user", user.Username)
 	assert.Equal(t, "updated-email@example.com", user.Email)
 	assert.Equal(t, "admin", user.Role)
 
 	// Test 3: Handle email as username
-	claims = &models.KeycloakClaims{
+	claims = &auth.KeycloakClaims{
 		PreferredUsername: "user.with@example.com",
 		Email:             "user.with@example.com",
 	}
 
-	user, err = admin.ExportSyncKeycloakUser(db, claims)
+	user, err = auth.ExportSyncKeycloakUser(db, claims)
 	assert.NoError(t, err)
 	assert.Equal(t, "user.with", user.Username) // Username should be local part of email
 }

@@ -6,8 +6,8 @@ import (
 	"net/http"
 	"testing"
 
-	"github.com/monobilisim/monokit/common/api/admin"
 	"github.com/monobilisim/monokit/common/api/models"
+	"github.com/monobilisim/monokit/common/api/server"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -33,7 +33,7 @@ func TestRegisterHost(t *testing.T) {
 	}
 
 	c, w := CreateRequestContext("POST", "/api/v1/host/register", newHost)
-	handler := admin.ExportRegisterHost(db)
+	handler := server.ExportRegisterHost(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusCreated, w.Code)
@@ -120,7 +120,7 @@ func TestGetAllHosts(t *testing.T) {
 	db := SetupTestDB(t)
 	defer CleanupTestDB(db)
 
-	admin := SetupTestAdmin(t, db)
+	adminUser := SetupTestAdmin(t, db)
 
 	// Create test hosts
 	hosts := []string{"host1", "host2", "host3"}
@@ -143,9 +143,9 @@ func TestGetAllHosts(t *testing.T) {
 
 	// Test: Get all hosts without filters
 	c, w := CreateRequestContext("GET", "/api/v1/hosts", nil)
-	AuthorizeContext(c, admin)
+	AuthorizeContext(c, adminUser)
 
-	handler := admin.ExportGetAllHosts(db)
+	handler := server.ExportGetAllHosts(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -187,7 +187,7 @@ func TestGetHostByName(t *testing.T) {
 	c, w := CreateRequestContext("GET", "/api/v1/hosts/testhost", nil)
 	SetPathParams(c, map[string]string{"name": "testhost"})
 
-	handler := admin.ExportGetHostByName()
+	handler := server.ExportGetHostByName()
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -209,15 +209,15 @@ func TestDeleteHost(t *testing.T) {
 	db := SetupTestDB(t)
 	defer CleanupTestDB(db)
 
-	admin := SetupTestAdmin(t, db)
+	adminUser := SetupTestAdmin(t, db)
 	SetupTestHost(t, db, "hosttodelete")
 
 	// Test: Successful delete (soft delete)
 	c, w := CreateRequestContext("DELETE", "/api/v1/hosts/hosttodelete", nil)
-	AuthorizeContext(c, admin)
+	AuthorizeContext(c, adminUser)
 	SetPathParams(c, map[string]string{"name": "hosttodelete"})
 
-	handler := admin.ExportDeleteHost(db)
+	handler := server.ExportDeleteHost(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -234,7 +234,7 @@ func TestDeleteHost(t *testing.T) {
 
 	// Test: Delete non-existent host
 	c, w = CreateRequestContext("DELETE", "/api/v1/hosts/nonexistent", nil)
-	AuthorizeContext(c, admin)
+	AuthorizeContext(c, adminUser)
 	SetPathParams(c, map[string]string{"name": "nonexistent"})
 
 	handler(c)
@@ -258,7 +258,7 @@ func TestForceDeleteHost(t *testing.T) {
 	db := SetupTestDB(t)
 	defer CleanupTestDB(db)
 
-	admin := SetupTestAdmin(t, db)
+	adminUser := SetupTestAdmin(t, db)
 	host := SetupTestHost(t, db, "hosttoforce")
 	models.HostsList = []models.Host{host}
 
@@ -271,10 +271,10 @@ func TestForceDeleteHost(t *testing.T) {
 
 	// Test: Successful force delete
 	c, w := CreateRequestContext("DELETE", "/api/v1/hosts/hosttoforce/force", nil)
-	AuthorizeContext(c, admin)
+	AuthorizeContext(c, adminUser)
 	SetPathParams(c, map[string]string{"name": "hosttoforce"})
 
-	handler := admin.ExportForceDeleteHost(db)
+	handler := server.ExportForceDeleteHost(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -290,7 +290,7 @@ func TestForceDeleteHost(t *testing.T) {
 
 	// Test: Force delete non-existent host
 	c, w = CreateRequestContext("DELETE", "/api/v1/hosts/nonexistent/force", nil)
-	AuthorizeContext(c, admin)
+	AuthorizeContext(c, adminUser)
 	SetPathParams(c, map[string]string{"name": "nonexistent"})
 
 	handler(c)
@@ -302,7 +302,7 @@ func TestUpdateHost(t *testing.T) {
 	db := SetupTestDB(t)
 	defer CleanupTestDB(db)
 
-	admin := SetupTestAdmin(t, db)
+	adminUser := SetupTestAdmin(t, db)
 	host := SetupTestHost(t, db, "hosttoupdate")
 	models.HostsList = []models.Host{host}
 
@@ -313,10 +313,10 @@ func TestUpdateHost(t *testing.T) {
 	}
 
 	c, w := CreateRequestContext("PUT", "/api/v1/hosts/hosttoupdate", updateData)
-	AuthorizeContext(c, admin)
+	AuthorizeContext(c, adminUser)
 	SetPathParams(c, map[string]string{"name": "hosttoupdate"})
 
-	handler := admin.ExportUpdateHost(db)
+	handler := server.ExportUpdateHost(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -329,7 +329,7 @@ func TestUpdateHost(t *testing.T) {
 
 	// Test: Update non-existent host
 	c, w = CreateRequestContext("PUT", "/api/v1/hosts/nonexistent", updateData)
-	AuthorizeContext(c, admin)
+	AuthorizeContext(c, adminUser)
 	SetPathParams(c, map[string]string{"name": "nonexistent"})
 
 	handler(c)
@@ -337,13 +337,12 @@ func TestUpdateHost(t *testing.T) {
 
 	// Test: Invalid update data - the endpoint accepts any JSON that can be bound to Host struct
 	// Invalid fields are simply ignored, so this succeeds
-	c, w = CreateRequestContext("PUT", "/api/v1/hosts/hosttoupdate", map[string]string{"invalid": "data"})
-	AuthorizeContext(c, admin)
+	c, w = CreateRequestContext("PUT", "/api/v1/hosts/hosttoupdate", map[string]string{"invalid": "field"})
+	AuthorizeContext(c, adminUser)
 	SetPathParams(c, map[string]string{"name": "hosttoupdate"})
 
 	handler(c)
 	assert.Equal(t, http.StatusOK, w.Code)
-	// TODO: The endpoint should validate the input data
 }
 
 func TestGetAssignedHosts(t *testing.T) {
@@ -351,78 +350,68 @@ func TestGetAssignedHosts(t *testing.T) {
 	db := SetupTestDB(t)
 	defer CleanupTestDB(db)
 
-	// Create inventories
-	db.Create(&models.Inventory{Name: "production"})
-	db.Create(&models.Inventory{Name: "staging"})
-
-	// Create users with different inventories
-	user1 := SetupTestUser(t, db, "user1")
-	user1.Inventories = "default,production"
-	db.Save(&user1)
-
-	user2 := SetupTestUser(t, db, "user2")
-	user2.Inventories = "staging"
-	db.Save(&user2)
+	// Create admin and regular users
+	adminUser := SetupTestAdmin(t, db)
+	regularUser := SetupTestUser(t, db, "regularuser")
+	regularUser.Inventories = "dev,staging"
+	db.Save(&regularUser)
 
 	// Create hosts in different inventories
-	host1 := SetupTestHost(t, db, "host1")
-	host1.Inventory = "default"
-	db.Save(&host1)
+	devHost := SetupTestHost(t, db, "devhost")
+	devHost.Inventory = "dev"
+	db.Save(&devHost)
 
-	host2 := SetupTestHost(t, db, "host2")
-	host2.Inventory = "production"
-	db.Save(&host2)
+	stagingHost := SetupTestHost(t, db, "staginghost")
+	stagingHost.Inventory = "staging"
+	db.Save(&stagingHost)
 
-	host3 := SetupTestHost(t, db, "host3")
-	host3.Inventory = "staging"
-	db.Save(&host3)
+	prodHost := SetupTestHost(t, db, "prodhost")
+	prodHost.Inventory = "production"
+	db.Save(&prodHost)
 
 	// Populate the global HostsList
-	db.Find(&models.HostsList)
+	models.HostsList = []models.Host{devHost, stagingHost, prodHost}
 
-	// Test: User1 should see host1 and host2 (default and production inventories)
+	// Test: Admin sees all hosts
 	c, w := CreateRequestContext("GET", "/api/v1/hosts/assigned", nil)
-	AuthorizeContext(c, user1)
+	AuthorizeContext(c, adminUser)
 
-	handler := admin.ExportGetAssignedHosts(db)
+	handler := server.ExportGetAssignedHosts(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	var hostsResponse []models.HostResponse
-	ExtractJSONResponse(t, w, &hostsResponse)
-	assert.Len(t, hostsResponse, 2)
+	var adminHostsResponse []models.Host
+	ExtractJSONResponse(t, w, &adminHostsResponse)
+	assert.Len(t, adminHostsResponse, 3)
 
-	hostNames := []string{}
-	for _, h := range hostsResponse {
-		hostNames = append(hostNames, h.Name)
+	// Test: Regular user sees only their assigned hosts
+	c, w = CreateRequestContext("GET", "/api/v1/hosts/assigned", nil)
+	AuthorizeContext(c, regularUser)
+
+	handler(c)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	var userHostsResponse []models.Host
+	ExtractJSONResponse(t, w, &userHostsResponse)
+	assert.Len(t, userHostsResponse, 2)
+
+	// Verify the correct hosts are returned
+	hostNames := make([]string, len(userHostsResponse))
+	for i, h := range userHostsResponse {
+		hostNames[i] = h.Name
 	}
-	assert.Contains(t, hostNames, "host1")
-	assert.Contains(t, hostNames, "host2")
+	assert.Contains(t, hostNames, "devhost")
+	assert.Contains(t, hostNames, "staginghost")
+	assert.NotContains(t, hostNames, "prodhost")
 
-	// Test: User2 should see only host3 (staging inventory)
+	// Test: Without authentication
 	c, w = CreateRequestContext("GET", "/api/v1/hosts/assigned", nil)
-	AuthorizeContext(c, user2)
-
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
-	ExtractJSONResponse(t, w, &hostsResponse)
-	assert.Len(t, hostsResponse, 1)
-	assert.Equal(t, "host3", hostsResponse[0].Name)
-
-	// Test: User with no matching hosts
-	user3 := SetupTestUser(t, db, "user3")
-	user3.Inventories = "nonexistent"
-	db.Save(&user3)
-
-	c, w = CreateRequestContext("GET", "/api/v1/hosts/assigned", nil)
-	AuthorizeContext(c, user3)
-
-	handler(c)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-	ExtractJSONResponse(t, w, &hostsResponse)
-	assert.Len(t, hostsResponse, 0)
+	var noAuthHostsResponse []models.Host
+	ExtractJSONResponse(t, w, &noAuthHostsResponse)
+	assert.Len(t, noAuthHostsResponse, 0)
 }
 
 func TestHostAuthMiddleware(t *testing.T) {
@@ -442,7 +431,7 @@ func TestHostAuthMiddleware(t *testing.T) {
 	c, w := CreateRequestContext("GET", "/api/v1/test", nil)
 	c.Request.Header.Set("Authorization", "valid-host-token")
 
-	middleware := admin.ExportHostAuthMiddleware(db)
+	middleware := server.ExportHostAuthMiddleware(db)
 
 	var middlewareCalled bool
 	var hostNameInContext string
@@ -475,11 +464,11 @@ func TestHostAuthMiddleware(t *testing.T) {
 
 func TestGenerateToken(t *testing.T) {
 	// Test token generation
-	token1 := admin.ExportGenerateToken()
+	token1 := server.ExportGenerateToken()
 	assert.NotEmpty(t, token1)
 	assert.Len(t, token1, 64) // Token should be 64 characters (32 bytes * 2 for hex)
 
 	// Test that tokens are unique
-	token2 := admin.ExportGenerateToken()
+	token2 := server.ExportGenerateToken()
 	assert.NotEqual(t, token1, token2)
 }

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/monobilisim/monokit/common/api/models"
+	"github.com/monobilisim/monokit/common/api/server"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -19,7 +20,7 @@ func TestFixDuplicateHosts_NoDuplicates(t *testing.T) {
 	SetupTestHost(t, db, "beta")
 
 	models.HostsList = nil
-	models.FixDuplicateHosts(db)
+	server.FixDuplicateHosts(db)
 
 	// Ensure no renames
 	var hosts []models.Host
@@ -47,7 +48,7 @@ func TestFixDuplicateHosts_TwoDuplicates(t *testing.T) {
 	SetupTestHost(t, db, "dupehost") // duplicate name
 
 	models.HostsList = nil
-	models.FixDuplicateHosts(db)
+	server.FixDuplicateHosts(db)
 
 	// Fetch from DB and check names
 	var hosts []models.Host
@@ -79,7 +80,7 @@ func TestFixDuplicateHosts_ThreeDuplicates(t *testing.T) {
 	SetupTestHost(t, db, "clash")
 
 	models.HostsList = nil
-	models.FixDuplicateHosts(db)
+	server.FixDuplicateHosts(db)
 
 	var hosts []models.Host
 	db.Find(&hosts)
@@ -116,7 +117,7 @@ func TestFixDuplicateHosts_Mixed(t *testing.T) {
 	SetupTestHost(t, db, "O")
 
 	models.HostsList = nil
-	models.FixDuplicateHosts(db)
+	server.FixDuplicateHosts(db)
 
 	var hosts []models.Host
 	db.Find(&hosts)

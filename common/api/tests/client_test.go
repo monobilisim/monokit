@@ -12,6 +12,7 @@ import (
 
 	// Provide access to models.Config for tests that call client.go logic directly
 	commonmain "github.com/monobilisim/monokit/common"
+	"github.com/monobilisim/monokit/common/api/client"
 	"github.com/monobilisim/monokit/common/api/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -38,24 +39,24 @@ func TestGetServiceStatus(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	models.ClientConf.URL = srv.URL
+	client.ClientConf.URL = srv.URL
 	// Needed for identifier reference
 	commonmain.Config.Identifier = "testhost"
 
 	t.Run("status enabled", func(t *testing.T) {
-		enabled, wants := models.GetServiceStatus("serviceA")
+		enabled, wants := client.GetServiceStatus("serviceA")
 		assert.True(t, enabled)
 		assert.Equal(t, "", wants)
 	})
 
 	t.Run("disabled with wantsUpdate", func(t *testing.T) {
-		enabled, wants := models.GetServiceStatus("serviceB")
+		enabled, wants := client.GetServiceStatus("serviceB")
 		assert.False(t, enabled)
 		assert.Equal(t, "2.1.0", wants)
 	})
 
 	t.Run("http error", func(t *testing.T) {
-		enabled, wants := models.GetServiceStatus("serviceC")
+		enabled, wants := client.GetServiceStatus("serviceC")
 		assert.True(t, enabled) // fallback is true on error
 		assert.Empty(t, wants)
 	})
@@ -77,16 +78,16 @@ func TestGetHosts(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	models.ClientConf.URL = srv.URL
+	client.ClientConf.URL = srv.URL
 
 	t.Run("list hosts", func(t *testing.T) {
-		res := models.GetHosts("1", "")
+		res := client.GetHosts("1", "")
 		require.Len(t, res, 1)
 		assert.Equal(t, "hostA", res[0].Name)
 	})
 
 	t.Run("single host", func(t *testing.T) {
-		res := models.GetHosts("1", "hostA")
+		res := client.GetHosts("1", "hostA")
 		require.Len(t, res, 1)
 		assert.Equal(t, "hostA", res[0].Name)
 	})
@@ -101,33 +102,33 @@ func TestSendUpdateTo_Disable_Enable(t *testing.T) {
 		w.WriteHeader(200)
 	}))
 	defer srv.Close()
-	models.ClientConf.URL = srv.URL
+	client.ClientConf.URL = srv.URL
 
 	t.Run("SendUpdateTo", func(t *testing.T) {
-		models.SendUpdateTo("1", "hostA", "v2")
+		client.SendUpdateTo("1", "hostA", "v2")
 		assert.Equal(t, "/api/v1/hosts/hostA/updateTo/v2", called.path)
 		assert.Equal(t, "POST", called.method)
 	})
 	t.Run("SendDisable", func(t *testing.T) {
-		models.SendDisable("1", "hostA", "compA")
+		client.SendDisable("1", "hostA", "compA")
 		assert.Equal(t, "/api/v1/hosts/hostA/disable/compA", called.path)
 		assert.Equal(t, "POST", called.method)
 	})
 	t.Run("SendEnable", func(t *testing.T) {
-		models.SendEnable("1", "hostA", "compA")
+		client.SendEnable("1", "hostA", "compA")
 		assert.Equal(t, "/api/v1/hosts/hostA/enable/compA", called.path)
 		assert.Equal(t, "POST", called.method)
 	})
 }
 
 func TestGetCPUCores_GetRAM_GetOS(t *testing.T) {
-	cores := models.GetCPUCores()
+	cores := client.GetCPUCores()
 	assert.GreaterOrEqual(t, cores, 0)
 
-	ram := models.GetRAM()
+	ram := client.GetRAM()
 	assert.NotEmpty(t, ram)
 
-	osver := models.GetOS()
+	osver := client.GetOS()
 	assert.NotEmpty(t, osver)
 }
 
