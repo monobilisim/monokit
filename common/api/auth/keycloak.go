@@ -26,7 +26,7 @@ var (
 	ExportHandleSSOLogin         = handleSSOLogin
 	ExportHandleSSOCallback      = handleSSOCallback
 	ExportExchangeCodeForToken   = exchangeCodeForToken
-	ExportSyncKeycloakUser       = syncKeycloakUser
+	ExportSyncKeycloakUser       = SyncKeycloakUser
 	ExportKeycloakAuthMiddleware = KeycloakAuthMiddleware
 	ExportJWKS                   = (*keyfunc.JWKS)(nil)
 	ExportKeyFunc                = func(token *jwt.Token) (interface{}, error) {
@@ -223,7 +223,7 @@ func handleSSOCallback(db *gorm.DB) gin.HandlerFunc {
 		// Extract the claims
 		if claims, ok := token.Claims.(*KeycloakClaims); ok && token.Valid {
 			// Create or update user in database
-			user, err := syncKeycloakUser(db, claims)
+			user, err := SyncKeycloakUser(db, claims)
 			if err != nil {
 				log.Error().Err(err).Msg("Error syncing user from Keycloak")
 				c.Redirect(http.StatusTemporaryRedirect, "/login?error=Failed+to+create+user")
@@ -297,8 +297,8 @@ func exchangeCodeForToken(code, redirectURI string) (map[string]interface{}, err
 	return result, nil
 }
 
-// syncKeycloakUser creates or updates a user in the local database from Keycloak claims
-func syncKeycloakUser(db *gorm.DB, claims *KeycloakClaims) (User, error) {
+// SyncKeycloakUser creates or updates a user in the local database from Keycloak claims
+func SyncKeycloakUser(db *gorm.DB, claims *KeycloakClaims) (User, error) {
 	var user User
 	username := claims.PreferredUsername
 	if username == "" {
@@ -508,7 +508,7 @@ func KeycloakAuthMiddleware(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// Sync the user
-		user, err := syncKeycloakUser(db, claims)
+		user, err := SyncKeycloakUser(db, claims)
 		if err != nil {
 			if ServerConfig.Keycloak.DisableLocalAuth {
 				if defaultUser, err := createOrGetDefaultAdminUser(db); err == nil {

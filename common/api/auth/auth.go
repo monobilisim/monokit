@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/golang-jwt/jwt/v4"
 	"github.com/monobilisim/monokit/common/api/models"
 	"golang.org/x/crypto/bcrypt"
 	"gorm.io/gorm"
@@ -545,9 +546,52 @@ func AuthMiddleware(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-// attemptKeycloakAuth attempts to authenticate a user via Keycloak
-func AttemptKeycloakAuth(token string, db *gorm.DB, c *gin.Context) bool {
-	// Implementation for Keycloak authentication
-	// This is a placeholder - actual implementation would call Keycloak API
-	return false // Placeholder for actual Keycloak authentication logic
+// AttemptKeycloakAuth is a helper function to manually validate a Keycloak token
+func AttemptKeycloakAuth(tokenString string, db *gorm.DB, c *gin.Context) bool {
+	// If Keycloak is not enabled, authentication fails
+	if !ServerConfig.Keycloak.Enabled {
+		return false
+	}
+
+	// Parse and validate the token
+	token, err := jwt.ParseWithClaims(tokenString, &KeycloakClaims{}, func(token *jwt.Token) (interface{}, error) {
+		if jwks == nil {
+			return nil, fmt.Errorf("JWKS is not initialized")
+		}
+		return jwks.Keyfunc(token)
+	})
+
+	if err != nil || !token.Valid {
+		fmt.Printf("Keycloak token validation failed: %v\n", err)
+		return false
+	}
+
+	// Extract and validate claims
+	claims, ok := token.Claims.(*KeycloakClaims)
+	if !ok {
+		fmt.Printf("Failed to extract KeycloakClaims from token\n")
+		return false
+	}
+
+	// Ensure issuer matches our Keycloak
+	expectedIssuer := fmt.Sprintf("%s/realms/%s", ServerConfig.Keycloak.URL, ServerConfig.Keycloak.Realm)
+	issuer := strings.TrimRight(claims.Issuer, "/")
+	expectedIssuer = strings.TrimRight(expectedIssuer, "/")
+
+	if issuer != expectedIssuer {
+		fmt.Printf("Token issuer does not match expected issuer\n")
+		fmt.Printf("Expected: %s, Got: %s\n", expectedIssuer, issuer)
+		return false
+	}
+
+	// Token is valid, sync the user
+	user, err := SyncKeycloakUser(db, claims)
+	if err != nil {
+		fmt.Printf("Failed to sync Keycloak user: %v\n", err)
+		return false
+	}
+
+	// Set the user in the context and continue
+	c.Set("user", user)
+	return true
 }
