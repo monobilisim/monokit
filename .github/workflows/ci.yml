@@ -33,6 +33,10 @@ jobs:
           sudo cp -r plugins/* /var/lib/monokit/plugins/
           make with-api
 
+      - name: Run unit tests for the API
+        run: |
+          make test-with-api
+
       - name: Create required instances
         env:
           REDMINE_TEST_API_KEY: ${{ secrets.REDMINE_TEST_API_KEY }}
