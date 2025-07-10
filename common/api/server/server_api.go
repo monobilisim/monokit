@@ -1739,7 +1739,12 @@ func getAssignedHosts(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		currentUser := user.(User)
+		currentUser, ok := user.(User)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid user type in context"})
+			return
+		}
+
 		var filteredHosts []Host
 
 		// First filter out AWX-only hosts that should not be shown in dashboard
