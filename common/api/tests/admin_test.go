@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"testing"
 
+	"github.com/monobilisim/monokit/common/api/admin"
 	"github.com/monobilisim/monokit/common/api/models"
 	"github.com/stretchr/testify/assert"
 )
