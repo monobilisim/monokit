@@ -240,8 +240,8 @@ func handleSSOCallback(db *gorm.DB) gin.HandlerFunc {
 
 			// Redirect to the frontend with the token
 			// In a real app, you'd use a more secure way to pass the token
-			c.SetCookie("token", sessionToken, 3600*24, "/", "", false, true)
-			c.Redirect(http.StatusTemporaryRedirect, "/?token="+sessionToken)
+			c.SetCookie("Authorization", sessionToken, 3600*24, "/", "", false, true)
+			c.Redirect(http.StatusTemporaryRedirect, "/?Authorization="+sessionToken)
 		} else {
 			c.Redirect(http.StatusTemporaryRedirect, "/login?error=Invalid+token+claims")
 		}
