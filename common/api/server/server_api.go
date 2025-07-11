@@ -1964,6 +1964,19 @@ func updateHostVersion(db *gorm.DB) gin.HandlerFunc {
 // @Failure 500 {object} map[string]string "Failed to delete log entry"
 func deleteLog(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// Check for admin authentication
+		user, exists := c.Get("user")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+			return
+		}
+
+		currentUser := user.(User)
+		if currentUser.Role != "admin" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
+			return
+		}
+
 		idStr := c.Param("id")
 		id, err := strconv.Atoi(idStr)
 		if err != nil {
@@ -3499,7 +3512,7 @@ func submitHostLog(db *gorm.DB) gin.HandlerFunc {
 		// Get hostname from context
 		hostname, exists := c.Get("hostname")
 		if !exists {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Hostname not found in context"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Hostname not found in context"})
 			return
 		}
 
@@ -3507,6 +3520,20 @@ func submitHostLog(db *gorm.DB) gin.HandlerFunc {
 		var logRequest APILogRequest
 		if err := c.ShouldBindJSON(&logRequest); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+
+		// Validate log level
+		validLevels := []string{"info", "warning", "error", "critical"}
+		isValidLevel := false
+		for _, level := range validLevels {
+			if logRequest.Level == level {
+				isValidLevel = true
+				break
+			}
+		}
+		if !isValidLevel {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid log level. Must be one of: info, warning, error, critical"})
 			return
 		}
 
@@ -3941,11 +3968,19 @@ func getHourlyLogStats(db *gorm.DB) gin.HandlerFunc {
 // @Tags Health
 // @Produce json
 // @Success 200 {array} string "List of health tool names"
+// @Failure 401 {object} ErrorResponse "Unauthorized - authentication required"
 // @Failure 500 {object} ErrorResponse "Internal server error"
 // @Router /health/tools [get]
 // @Security ApiKeyAuth
 func getHealthTools(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		// Check for authentication
+		_, exists := c.Get("user")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+			return
+		}
+
 		// Get tools from the health registry
 		registeredTools := health.List()
 		toolSet := make(map[string]bool)

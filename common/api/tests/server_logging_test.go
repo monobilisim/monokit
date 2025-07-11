@@ -4,6 +4,7 @@ package tests
 
 import (
 	"net/http"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -57,7 +58,6 @@ func TestSubmitHostLog_InvalidLevel(t *testing.T) {
 	defer CleanupTestDB(db)
 
 	host := SetupTestHost(t, db, "log-host")
-	c := setupHostLogContext(t, db, host)
 
 	logData := server.APILogRequest{
 		Level:     "invalid_level",
@@ -339,8 +339,9 @@ func TestDeleteLog_Success(t *testing.T) {
 	// Create test log
 	logEntry := createTestLog(t, db, "host1", "info", "test", "Log to delete")
 
-	c, w := CreateRequestContext("DELETE", "/api/v1/logs/"+string(rune(logEntry.ID)), nil)
-	SetPathParams(c, map[string]string{"id": string(rune(logEntry.ID))})
+	logIDStr := strconv.Itoa(int(logEntry.ID))
+	c, w := CreateRequestContext("DELETE", "/api/v1/logs/"+logIDStr, nil)
+	SetPathParams(c, map[string]string{"id": logIDStr})
 	AuthorizeContext(c, user)
 
 	handler := server.ExportDeleteLog(db)
@@ -377,8 +378,9 @@ func TestDeleteLog_NonAdmin(t *testing.T) {
 	user := SetupTestUser(t, db, "regular_user") // Non-admin user
 	logEntry := createTestLog(t, db, "host1", "info", "test", "Log to delete")
 
-	c, w := CreateRequestContext("DELETE", "/api/v1/logs/"+string(rune(logEntry.ID)), nil)
-	SetPathParams(c, map[string]string{"id": string(rune(logEntry.ID))})
+	logIDStr := strconv.Itoa(int(logEntry.ID))
+	c, w := CreateRequestContext("DELETE", "/api/v1/logs/"+logIDStr, nil)
+	SetPathParams(c, map[string]string{"id": logIDStr})
 	AuthorizeContext(c, user)
 
 	handler := server.ExportDeleteLog(db)

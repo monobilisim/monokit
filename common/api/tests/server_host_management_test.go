@@ -35,7 +35,7 @@ func TestRegisterHost_Success(t *testing.T) {
 	handler := server.ExportRegisterHost(db)
 	handler(c)
 
-	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, http.StatusCreated, w.Code)
 
 	// Verify host was created in database
 	var createdHost models.Host
@@ -54,6 +54,9 @@ func TestRegisterHost_UpdateExisting(t *testing.T) {
 	existingHost := SetupTestHost(t, db, "existing-host")
 	originalVersion := existingHost.MonokitVersion
 
+	// Create host key for authentication
+	hostKey := SetupTestHostKey(t, db, existingHost, "update_host_key_123")
+
 	// Update with new data
 	updateData := models.Host{
 		Name:                "existing-host",
@@ -70,6 +73,7 @@ func TestRegisterHost_UpdateExisting(t *testing.T) {
 	}
 
 	c, w := CreateRequestContext("POST", "/api/v1/hosts", updateData)
+	c.Request.Header.Set("Authorization", hostKey.Token)
 
 	handler := server.ExportRegisterHost(db)
 	handler(c)
@@ -113,13 +117,16 @@ func TestRegisterHost_MissingRequiredFields(t *testing.T) {
 	handler := server.ExportRegisterHost(db)
 	handler(c)
 
-	// Should still succeed but with default values
-	assert.Equal(t, http.StatusOK, w.Code)
+	// Should still succeed but with default values (creates new host)
+	assert.Equal(t, http.StatusCreated, w.Code)
 }
 
 func TestGetAllHosts_Success(t *testing.T) {
 	db := SetupTestDB(t)
 	defer CleanupTestDB(db)
+
+	// Create test user for authentication
+	user := SetupTestUser(t, db, "hostviewer")
 
 	// Create test hosts
 	_ = SetupTestHost(t, db, "host1")
@@ -127,6 +134,7 @@ func TestGetAllHosts_Success(t *testing.T) {
 	_ = SetupTestHost(t, db, "host3")
 
 	c, w := CreateRequestContext("GET", "/api/v1/hosts", nil)
+	AuthorizeContext(c, user)
 
 	handler := server.ExportGetAllHosts(db)
 	handler(c)
@@ -151,7 +159,11 @@ func TestGetAllHosts_EmptyDatabase(t *testing.T) {
 	db := SetupTestDB(t)
 	defer CleanupTestDB(db)
 
+	// Create test user for authentication
+	user := SetupTestUser(t, db, "hostviewer")
+
 	c, w := CreateRequestContext("GET", "/api/v1/hosts", nil)
+	AuthorizeContext(c, user)
 
 	handler := server.ExportGetAllHosts(db)
 	handler(c)
@@ -216,11 +228,16 @@ func TestDeleteHost_Success(t *testing.T) {
 
 	assert.Equal(t, http.StatusOK, w.Code)
 
-	// Verify host is marked for deletion
+	// Verify host is soft deleted (no longer accessible through normal queries)
+	var hostCount int64
+	db.Model(&models.Host{}).Where("name = ?", "host-to-delete").Count(&hostCount)
+	assert.Equal(t, int64(0), hostCount)
+
+	// Verify host still exists but is soft deleted
 	var deletedHost models.Host
-	err := db.Where("name = ?", "host-to-delete").First(&deletedHost).Error
+	err := db.Unscoped().Where("name = ?", "host-to-delete").First(&deletedHost).Error
 	require.NoError(t, err)
-	assert.True(t, deletedHost.UpForDeletion)
+	assert.NotNil(t, deletedHost.DeletedAt)
 }
 
 func TestDeleteHost_NotFound(t *testing.T) {
@@ -325,22 +342,26 @@ func TestGetAssignedHosts_WithUser(t *testing.T) {
 	db := SetupTestDB(t)
 	defer CleanupTestDB(db)
 
+	// Create user with specific inventories (filtering is by inventory, not groups)
 	user := SetupTestUser(t, db, "testuser")
-	user.Groups = "web-servers,db-servers"
+	user.Inventories = "dev,staging"
 	db.Save(&user)
 
-	// Create hosts with different groups
-	host1 := SetupTestHost(t, db, "web-host")
-	host1.Groups = "web-servers"
+	// Create hosts with different inventories
+	host1 := SetupTestHost(t, db, "dev-host")
+	host1.Inventory = "dev"
 	require.NoError(t, db.Save(&host1).Error)
 
-	host2 := SetupTestHost(t, db, "db-host")
-	host2.Groups = "db-servers"
+	host2 := SetupTestHost(t, db, "staging-host")
+	host2.Inventory = "staging"
 	require.NoError(t, db.Save(&host2).Error)
 
-	host3 := SetupTestHost(t, db, "other-host")
-	host3.Groups = "other-group"
+	host3 := SetupTestHost(t, db, "prod-host")
+	host3.Inventory = "production"
 	require.NoError(t, db.Save(&host3).Error)
+
+	// Update global HostsList that the function uses
+	models.HostsList = []models.Host{host1, host2, host3}
 
 	c, w := CreateRequestContext("GET", "/api/v1/hosts/assigned", nil)
 	AuthorizeContext(c, user)
@@ -353,15 +374,16 @@ func TestGetAssignedHosts_WithUser(t *testing.T) {
 	var hosts []models.Host
 	ExtractJSONResponse(t, w, &hosts)
 
-	// Should return hosts that match user's groups
+	// Should return hosts that match user's inventories (dev, staging)
 	assert.GreaterOrEqual(t, len(hosts), 2)
 
 	hostNames := make(map[string]bool)
 	for _, host := range hosts {
 		hostNames[host.Name] = true
 	}
-	assert.True(t, hostNames["web-host"])
-	assert.True(t, hostNames["db-host"])
+	assert.True(t, hostNames["dev-host"])
+	assert.True(t, hostNames["staging-host"])
+	assert.False(t, hostNames["prod-host"]) // Should not include production host
 }
 
 func TestGetAssignedHosts_AdminUser(t *testing.T) {
@@ -371,8 +393,11 @@ func TestGetAssignedHosts_AdminUser(t *testing.T) {
 	admin := SetupTestAdmin(t, db)
 
 	// Create test hosts
-	_ = SetupTestHost(t, db, "host1")
-	_ = SetupTestHost(t, db, "host2")
+	host1 := SetupTestHost(t, db, "host1")
+	host2 := SetupTestHost(t, db, "host2")
+
+	// Update global HostsList that the function uses
+	models.HostsList = []models.Host{host1, host2}
 
 	c, w := CreateRequestContext("GET", "/api/v1/hosts/assigned", nil)
 	AuthorizeContext(c, admin)

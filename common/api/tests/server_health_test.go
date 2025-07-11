@@ -5,9 +5,12 @@ package tests
 import (
 	"fmt"
 	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
+	"github.com/gin-gonic/gin"
 	"github.com/monobilisim/monokit/common/api/models"
 	"github.com/monobilisim/monokit/common/api/server"
 	"github.com/stretchr/testify/assert"
@@ -87,7 +90,16 @@ func TestPostHostHealth_InvalidJSON(t *testing.T) {
 
 	host := SetupTestHost(t, db, "health-host")
 
-	c, w := CreateRequestContext("POST", "/api/v1/host/health/mysql", "invalid json")
+	// Create request with actual invalid JSON (not a marshaled string)
+	gin.SetMode(gin.TestMode)
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+
+	invalidJSON := `{"status": "healthy", "invalid": json, "missing": quote}`
+	req, _ := http.NewRequest("POST", "/api/v1/host/health/mysql", strings.NewReader(invalidJSON))
+	req.Header.Set("Content-Type", "application/json")
+	c.Request = req
+
 	SetPathParams(c, map[string]string{"tool": "mysql"})
 	c.Set("hostname", host.Name)
 
