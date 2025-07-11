@@ -11,6 +11,7 @@ import (
 	"github.com/monobilisim/monokit/common/api/models"
 	"github.com/monobilisim/monokit/common/api/server"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestAuthMiddleware_ValidToken(t *testing.T) {
@@ -158,7 +159,14 @@ func TestHostAuthMiddleware_ValidHostKey(t *testing.T) {
 	defer CleanupTestDB(db)
 
 	host := SetupTestHost(t, db, "testhost")
-	_ = SetupTestHostKey(t, db, host, "valid_host_key_123")
+	hostKey := SetupTestHostKey(t, db, host, "valid_host_key_123")
+
+	// Verify the host key was actually created
+	var foundKey models.HostKey
+	err := db.Where("token = ?", "valid_host_key_123").First(&foundKey).Error
+	require.NoError(t, err, "Host key should be found in database")
+	assert.Equal(t, hostKey.Token, foundKey.Token)
+	assert.Equal(t, hostKey.HostName, foundKey.HostName)
 
 	c, _ := CreateRequestContext("GET", "/api/v1/host/config", nil)
 	c.Request.Header.Set("Authorization", "valid_host_key_123")
@@ -167,9 +175,9 @@ func TestHostAuthMiddleware_ValidHostKey(t *testing.T) {
 	middleware(c)
 
 	assert.False(t, c.IsAborted())
-	contextHost, exists := c.Get("host")
+	contextHostname, exists := c.Get("hostname")
 	assert.True(t, exists)
-	assert.Equal(t, host.Name, contextHost.(models.Host).Name)
+	assert.Equal(t, host.Name, contextHostname.(string))
 }
 
 func TestHostAuthMiddleware_InvalidHostKey(t *testing.T) {
@@ -345,7 +353,7 @@ func TestHostAuthMiddleware_AutoDetectHostFromToken(t *testing.T) {
 	assert.False(t, c.IsAborted())
 
 	// Verify host was auto-detected and set in context
-	contextHost, exists := c.Get("host")
+	contextHostname, exists := c.Get("hostname")
 	assert.True(t, exists)
-	assert.Equal(t, "auto-detect-host", contextHost.(models.Host).Name)
+	assert.Equal(t, "auto-detect-host", contextHostname.(string))
 }
