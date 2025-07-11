@@ -119,43 +119,6 @@ type APIHostLogsResponse struct {
 	Pagination APILogPagination `json:"pagination"`
 }
 
-// Export functions for testing
-func ExportRegisterHost(db *gorm.DB) gin.HandlerFunc {
-	return registerHost(db)
-}
-
-func ExportGetAllHosts(db *gorm.DB) gin.HandlerFunc {
-	return getAllHosts(db)
-}
-
-func ExportGetHostByName() gin.HandlerFunc {
-	return getHostByName()
-}
-
-func ExportDeleteHost(db *gorm.DB) gin.HandlerFunc {
-	return deleteHost(db)
-}
-
-func ExportForceDeleteHost(db *gorm.DB) gin.HandlerFunc {
-	return forceDeleteHost(db)
-}
-
-func ExportUpdateHost(db *gorm.DB) gin.HandlerFunc {
-	return updateHost(db)
-}
-
-func ExportGetAssignedHosts(db *gorm.DB) gin.HandlerFunc {
-	return getAssignedHosts(db)
-}
-
-func ExportHostAuthMiddleware(db *gorm.DB) gin.HandlerFunc {
-	return hostAuthMiddleware(db)
-}
-
-func ExportGenerateToken() string {
-	return generateToken()
-}
-
 // StartAPIServer starts the API server
 func StartAPIServer(cmd *cobra.Command, args []string) error {
 	r := gin.Default()
@@ -174,100 +137,6 @@ func StartAPIServer(cmd *cobra.Command, args []string) error {
 
 	setupRoutes(r, db, monokitHostname)
 	return r.Run(fmt.Sprintf(":%s", ServerConfig.Port))
-}
-
-// Export AWX functions for testing
-func ExportCreateAwxHost(db *gorm.DB) gin.HandlerFunc {
-	return createAwxHost(db)
-}
-
-func ExportDeleteAwxHost(db *gorm.DB) gin.HandlerFunc {
-	return deleteAwxHost(db)
-}
-
-func ExportGetAwxTemplatesGlobal(db *gorm.DB) gin.HandlerFunc {
-	return getAwxTemplatesGlobal(db)
-}
-
-func ExportExecuteAwxWorkflowJob(db *gorm.DB) gin.HandlerFunc {
-	return executeAwxWorkflowJob(db)
-}
-
-func ExportGetAwxJobStatus(db *gorm.DB) gin.HandlerFunc {
-	return getAwxJobStatus(db)
-}
-
-func ExportExecuteAwxJob(db *gorm.DB) gin.HandlerFunc {
-	return executeAwxJob(db)
-}
-
-func ExportGetHostAwxJobs(db *gorm.DB) gin.HandlerFunc {
-	return getHostAwxJobs(db)
-}
-
-func ExportGetHostAwxJobLogs(db *gorm.DB) gin.HandlerFunc {
-	return getHostAwxJobLogs(db)
-}
-
-func ExportGetAwxJobTemplateDetails(db *gorm.DB) gin.HandlerFunc {
-	return getAwxJobTemplateDetails(db)
-}
-
-func ExportGetAwxJobTemplates(db *gorm.DB) gin.HandlerFunc {
-	return getAwxJobTemplates(db)
-}
-
-func ExportGetAwxWorkflowTemplatesGlobal(db *gorm.DB) gin.HandlerFunc {
-	return getAwxWorkflowTemplatesGlobal(db)
-}
-
-func ExportEnsureHostInAwx(db *gorm.DB, host Host) (string, error) {
-	return ensureHostInAwx(db, host)
-}
-
-// Export health-related functions for testing
-func ExportGetHealthTools(db *gorm.DB) gin.HandlerFunc {
-	return getHealthTools(db)
-}
-
-func ExportGetHostHealth(db *gorm.DB, monokitHostname string) gin.HandlerFunc {
-	return getHostHealth(db, monokitHostname)
-}
-
-func ExportPostHostHealth(db *gorm.DB) gin.HandlerFunc {
-	return postHostHealth(db)
-}
-
-func ExportGetHostToolHealth(db *gorm.DB, monokitHostname string) gin.HandlerFunc {
-	return getHostToolHealth(db, monokitHostname)
-}
-
-func ExportSubmitHostLog(db *gorm.DB) gin.HandlerFunc {
-	return submitHostLog(db)
-}
-
-func ExportGetAllLogs(db *gorm.DB) gin.HandlerFunc {
-	return getAllLogs(db)
-}
-
-func ExportGetHostLogs(db *gorm.DB) gin.HandlerFunc {
-	return getHostLogs(db)
-}
-
-func ExportSearchLogs(db *gorm.DB) gin.HandlerFunc {
-	return searchLogs(db)
-}
-
-func ExportDeleteLog(db *gorm.DB) gin.HandlerFunc {
-	return deleteLog(db)
-}
-
-func ExportGetHourlyLogStats(db *gorm.DB) gin.HandlerFunc {
-	return getHourlyLogStats(db)
-}
-
-func ExportAuthMiddleware(db *gorm.DB) gin.HandlerFunc {
-	return authMiddleware(db)
 }
 
 func setupDatabase() *gorm.DB {
@@ -363,7 +232,7 @@ func setupRoutes(r *gin.Engine, db *gorm.DB, monokitHostname string) {
 	if ServerConfig.Keycloak.Enabled {
 		auth.SetupKeycloakRoutes(r, db)
 	}
-	r.POST("/api/v1/hosts", registerHost(db))
+	r.POST("/api/v1/hosts", RegisterHost(db))
 	admin.SetupAdminRoutes(r, db)
 
 	api := r.Group("/api/v1")
@@ -371,26 +240,26 @@ func setupRoutes(r *gin.Engine, db *gorm.DB, monokitHostname string) {
 	if ServerConfig.Keycloak.Enabled {
 		api.Use(auth.KeycloakAuthMiddleware(db))
 	}
-	api.Use(authMiddleware(db))
+	api.Use(AuthMiddleware(db))
 	{
 		// Host management
-		api.GET("/hosts/assigned", getAssignedHosts(db))
-		api.GET("/hosts", getAllHosts(db))
-		api.GET("/hosts/:name", getHostByName())
-		api.DELETE("/hosts/:name", deleteHost(db))
-		api.DELETE("/hosts/:name/force", forceDeleteHost(db))
-		api.PUT("/hosts/:name", updateHost(db))
-		api.GET("/hosts/:name/awx-jobs", getHostAwxJobs(db))
-		api.GET("/hosts/:name/awx-jobs/:jobID/logs", getHostAwxJobLogs(db))
-		api.GET("/hosts/:name/awx-job-templates", getAwxJobTemplates(db))
-		api.GET("/hosts/:name/awx-job-templates/:templateID", getAwxJobTemplateDetails(db))
-		api.POST("/hosts/:name/awx-jobs/execute", executeAwxJob(db))
-		api.POST("/hosts/:name/awx-workflow-jobs/execute", executeAwxWorkflowJob(db))
-		api.POST("/hosts/awx", createAwxHost(db))
-		api.DELETE("/hosts/awx/:id", deleteAwxHost(db))
-		api.GET("/awx/jobs/:jobID", getAwxJobStatus(db))
-		api.GET("/awx/job-templates", getAwxTemplatesGlobal(db))
-		api.GET("/awx/workflow-templates", getAwxWorkflowTemplatesGlobal(db))
+		api.GET("/hosts/assigned", GetAssignedHosts(db))
+		api.GET("/hosts", GetAllHosts(db))
+		api.GET("/hosts/:name", GetHostByName())
+		api.DELETE("/hosts/:name", DeleteHost(db))
+		api.DELETE("/hosts/:name/force", ForceDeleteHost(db))
+		api.PUT("/hosts/:name", UpdateHost(db))
+		api.GET("/hosts/:name/awx-jobs", GetHostAwxJobs(db))
+		api.GET("/hosts/:name/awx-jobs/:jobID/logs", GetHostAwxJobLogs(db))
+		api.GET("/hosts/:name/awx-job-templates", GetAwxJobTemplates(db))
+		api.GET("/hosts/:name/awx-job-templates/:templateID", GetAwxJobTemplateDetails(db))
+		api.POST("/hosts/:name/awx-jobs/execute", ExecuteAwxJob(db))
+		api.POST("/hosts/:name/awx-workflow-jobs/execute", ExecuteAwxWorkflowJob(db))
+		api.POST("/hosts/awx", CreateAwxHost(db))
+		api.DELETE("/hosts/awx/:id", DeleteAwxHost(db))
+		api.GET("/awx/jobs/:jobID", GetAwxJobStatus(db))
+		api.GET("/awx/job-templates", GetAwxTemplatesGlobal(db))
+		api.GET("/awx/workflow-templates", GetAwxWorkflowTemplatesGlobal(db))
 
 		// Config endpoints - using handlers from host_config.go
 		api.GET("/hosts/:name/config", host.HandleGetHostConfig(db))                 // GET config - get all configs for a host
@@ -398,55 +267,55 @@ func setupRoutes(r *gin.Engine, db *gorm.DB, monokitHostname string) {
 		api.PUT("/hosts/:name/config", host.HandlePutHostConfig(db))                 // PUT config - update host configs (same as POST)
 		api.DELETE("/hosts/:name/config/:filename", host.HandleDeleteHostConfig(db)) // DELETE config - delete a specific config file
 
-		api.POST("/hosts/:name/updateTo/:version", updateHostVersion(db))
-		api.POST("/hosts/:name/enable/:service", enableComponent(db))
-		api.POST("/hosts/:name/disable/:service", disableComponent(db))
-		api.GET("/hosts/:name/status/:service", getComponentStatus())
+		api.POST("/hosts/:name/updateTo/:version", UpdateHostVersion(db))
+		api.POST("/hosts/:name/enable/:service", EnableComponent(db))
+		api.POST("/hosts/:name/disable/:service", DisableComponent(db))
+		api.GET("/hosts/:name/status/:service", GetComponentStatus())
 
 		// Add direct component status route (for compatibility with frontend)
-		api.GET("/hosts/:name/:component", getComponentStatus())
+		api.GET("/hosts/:name/:component", GetComponentStatus())
 
 		// Group management
-		api.GET("/groups", getAllGroups(db))
+		api.GET("/groups", GetAllGroups(db))
 
 		// Inventory management
-		api.GET("/inventory", getAllInventories(db))
-		api.POST("/inventory", createInventory(db))
-		api.DELETE("/inventory/:name", deleteInventory(db))
+		api.GET("/inventory", GetAllInventories(db))
+		api.POST("/inventory", CreateInventory(db))
+		api.DELETE("/inventory/:name", DeleteInventory(db))
 
 		// Log management - ensure these endpoints use the same auth chain
-		api.GET("/logs", getAllLogs(db))
-		api.GET("/logs/hourly", getHourlyLogStats(db))
-		api.GET("/logs/:hostname", getHostLogs(db))
-		api.POST("/logs/search", searchLogs(db))
-		api.DELETE("/logs/:id", deleteLog(db))
+		api.GET("/logs", GetAllLogs(db))
+		api.GET("/logs/hourly", GetHourlyLogStats(db))
+		api.GET("/logs/:hostname", GetHostLogs(db))
+		api.POST("/logs/search", SearchLogs(db))
+		api.DELETE("/logs/:id", DeleteLog(db))
 
 		// Health endpoints
-		api.GET("/health/tools", getHealthTools(db))
-		api.GET("/hosts/:name/health", getHostHealth(db, monokitHostname))
-		api.GET("/hosts/:name/health/:tool", getHostToolHealth(db, monokitHostname))
+		api.GET("/health/tools", GetHealthTools(db))
+		api.GET("/hosts/:name/health", GetHostHealth(db, monokitHostname))
+		api.GET("/hosts/:name/health/:tool", GetHostToolHealth(db, monokitHostname))
 	}
 
 	// Host-specific API that uses host token authentication
 	hostApi := r.Group("/api/v1/host")
-	hostApi.Use(hostAuthMiddleware(db))
+	hostApi.Use(HostAuthMiddleware(db))
 	{
 		// Config endpoints - with self-host auto-detection
 		hostApi.GET("/config", host.HandleGetHostConfig(db))
 		hostApi.PUT("/config", host.HandlePutHostConfig(db))
 
 		// Status endpoints - make the parameter name more explicit
-		hostApi.GET("/status/:service", getComponentStatus()) // Changed from "/:service" to "/status/:service"
+		hostApi.GET("/status/:service", GetComponentStatus()) // Changed from "/:service" to "/status/:service"
 
 		// Allow hosts to submit their logs
-		hostApi.POST("/logs", submitHostLog(db))
+		hostApi.POST("/logs", SubmitHostLog(db))
 		// Allow hosts to submit their health data
-		hostApi.POST("/health/:tool", postHostHealth(db))
+		hostApi.POST("/health/:tool", PostHostHealth(db))
 	}
 }
 
 // Helper function to generate random token
-func generateToken() string {
+func GenerateToken() string {
 	bytes := make([]byte, 32)
 	if _, err := rand.Read(bytes); err != nil {
 		return ""
@@ -455,7 +324,7 @@ func generateToken() string {
 }
 
 // Authentication middleware
-func authMiddleware(db *gorm.DB) gin.HandlerFunc {
+func AuthMiddleware(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Check if user is already set in context by Keycloak middleware
 		if user, exists := c.Get("user"); exists {
@@ -557,7 +426,7 @@ func authMiddleware(db *gorm.DB) gin.HandlerFunc {
 }
 
 // Host authentication middleware
-func hostAuthMiddleware(db *gorm.DB) gin.HandlerFunc {
+func HostAuthMiddleware(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		token := c.GetHeader("Authorization")
 		if token == "" {
@@ -659,7 +528,7 @@ func adminAuthMiddleware(db *gorm.DB) gin.HandlerFunc {
 }
 
 // Handler functions
-func registerHost(db *gorm.DB) gin.HandlerFunc {
+func RegisterHost(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		fmt.Printf("Processing host registration request\n")
 
@@ -753,7 +622,7 @@ func registerHost(db *gorm.DB) gin.HandlerFunc {
 		fmt.Printf("Host created successfully: %s (ID=%d)\n", host.Name, host.ID)
 
 		// Generate and store API key for host
-		token := generateToken()
+		token := GenerateToken()
 		hostKey := HostKey{
 			Token:    token,
 			HostName: host.Name,
@@ -779,7 +648,7 @@ func registerHost(db *gorm.DB) gin.HandlerFunc {
 }
 
 // Get all hosts handler
-func getAllHosts(db *gorm.DB) gin.HandlerFunc {
+func GetAllHosts(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		for i := range models.HostsList {
 			syncHostGroups(db, &models.HostsList[i])
@@ -843,7 +712,7 @@ func getAllHosts(db *gorm.DB) gin.HandlerFunc {
 }
 
 // Get host by name handler
-func getHostByName() gin.HandlerFunc {
+func GetHostByName() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		name := c.Param("name")
 		fmt.Printf("Looking up host by name: %s\n", name)
@@ -864,7 +733,7 @@ func getHostByName() gin.HandlerFunc {
 }
 
 // Delete host handler
-func deleteHost(db *gorm.DB) gin.HandlerFunc {
+func DeleteHost(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		name := c.Param("name")
 		fmt.Printf("Attempting to delete host: %s\n", name)
@@ -893,7 +762,7 @@ func deleteHost(db *gorm.DB) gin.HandlerFunc {
 }
 
 // Create a host in AWX
-func createAwxHost(db *gorm.DB) gin.HandlerFunc {
+func CreateAwxHost(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Check if AWX is enabled
 		if !ServerConfig.Awx.Enabled {
@@ -1119,7 +988,7 @@ func createAwxHost(db *gorm.DB) gin.HandlerFunc {
 }
 
 // Delete a host from AWX
-func deleteAwxHost(db *gorm.DB) gin.HandlerFunc {
+func DeleteAwxHost(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Check if AWX is enabled
 		if !ServerConfig.Awx.Enabled {
@@ -1219,7 +1088,7 @@ func deleteAwxHost(db *gorm.DB) gin.HandlerFunc {
 }
 
 // Get all AWX job templates without requiring a host
-func getAwxTemplatesGlobal(db *gorm.DB) gin.HandlerFunc {
+func GetAwxTemplatesGlobal(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Check if AWX is enabled
 		if !ServerConfig.Awx.Enabled {
@@ -1326,7 +1195,7 @@ func getAwxTemplatesGlobal(db *gorm.DB) gin.HandlerFunc {
 }
 
 // Execute an AWX Workflow Job
-func executeAwxWorkflowJob(db *gorm.DB) gin.HandlerFunc {
+func ExecuteAwxWorkflowJob(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Check if AWX is enabled
 		if !ServerConfig.Awx.Enabled {
@@ -1671,7 +1540,7 @@ func executeAwxWorkflowJob(db *gorm.DB) gin.HandlerFunc {
 }
 
 // Get the status of a job in AWX
-func getAwxJobStatus(db *gorm.DB) gin.HandlerFunc {
+func GetAwxJobStatus(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Check if AWX is enabled
 		if !ServerConfig.Awx.Enabled {
@@ -1731,7 +1600,7 @@ func getAwxJobStatus(db *gorm.DB) gin.HandlerFunc {
 }
 
 // Force delete host handler - immediately and permanently deletes a host
-func forceDeleteHost(db *gorm.DB) gin.HandlerFunc {
+func ForceDeleteHost(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		name := c.Param("name")
 		var host Host
@@ -1758,7 +1627,7 @@ func forceDeleteHost(db *gorm.DB) gin.HandlerFunc {
 }
 
 // Update host handler
-func updateHost(db *gorm.DB) gin.HandlerFunc {
+func UpdateHost(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		name := c.Param("name")
 		var host Host
@@ -1784,7 +1653,7 @@ func updateHost(db *gorm.DB) gin.HandlerFunc {
 }
 
 // Get assigned hosts handler
-func getAssignedHosts(db *gorm.DB) gin.HandlerFunc {
+func GetAssignedHosts(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user, exists := c.Get("user")
 		if !exists {
@@ -1846,7 +1715,7 @@ func getAssignedHosts(db *gorm.DB) gin.HandlerFunc {
 }
 
 // Group management handlers
-func getAllGroups(db *gorm.DB) gin.HandlerFunc {
+func GetAllGroups(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var groups []string
 		for _, host := range models.HostsList {
@@ -1865,7 +1734,7 @@ func getAllGroups(db *gorm.DB) gin.HandlerFunc {
 }
 
 // Inventory management handlers
-func getAllInventories(db *gorm.DB) gin.HandlerFunc {
+func GetAllInventories(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var inventories []Inventory
 		if err := db.Find(&inventories).Error; err != nil {
@@ -1876,7 +1745,7 @@ func getAllInventories(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-func createInventory(db *gorm.DB) gin.HandlerFunc {
+func CreateInventory(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		var inventory Inventory
 		if err := c.ShouldBindJSON(&inventory); err != nil {
@@ -1893,7 +1762,7 @@ func createInventory(db *gorm.DB) gin.HandlerFunc {
 	}
 }
 
-func deleteInventory(db *gorm.DB) gin.HandlerFunc {
+func DeleteInventory(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		name := c.Param("name")
 		var inventory Inventory
@@ -1928,7 +1797,7 @@ func syncHostGroups(db *gorm.DB, host *Host) {
 // @Param version path string true "Version to update to"
 // @Success 200 {object} map[string]string
 // @Router /hosts/{name}/updateTo/{version} [post]
-func updateHostVersion(db *gorm.DB) gin.HandlerFunc {
+func UpdateHostVersion(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		name := c.Param("name")
 		version := c.Param("version")
@@ -1962,7 +1831,7 @@ func updateHostVersion(db *gorm.DB) gin.HandlerFunc {
 // @Failure 400 {object} map[string]string "Invalid log id"
 // @Failure 404 {object} map[string]string "Log not found"
 // @Failure 500 {object} map[string]string "Failed to delete log entry"
-func deleteLog(db *gorm.DB) gin.HandlerFunc {
+func DeleteLog(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Check for admin authentication
 		user, exists := c.Get("user")
@@ -2009,7 +1878,7 @@ func deleteLog(db *gorm.DB) gin.HandlerFunc {
 // @Failure 404 {object} map[string]string "Host not found"
 // @Failure 500 {object} map[string]string "Server error"
 // @Router /hosts/{name}/awx-jobs [get]
-func getHostAwxJobs(db *gorm.DB) gin.HandlerFunc {
+func GetHostAwxJobs(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		hostname := c.Param("name")
 
@@ -2147,7 +2016,7 @@ func getHostAwxJobs(db *gorm.DB) gin.HandlerFunc {
 // @Failure 404 {object} map[string]string "Host or job not found"
 // @Failure 500 {object} map[string]string "Server error"
 // @Router /hosts/{name}/awx-jobs/{jobID}/logs [get]
-func getHostAwxJobLogs(db *gorm.DB) gin.HandlerFunc {
+func GetHostAwxJobLogs(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		hostname := c.Param("name")
 		jobID := c.Param("jobID")
@@ -2262,7 +2131,7 @@ func getHostAwxJobLogs(db *gorm.DB) gin.HandlerFunc {
 // @Failure 404 {object} map[string]string "Host or template not found"
 // @Failure 500 {object} map[string]string "Server error"
 // @Router /hosts/{name}/awx-job-templates/{templateID} [get]
-func getAwxJobTemplateDetails(db *gorm.DB) gin.HandlerFunc {
+func GetAwxJobTemplateDetails(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		hostname := c.Param("name")
 		templateID := c.Param("templateID")
@@ -2402,7 +2271,7 @@ func getAwxJobTemplateDetails(db *gorm.DB) gin.HandlerFunc {
 // @Failure 404 {object} map[string]string "Host not found"
 // @Failure 500 {object} map[string]string "Server error"
 // @Router /hosts/{name}/awx-job-templates [get]
-func getAwxJobTemplates(db *gorm.DB) gin.HandlerFunc {
+func GetAwxJobTemplates(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		hostname := c.Param("name")
 
@@ -2566,7 +2435,7 @@ func getAwxJobTemplates(db *gorm.DB) gin.HandlerFunc {
 }
 
 // Get all AWX workflow templates without requiring a host
-func getAwxWorkflowTemplatesGlobal(db *gorm.DB) gin.HandlerFunc {
+func GetAwxWorkflowTemplatesGlobal(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Check if AWX is enabled
 		if !ServerConfig.Awx.Enabled {
@@ -2679,7 +2548,7 @@ func getAwxWorkflowTemplatesGlobal(db *gorm.DB) gin.HandlerFunc {
 // @Failure 500 {object} map[string]string "Server error"
 // @Router /hosts/{name}/awx-jobs/execute [post]
 
-func executeAwxJob(db *gorm.DB) gin.HandlerFunc {
+func ExecuteAwxJob(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		hostname := c.Param("name")
 		log.Debug().
@@ -3095,7 +2964,7 @@ func executeAwxJob(db *gorm.DB) gin.HandlerFunc {
 
 // ensureHostInAwx makes sure the host exists in AWX, creating it if necessary
 // Returns the AWX host ID if successful
-func ensureHostInAwx(db *gorm.DB, host Host) (string, error) {
+func EnsureHostInAwx(db *gorm.DB, host Host) (string, error) {
 	if !ServerConfig.Awx.Enabled {
 		return "", fmt.Errorf("AWX integration is not enabled")
 	}
@@ -3349,7 +3218,7 @@ func filterLogsForHost(rawLogs string, hostname string) string {
 // @Param service path string true "Service name"
 // @Success 200 {object} map[string]string
 // @Router /hosts/{name}/enable/{service} [post]
-func enableComponent(db *gorm.DB) gin.HandlerFunc {
+func EnableComponent(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		name := c.Param("name")
 		service := c.Param("service")
@@ -3408,7 +3277,7 @@ func enableComponent(db *gorm.DB) gin.HandlerFunc {
 // @Param service path string true "Service name"
 // @Success 200 {object} map[string]string
 // @Router /hosts/{name}/disable/{service} [post]
-func disableComponent(db *gorm.DB) gin.HandlerFunc {
+func DisableComponent(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		name := c.Param("name")
 		service := c.Param("service")
@@ -3459,7 +3328,7 @@ func disableComponent(db *gorm.DB) gin.HandlerFunc {
 // @Param service path string true "Service name"
 // @Success 200 {object} map[string]string
 // @Router /hosts/{name}/{service} [get]
-func getComponentStatus() gin.HandlerFunc {
+func GetComponentStatus() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		name := c.Param("name")
 		if name == "" {
@@ -3507,7 +3376,7 @@ func getComponentStatus() gin.HandlerFunc {
 // @Failure 401 {object} map[string]string "Unauthorized error"
 // @Failure 500 {object} map[string]string "Internal server error"
 // @Router /host/logs [post]
-func submitHostLog(db *gorm.DB) gin.HandlerFunc {
+func SubmitHostLog(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Get hostname from context
 		hostname, exists := c.Get("hostname")
@@ -3633,7 +3502,7 @@ func submitHostLog(db *gorm.DB) gin.HandlerFunc {
 // @Failure 401 {object} ErrorResponse "Unauthorized"
 // @Failure 500 {object} ErrorResponse "Internal server error"
 // @Router /logs [get]
-func getAllLogs(db *gorm.DB) gin.HandlerFunc {
+func GetAllLogs(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Parse pagination parameters
 		pageStr := c.DefaultQuery("page", "1")
@@ -3715,7 +3584,7 @@ func getAllLogs(db *gorm.DB) gin.HandlerFunc {
 // @Failure 401 {object} ErrorResponse "Unauthorized"
 // @Failure 500 {object} ErrorResponse "Internal server error"
 // @Router /logs/{hostname} [get]
-func getHostLogs(db *gorm.DB) gin.HandlerFunc {
+func GetHostLogs(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Get hostname from path parameter
 		hostname := c.Param("hostname")
@@ -3804,7 +3673,7 @@ func getHostLogs(db *gorm.DB) gin.HandlerFunc {
 // @Failure 401 {object} ErrorResponse "Unauthorized"
 // @Failure 500 {object} ErrorResponse "Internal server error"
 // @Router /logs/search [post]
-func searchLogs(db *gorm.DB) gin.HandlerFunc {
+func SearchLogs(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Parse search parameters from request
 		var searchRequest APILogSearchRequest
@@ -3914,7 +3783,7 @@ func searchLogs(db *gorm.DB) gin.HandlerFunc {
 // @Failure 401 {object} ErrorResponse "Unauthorized"
 // @Failure 500 {object} ErrorResponse "Internal server error"
 // @Router /logs/hourly [get]
-func getHourlyLogStats(db *gorm.DB) gin.HandlerFunc {
+func GetHourlyLogStats(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Calculate the time range - last hour
 		now := time.Now()
@@ -3972,7 +3841,7 @@ func getHourlyLogStats(db *gorm.DB) gin.HandlerFunc {
 // @Failure 500 {object} ErrorResponse "Internal server error"
 // @Router /health/tools [get]
 // @Security ApiKeyAuth
-func getHealthTools(db *gorm.DB) gin.HandlerFunc {
+func GetHealthTools(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Check for authentication
 		_, exists := c.Get("user")
@@ -4026,7 +3895,7 @@ func getHealthTools(db *gorm.DB) gin.HandlerFunc {
 // @Failure 500 {object} ErrorResponse "Internal server error"
 // @Router /hosts/{name}/health [get]
 // @Security ApiKeyAuth
-func getHostHealth(db *gorm.DB, monokitHostname string) gin.HandlerFunc {
+func GetHostHealth(db *gorm.DB, monokitHostname string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		hostName := c.Param("name")
 		var host Host
@@ -4126,7 +3995,7 @@ func getHostHealth(db *gorm.DB, monokitHostname string) gin.HandlerFunc {
 // @Failure 500 {object} ErrorResponse "Internal server error"
 // @Router /host/health/{tool} [post]
 // @Security ApiKeyAuth
-func postHostHealth(db *gorm.DB) gin.HandlerFunc {
+func PostHostHealth(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		hostName, exists := c.Get("hostname")
 		if !exists {
@@ -4241,7 +4110,7 @@ func postHostHealth(db *gorm.DB) gin.HandlerFunc {
 // @Failure 500 {object} ErrorResponse "Internal server error"
 // @Router /hosts/{name}/health/{tool} [get]
 // @Security ApiKeyAuth
-func getHostToolHealth(db *gorm.DB, monokitHostname string) gin.HandlerFunc {
+func GetHostToolHealth(db *gorm.DB, monokitHostname string) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		hostName := c.Param("name")
 		toolName := c.Param("tool")
