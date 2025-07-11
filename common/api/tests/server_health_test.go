@@ -66,7 +66,7 @@ func TestPostHostHealth_Success(t *testing.T) {
 
 	c, w := CreateRequestContext("POST", "/api/v1/host/health/mysql", healthData)
 	SetPathParams(c, map[string]string{"tool": "mysql"})
-	c.Set("host", host)
+	c.Set("hostname", host.Name)
 
 	handler := server.ExportPostHostHealth(db)
 	handler(c)
@@ -75,10 +75,10 @@ func TestPostHostHealth_Success(t *testing.T) {
 
 	// Verify health data was saved
 	var savedHealth models.HostHealthData
-	err := db.Where("host_name = ? AND tool = ?", "health-host", "mysql").First(&savedHealth).Error
+	err := db.Where("host_name = ? AND tool_name = ?", "health-host", "mysql").First(&savedHealth).Error
 	require.NoError(t, err)
-	assert.Equal(t, "mysql", savedHealth.Tool)
-	assert.Equal(t, "healthy", savedHealth.Status)
+	assert.Equal(t, "mysql", savedHealth.ToolName)
+	assert.Contains(t, savedHealth.DataJSON, "healthy")
 }
 
 func TestPostHostHealth_InvalidJSON(t *testing.T) {
@@ -89,7 +89,7 @@ func TestPostHostHealth_InvalidJSON(t *testing.T) {
 
 	c, w := CreateRequestContext("POST", "/api/v1/host/health/mysql", "invalid json")
 	SetPathParams(c, map[string]string{"tool": "mysql"})
-	c.Set("host", host)
+	c.Set("hostname", host.Name)
 
 	handler := server.ExportPostHostHealth(db)
 	handler(c)
@@ -128,7 +128,7 @@ func TestPostHostHealth_MissingTool(t *testing.T) {
 
 	c, w := CreateRequestContext("POST", "/api/v1/host/health/", healthData)
 	// No tool in path params
-	c.Set("host", host)
+	c.Set("hostname", host.Name)
 
 	handler := server.ExportPostHostHealth(db)
 	handler(c)
@@ -141,7 +141,7 @@ func TestGetHostHealth_Success(t *testing.T) {
 	defer CleanupTestDB(db)
 
 	user := SetupTestUser(t, db, "health_viewer")
-	host := SetupTestHost(t, db, "target-host")
+	_ = SetupTestHost(t, db, "target-host")
 
 	// Create test health data
 	createTestHealthData(t, db, "target-host", "mysql", "healthy", `{"connections":50}`)
@@ -182,7 +182,7 @@ func TestGetHostHealth_EmptyHealthData(t *testing.T) {
 	defer CleanupTestDB(db)
 
 	user := SetupTestUser(t, db, "health_viewer")
-	host := SetupTestHost(t, db, "empty-health-host")
+	_ = SetupTestHost(t, db, "empty-health-host")
 
 	c, w := CreateRequestContext("GET", "/api/v1/hosts/empty-health-host/health", nil)
 	SetPathParams(c, map[string]string{"name": "empty-health-host"})
@@ -203,7 +203,7 @@ func TestGetHostToolHealth_Success(t *testing.T) {
 	defer CleanupTestDB(db)
 
 	user := SetupTestUser(t, db, "health_viewer")
-	host := SetupTestHost(t, db, "tool-host")
+	_ = SetupTestHost(t, db, "tool-host")
 
 	// Create specific tool health data
 	createTestHealthData(t, db, "tool-host", "mysql", "healthy", `{"connections":25,"uptime":7200}`)
@@ -227,7 +227,7 @@ func TestGetHostToolHealth_ToolNotFound(t *testing.T) {
 	defer CleanupTestDB(db)
 
 	user := SetupTestUser(t, db, "health_viewer")
-	host := SetupTestHost(t, db, "tool-host")
+	_ = SetupTestHost(t, db, "tool-host")
 
 	c, w := CreateRequestContext("GET", "/api/v1/hosts/tool-host/health/nonexistent", nil)
 	SetPathParams(c, map[string]string{"name": "tool-host", "tool": "nonexistent"})
@@ -292,7 +292,7 @@ func TestPostHostHealth_MultipleTools(t *testing.T) {
 
 		c, w := CreateRequestContext("POST", "/api/v1/host/health/"+tool.name, healthData)
 		SetPathParams(c, map[string]string{"tool": tool.name})
-		c.Set("host", host)
+		c.Set("hostname", host.Name)
 
 		handler := server.ExportPostHostHealth(db)
 		handler(c)
@@ -327,7 +327,7 @@ func TestPostHostHealth_UpdateExisting(t *testing.T) {
 
 	c, w := CreateRequestContext("POST", "/api/v1/host/health/mysql", updatedHealthData)
 	SetPathParams(c, map[string]string{"tool": "mysql"})
-	c.Set("host", host)
+	c.Set("hostname", host.Name)
 
 	handler := server.ExportPostHostHealth(db)
 	handler(c)
@@ -336,10 +336,10 @@ func TestPostHostHealth_UpdateExisting(t *testing.T) {
 
 	// Verify data was updated
 	var updatedHealth models.HostHealthData
-	err := db.Where("host_name = ? AND tool = ?", "update-health-host", "mysql").First(&updatedHealth).Error
+	err := db.Where("host_name = ? AND tool_name = ?", "update-health-host", "mysql").First(&updatedHealth).Error
 	require.NoError(t, err)
-	assert.Equal(t, "warning", updatedHealth.Status)
-	assert.Contains(t, updatedHealth.Data, "slow_queries")
+	assert.Contains(t, updatedHealth.DataJSON, "warning")
+	assert.Contains(t, updatedHealth.DataJSON, "slow_queries")
 }
 
 func TestPostHostHealth_LargeHealthData(t *testing.T) {
@@ -362,7 +362,7 @@ func TestPostHostHealth_LargeHealthData(t *testing.T) {
 
 	c, w := CreateRequestContext("POST", "/api/v1/host/health/stress-test", healthData)
 	SetPathParams(c, map[string]string{"tool": "stress-test"})
-	c.Set("host", host)
+	c.Set("hostname", host.Name)
 
 	handler := server.ExportPostHostHealth(db)
 	handler(c)
@@ -371,10 +371,10 @@ func TestPostHostHealth_LargeHealthData(t *testing.T) {
 
 	// Verify large data was saved
 	var savedHealth models.HostHealthData
-	err := db.Where("host_name = ? AND tool = ?", "large-data-host", "stress-test").First(&savedHealth).Error
+	err := db.Where("host_name = ? AND tool_name = ?", "large-data-host", "stress-test").First(&savedHealth).Error
 	require.NoError(t, err)
-	assert.Equal(t, "stress-test", savedHealth.Tool)
-	assert.Contains(t, savedHealth.Data, "metric_999")
+	assert.Equal(t, "stress-test", savedHealth.ToolName)
+	assert.Contains(t, savedHealth.DataJSON, "metric_999")
 }
 
 func TestPostHostHealth_InvalidStatus(t *testing.T) {
@@ -393,7 +393,7 @@ func TestPostHostHealth_InvalidStatus(t *testing.T) {
 
 	c, w := CreateRequestContext("POST", "/api/v1/host/health/mysql", healthData)
 	SetPathParams(c, map[string]string{"tool": "mysql"})
-	c.Set("host", host)
+	c.Set("hostname", host.Name)
 
 	handler := server.ExportPostHostHealth(db)
 	handler(c)
@@ -407,7 +407,7 @@ func TestGetHostHealth_WithTimestamps(t *testing.T) {
 	defer CleanupTestDB(db)
 
 	user := SetupTestUser(t, db, "health_viewer")
-	host := SetupTestHost(t, db, "timestamp-host")
+	_ = SetupTestHost(t, db, "timestamp-host")
 
 	// Create health data with different timestamps
 	now := time.Now()
@@ -447,7 +447,7 @@ func TestHealthData_Concurrent(t *testing.T) {
 	for i := 0; i < 5; i++ {
 		c, w := CreateRequestContext("POST", "/api/v1/host/health/mysql", healthData)
 		SetPathParams(c, map[string]string{"tool": "mysql"})
-		c.Set("host", host)
+		c.Set("hostname", host.Name)
 
 		handler := server.ExportPostHostHealth(db)
 		handler(c)
@@ -457,7 +457,7 @@ func TestHealthData_Concurrent(t *testing.T) {
 
 	// Should have one entry (upsert behavior)
 	var healthCount int64
-	db.Model(&models.HostHealthData{}).Where("host_name = ? AND tool = ?", "concurrent-host", "mysql").Count(&healthCount)
+	db.Model(&models.HostHealthData{}).Where("host_name = ? AND tool_name = ?", "concurrent-host", "mysql").Count(&healthCount)
 	assert.Equal(t, int64(1), healthCount)
 }
 
@@ -468,12 +468,14 @@ func createTestHealthData(t *testing.T, db *gorm.DB, hostName, tool, status, dat
 }
 
 func createTestHealthDataWithTime(t *testing.T, db *gorm.DB, hostName, tool, status, data string, timestamp time.Time) models.HostHealthData {
+	// Combine status and data into a JSON string for DataJSON field
+	combinedData := fmt.Sprintf(`{"status":"%s","data":%s}`, status, data)
+
 	healthData := models.HostHealthData{
-		HostName:  hostName,
-		Tool:      tool,
-		Status:    status,
-		Data:      data,
-		Timestamp: timestamp,
+		HostName:    hostName,
+		ToolName:    tool,
+		DataJSON:    combinedData,
+		LastUpdated: timestamp,
 	}
 	result := db.Create(&healthData)
 	require.NoError(t, result.Error)

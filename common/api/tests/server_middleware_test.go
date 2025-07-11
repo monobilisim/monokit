@@ -18,9 +18,9 @@ func TestAuthMiddleware_ValidToken(t *testing.T) {
 	defer CleanupTestDB(db)
 
 	user := SetupTestUser(t, db, "testuser")
-	session := SetupTestSession(t, db, user, "valid_token_123")
+	_ = SetupTestSession(t, db, user, "valid_token_123")
 
-	c, w := CreateRequestContext("GET", "/api/v1/test", nil)
+	c, _ := CreateRequestContext("GET", "/api/v1/test", nil)
 	c.Request.Header.Set("Authorization", "valid_token_123")
 
 	// Create middleware and test
@@ -39,9 +39,9 @@ func TestAuthMiddleware_BearerToken(t *testing.T) {
 	defer CleanupTestDB(db)
 
 	user := SetupTestUser(t, db, "testuser")
-	session := SetupTestSession(t, db, user, "bearer_token_456")
+	_ = SetupTestSession(t, db, user, "bearer_token_456")
 
-	c, w := CreateRequestContext("GET", "/api/v1/test", nil)
+	c, _ := CreateRequestContext("GET", "/api/v1/test", nil)
 	c.Request.Header.Set("Authorization", "Bearer bearer_token_456")
 
 	middleware := server.ExportAuthMiddleware(db)
@@ -117,7 +117,7 @@ func TestAuthMiddleware_UserAlreadyInContext(t *testing.T) {
 
 	user := SetupTestUser(t, db, "keycloak_user")
 
-	c, w := CreateRequestContext("GET", "/api/v1/test", nil)
+	c, _ := CreateRequestContext("GET", "/api/v1/test", nil)
 	// Simulate Keycloak middleware already setting user
 	c.Set("user", user)
 
@@ -158,9 +158,9 @@ func TestHostAuthMiddleware_ValidHostKey(t *testing.T) {
 	defer CleanupTestDB(db)
 
 	host := SetupTestHost(t, db, "testhost")
-	hostKey := SetupTestHostKey(t, db, host, "valid_host_key_123")
+	_ = SetupTestHostKey(t, db, host, "valid_host_key_123")
 
-	c, w := CreateRequestContext("GET", "/api/v1/host/config", nil)
+	c, _ := CreateRequestContext("GET", "/api/v1/host/config", nil)
 	c.Request.Header.Set("Authorization", "valid_host_key_123")
 
 	middleware := server.ExportHostAuthMiddleware(db)
@@ -208,9 +208,8 @@ func TestHostAuthMiddleware_ExpiredHostKey(t *testing.T) {
 
 	// Create expired host key
 	expiredKey := models.HostKey{
-		HostID:    host.ID,
-		Key:       "expired_host_key",
-		ExpiresAt: time.Now().Add(-1 * time.Hour), // Expired 1 hour ago
+		Token:    "expired_host_key",
+		HostName: host.Name,
 	}
 	db.Create(&expiredKey)
 
@@ -229,7 +228,7 @@ func TestHostAuthMiddleware_DeletedHost(t *testing.T) {
 	defer CleanupTestDB(db)
 
 	host := SetupTestHost(t, db, "deleted_host")
-	hostKey := SetupTestHostKey(t, db, host, "valid_key_deleted_host")
+	_ = SetupTestHostKey(t, db, host, "valid_key_deleted_host")
 
 	// Delete the host (soft delete)
 	db.Delete(&host)
@@ -244,7 +243,7 @@ func TestHostAuthMiddleware_DeletedHost(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
 
-func TestGenerateToken(t *testing.T) {
+func TestGenerateTokenMiddleware(t *testing.T) {
 	token1 := server.ExportGenerateToken()
 	token2 := server.ExportGenerateToken()
 
@@ -269,11 +268,11 @@ func TestAuthMiddleware_ConcurrentSessions(t *testing.T) {
 	defer CleanupTestDB(db)
 
 	user := SetupTestUser(t, db, "concurrent_user")
-	session1 := SetupTestSession(t, db, user, "concurrent_token_1")
-	session2 := SetupTestSession(t, db, user, "concurrent_token_2")
+	_ = SetupTestSession(t, db, user, "concurrent_token_1")
+	_ = SetupTestSession(t, db, user, "concurrent_token_2")
 
 	// Test first session
-	c1, w1 := CreateRequestContext("GET", "/api/v1/test", nil)
+	c1, _ := CreateRequestContext("GET", "/api/v1/test", nil)
 	c1.Request.Header.Set("Authorization", "concurrent_token_1")
 
 	middleware := server.ExportAuthMiddleware(db)
@@ -282,7 +281,7 @@ func TestAuthMiddleware_ConcurrentSessions(t *testing.T) {
 	assert.False(t, c1.IsAborted())
 
 	// Test second session
-	c2, w2 := CreateRequestContext("GET", "/api/v1/test", nil)
+	c2, _ := CreateRequestContext("GET", "/api/v1/test", nil)
 	c2.Request.Header.Set("Authorization", "concurrent_token_2")
 
 	middleware(c2)
@@ -296,9 +295,9 @@ func TestAuthMiddleware_LongToken(t *testing.T) {
 
 	user := SetupTestUser(t, db, "testuser")
 	longToken := strings.Repeat("a", 1000) // Very long token
-	session := SetupTestSession(t, db, user, longToken)
+	_ = SetupTestSession(t, db, user, longToken)
 
-	c, w := CreateRequestContext("GET", "/api/v1/test", nil)
+	c, _ := CreateRequestContext("GET", "/api/v1/test", nil)
 	c.Request.Header.Set("Authorization", longToken)
 
 	middleware := server.ExportAuthMiddleware(db)
@@ -316,9 +315,9 @@ func TestAuthMiddleware_SpecialCharactersInToken(t *testing.T) {
 
 	user := SetupTestUser(t, db, "testuser")
 	specialToken := "token-with-special-chars_123!@#$%"
-	session := SetupTestSession(t, db, user, specialToken)
+	_ = SetupTestSession(t, db, user, specialToken)
 
-	c, w := CreateRequestContext("GET", "/api/v1/test", nil)
+	c, _ := CreateRequestContext("GET", "/api/v1/test", nil)
 	c.Request.Header.Set("Authorization", specialToken)
 
 	middleware := server.ExportAuthMiddleware(db)
@@ -335,9 +334,9 @@ func TestHostAuthMiddleware_AutoDetectHostFromToken(t *testing.T) {
 	defer CleanupTestDB(db)
 
 	host := SetupTestHost(t, db, "auto-detect-host")
-	hostKey := SetupTestHostKey(t, db, host, "auto_detect_key")
+	_ = SetupTestHostKey(t, db, host, "auto_detect_key")
 
-	c, w := CreateRequestContext("GET", "/api/v1/host/config", nil)
+	c, _ := CreateRequestContext("GET", "/api/v1/host/config", nil)
 	c.Request.Header.Set("Authorization", "auto_detect_key")
 
 	middleware := server.ExportHostAuthMiddleware(db)

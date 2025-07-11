@@ -225,6 +225,51 @@ func ExportEnsureHostInAwx(db *gorm.DB, host Host) (string, error) {
 	return ensureHostInAwx(db, host)
 }
 
+// Export health-related functions for testing
+func ExportGetHealthTools(db *gorm.DB) gin.HandlerFunc {
+	return getHealthTools(db)
+}
+
+func ExportGetHostHealth(db *gorm.DB, monokitHostname string) gin.HandlerFunc {
+	return getHostHealth(db, monokitHostname)
+}
+
+func ExportPostHostHealth(db *gorm.DB) gin.HandlerFunc {
+	return postHostHealth(db)
+}
+
+func ExportGetHostToolHealth(db *gorm.DB, monokitHostname string) gin.HandlerFunc {
+	return getHostToolHealth(db, monokitHostname)
+}
+
+func ExportSubmitHostLog(db *gorm.DB) gin.HandlerFunc {
+	return submitHostLog(db)
+}
+
+func ExportGetAllLogs(db *gorm.DB) gin.HandlerFunc {
+	return getAllLogs(db)
+}
+
+func ExportGetHostLogs(db *gorm.DB) gin.HandlerFunc {
+	return getHostLogs(db)
+}
+
+func ExportSearchLogs(db *gorm.DB) gin.HandlerFunc {
+	return searchLogs(db)
+}
+
+func ExportDeleteLog(db *gorm.DB) gin.HandlerFunc {
+	return deleteLog(db)
+}
+
+func ExportGetHourlyLogStats(db *gorm.DB) gin.HandlerFunc {
+	return getHourlyLogStats(db)
+}
+
+func ExportAuthMiddleware(db *gorm.DB) gin.HandlerFunc {
+	return authMiddleware(db)
+}
+
 func setupDatabase() *gorm.DB {
 	dsn := fmt.Sprintf("host=%s user=%s password=%s dbname=%s port=%s sslmode=disable",
 		ServerConfig.Postgres.Host,

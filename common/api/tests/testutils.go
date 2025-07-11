@@ -37,6 +37,7 @@ func SetupTestDB(t require.TestingT) *gorm.DB {
 		&models.Group{},
 		&models.HostLog{},
 		&models.HostFileConfig{},
+		&models.HostHealthData{},
 	)
 	require.NoError(t, err, "Failed to migrate test database schema")
 
@@ -198,7 +199,7 @@ func SetQueryParams(c *gin.Context, params map[string]string) {
 		queryParts = append(queryParts, fmt.Sprintf("%s=%s", k, v))
 	}
 	queryString := strings.Join(queryParts, "&")
-	
+
 	// Update the request URL with query parameters
 	if c.Request.URL != nil {
 		c.Request.URL.RawQuery = queryString
@@ -221,14 +222,12 @@ func SetupTestSession(t require.TestingT, db *gorm.DB, user models.User, token s
 // SetupTestHostKey creates a test host key
 func SetupTestHostKey(t require.TestingT, db *gorm.DB, host models.Host, key string) models.HostKey {
 	hostKey := models.HostKey{
-		HostID:    host.ID,
-		Key:       key,
-		ExpiresAt: time.Now().Add(24 * time.Hour),
+		Token:    key,
+		HostName: host.Name,
 	}
 	result := db.Create(&hostKey)
 	require.NoError(t, result.Error)
 	return hostKey
-}
 }
 
 // MockGormDB is a wrapper around gorm.DB for testing error conditions.

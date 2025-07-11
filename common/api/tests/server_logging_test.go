@@ -21,7 +21,7 @@ func TestSubmitHostLog_Success(t *testing.T) {
 	defer CleanupTestDB(db)
 
 	host := SetupTestHost(t, db, "log-host")
-	hostKey := SetupTestHostKey(t, db, host, "host_log_key")
+	_ = SetupTestHostKey(t, db, host, "host_log_key")
 
 	logData := server.APILogRequest{
 		Level:     "info",
@@ -36,7 +36,7 @@ func TestSubmitHostLog_Success(t *testing.T) {
 	c.Request.Header.Set("Authorization", "host_log_key")
 
 	// Set up host auth middleware context
-	c.Set("host", host)
+	c.Set("hostname", host.Name)
 
 	handler := server.ExportSubmitHostLog(db)
 	handler(c)
@@ -67,7 +67,7 @@ func TestSubmitHostLog_InvalidLevel(t *testing.T) {
 	}
 
 	c, w := CreateRequestContext("POST", "/api/v1/host/logs", logData)
-	c.Set("host", host)
+	c.Set("hostname", host.Name)
 
 	handler := server.ExportSubmitHostLog(db)
 	handler(c)
@@ -114,7 +114,7 @@ func TestSubmitHostLog_MissingRequiredFields(t *testing.T) {
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
 			c, w := CreateRequestContext("POST", "/api/v1/host/logs", tc.logData)
-			c.Set("host", host)
+			c.Set("hostname", host.Name)
 
 			handler := server.ExportSubmitHostLog(db)
 			handler(c)
@@ -434,7 +434,7 @@ func TestLogSubmission_LargeMessage(t *testing.T) {
 	}
 
 	c, w := CreateRequestContext("POST", "/api/v1/host/logs", logData)
-	c.Set("host", host)
+	c.Set("hostname", host.Name)
 
 	handler := server.ExportSubmitHostLog(db)
 	handler(c)
@@ -464,7 +464,7 @@ func TestLogSubmission_SpecialCharacters(t *testing.T) {
 	}
 
 	c, w := CreateRequestContext("POST", "/api/v1/host/logs", logData)
-	c.Set("host", host)
+	c.Set("hostname", host.Name)
 
 	handler := server.ExportSubmitHostLog(db)
 	handler(c)
@@ -481,10 +481,10 @@ func TestLogSubmission_SpecialCharacters(t *testing.T) {
 // Helper functions
 
 func setupHostLogContext(t *testing.T, db *gorm.DB, host models.Host) *gin.Context {
-	hostKey := SetupTestHostKey(t, db, host, "host_log_key")
+	_ = SetupTestHostKey(t, db, host, "host_log_key")
 	c, _ := CreateRequestContext("POST", "/api/v1/host/logs", nil)
 	c.Request.Header.Set("Authorization", "host_log_key")
-	c.Set("host", host)
+	c.Set("hostname", host.Name)
 	return c
 }
 

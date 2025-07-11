@@ -122,9 +122,9 @@ func TestGetAllHosts_Success(t *testing.T) {
 	defer CleanupTestDB(db)
 
 	// Create test hosts
-	host1 := SetupTestHost(t, db, "host1")
-	host2 := SetupTestHost(t, db, "host2")
-	host3 := SetupTestHost(t, db, "host3")
+	_ = SetupTestHost(t, db, "host1")
+	_ = SetupTestHost(t, db, "host2")
+	_ = SetupTestHost(t, db, "host3")
 
 	c, w := CreateRequestContext("GET", "/api/v1/hosts", nil)
 
@@ -332,15 +332,15 @@ func TestGetAssignedHosts_WithUser(t *testing.T) {
 	// Create hosts with different groups
 	host1 := SetupTestHost(t, db, "web-host")
 	host1.Groups = "web-servers"
-	db.Save(&host1)
+	require.NoError(t, db.Save(&host1).Error)
 
 	host2 := SetupTestHost(t, db, "db-host")
 	host2.Groups = "db-servers"
-	db.Save(&host2)
+	require.NoError(t, db.Save(&host2).Error)
 
 	host3 := SetupTestHost(t, db, "other-host")
 	host3.Groups = "other-group"
-	db.Save(&host3)
+	require.NoError(t, db.Save(&host3).Error)
 
 	c, w := CreateRequestContext("GET", "/api/v1/hosts/assigned", nil)
 	AuthorizeContext(c, user)
@@ -371,8 +371,8 @@ func TestGetAssignedHosts_AdminUser(t *testing.T) {
 	admin := SetupTestAdmin(t, db)
 
 	// Create test hosts
-	host1 := SetupTestHost(t, db, "host1")
-	host2 := SetupTestHost(t, db, "host2")
+	_ = SetupTestHost(t, db, "host1")
+	_ = SetupTestHost(t, db, "host2")
 
 	c, w := CreateRequestContext("GET", "/api/v1/hosts/assigned", nil)
 	AuthorizeContext(c, admin)
