@@ -223,6 +223,12 @@ func GetReq(apiVersion string) (map[string]interface{}, error) {
 
 	defer resp.Body.Close()
 
+	// Check HTTP status code
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(body))
+	}
+
 	// Demarshal the response
 	var host map[string]interface{}
 	json.NewDecoder(resp.Body).Decode(&host)
