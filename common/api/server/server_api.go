@@ -573,6 +573,14 @@ func hostAuthMiddleware(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		// Verify that the associated host still exists and is not soft-deleted
+		var host Host
+		if err := db.Where("name = ?", hostKey.HostName).First(&host).Error; err != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Associated host not found or deleted"})
+			c.Abort()
+			return
+		}
+
 		// Set the host name in the context for use in handlers
 		c.Set("hostname", hostKey.HostName)
 		c.Next()

@@ -208,21 +208,20 @@ func TestHostAuthMiddleware_MissingHostKey(t *testing.T) {
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 }
 
-func TestHostAuthMiddleware_ExpiredHostKey(t *testing.T) {
+func TestHostAuthMiddleware_OrphanedHostKey(t *testing.T) {
 	db := SetupTestDB(t)
 	defer CleanupTestDB(db)
 
-	host := SetupTestHost(t, db, "testhost")
-
-	// Create expired host key
-	expiredKey := models.HostKey{
-		Token:    "expired_host_key",
-		HostName: host.Name,
+	// Create a host key that references a non-existent host
+	// This simulates a scenario where the host was deleted but the key wasn't cleaned up
+	orphanedKey := models.HostKey{
+		Token:    "orphaned_host_key",
+		HostName: "non_existent_host", // This host doesn't exist
 	}
-	db.Create(&expiredKey)
+	db.Create(&orphanedKey)
 
 	c, w := CreateRequestContext("GET", "/api/v1/host/config", nil)
-	c.Request.Header.Set("Authorization", "expired_host_key")
+	c.Request.Header.Set("Authorization", "orphaned_host_key")
 
 	middleware := server.ExportHostAuthMiddleware(db)
 	middleware(c)
@@ -236,10 +235,23 @@ func TestHostAuthMiddleware_DeletedHost(t *testing.T) {
 	defer CleanupTestDB(db)
 
 	host := SetupTestHost(t, db, "deleted_host")
-	_ = SetupTestHostKey(t, db, host, "valid_key_deleted_host")
+	hostKey := SetupTestHostKey(t, db, host, "valid_key_deleted_host")
 
-	// Delete the host (soft delete)
+	// Verify the host and key were created
+	var foundHost models.Host
+	err := db.Where("name = ?", "deleted_host").First(&foundHost).Error
+	require.NoError(t, err, "Host should exist before deletion")
+
+	var foundKey models.HostKey
+	err = db.Where("token = ?", "valid_key_deleted_host").First(&foundKey).Error
+	require.NoError(t, err, "Host key should exist")
+
+	// Delete the host (soft delete) - this should make the host key invalid
 	db.Delete(&host)
+
+	// Verify the host is soft-deleted (should not be found in normal queries)
+	err = db.Where("name = ?", "deleted_host").First(&foundHost).Error
+	assert.Error(t, err, "Host should not be found after soft deletion")
 
 	c, w := CreateRequestContext("GET", "/api/v1/host/config", nil)
 	c.Request.Header.Set("Authorization", "valid_key_deleted_host")
