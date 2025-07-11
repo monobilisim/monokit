@@ -129,9 +129,12 @@ func TestGetAllHosts_Success(t *testing.T) {
 	user := SetupTestUser(t, db, "hostviewer")
 
 	// Create test hosts
-	_ = SetupTestHost(t, db, "host1")
-	_ = SetupTestHost(t, db, "host2")
-	_ = SetupTestHost(t, db, "host3")
+	host1 := SetupTestHost(t, db, "host1")
+	host2 := SetupTestHost(t, db, "host2")
+	host3 := SetupTestHost(t, db, "host3")
+
+	// Populate global HostsList that getAllHosts uses
+	models.HostsList = []models.Host{host1, host2, host3}
 
 	c, w := CreateRequestContext("GET", "/api/v1/hosts", nil)
 	AuthorizeContext(c, user)
@@ -161,6 +164,9 @@ func TestGetAllHosts_EmptyDatabase(t *testing.T) {
 
 	// Create test user for authentication
 	user := SetupTestUser(t, db, "hostviewer")
+
+	// Ensure global HostsList is empty
+	models.HostsList = []models.Host{}
 
 	c, w := CreateRequestContext("GET", "/api/v1/hosts", nil)
 	AuthorizeContext(c, user)
@@ -441,18 +447,23 @@ func TestHostRegistration_ConcurrentUpdates(t *testing.T) {
 		Inventory:      "default",
 	}
 
-	// Simulate concurrent registrations
-	c1, w1 := CreateRequestContext("POST", "/api/v1/hosts", hostData)
-	c2, w2 := CreateRequestContext("POST", "/api/v1/hosts", hostData)
-
 	handler := server.ExportRegisterHost(db)
 
-	// Both should succeed (upsert behavior)
+	// First registration - creates new host
+	c1, w1 := CreateRequestContext("POST", "/api/v1/hosts", hostData)
 	handler(c1)
-	handler(c2)
+	assert.Equal(t, http.StatusCreated, w1.Code) // First registration creates host
 
-	assert.Equal(t, http.StatusOK, w1.Code)
-	assert.Equal(t, http.StatusOK, w2.Code)
+	// Extract the API key from the first response to use for the second request
+	var firstResponse map[string]interface{}
+	ExtractJSONResponse(t, w1, &firstResponse)
+	apiKey := firstResponse["apiKey"].(string)
+
+	// Second registration - updates existing host with authentication
+	c2, w2 := CreateRequestContext("POST", "/api/v1/hosts", hostData)
+	c2.Request.Header.Set("Authorization", apiKey)
+	handler(c2)
+	assert.Equal(t, http.StatusOK, w2.Code) // Second registration updates host
 
 	// Should only have one host in database
 	var hostCount int64
