@@ -235,7 +235,7 @@ func TestHostAuthMiddleware_DeletedHost(t *testing.T) {
 	defer CleanupTestDB(db)
 
 	host := SetupTestHost(t, db, "deleted_host")
-	hostKey := SetupTestHostKey(t, db, host, "valid_key_deleted_host")
+	_ = SetupTestHostKey(t, db, host, "valid_key_deleted_host")
 
 	// Verify the host and key were created
 	var foundHost models.Host
