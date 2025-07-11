@@ -408,10 +408,8 @@ func TestGetAssignedHosts(t *testing.T) {
 	c3, w3 := CreateRequestContext("GET", "/api/v1/hosts/assigned", nil)
 	handler(c3)
 
-	assert.Equal(t, http.StatusOK, w3.Code)
-	var noAuthHostsResponse []models.Host
-	ExtractJSONResponse(t, w3, &noAuthHostsResponse)
-	assert.Len(t, noAuthHostsResponse, 0)
+	assert.Equal(t, http.StatusUnauthorized, w3.Code)
+	AssertErrorResponse(t, w3, "Authentication required")
 }
 
 func TestHostAuthMiddleware(t *testing.T) {
