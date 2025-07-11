@@ -198,9 +198,37 @@ func SetQueryParams(c *gin.Context, params map[string]string) {
 		queryParts = append(queryParts, fmt.Sprintf("%s=%s", k, v))
 	}
 	queryString := strings.Join(queryParts, "&")
+	
+	// Update the request URL with query parameters
+	if c.Request.URL != nil {
+		c.Request.URL.RawQuery = queryString
+	}
+}
 
-	// Set up request with query string
-	c.Request.URL.RawQuery = queryString
+// SetupTestSession creates a test session with a custom token
+func SetupTestSession(t require.TestingT, db *gorm.DB, user models.User, token string) models.Session {
+	session := models.Session{
+		Token:   token,
+		UserID:  user.ID,
+		User:    user,
+		Timeout: time.Now().Add(24 * time.Hour),
+	}
+	result := db.Create(&session)
+	require.NoError(t, result.Error)
+	return session
+}
+
+// SetupTestHostKey creates a test host key
+func SetupTestHostKey(t require.TestingT, db *gorm.DB, host models.Host, key string) models.HostKey {
+	hostKey := models.HostKey{
+		HostID:    host.ID,
+		Key:       key,
+		ExpiresAt: time.Now().Add(24 * time.Hour),
+	}
+	result := db.Create(&hostKey)
+	require.NoError(t, result.Error)
+	return hostKey
+}
 }
 
 // MockGormDB is a wrapper around gorm.DB for testing error conditions.
