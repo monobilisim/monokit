@@ -11,7 +11,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/monobilisim/monokit/common/api/models"
-	"github.com/monobilisim/monokit/common/api/server"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -39,7 +38,7 @@ func TestSubmitHostLog_Success(t *testing.T) {
 	// Set up host auth middleware context
 	c.Set("hostname", host.Name)
 
-	handler := server.ExportSubmitHostLog(db)
+	handler := ExportSubmitHostLog(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -69,7 +68,7 @@ func TestSubmitHostLog_InvalidLevel(t *testing.T) {
 	c, w := CreateRequestContext("POST", "/api/v1/host/logs", logData)
 	c.Set("hostname", host.Name)
 
-	handler := server.ExportSubmitHostLog(db)
+	handler := ExportSubmitHostLog(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
@@ -116,7 +115,7 @@ func TestSubmitHostLog_MissingRequiredFields(t *testing.T) {
 			c, w := CreateRequestContext("POST", "/api/v1/host/logs", tc.logData)
 			c.Set("hostname", host.Name)
 
-			handler := server.ExportSubmitHostLog(db)
+			handler := ExportSubmitHostLog(db)
 			handler(c)
 
 			assert.Equal(t, http.StatusBadRequest, w.Code)
@@ -138,7 +137,7 @@ func TestSubmitHostLog_NoHostInContext(t *testing.T) {
 	c, w := CreateRequestContext("POST", "/api/v1/host/logs", logData)
 	// No host set in context
 
-	handler := server.ExportSubmitHostLog(db)
+	handler := ExportSubmitHostLog(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
@@ -158,7 +157,7 @@ func TestGetAllLogs_Success(t *testing.T) {
 	c, w := CreateRequestContext("GET", "/api/v1/logs", nil)
 	AuthorizeContext(c, user)
 
-	handler := server.ExportGetAllLogs(db)
+	handler := ExportGetAllLogs(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -185,7 +184,7 @@ func TestGetAllLogs_WithPagination(t *testing.T) {
 	SetQueryParams(c, map[string]string{"page": "2", "page_size": "50"})
 	AuthorizeContext(c, user)
 
-	handler := server.ExportGetAllLogs(db)
+	handler := ExportGetAllLogs(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -213,7 +212,7 @@ func TestGetHostLogs_Success(t *testing.T) {
 	SetPathParams(c, map[string]string{"hostname": "target-host"})
 	AuthorizeContext(c, user)
 
-	handler := server.ExportGetHostLogs(db)
+	handler := ExportGetHostLogs(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -240,7 +239,7 @@ func TestGetHostLogs_HostNotFound(t *testing.T) {
 	SetPathParams(c, map[string]string{"hostname": "nonexistent-host"})
 	AuthorizeContext(c, user)
 
-	handler := server.ExportGetHostLogs(db)
+	handler := ExportGetHostLogs(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -274,7 +273,7 @@ func TestSearchLogs_Success(t *testing.T) {
 	c, w := CreateRequestContext("POST", "/api/v1/logs/search", searchRequest)
 	AuthorizeContext(c, user)
 
-	handler := server.ExportSearchLogs(db)
+	handler := ExportSearchLogs(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -317,7 +316,7 @@ func TestSearchLogs_WithTimeRange(t *testing.T) {
 	c, w := CreateRequestContext("POST", "/api/v1/logs/search", searchRequest)
 	AuthorizeContext(c, user)
 
-	handler := server.ExportSearchLogs(db)
+	handler := ExportSearchLogs(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -344,7 +343,7 @@ func TestDeleteLog_Success(t *testing.T) {
 	SetPathParams(c, map[string]string{"id": logIDStr})
 	AuthorizeContext(c, user)
 
-	handler := server.ExportDeleteLog(db)
+	handler := ExportDeleteLog(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -365,7 +364,7 @@ func TestDeleteLog_NotFound(t *testing.T) {
 	SetPathParams(c, map[string]string{"id": "99999"})
 	AuthorizeContext(c, user)
 
-	handler := server.ExportDeleteLog(db)
+	handler := ExportDeleteLog(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
@@ -383,7 +382,7 @@ func TestDeleteLog_NonAdmin(t *testing.T) {
 	SetPathParams(c, map[string]string{"id": logIDStr})
 	AuthorizeContext(c, user)
 
-	handler := server.ExportDeleteLog(db)
+	handler := ExportDeleteLog(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusForbidden, w.Code)
@@ -409,7 +408,7 @@ func TestGetHourlyLogStats_Success(t *testing.T) {
 	c, w := CreateRequestContext("GET", "/api/v1/logs/hourly", nil)
 	AuthorizeContext(c, user)
 
-	handler := server.ExportGetHourlyLogStats(db)
+	handler := ExportGetHourlyLogStats(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -438,7 +437,7 @@ func TestLogSubmission_LargeMessage(t *testing.T) {
 	c, w := CreateRequestContext("POST", "/api/v1/host/logs", logData)
 	c.Set("hostname", host.Name)
 
-	handler := server.ExportSubmitHostLog(db)
+	handler := ExportSubmitHostLog(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -468,7 +467,7 @@ func TestLogSubmission_SpecialCharacters(t *testing.T) {
 	c, w := CreateRequestContext("POST", "/api/v1/host/logs", logData)
 	c.Set("hostname", host.Name)
 
-	handler := server.ExportSubmitHostLog(db)
+	handler := ExportSubmitHostLog(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)

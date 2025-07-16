@@ -12,7 +12,6 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/monobilisim/monokit/common/api/models"
-	"github.com/monobilisim/monokit/common/api/server"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 	"gorm.io/gorm"
@@ -27,7 +26,7 @@ func TestGetHealthTools_Success(t *testing.T) {
 	c, w := CreateRequestContext("GET", "/api/v1/health/tools", nil)
 	AuthorizeContext(c, user)
 
-	handler := server.ExportGetHealthTools(db)
+	handler := ExportGetHealthTools(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -44,7 +43,7 @@ func TestGetHealthTools_Unauthorized(t *testing.T) {
 	c, w := CreateRequestContext("GET", "/api/v1/health/tools", nil)
 	// No user in context
 
-	handler := server.ExportGetHealthTools(db)
+	handler := ExportGetHealthTools(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
@@ -71,7 +70,7 @@ func TestPostHostHealth_Success(t *testing.T) {
 	SetPathParams(c, map[string]string{"tool": "mysql"})
 	c.Set("hostname", host.Name)
 
-	handler := server.ExportPostHostHealth(db)
+	handler := ExportPostHostHealth(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -103,7 +102,7 @@ func TestPostHostHealth_InvalidJSON(t *testing.T) {
 	SetPathParams(c, map[string]string{"tool": "mysql"})
 	c.Set("hostname", host.Name)
 
-	handler := server.ExportPostHostHealth(db)
+	handler := ExportPostHostHealth(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
@@ -122,7 +121,7 @@ func TestPostHostHealth_NoHostInContext(t *testing.T) {
 	SetPathParams(c, map[string]string{"tool": "mysql"})
 	// No host in context
 
-	handler := server.ExportPostHostHealth(db)
+	handler := ExportPostHostHealth(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
@@ -142,7 +141,7 @@ func TestPostHostHealth_MissingTool(t *testing.T) {
 	// No tool in path params
 	c.Set("hostname", host.Name)
 
-	handler := server.ExportPostHostHealth(db)
+	handler := ExportPostHostHealth(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
@@ -163,7 +162,7 @@ func TestGetHostHealth_Success(t *testing.T) {
 	SetPathParams(c, map[string]string{"name": "target-host"})
 	AuthorizeContext(c, user)
 
-	handler := server.ExportGetHostHealth(db, "monokit-server")
+	handler := ExportGetHostHealth(db, "monokit-server")
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -183,7 +182,7 @@ func TestGetHostHealth_HostNotFound(t *testing.T) {
 	SetPathParams(c, map[string]string{"name": "nonexistent"})
 	AuthorizeContext(c, user)
 
-	handler := server.ExportGetHostHealth(db, "monokit-server")
+	handler := ExportGetHostHealth(db, "monokit-server")
 	handler(c)
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
@@ -200,7 +199,7 @@ func TestGetHostHealth_EmptyHealthData(t *testing.T) {
 	SetPathParams(c, map[string]string{"name": "empty-health-host"})
 	AuthorizeContext(c, user)
 
-	handler := server.ExportGetHostHealth(db, "monokit-server")
+	handler := ExportGetHostHealth(db, "monokit-server")
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -224,7 +223,7 @@ func TestGetHostToolHealth_Success(t *testing.T) {
 	SetPathParams(c, map[string]string{"name": "tool-host", "tool": "mysql"})
 	AuthorizeContext(c, user)
 
-	handler := server.ExportGetHostToolHealth(db, "monokit-server")
+	handler := ExportGetHostToolHealth(db, "monokit-server")
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -245,7 +244,7 @@ func TestGetHostToolHealth_ToolNotFound(t *testing.T) {
 	SetPathParams(c, map[string]string{"name": "tool-host", "tool": "nonexistent"})
 	AuthorizeContext(c, user)
 
-	handler := server.ExportGetHostToolHealth(db, "monokit-server")
+	handler := ExportGetHostToolHealth(db, "monokit-server")
 	handler(c)
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
@@ -261,7 +260,7 @@ func TestGetHostToolHealth_HostNotFound(t *testing.T) {
 	SetPathParams(c, map[string]string{"name": "nonexistent", "tool": "mysql"})
 	AuthorizeContext(c, user)
 
-	handler := server.ExportGetHostToolHealth(db, "monokit-server")
+	handler := ExportGetHostToolHealth(db, "monokit-server")
 	handler(c)
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
@@ -306,7 +305,7 @@ func TestPostHostHealth_MultipleTools(t *testing.T) {
 		SetPathParams(c, map[string]string{"tool": tool.name})
 		c.Set("hostname", host.Name)
 
-		handler := server.ExportPostHostHealth(db)
+		handler := ExportPostHostHealth(db)
 		handler(c)
 
 		assert.Equal(t, http.StatusOK, w.Code)
@@ -341,7 +340,7 @@ func TestPostHostHealth_UpdateExisting(t *testing.T) {
 	SetPathParams(c, map[string]string{"tool": "mysql"})
 	c.Set("hostname", host.Name)
 
-	handler := server.ExportPostHostHealth(db)
+	handler := ExportPostHostHealth(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -376,7 +375,7 @@ func TestPostHostHealth_LargeHealthData(t *testing.T) {
 	SetPathParams(c, map[string]string{"tool": "stress-test"})
 	c.Set("hostname", host.Name)
 
-	handler := server.ExportPostHostHealth(db)
+	handler := ExportPostHostHealth(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -407,7 +406,7 @@ func TestPostHostHealth_InvalidStatus(t *testing.T) {
 	SetPathParams(c, map[string]string{"tool": "mysql"})
 	c.Set("hostname", host.Name)
 
-	handler := server.ExportPostHostHealth(db)
+	handler := ExportPostHostHealth(db)
 	handler(c)
 
 	// Should still succeed - validation might be lenient
@@ -430,7 +429,7 @@ func TestGetHostHealth_WithTimestamps(t *testing.T) {
 	SetPathParams(c, map[string]string{"name": "timestamp-host"})
 	AuthorizeContext(c, user)
 
-	handler := server.ExportGetHostHealth(db, "monokit-server")
+	handler := ExportGetHostHealth(db, "monokit-server")
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -461,7 +460,7 @@ func TestHealthData_Concurrent(t *testing.T) {
 		SetPathParams(c, map[string]string{"tool": "mysql"})
 		c.Set("hostname", host.Name)
 
-		handler := server.ExportPostHostHealth(db)
+		handler := ExportPostHostHealth(db)
 		handler(c)
 
 		assert.Equal(t, http.StatusOK, w.Code)

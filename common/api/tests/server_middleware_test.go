@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/monobilisim/monokit/common/api/models"
-	"github.com/monobilisim/monokit/common/api/server"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -25,7 +24,7 @@ func TestAuthMiddleware_ValidToken(t *testing.T) {
 	c.Request.Header.Set("Authorization", "valid_token_123")
 
 	// Create middleware and test
-	middleware := server.ExportAuthMiddleware(db)
+	middleware := ExportAuthMiddleware(db)
 	middleware(c)
 
 	// Should not abort and should set user in context
@@ -45,7 +44,7 @@ func TestAuthMiddleware_BearerToken(t *testing.T) {
 	c, _ := CreateRequestContext("GET", "/api/v1/test", nil)
 	c.Request.Header.Set("Authorization", "Bearer bearer_token_456")
 
-	middleware := server.ExportAuthMiddleware(db)
+	middleware := ExportAuthMiddleware(db)
 	middleware(c)
 
 	assert.False(t, c.IsAborted())
@@ -61,7 +60,7 @@ func TestAuthMiddleware_InvalidToken(t *testing.T) {
 	c, w := CreateRequestContext("GET", "/api/v1/test", nil)
 	c.Request.Header.Set("Authorization", "invalid_token")
 
-	middleware := server.ExportAuthMiddleware(db)
+	middleware := ExportAuthMiddleware(db)
 	middleware(c)
 
 	assert.True(t, c.IsAborted())
@@ -75,7 +74,7 @@ func TestAuthMiddleware_MissingToken(t *testing.T) {
 	c, w := CreateRequestContext("GET", "/api/v1/test", nil)
 	// No Authorization header set
 
-	middleware := server.ExportAuthMiddleware(db)
+	middleware := ExportAuthMiddleware(db)
 	middleware(c)
 
 	assert.True(t, c.IsAborted())
@@ -100,7 +99,7 @@ func TestAuthMiddleware_ExpiredSession(t *testing.T) {
 	c, w := CreateRequestContext("GET", "/api/v1/test", nil)
 	c.Request.Header.Set("Authorization", "expired_token")
 
-	middleware := server.ExportAuthMiddleware(db)
+	middleware := ExportAuthMiddleware(db)
 	middleware(c)
 
 	assert.True(t, c.IsAborted())
@@ -122,7 +121,7 @@ func TestAuthMiddleware_UserAlreadyInContext(t *testing.T) {
 	// Simulate Keycloak middleware already setting user
 	c.Set("user", user)
 
-	middleware := server.ExportAuthMiddleware(db)
+	middleware := ExportAuthMiddleware(db)
 	middleware(c)
 
 	// Should not abort and should preserve existing user
@@ -146,7 +145,7 @@ func TestAuthMiddleware_WithKeycloakEnabled(t *testing.T) {
 	c, w := CreateRequestContext("GET", "/api/v1/test", nil)
 	c.Request.Header.Set("Authorization", "Bearer invalid_jwt_token")
 
-	middleware := server.ExportAuthMiddleware(db)
+	middleware := ExportAuthMiddleware(db)
 	middleware(c)
 
 	// Should attempt Keycloak auth and fallback to local auth
@@ -171,7 +170,7 @@ func TestHostAuthMiddleware_ValidHostKey(t *testing.T) {
 	c, _ := CreateRequestContext("GET", "/api/v1/host/config", nil)
 	c.Request.Header.Set("Authorization", "valid_host_key_123")
 
-	middleware := server.ExportHostAuthMiddleware(db)
+	middleware := ExportHostAuthMiddleware(db)
 	middleware(c)
 
 	assert.False(t, c.IsAborted())
@@ -187,7 +186,7 @@ func TestHostAuthMiddleware_InvalidHostKey(t *testing.T) {
 	c, w := CreateRequestContext("GET", "/api/v1/host/config", nil)
 	c.Request.Header.Set("Authorization", "invalid_host_key")
 
-	middleware := server.ExportHostAuthMiddleware(db)
+	middleware := ExportHostAuthMiddleware(db)
 	middleware(c)
 
 	assert.True(t, c.IsAborted())
@@ -201,7 +200,7 @@ func TestHostAuthMiddleware_MissingHostKey(t *testing.T) {
 	c, w := CreateRequestContext("GET", "/api/v1/host/config", nil)
 	// No Authorization header
 
-	middleware := server.ExportHostAuthMiddleware(db)
+	middleware := ExportHostAuthMiddleware(db)
 	middleware(c)
 
 	assert.True(t, c.IsAborted())
@@ -223,7 +222,7 @@ func TestHostAuthMiddleware_OrphanedHostKey(t *testing.T) {
 	c, w := CreateRequestContext("GET", "/api/v1/host/config", nil)
 	c.Request.Header.Set("Authorization", "orphaned_host_key")
 
-	middleware := server.ExportHostAuthMiddleware(db)
+	middleware := ExportHostAuthMiddleware(db)
 	middleware(c)
 
 	assert.True(t, c.IsAborted())
@@ -256,7 +255,7 @@ func TestHostAuthMiddleware_DeletedHost(t *testing.T) {
 	c, w := CreateRequestContext("GET", "/api/v1/host/config", nil)
 	c.Request.Header.Set("Authorization", "valid_key_deleted_host")
 
-	middleware := server.ExportHostAuthMiddleware(db)
+	middleware := ExportHostAuthMiddleware(db)
 	middleware(c)
 
 	assert.True(t, c.IsAborted())
@@ -264,8 +263,8 @@ func TestHostAuthMiddleware_DeletedHost(t *testing.T) {
 }
 
 func TestGenerateTokenMiddleware(t *testing.T) {
-	token1 := server.ExportGenerateToken()
-	token2 := server.ExportGenerateToken()
+	token1 := ExportGenerateToken()
+	token2 := ExportGenerateToken()
 
 	// Tokens should be non-empty
 	assert.NotEmpty(t, token1)
@@ -295,7 +294,7 @@ func TestAuthMiddleware_ConcurrentSessions(t *testing.T) {
 	c1, _ := CreateRequestContext("GET", "/api/v1/test", nil)
 	c1.Request.Header.Set("Authorization", "concurrent_token_1")
 
-	middleware := server.ExportAuthMiddleware(db)
+	middleware := ExportAuthMiddleware(db)
 	middleware(c1)
 
 	assert.False(t, c1.IsAborted())
@@ -320,7 +319,7 @@ func TestAuthMiddleware_LongToken(t *testing.T) {
 	c, _ := CreateRequestContext("GET", "/api/v1/test", nil)
 	c.Request.Header.Set("Authorization", longToken)
 
-	middleware := server.ExportAuthMiddleware(db)
+	middleware := ExportAuthMiddleware(db)
 	middleware(c)
 
 	assert.False(t, c.IsAborted())
@@ -340,7 +339,7 @@ func TestAuthMiddleware_SpecialCharactersInToken(t *testing.T) {
 	c, _ := CreateRequestContext("GET", "/api/v1/test", nil)
 	c.Request.Header.Set("Authorization", specialToken)
 
-	middleware := server.ExportAuthMiddleware(db)
+	middleware := ExportAuthMiddleware(db)
 	middleware(c)
 
 	assert.False(t, c.IsAborted())
@@ -359,7 +358,7 @@ func TestHostAuthMiddleware_AutoDetectHostFromToken(t *testing.T) {
 	c, _ := CreateRequestContext("GET", "/api/v1/host/config", nil)
 	c.Request.Header.Set("Authorization", "auto_detect_key")
 
-	middleware := server.ExportHostAuthMiddleware(db)
+	middleware := ExportHostAuthMiddleware(db)
 	middleware(c)
 
 	assert.False(t, c.IsAborted())

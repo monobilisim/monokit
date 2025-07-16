@@ -955,7 +955,7 @@ func CreateAwxHost(db *gorm.DB) gin.HandlerFunc {
 				fmt.Printf("Created local host entry: %s (ID=%d)\n", localHost.Name, localHost.ID)
 
 				// Generate an API key for this host
-				token := generateToken()
+				token := GenerateToken()
 				hostKey := HostKey{
 					Token:    token,
 					HostName: localHost.Name,
@@ -1365,7 +1365,7 @@ func ExecuteAwxWorkflowJob(db *gorm.DB) gin.HandlerFunc {
 			// Try to find or create AWX host if we have IP but no AWX ID
 			fmt.Printf("Host %s not registered in AWX, will create it first\n", hostname)
 
-			awxHostId, err := ensureHostInAwx(db, host)
+			awxHostId, err := EnsureHostInAwx(db, host)
 			if err != nil {
 				fmt.Printf("Error ensuring host in AWX: %v\n", err)
 				// Continue anyway as the job might still work with just hostname
@@ -2747,7 +2747,7 @@ func ExecuteAwxJob(db *gorm.DB) gin.HandlerFunc {
 			fmt.Printf("Host %s not registered in AWX, will create it first\n", hostname)
 
 			// Try to find or create AWX host
-			awxHostId, err := ensureHostInAwx(db, host)
+			awxHostId, err := EnsureHostInAwx(db, host)
 			if err != nil {
 				fmt.Printf("Error ensuring host in AWX: %v\n", err)
 				// Continue anyway as the job might still work with just hostname

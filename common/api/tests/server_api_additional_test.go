@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/monobilisim/monokit/common/api/models"
-	"github.com/monobilisim/monokit/common/api/server"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -33,7 +32,7 @@ func TestGetAllInventories_Success(t *testing.T) {
 	c, w := CreateRequestContext("GET", "/api/v1/inventory", nil)
 	AuthorizeContext(c, user)
 
-	handler := server.ExportGetAllInventories(db)
+	handler := ExportGetAllInventories(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -67,7 +66,7 @@ func TestCreateInventory_Success(t *testing.T) {
 	c, w := CreateRequestContext("POST", "/api/v1/inventory", inventoryData)
 	AuthorizeContext(c, user)
 
-	handler := server.ExportCreateInventory(db)
+	handler := ExportCreateInventory(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusCreated, w.Code)
@@ -93,7 +92,7 @@ func TestCreateInventory_InvalidJSON(t *testing.T) {
 	c, w := CreateRequestContext("POST", "/api/v1/inventory", "invalid json")
 	AuthorizeContext(c, user)
 
-	handler := server.ExportCreateInventory(db)
+	handler := ExportCreateInventory(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
@@ -113,7 +112,7 @@ func TestDeleteInventory_Success(t *testing.T) {
 	SetPathParams(c, map[string]string{"name": "to-be-deleted"})
 	AuthorizeContext(c, user)
 
-	handler := server.ExportDeleteInventory(db)
+	handler := ExportDeleteInventory(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -138,7 +137,7 @@ func TestDeleteInventory_NotFound(t *testing.T) {
 	SetPathParams(c, map[string]string{"name": "nonexistent"})
 	AuthorizeContext(c, user)
 
-	handler := server.ExportDeleteInventory(db)
+	handler := ExportDeleteInventory(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
@@ -168,7 +167,7 @@ func TestEnableComponent_Success(t *testing.T) {
 	SetPathParams(c, map[string]string{"name": "component-test-host", "service": "mysql"})
 	AuthorizeContext(c, user)
 
-	handler := server.ExportEnableComponent(db)
+	handler := ExportEnableComponent(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -202,7 +201,7 @@ func TestEnableComponent_AlreadyEnabled(t *testing.T) {
 	SetPathParams(c, map[string]string{"name": "component-test-host", "service": "mysql"})
 	AuthorizeContext(c, user)
 
-	handler := server.ExportEnableComponent(db)
+	handler := ExportEnableComponent(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -225,7 +224,7 @@ func TestEnableComponent_HostNotFound(t *testing.T) {
 	SetPathParams(c, map[string]string{"name": "nonexistent", "service": "mysql"})
 	AuthorizeContext(c, user)
 
-	handler := server.ExportEnableComponent(db)
+	handler := ExportEnableComponent(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -253,7 +252,7 @@ func TestDisableComponent_Success(t *testing.T) {
 	SetPathParams(c, map[string]string{"name": "component-test-host", "service": "mysql"})
 	AuthorizeContext(c, user)
 
-	handler := server.ExportDisableComponent(db)
+	handler := ExportDisableComponent(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -287,7 +286,7 @@ func TestDisableComponent_AlreadyDisabled(t *testing.T) {
 	SetPathParams(c, map[string]string{"name": "component-test-host", "service": "mysql"})
 	AuthorizeContext(c, user)
 
-	handler := server.ExportDisableComponent(db)
+	handler := ExportDisableComponent(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -310,7 +309,7 @@ func TestDisableComponent_HostNotFound(t *testing.T) {
 	SetPathParams(c, map[string]string{"name": "nonexistent", "service": "mysql"})
 	AuthorizeContext(c, user)
 
-	handler := server.ExportDisableComponent(db)
+	handler := ExportDisableComponent(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -338,7 +337,7 @@ func TestGetComponentStatus_Enabled(t *testing.T) {
 	SetPathParams(c, map[string]string{"name": "component-test-host", "service": "mysql"})
 	AuthorizeContext(c, user)
 
-	handler := server.ExportGetComponentStatus()
+	handler := ExportGetComponentStatus()
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -369,7 +368,7 @@ func TestGetComponentStatus_Disabled(t *testing.T) {
 	SetPathParams(c, map[string]string{"name": "component-test-host", "service": "mysql"})
 	AuthorizeContext(c, user)
 
-	handler := server.ExportGetComponentStatus()
+	handler := ExportGetComponentStatus()
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -395,7 +394,7 @@ func TestGetComponentStatus_HostNotFound(t *testing.T) {
 	SetPathParams(c, map[string]string{"name": "nonexistent", "service": "mysql"})
 	AuthorizeContext(c, user)
 
-	handler := server.ExportGetComponentStatus()
+	handler := ExportGetComponentStatus()
 	handler(c)
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
@@ -415,7 +414,7 @@ func TestGetComponentStatus_MissingParams(t *testing.T) {
 	SetPathParams(c, map[string]string{"name": "", "service": "mysql"})
 	AuthorizeContext(c, user)
 
-	handler := server.ExportGetComponentStatus()
+	handler := ExportGetComponentStatus()
 	handler(c)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
@@ -456,7 +455,7 @@ func TestGetAllGroups_Success(t *testing.T) {
 	c, w := CreateRequestContext("GET", "/api/v1/groups", nil)
 	AuthorizeContext(c, user)
 
-	handler := server.ExportGetAllGroups(db)
+	handler := ExportGetAllGroups(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -492,7 +491,7 @@ func TestGetAllGroups_EmptyHostsList(t *testing.T) {
 	c, w := CreateRequestContext("GET", "/api/v1/groups", nil)
 	AuthorizeContext(c, user)
 
-	handler := server.ExportGetAllGroups(db)
+	handler := ExportGetAllGroups(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -520,7 +519,7 @@ func TestGetAllGroups_OnlyNilGroups(t *testing.T) {
 	c, w := CreateRequestContext("GET", "/api/v1/groups", nil)
 	AuthorizeContext(c, user)
 
-	handler := server.ExportGetAllGroups(db)
+	handler := ExportGetAllGroups(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -550,7 +549,7 @@ func TestUpdateHostVersion_Success(t *testing.T) {
 	SetPathParams(c, map[string]string{"name": "version-test-host", "version": "2.0.0"})
 	AuthorizeContext(c, user)
 
-	handler := server.ExportUpdateHostVersion(db)
+	handler := ExportUpdateHostVersion(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -575,7 +574,7 @@ func TestUpdateHostVersion_HostNotFound(t *testing.T) {
 	SetPathParams(c, map[string]string{"name": "nonexistent", "version": "2.0.0"})
 	AuthorizeContext(c, user)
 
-	handler := server.ExportUpdateHostVersion(db)
+	handler := ExportUpdateHostVersion(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -603,7 +602,7 @@ func TestUpdateHostVersion_EmptyVersion(t *testing.T) {
 	SetPathParams(c, map[string]string{"name": "version-test-host", "version": ""})
 	AuthorizeContext(c, user)
 
-	handler := server.ExportUpdateHostVersion(db)
+	handler := ExportUpdateHostVersion(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)

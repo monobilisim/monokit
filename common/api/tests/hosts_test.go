@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/monobilisim/monokit/common/api/models"
-	"github.com/monobilisim/monokit/common/api/server"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -33,7 +32,7 @@ func TestRegisterHost(t *testing.T) {
 	}
 
 	c, w := CreateRequestContext("POST", "/api/v1/host/register", newHost)
-	handler := server.ExportRegisterHost(db)
+	handler := ExportRegisterHost(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusCreated, w.Code)
@@ -145,7 +144,7 @@ func TestGetAllHosts(t *testing.T) {
 	c, w := CreateRequestContext("GET", "/api/v1/hosts", nil)
 	AuthorizeContext(c, adminUser)
 
-	handler := server.ExportGetAllHosts(db)
+	handler := ExportGetAllHosts(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -187,7 +186,7 @@ func TestGetHostByName(t *testing.T) {
 	c, w := CreateRequestContext("GET", "/api/v1/hosts/testhost", nil)
 	SetPathParams(c, map[string]string{"name": "testhost"})
 
-	handler := server.ExportGetHostByName()
+	handler := ExportGetHostByName()
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -217,7 +216,7 @@ func TestDeleteHost(t *testing.T) {
 	AuthorizeContext(c, adminUser)
 	SetPathParams(c, map[string]string{"name": "hosttodelete"})
 
-	handler := server.ExportDeleteHost(db)
+	handler := ExportDeleteHost(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -274,7 +273,7 @@ func TestForceDeleteHost(t *testing.T) {
 	AuthorizeContext(c, adminUser)
 	SetPathParams(c, map[string]string{"name": "hosttoforce"})
 
-	handler := server.ExportForceDeleteHost(db)
+	handler := ExportForceDeleteHost(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -316,7 +315,7 @@ func TestUpdateHost(t *testing.T) {
 	AuthorizeContext(c, adminUser)
 	SetPathParams(c, map[string]string{"name": "hosttoupdate"})
 
-	handler := server.ExportUpdateHost(db)
+	handler := ExportUpdateHost(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -376,7 +375,7 @@ func TestGetAssignedHosts(t *testing.T) {
 	c1, w1 := CreateRequestContext("GET", "/api/v1/hosts/assigned", nil)
 	AuthorizeContext(c1, adminUser)
 
-	handler := server.ExportGetAssignedHosts(db)
+	handler := ExportGetAssignedHosts(db)
 	handler(c1)
 
 	assert.Equal(t, http.StatusOK, w1.Code)
@@ -429,7 +428,7 @@ func TestHostAuthMiddleware(t *testing.T) {
 	c, w := CreateRequestContext("GET", "/api/v1/test", nil)
 	c.Request.Header.Set("Authorization", "valid-host-token")
 
-	middleware := server.ExportHostAuthMiddleware(db)
+	middleware := ExportHostAuthMiddleware(db)
 
 	var middlewareCalled bool
 	var hostNameInContext string
@@ -462,11 +461,11 @@ func TestHostAuthMiddleware(t *testing.T) {
 
 func TestGenerateToken(t *testing.T) {
 	// Test token generation
-	token1 := server.ExportGenerateToken()
+	token1 := ExportGenerateToken()
 	assert.NotEmpty(t, token1)
 	assert.Len(t, token1, 64) // Token should be 64 characters (32 bytes * 2 for hex)
 
 	// Test that tokens are unique
-	token2 := server.ExportGenerateToken()
+	token2 := ExportGenerateToken()
 	assert.NotEqual(t, token1, token2)
 }

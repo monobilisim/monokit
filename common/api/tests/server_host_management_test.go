@@ -7,7 +7,6 @@ import (
 	"testing"
 
 	"github.com/monobilisim/monokit/common/api/models"
-	"github.com/monobilisim/monokit/common/api/server"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -32,7 +31,7 @@ func TestRegisterHost_Success(t *testing.T) {
 
 	c, w := CreateRequestContext("POST", "/api/v1/hosts", hostData)
 
-	handler := server.ExportRegisterHost(db)
+	handler := ExportRegisterHost(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusCreated, w.Code)
@@ -75,7 +74,7 @@ func TestRegisterHost_UpdateExisting(t *testing.T) {
 	c, w := CreateRequestContext("POST", "/api/v1/hosts", updateData)
 	c.Request.Header.Set("Authorization", hostKey.Token)
 
-	handler := server.ExportRegisterHost(db)
+	handler := ExportRegisterHost(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -96,7 +95,7 @@ func TestRegisterHost_InvalidJSON(t *testing.T) {
 
 	c, w := CreateRequestContext("POST", "/api/v1/hosts", "invalid json")
 
-	handler := server.ExportRegisterHost(db)
+	handler := ExportRegisterHost(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
@@ -114,7 +113,7 @@ func TestRegisterHost_MissingRequiredFields(t *testing.T) {
 
 	c, w := CreateRequestContext("POST", "/api/v1/hosts", incompleteHost)
 
-	handler := server.ExportRegisterHost(db)
+	handler := ExportRegisterHost(db)
 	handler(c)
 
 	// Should still succeed but with default values (creates new host)
@@ -139,7 +138,7 @@ func TestGetAllHosts_Success(t *testing.T) {
 	c, w := CreateRequestContext("GET", "/api/v1/hosts", nil)
 	AuthorizeContext(c, user)
 
-	handler := server.ExportGetAllHosts(db)
+	handler := ExportGetAllHosts(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -171,7 +170,7 @@ func TestGetAllHosts_EmptyDatabase(t *testing.T) {
 	c, w := CreateRequestContext("GET", "/api/v1/hosts", nil)
 	AuthorizeContext(c, user)
 
-	handler := server.ExportGetAllHosts(db)
+	handler := ExportGetAllHosts(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -193,7 +192,7 @@ func TestGetHostByName_Success(t *testing.T) {
 	c, w := CreateRequestContext("GET", "/api/v1/hosts/target-host", nil)
 	SetPathParams(c, map[string]string{"name": "target-host"})
 
-	handler := server.ExportGetHostByName()
+	handler := ExportGetHostByName()
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -213,7 +212,7 @@ func TestGetHostByName_NotFound(t *testing.T) {
 	c, w := CreateRequestContext("GET", "/api/v1/hosts/nonexistent", nil)
 	SetPathParams(c, map[string]string{"name": "nonexistent"})
 
-	handler := server.ExportGetHostByName()
+	handler := ExportGetHostByName()
 	handler(c)
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
@@ -229,7 +228,7 @@ func TestDeleteHost_Success(t *testing.T) {
 	c, w := CreateRequestContext("DELETE", "/api/v1/hosts/host-to-delete", nil)
 	SetPathParams(c, map[string]string{"name": "host-to-delete"})
 
-	handler := server.ExportDeleteHost(db)
+	handler := ExportDeleteHost(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -255,7 +254,7 @@ func TestDeleteHost_NotFound(t *testing.T) {
 	c, w := CreateRequestContext("DELETE", "/api/v1/hosts/nonexistent", nil)
 	SetPathParams(c, map[string]string{"name": "nonexistent"})
 
-	handler := server.ExportDeleteHost(db)
+	handler := ExportDeleteHost(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
@@ -271,7 +270,7 @@ func TestForceDeleteHost_Success(t *testing.T) {
 	c, w := CreateRequestContext("DELETE", "/api/v1/hosts/host-to-force-delete/force", nil)
 	SetPathParams(c, map[string]string{"name": "host-to-force-delete"})
 
-	handler := server.ExportForceDeleteHost(db)
+	handler := ExportForceDeleteHost(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -291,7 +290,7 @@ func TestForceDeleteHost_NotFound(t *testing.T) {
 	c, w := CreateRequestContext("DELETE", "/api/v1/hosts/nonexistent/force", nil)
 	SetPathParams(c, map[string]string{"name": "nonexistent"})
 
-	handler := server.ExportForceDeleteHost(db)
+	handler := ExportForceDeleteHost(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
@@ -312,7 +311,7 @@ func TestUpdateHost_Success(t *testing.T) {
 	c, w := CreateRequestContext("PUT", "/api/v1/hosts/host-to-update", updateData)
 	SetPathParams(c, map[string]string{"name": "host-to-update"})
 
-	handler := server.ExportUpdateHost(db)
+	handler := ExportUpdateHost(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -338,7 +337,7 @@ func TestUpdateHost_NotFound(t *testing.T) {
 	c, w := CreateRequestContext("PUT", "/api/v1/hosts/nonexistent", updateData)
 	SetPathParams(c, map[string]string{"name": "nonexistent"})
 
-	handler := server.ExportUpdateHost(db)
+	handler := ExportUpdateHost(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusNotFound, w.Code)
@@ -372,7 +371,7 @@ func TestGetAssignedHosts_WithUser(t *testing.T) {
 	c, w := CreateRequestContext("GET", "/api/v1/hosts/assigned", nil)
 	AuthorizeContext(c, user)
 
-	handler := server.ExportGetAssignedHosts(db)
+	handler := ExportGetAssignedHosts(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -408,7 +407,7 @@ func TestGetAssignedHosts_AdminUser(t *testing.T) {
 	c, w := CreateRequestContext("GET", "/api/v1/hosts/assigned", nil)
 	AuthorizeContext(c, admin)
 
-	handler := server.ExportGetAssignedHosts(db)
+	handler := ExportGetAssignedHosts(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusOK, w.Code)
@@ -427,7 +426,7 @@ func TestGetAssignedHosts_NoUser(t *testing.T) {
 	c, w := CreateRequestContext("GET", "/api/v1/hosts/assigned", nil)
 	// No user in context
 
-	handler := server.ExportGetAssignedHosts(db)
+	handler := ExportGetAssignedHosts(db)
 	handler(c)
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
@@ -447,7 +446,7 @@ func TestHostRegistration_ConcurrentUpdates(t *testing.T) {
 		Inventory:      "default",
 	}
 
-	handler := server.ExportRegisterHost(db)
+	handler := ExportRegisterHost(db)
 
 	// First registration - creates new host
 	c1, w1 := CreateRequestContext("POST", "/api/v1/hosts", hostData)
