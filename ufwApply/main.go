@@ -746,6 +746,11 @@ func execUfwCommand(commands []string) error {
 	for _, command := range commands {
 		cmd := exec.Command("bash", "-c", command)
 
+		// Always append standard sbin/bin locations to PATH
+		env := os.Environ()
+		env = append(env, "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin")
+		cmd.Env = env
+
 		var stdout, stderr strings.Builder
 		cmd.Stdout = &stdout
 		cmd.Stderr = &stderr
