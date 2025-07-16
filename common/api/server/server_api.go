@@ -1816,7 +1816,7 @@ func UpdateHostVersion(db *gorm.DB) gin.HandlerFunc {
 		models.HostsList[idx].WantsUpdateTo = version
 
 		// Update the host in the pgsql database
-		db.Model(&Host{}).Where("name = ?", name).Updates(&models.HostsList[idx])
+		db.Model(&Host{}).Where("name = ?", name).Updates(map[string]interface{}{"WantsUpdateTo": version})
 	}
 }
 
