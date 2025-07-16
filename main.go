@@ -20,6 +20,7 @@ import (
 	"github.com/monobilisim/monokit/daemon"
 	"github.com/monobilisim/monokit/esHealth"
 	"github.com/monobilisim/monokit/lbPolicy"
+	"github.com/monobilisim/monokit/logs"
 	"github.com/monobilisim/monokit/osHealth"
 	"github.com/monobilisim/monokit/shutdownNotifier"
 	"github.com/monobilisim/monokit/sshNotifier"
@@ -609,6 +610,9 @@ Supports pagination for large log sets.`,
 
 	// / Load Balancer Policy
 	RootCmd.AddCommand(lbPolicyCmd)
+
+	// / Logs
+	RootCmd.AddCommand(logs.NewLogsCmd())
 
 	lbPolicyCmd.AddCommand(lbPolicySwitchCmd)
 	lbPolicySwitchCmd.Flags().StringP("server", "s", "", "Server")

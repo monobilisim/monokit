@@ -30,6 +30,11 @@
 ## Core tools
 These core tools will be available in every monokit installation.
 
+- logs
+    - Log viewing tool for monokit.
+    - Allows you to comprehensively filter components using log types, fields, component, date, version and more.
+    - Also has wildcard support for easy searching.
+
 - plugin
     - Plugin management system for monokit.
     - Allows you to install, list, and remove plugins.
