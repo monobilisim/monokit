@@ -39,3 +39,22 @@ awx:
   host_id_map:
     # Add any static host mappings here if needed
     # Format is "hostname": "awx_host_id"
+
+valkey:
+  enabled: true
+  address: "localhost:6379"
+  password: ""  # Leave empty if no password
+  database: 0
+  pool_size: 10
+  min_idle_conns: 2
+  max_idle_conns: 5
+  max_conn_age: 3600     # 1 hour in seconds
+  idle_timeout: 300      # 5 minutes in seconds
+  conn_timeout: 10       # 10 seconds
+  read_timeout: 5        # 5 seconds
+  write_timeout: 5       # 5 seconds
+  default_ttl: 3600      # 1 hour in seconds
+  session_ttl: 86400     # 24 hours in seconds
+  health_ttl: 300        # 5 minutes in seconds
+  host_ttl: 1800         # 30 minutes in seconds
+  key_prefix: "monokit:"

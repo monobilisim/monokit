@@ -45,9 +45,12 @@ import (
 	"strings"
 	"time"
 
+	"context"
+
 	"github.com/gin-gonic/gin"
 	"github.com/monobilisim/monokit/common"
 	"github.com/monobilisim/monokit/common/api/auth"
+	"github.com/monobilisim/monokit/common/api/logbuffer"
 	"github.com/monobilisim/monokit/common/api/models"
 	_ "github.com/monobilisim/monokit/docs"
 	"github.com/rs/zerolog/log"
@@ -82,7 +85,7 @@ type ServerDeps struct {
 	LoadConfig  func()
 	OpenDB      func() (*gorm.DB, error)
 	SetupDB     func(db *gorm.DB)
-	BuildRouter func(db *gorm.DB) *gin.Engine
+	BuildRouter func(db *gorm.DB, ctx context.Context) *gin.Engine
 	RunRouter   func(r *gin.Engine) error
 }
 
@@ -93,7 +96,17 @@ func serverMainWithDeps(deps ServerDeps) {
 		panic("failed to connect database")
 	}
 	deps.SetupDB(db)
-	r := deps.BuildRouter(db)
+
+	// Create and start the log buffer
+	logBufCfg := logbuffer.LoadConfig()
+	logBuf := logbuffer.NewBuffer(db, logBufCfg)
+	logBuf.Start()
+	defer logBuf.Close()
+
+	// Add the buffer to the context
+	ctx := context.WithValue(context.Background(), "logBuffer", logBuf)
+
+	r := deps.BuildRouter(db, ctx)
 	err = deps.RunRouter(r)
 	if err != nil {
 		panic("failed to run router")
@@ -145,10 +158,16 @@ func ServerMain(cmd *cobra.Command, args []string) {
 			FixDuplicateHosts(db)
 			fmt.Println("=============== DUPLICATE HOST FIX COMPLETED (MAIN) ===============")
 		},
-		BuildRouter: func(db *gorm.DB) *gin.Engine {
+		BuildRouter: func(db *gorm.DB, ctx context.Context) *gin.Engine {
 			gin.SetMode(gin.ReleaseMode)
 			r := gin.Default()
 			r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+
+			// Add log buffer to Gin context
+			r.Use(func(c *gin.Context) {
+				c.Set("logBuffer", ctx.Value("logBuffer"))
+				c.Next()
+			})
 
 			monokitHostname, err := os.Hostname()
 			if err != nil {

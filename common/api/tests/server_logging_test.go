@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/monobilisim/monokit/common/api/logbuffer"
 	"github.com/monobilisim/monokit/common/api/models"
 	"github.com/monobilisim/monokit/common/api/server"
 	"github.com/stretchr/testify/assert"
@@ -39,12 +40,20 @@ func TestSubmitHostLog_Success(t *testing.T) {
 	// Set up host auth middleware context
 	c.Set("hostname", host.Name)
 
+	// Set up log buffer
+	cfg := logbuffer.Config{BatchSize: 10, FlushInterval: 1 * time.Second}
+	buf := logbuffer.NewBuffer(db, cfg)
+	buf.Start()
+	defer buf.Close()
+	c.Set("logBuffer", buf)
+
 	handler := ExportSubmitHostLog(db)
 	handler(c)
 
-	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, http.StatusAccepted, w.Code)
 
-	// Verify log was saved
+	// Verify log was saved (eventually)
+	time.Sleep(1500 * time.Millisecond) // Wait for flush
 	var savedLog models.HostLog
 	err := db.Where("host_name = ? AND message = ?", "log-host", "Database connection established").First(&savedLog).Error
 	require.NoError(t, err)
@@ -68,6 +77,13 @@ func TestSubmitHostLog_InvalidLevel(t *testing.T) {
 
 	c, w := CreateRequestContext("POST", "/api/v1/host/logs", logData)
 	c.Set("hostname", host.Name)
+
+	// Set up log buffer
+	cfg := logbuffer.Config{BatchSize: 10, FlushInterval: 1 * time.Second}
+	buf := logbuffer.NewBuffer(db, cfg)
+	buf.Start()
+	defer buf.Close()
+	c.Set("logBuffer", buf)
 
 	handler := ExportSubmitHostLog(db)
 	handler(c)
@@ -116,6 +132,13 @@ func TestSubmitHostLog_MissingRequiredFields(t *testing.T) {
 			c, w := CreateRequestContext("POST", "/api/v1/host/logs", tc.logData)
 			c.Set("hostname", host.Name)
 
+			// Set up log buffer
+			cfg := logbuffer.Config{BatchSize: 10, FlushInterval: 1 * time.Second}
+			buf := logbuffer.NewBuffer(db, cfg)
+			buf.Start()
+			defer buf.Close()
+			c.Set("logBuffer", buf)
+
 			handler := ExportSubmitHostLog(db)
 			handler(c)
 
@@ -137,6 +160,13 @@ func TestSubmitHostLog_NoHostInContext(t *testing.T) {
 
 	c, w := CreateRequestContext("POST", "/api/v1/host/logs", logData)
 	// No host set in context
+
+	// Set up log buffer
+	cfg := logbuffer.Config{BatchSize: 10, FlushInterval: 1 * time.Second}
+	buf := logbuffer.NewBuffer(db, cfg)
+	buf.Start()
+	defer buf.Close()
+	c.Set("logBuffer", buf)
 
 	handler := ExportSubmitHostLog(db)
 	handler(c)
@@ -438,12 +468,20 @@ func TestLogSubmission_LargeMessage(t *testing.T) {
 	c, w := CreateRequestContext("POST", "/api/v1/host/logs", logData)
 	c.Set("hostname", host.Name)
 
+	// Set up log buffer
+	cfg := logbuffer.Config{BatchSize: 10, FlushInterval: 1 * time.Second}
+	buf := logbuffer.NewBuffer(db, cfg)
+	buf.Start()
+	defer buf.Close()
+	c.Set("logBuffer", buf)
+
 	handler := ExportSubmitHostLog(db)
 	handler(c)
 
-	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, http.StatusAccepted, w.Code)
 
 	// Verify large message was saved
+	time.Sleep(1500 * time.Millisecond)
 	var savedLog models.HostLog
 	err := db.Where("host_name = ?", "log-host").First(&savedLog).Error
 	require.NoError(t, err)
@@ -468,12 +506,20 @@ func TestLogSubmission_SpecialCharacters(t *testing.T) {
 	c, w := CreateRequestContext("POST", "/api/v1/host/logs", logData)
 	c.Set("hostname", host.Name)
 
+	// Set up log buffer
+	cfg := logbuffer.Config{BatchSize: 10, FlushInterval: 1 * time.Second}
+	buf := logbuffer.NewBuffer(db, cfg)
+	buf.Start()
+	defer buf.Close()
+	c.Set("logBuffer", buf)
+
 	handler := ExportSubmitHostLog(db)
 	handler(c)
 
-	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Equal(t, http.StatusAccepted, w.Code)
 
 	// Verify special characters were preserved
+	time.Sleep(1500 * time.Millisecond)
 	var savedLog models.HostLog
 	err := db.Where("host_name = ?", "log-host").First(&savedLog).Error
 	require.NoError(t, err)
@@ -492,6 +538,78 @@ func setupHostLogContext(t *testing.T, db *gorm.DB, host models.Host) *gin.Conte
 
 func createTestLog(t *testing.T, db *gorm.DB, hostName, level, component, message string) models.HostLog {
 	return createTestLogWithTime(t, db, hostName, level, component, message, time.Now())
+}
+
+func TestLogBuffer_Batching(t *testing.T) {
+	db := SetupTestDB(t)
+	defer CleanupTestDB(db)
+
+	host := SetupTestHost(t, db, "batch-host")
+	_ = SetupTestHostKey(t, db, host, "batch_key")
+
+	// Configure buffer to flush on 10 items or every 5 seconds
+	cfg := logbuffer.Config{BatchSize: 10, FlushInterval: 5 * time.Second}
+	buf := logbuffer.NewBuffer(db, cfg)
+	buf.Start()
+	defer buf.Close()
+
+	c, _ := CreateRequestContext("POST", "/api/v1/host/logs", nil)
+	c.Request.Header.Set("Authorization", "batch_key")
+	c.Set("hostname", host.Name)
+	c.Set("logBuffer", buf)
+
+	handler := ExportSubmitHostLog(db)
+
+	// --- Test 1: Trigger flush by size ---
+	for i := 0; i < 9; i++ {
+		logData := server.APILogRequest{Level: "info", Component: "batch", Message: "Message " + strconv.Itoa(i)}
+		c, _ := CreateRequestContext("POST", "/api/v1/host/logs", logData)
+		c.Set("hostname", host.Name)
+		c.Set("logBuffer", buf)
+		handler(c)
+	}
+
+	// 9 logs submitted, should not be in DB yet
+	var count int64
+	db.Model(&models.HostLog{}).Where("host_name = ?", host.Name).Count(&count)
+	assert.Equal(t, int64(0), count, "Logs should not be flushed yet")
+
+	// Submit 10th log to trigger flush
+	logData := server.APILogRequest{Level: "info", Component: "batch", Message: "Message 9"}
+	c, _ = CreateRequestContext("POST", "/api/v1/host/logs", logData)
+	c.Set("hostname", host.Name)
+	c.Set("logBuffer", buf)
+	handler(c)
+
+	// Wait a moment for the flush to complete
+	time.Sleep(200 * time.Millisecond)
+
+	db.Model(&models.HostLog{}).Where("host_name = ?", host.Name).Count(&count)
+	assert.Equal(t, int64(10), count, "Logs should be flushed after batch size reached")
+
+	// --- Test 2: Trigger flush by time ---
+	logData = server.APILogRequest{Level: "info", Component: "timed", Message: "Timed message"}
+	c, _ = CreateRequestContext("POST", "/api/v1/host/logs", logData)
+	c.Set("hostname", host.Name)
+	c.Set("logBuffer", buf)
+	handler(c)
+
+	// Reset config for this test
+	cfg.FlushInterval = 1 * time.Second
+	buf = logbuffer.NewBuffer(db, cfg)
+	buf.Start()
+	defer buf.Close()
+	c.Set("logBuffer", buf)
+	handler(c) // re-submit with new buffer
+
+	// Should not be in DB yet
+	db.Model(&models.HostLog{}).Where("component = ?", "timed").Count(&count)
+	assert.Equal(t, int64(0), count)
+
+	// Wait for time-based flush
+	time.Sleep(1500 * time.Millisecond)
+	db.Model(&models.HostLog{}).Where("component = ?", "timed").Count(&count)
+	assert.Equal(t, int64(1), count, "Log should be flushed after interval")
 }
 
 func createTestLogWithTime(t *testing.T, db *gorm.DB, hostName, level, component, message string, timestamp time.Time) models.HostLog {

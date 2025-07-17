@@ -22,6 +22,27 @@ type KeycloakConfig struct {
 	DefaultGroups    string `mapstructure:"default_groups"`
 }
 
+// ValkeyConfig represents Valkey cache configuration
+type ValkeyConfig struct {
+	Enabled      bool   `mapstructure:"enabled"`
+	Address      string `mapstructure:"address"`
+	Password     string `mapstructure:"password"`
+	Database     int    `mapstructure:"database"`
+	PoolSize     int    `mapstructure:"pool_size"`
+	MinIdleConns int    `mapstructure:"min_idle_conns"`
+	MaxIdleConns int    `mapstructure:"max_idle_conns"`
+	MaxConnAge   int    `mapstructure:"max_conn_age"`  // in seconds
+	IdleTimeout  int    `mapstructure:"idle_timeout"`  // in seconds
+	ConnTimeout  int    `mapstructure:"conn_timeout"`  // in seconds
+	ReadTimeout  int    `mapstructure:"read_timeout"`  // in seconds
+	WriteTimeout int    `mapstructure:"write_timeout"` // in seconds
+	DefaultTTL   int    `mapstructure:"default_ttl"`   // in seconds
+	SessionTTL   int    `mapstructure:"session_ttl"`   // in seconds
+	HealthTTL    int    `mapstructure:"health_ttl"`    // in seconds
+	HostTTL      int    `mapstructure:"host_ttl"`      // in seconds
+	KeyPrefix    string `mapstructure:"key_prefix"`
+}
+
 // Server represents the server configuration
 type Server struct {
 	Port     string `mapstructure:"port"`
@@ -34,6 +55,7 @@ type Server struct {
 	} `mapstructure:"postgres"`
 	Keycloak KeycloakConfig `mapstructure:"keycloak"`
 	Awx      AwxConfig      `mapstructure:"awx"`
+	Valkey   ValkeyConfig   `mapstructure:"valkey"`
 }
 
 // AwxConfig represents AWX connection settings
@@ -170,6 +192,7 @@ var ServerConfig struct {
 	} `mapstructure:"postgres"`
 	Keycloak KeycloakConfig `mapstructure:"keycloak"`
 	Awx      AwxConfig      `mapstructure:"awx"`
+	Valkey   ValkeyConfig   `mapstructure:"valkey"`
 }
 
 var HostsList []Host

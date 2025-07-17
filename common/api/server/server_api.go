@@ -4,6 +4,7 @@ package server
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"crypto/tls"
 	"encoding/hex"
@@ -26,7 +27,9 @@ import (
 	"github.com/golang-jwt/jwt/v4"
 	"github.com/monobilisim/monokit/common/api/admin"
 	"github.com/monobilisim/monokit/common/api/auth"
+	"github.com/monobilisim/monokit/common/api/cache"
 	"github.com/monobilisim/monokit/common/api/host"
+	"github.com/monobilisim/monokit/common/api/logbuffer"
 	"github.com/monobilisim/monokit/common/api/models"
 	"github.com/monobilisim/monokit/common/health"
 	_ "github.com/monobilisim/monokit/docs"
@@ -121,6 +124,13 @@ type APIHostLogsResponse struct {
 
 // StartAPIServer starts the API server
 func StartAPIServer(cmd *cobra.Command, args []string) error {
+	// Initialize cache FIRST - before any other setup
+	if err := cache.InitCache(ServerConfig.Valkey); err != nil {
+		log.Warn().Err(err).Msg("Failed to initialize cache, continuing without cache")
+	} else {
+		log.Info().Msg("Cache initialized successfully")
+	}
+
 	r := gin.Default()
 	db := setupDatabase()
 
@@ -392,30 +402,51 @@ func AuthMiddleware(db *gorm.DB) gin.HandlerFunc {
 
 		// Standard session-based auth - try with the raw token value
 		var session Session
-		if err := db.Preload("User").Where("token = ?", tokenValue).First(&session).Error; err != nil {
-			// Also try with the full token including "Bearer " if applicable
-			if strings.HasPrefix(token, "Bearer ") && err != nil {
-				if err := db.Preload("User").Where("token = ?", token).First(&session).Error; err != nil {
+		ctx := context.Background()
+
+		// Try to get session from cache first
+		if cachedSession, err := cache.GlobalCache.GetSession(ctx, tokenValue); err == nil {
+			// Found in cache, check expiration
+			if time.Now().After(cachedSession.Timeout) {
+				// Session expired, remove from cache and database
+				cache.GlobalCache.DeleteSession(ctx, tokenValue)
+				db.Delete(&Session{}, "token = ?", tokenValue)
+				fmt.Printf("Token expired for path: %s\n", c.Request.URL.Path)
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "Token expired"})
+				c.Abort()
+				return
+			}
+			session = *cachedSession
+		} else {
+			// Cache miss, check database
+			if err := db.Preload("User").Where("token = ?", tokenValue).First(&session).Error; err != nil {
+				// Also try with the full token including "Bearer " if applicable
+				if strings.HasPrefix(token, "Bearer ") && err != nil {
+					if err := db.Preload("User").Where("token = ?", token).First(&session).Error; err != nil {
+						fmt.Printf("Invalid token for path: %s - %v\n", c.Request.URL.Path, err)
+						c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+						c.Abort()
+						return
+					}
+				} else {
 					fmt.Printf("Invalid token for path: %s - %v\n", c.Request.URL.Path, err)
 					c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
 					c.Abort()
 					return
 				}
-			} else {
-				fmt.Printf("Invalid token for path: %s - %v\n", c.Request.URL.Path, err)
-				c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid token"})
+			}
+
+			// Check if session has expired
+			if time.Now().After(session.Timeout) {
+				db.Delete(&session)
+				fmt.Printf("Token expired for path: %s\n", c.Request.URL.Path)
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "Token expired"})
 				c.Abort()
 				return
 			}
-		}
 
-		// Check if session has expired
-		if time.Now().After(session.Timeout) {
-			db.Delete(&session)
-			fmt.Printf("Token expired for path: %s\n", c.Request.URL.Path)
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Token expired"})
-			c.Abort()
-			return
+			// Cache the session for future requests
+			cache.GlobalCache.SetSession(ctx, tokenValue, &session)
 		}
 
 		fmt.Printf("Authenticated session user: %s for path: %s\n",
@@ -435,6 +466,27 @@ func HostAuthMiddleware(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		ctx := context.Background()
+
+		// Try to get host name from cache first
+		if hostName, err := cache.GlobalCache.GetHostAuth(ctx, token); err == nil {
+			// Found in cache, verify that the host still exists
+			var host Host
+			if err := db.Where("name = ?", hostName).First(&host).Error; err != nil {
+				// Host was deleted, remove from cache
+				cache.GlobalCache.DeleteHostAuth(ctx, token)
+				c.JSON(http.StatusUnauthorized, gin.H{"error": "Associated host not found or deleted"})
+				c.Abort()
+				return
+			}
+
+			// Set the host name in the context for use in handlers
+			c.Set("hostname", hostName)
+			c.Next()
+			return
+		}
+
+		// Cache miss, check database
 		var hostKey HostKey
 		if err := db.Where("token = ?", token).First(&hostKey).Error; err != nil {
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid host token"})
@@ -449,6 +501,9 @@ func HostAuthMiddleware(db *gorm.DB) gin.HandlerFunc {
 			c.Abort()
 			return
 		}
+
+		// Cache the host authentication for future requests
+		cache.GlobalCache.SetHostAuth(ctx, token, hostKey.HostName)
 
 		// Set the host name in the context for use in handlers
 		c.Set("hostname", hostKey.HostName)
@@ -603,6 +658,10 @@ func RegisterHost(db *gorm.DB) gin.HandlerFunc {
 
 			fmt.Printf("Host updated successfully: %s (ID=%d)\n", host.Name, host.ID)
 
+			// Invalidate cache for updated host
+			ctx := context.Background()
+			cache.GlobalCache.DeleteHost(ctx, host.Name)
+
 			// Refresh hosts list
 			if err := db.Find(&models.HostsList).Error; err != nil {
 				fmt.Printf("Warning: Error refreshing hosts list: %v\n", err)
@@ -620,6 +679,10 @@ func RegisterHost(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 		fmt.Printf("Host created successfully: %s (ID=%d)\n", host.Name, host.ID)
+
+		// Cache the new host
+		ctx := context.Background()
+		cache.GlobalCache.SetHost(ctx, host.Name, &host)
 
 		// Generate and store API key for host
 		token := GenerateToken()
@@ -754,6 +817,11 @@ func DeleteHost(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		fmt.Printf("Host deleted successfully: %s (ID=%d)\n", host.Name, host.ID)
+
+		// Invalidate cache for deleted host
+		ctx := context.Background()
+		cache.GlobalCache.DeleteHost(ctx, host.Name)
+		cache.GlobalCache.DeleteHostAuth(ctx, host.Name) // Also remove any cached auth tokens
 
 		// Refresh the hosts list
 		db.Find(&models.HostsList)
@@ -1646,6 +1714,10 @@ func UpdateHost(db *gorm.DB) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update host"})
 			return
 		}
+
+		// Invalidate cache for updated host
+		ctx := context.Background()
+		cache.GlobalCache.DeleteHost(ctx, host.Name)
 
 		db.Find(&models.HostsList)
 		c.JSON(http.StatusOK, host)
@@ -3385,6 +3457,14 @@ func SubmitHostLog(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		// Get log buffer from context
+		buf, exists := c.Get("logBuffer")
+		if !exists {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Log buffer not found in context"})
+			return
+		}
+		logBuf := buf.(*logbuffer.Buffer)
+
 		// Parse log data from request
 		var logRequest APILogRequest
 		if err := c.ShouldBindJSON(&logRequest); err != nil {
@@ -3436,57 +3516,10 @@ func SubmitHostLog(db *gorm.DB) gin.HandlerFunc {
 			Type:      logType,
 		}
 
-		// Count total logs
-		var total int64
-		if err := db.Model(&HostLog{}).Count(&total).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to count logs"})
-			return
-		}
+		// Add log to buffer
+		logBuf.Add(log)
 
-		// If we have more than 10000 logs, delete the oldest ones
-		if total >= 10000 {
-			// Calculate how many logs to delete
-			toDelete := total - 9999 // This ensures we'll have 9999 logs after deletion, allowing the new one to be the 10000th
-
-			// Use a batch approach instead of a single large delete
-			batchSize := 500
-			var deleted int
-			for deleted < int(toDelete) {
-				// Calculate current batch size
-				currentBatch := batchSize
-				if deleted+batchSize > int(toDelete) {
-					currentBatch = int(toDelete) - deleted
-				}
-
-				// Get IDs of logs to delete in this batch
-				var logIds []uint
-				if err := db.Model(&HostLog{}).Where("deleted_at IS NULL").Order("timestamp ASC").Limit(currentBatch).Pluck("id", &logIds).Error; err != nil {
-					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to identify old logs"})
-					return
-				}
-
-				// Skip if no logs found
-				if len(logIds) == 0 {
-					break
-				}
-
-				// Delete logs by their IDs directly (avoids subquery)
-				if err := db.Where("id IN ?", logIds).Delete(&HostLog{}).Error; err != nil {
-					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete old logs"})
-					return
-				}
-
-				deleted += currentBatch
-			}
-		}
-
-		// Save to database
-		if err := db.Create(&log).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save log entry"})
-			return
-		}
-
-		c.JSON(http.StatusOK, gin.H{"status": "Log entry saved successfully"})
+		c.Status(http.StatusAccepted)
 	}
 }
 
@@ -3909,6 +3942,9 @@ func GetHostHealth(db *gorm.DB, monokitHostname string) gin.HandlerFunc {
 		}
 
 		results := make(map[string]interface{})
+		ctx := context.Background()
+
+		// First try to get health data from cache for each tool
 		var healthDataEntries []HostHealthData
 		if err := db.Where("host_name = ?", hostName).Find(&healthDataEntries).Error; err != nil {
 			log.Error().
@@ -3922,6 +3958,14 @@ func GetHostHealth(db *gorm.DB, monokitHostname string) gin.HandlerFunc {
 		}
 
 		for _, entry := range healthDataEntries {
+			// Try cache first
+			var cachedData interface{}
+			if err := cache.GlobalCache.GetHealthData(ctx, hostName, entry.ToolName, &cachedData); err == nil {
+				results[entry.ToolName] = cachedData
+				continue
+			}
+
+			// Cache miss, parse from database and cache it
 			var dataContent interface{}
 			if err := json.Unmarshal([]byte(entry.DataJSON), &dataContent); err != nil {
 				results[entry.ToolName] = gin.H{"error": fmt.Sprintf("Error unmarshalling health data for tool %s: %v", entry.ToolName, err)}
@@ -3934,6 +3978,8 @@ func GetHostHealth(db *gorm.DB, monokitHostname string) gin.HandlerFunc {
 					Msg("Error unmarshalling health data")
 			} else {
 				results[entry.ToolName] = dataContent
+				// Cache the parsed data
+				cache.GlobalCache.SetHealthData(ctx, hostName, entry.ToolName, dataContent)
 			}
 		}
 
@@ -4094,6 +4140,10 @@ func PostHostHealth(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
+		// Invalidate cache for the updated health data
+		ctx := context.Background()
+		cache.GlobalCache.DeleteHealthData(ctx, hostName.(string), toolName)
+
 		c.JSON(http.StatusOK, gin.H{"message": "Health data received and stored"})
 	}
 }
@@ -4125,6 +4175,16 @@ func GetHostToolHealth(db *gorm.DB, monokitHostname string) gin.HandlerFunc {
 			return
 		}
 
+		ctx := context.Background()
+
+		// Try to get health data from cache first
+		var cachedData interface{}
+		if err := cache.GlobalCache.GetHealthData(ctx, hostName, toolName, &cachedData); err == nil {
+			c.JSON(http.StatusOK, cachedData)
+			return
+		}
+
+		// Cache miss, check database
 		var healthDataEntry HostHealthData
 		err := db.Where("host_name = ? AND tool_name = ?", hostName, toolName).First(&healthDataEntry).Error
 
@@ -4141,6 +4201,8 @@ func GetHostToolHealth(db *gorm.DB, monokitHostname string) gin.HandlerFunc {
 				c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Error unmarshalling health data for tool %s", toolName)})
 				return
 			}
+			// Cache the parsed data
+			cache.GlobalCache.SetHealthData(ctx, hostName, toolName, dataContent)
 			c.JSON(http.StatusOK, dataContent)
 			return
 		}
