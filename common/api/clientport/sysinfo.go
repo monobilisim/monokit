@@ -25,7 +25,7 @@ func (r RealSysInfo) RAM() string {
 	if err != nil {
 		return ""
 	}
-	return fmt.Sprintf("%dGB", m.Total/1024/1024/1024)
+	return fmt.Sprintf("%.2fGB", float64(m.Total)/1024/1024/1024)
 }
 
 func (r RealSysInfo) PrimaryIP() string {
