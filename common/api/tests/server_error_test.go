@@ -3,6 +3,7 @@
 package tests
 
 import (
+	"context"
 	"errors"
 	"testing"
 	"time"
@@ -27,7 +28,7 @@ func TestServerMain_OpenDBFailure(t *testing.T) {
 		SetupDB: func(db *gorm.DB) {
 			dbSetup = true
 		},
-		BuildRouter: func(db *gorm.DB) *gin.Engine {
+		BuildRouter: func(db *gorm.DB, ctx context.Context) *gin.Engine {
 			routerBuilt = true
 			return gin.New()
 		},
@@ -68,7 +69,7 @@ func TestServerMain_RunRouterFailure(t *testing.T) {
 		SetupDB: func(db *gorm.DB) {
 			dbSetup = true
 		},
-		BuildRouter: func(db *gorm.DB) *gin.Engine {
+		BuildRouter: func(db *gorm.DB, ctx context.Context) *gin.Engine {
 			routerBuilt = true
 			return gin.New()
 		},
@@ -109,7 +110,7 @@ func TestServerMain_SuccessfulFlow(t *testing.T) {
 		SetupDB: func(db *gorm.DB) {
 			dbSetup = true
 		},
-		BuildRouter: func(db *gorm.DB) *gin.Engine {
+		BuildRouter: func(db *gorm.DB, ctx context.Context) *gin.Engine {
 			routerBuilt = true
 			return gin.New()
 		},
