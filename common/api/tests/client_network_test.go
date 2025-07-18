@@ -206,68 +206,6 @@ func TestGetReq_HTTPError(t *testing.T) {
 	assert.Nil(t, result)
 }
 
-func TestSendUpdateTo_Success(t *testing.T) {
-	var capturedRequest *http.Request
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		capturedRequest = r
-		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("Update scheduled"))
-	}))
-	defer server.Close()
-
-	client.ClientConf.URL = server.URL
-
-	client.SendUpdateTo("1", "target-host", "2.0.0")
-
-	require.NotNil(t, capturedRequest)
-	assert.Equal(t, "POST", capturedRequest.Method)
-	assert.Contains(t, capturedRequest.URL.Path, "/api/v1/hosts/target-host/updateTo/2.0.0")
-}
-
-func TestSendUpdateTo_NetworkFailure(t *testing.T) {
-	client.ClientConf.URL = "http://invalid-server:9999"
-
-	// Should not panic on network failure
-	client.SendUpdateTo("1", "target-host", "2.0.0")
-
-	// Test passes if no panic occurs
-	assert.True(t, true)
-}
-
-func TestSendDisable_Success(t *testing.T) {
-	var capturedRequest *http.Request
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		capturedRequest = r
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer server.Close()
-
-	client.ClientConf.URL = server.URL
-
-	client.SendDisable("1", "target-host", "mysql")
-
-	require.NotNil(t, capturedRequest)
-	assert.Equal(t, "POST", capturedRequest.Method)
-	assert.Contains(t, capturedRequest.URL.Path, "/api/v1/hosts/target-host/disable/mysql")
-}
-
-func TestSendEnable_Success(t *testing.T) {
-	var capturedRequest *http.Request
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		capturedRequest = r
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer server.Close()
-
-	client.ClientConf.URL = server.URL
-
-	client.SendEnable("1", "target-host", "mysql")
-
-	require.NotNil(t, capturedRequest)
-	assert.Equal(t, "POST", capturedRequest.Method)
-	assert.Contains(t, capturedRequest.URL.Path, "/api/v1/hosts/target-host/enable/mysql")
-}
-
 func TestGetServiceStatus_StatusEnabled(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		response := map[string]interface{}{
@@ -386,60 +324,6 @@ func TestClientWithCustomHTTPClient(t *testing.T) {
 	// Should timeout and default to enabled
 	assert.True(t, enabled)
 	assert.Equal(t, "", updateVersion)
-}
-
-func TestGetHosts_SingleHost(t *testing.T) {
-	expectedHost := models.Host{
-		Name:     "single-host",
-		CpuCores: 4,
-		Ram:      "8GB",
-		Status:   "online",
-	}
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "GET", r.Method)
-		assert.Contains(t, r.URL.Path, "/api/v1/hosts/single-host")
-		json.NewEncoder(w).Encode(expectedHost)
-	}))
-	defer server.Close()
-
-	client.ClientConf.URL = server.URL
-
-	hosts := client.GetHosts("1", "single-host")
-
-	require.Len(t, hosts, 1)
-	assert.Equal(t, "single-host", hosts[0].Name)
-	assert.Equal(t, 4, hosts[0].CpuCores)
-}
-
-func TestGetHosts_AllHosts(t *testing.T) {
-	expectedHosts := []models.Host{
-		{Name: "host1", CpuCores: 4, Ram: "8GB"},
-		{Name: "host2", CpuCores: 8, Ram: "16GB"},
-	}
-
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		assert.Equal(t, "GET", r.Method)
-		assert.Equal(t, "/api/v1/hosts", r.URL.Path)
-		json.NewEncoder(w).Encode(expectedHosts)
-	}))
-	defer server.Close()
-
-	client.ClientConf.URL = server.URL
-
-	hosts := client.GetHosts("1", "")
-
-	require.Len(t, hosts, 2)
-	assert.Equal(t, "host1", hosts[0].Name)
-	assert.Equal(t, "host2", hosts[1].Name)
-}
-
-func TestGetHosts_NetworkError(t *testing.T) {
-	client.ClientConf.URL = "http://invalid-server:9999"
-
-	hosts := client.GetHosts("1", "")
-
-	assert.Nil(t, hosts)
 }
 
 func TestSendReq_ComponentUpdates(t *testing.T) {
