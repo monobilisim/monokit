@@ -714,6 +714,68 @@ func listFiles(dir string, ignoredDirectories []string) []string {
 	return files
 }
 
+func getRelevantLogs(skippedDirectories []string) []string {
+	log.Debug().
+		Str("component", "sshNotifier").
+		Str("operation", "get_relevant_logs").
+		Str("action", "start").
+		Msg("Starting to get relevant logs")
+
+	if SSHNotifierConfig.Disable_File_Monitoring {
+		log.Debug().
+			Str("component", "sshNotifier").
+			Str("operation", "get_relevant_logs").
+			Str("action", "disabled").
+			Msg("File monitoring is disabled in configuration")
+		return []string{}
+	}
+
+	componentsStr := common.GetInstalledComponents()
+	if componentsStr == "" {
+		log.Debug().
+			Str("component", "sshNotifier").
+			Str("operation", "get_relevant_logs").
+			Str("action", "no_components").
+			Msg("No installed components found")
+		return []string{}
+	}
+
+	components := strings.Split(componentsStr, "::")
+	var allLogFiles []string
+
+	for _, component := range components {
+		componentDir := filepath.Join("/tmp/mono", component)
+		log.Debug().
+			Str("component", "sshNotifier").
+			Str("operation", "get_relevant_logs").
+			Str("action", "checking_component").
+			Str("component_name", component).
+			Str("directory", componentDir).
+			Msg("Checking component directory for log files")
+
+		if _, err := os.Stat(componentDir); os.IsNotExist(err) {
+			log.Debug().
+				Str("component", "sshNotifier").
+				Str("operation", "get_relevant_logs").
+				Str("action", "directory_not_found").
+				Str("directory", componentDir).
+				Msg("Component directory does not exist, skipping")
+			continue
+		}
+
+		files := listFiles(componentDir, skippedDirectories)
+		allLogFiles = append(allLogFiles, files...)
+	}
+
+	log.Debug().
+		Str("component", "sshNotifier").
+		Str("operation", "get_relevant_logs").
+		Str("action", "completed").
+		Int("total_logs_found", len(allLogFiles)).
+		Msg("Finished getting relevant logs")
+
+	return allLogFiles
+}
 func PostToDb(postUrl string, dbReq DatabaseRequest) error {
 	log.Debug().
 		Str("component", "sshNotifier").
@@ -868,7 +930,7 @@ func NotifyAndSave(loginInfo LoginInfoOutput) {
 		loginInfo.Username = cleanedUsername
 	}
 
-	fileList := listFiles("/tmp/mono", SSHNotifierConfig.SkippedDirectories)
+	fileList := getRelevantLogs(SSHNotifierConfig.SkippedDirectories)
 	fileCount := len(fileList)
 
 	log.Debug().
