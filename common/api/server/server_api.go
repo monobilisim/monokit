@@ -28,6 +28,7 @@ import (
 	"github.com/monobilisim/monokit/common/api/admin"
 	"github.com/monobilisim/monokit/common/api/auth"
 	"github.com/monobilisim/monokit/common/api/cache"
+	"github.com/monobilisim/monokit/common/api/domains"
 	"github.com/monobilisim/monokit/common/api/host"
 	"github.com/monobilisim/monokit/common/api/logbuffer"
 	"github.com/monobilisim/monokit/common/api/models"
@@ -244,6 +245,28 @@ func setupRoutes(r *gin.Engine, db *gorm.DB, monokitHostname string) {
 	}
 	r.POST("/api/v1/hosts", RegisterHost(db))
 	admin.SetupAdminRoutes(r, db)
+
+	// Setup domain management routes (global admin only)
+	domainApi := r.Group("/api/v1/domains")
+	domainApi.Use(AuthMiddleware(db))
+	{
+		domainApi.POST("", domains.CreateDomain(db))
+		domainApi.GET("", domains.GetAllDomains(db))
+		domainApi.GET("/:id", domains.GetDomainByID(db))
+		domainApi.PUT("/:id", domains.UpdateDomain(db))
+		domainApi.DELETE("/:id", domains.DeleteDomain(db))
+		domainApi.POST("/:id/users", domains.AssignUserToDomain(db))
+		domainApi.GET("/:id/users", domains.GetDomainUsers(db))
+		domainApi.PUT("/:id/users/:user_id", domains.UpdateDomainUserRole(db))
+		domainApi.DELETE("/:id/users/:user_id", domains.RemoveUserFromDomain(db))
+	}
+
+	// Setup user domain management routes (global admin only)
+	userApi := r.Group("/api/v1/users")
+	userApi.Use(AuthMiddleware(db))
+	{
+		userApi.GET("/:user_id/domains", domains.GetUserDomains(db))
+	}
 
 	api := r.Group("/api/v1")
 	// Apply Keycloak middleware first if enabled, then fall back to standard auth
@@ -3443,7 +3466,7 @@ func GetComponentStatus() gin.HandlerFunc {
 // @Accept json
 // @Produce json
 // @Param log body APILogRequest true "Log entry"
-// @Success 201 {object} map[string]interface{} "Log entry saved response"
+// @Success 202 {object} map[string]interface{} "Log entry accepted response"
 // @Failure 400 {object} map[string]string "Bad request error"
 // @Failure 401 {object} map[string]string "Unauthorized error"
 // @Failure 500 {object} map[string]string "Internal server error"
@@ -3518,8 +3541,7 @@ func SubmitHostLog(db *gorm.DB) gin.HandlerFunc {
 
 		// Add log to buffer
 		logBuf.Add(log)
-
-		c.Status(http.StatusAccepted)
+		c.JSON(http.StatusAccepted, gin.H{"status": "accepted"})
 	}
 }
 
