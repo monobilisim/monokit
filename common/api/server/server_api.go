@@ -65,6 +65,11 @@ import (
 // @tag.name Logs
 // @tag.description Operations related to logs
 
+// Type aliases for commonly used types from models package
+type (
+	ErrorResponse = models.ErrorResponse
+)
+
 // APILogRequest represents a log entry submission request
 type APILogRequest struct {
 	Level     string `json:"level" binding:"required" example:"info" enums:"info,warning,error,critical"`

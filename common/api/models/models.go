@@ -8,6 +8,14 @@ import (
 	"gorm.io/gorm"
 )
 
+// BaseModel represents the common fields for all models (for Swagger documentation)
+type BaseModel struct {
+	ID        uint       `json:"id" example:"1"`
+	CreatedAt time.Time  `json:"created_at" example:"2023-01-01T00:00:00Z"`
+	UpdatedAt time.Time  `json:"updated_at" example:"2023-01-01T00:00:00Z"`
+	DeletedAt *time.Time `json:"deleted_at,omitempty" example:"2023-01-01T00:00:00Z"`
+}
+
 // KeycloakConfig represents Keycloak SSO configuration
 type KeycloakConfig struct {
 	Enabled          bool   `mapstructure:"enabled"`
@@ -76,16 +84,19 @@ type AwxConfig struct {
 	DefaultWorkflowTemplateID int `mapstructure:"default_workflow_template_id"`
 }
 
-// Host represents a monitored host
+// Host represents a monitored host (now domain-scoped)
+// @Description Host model for monitoring servers within a domain
 type Host struct {
-	gorm.Model
-	Name                string    `json:"name" gorm:"uniqueIndex"`
-	CpuCores            int       `json:"cpuCores"`
-	Ram                 string    `json:"ram"`
-	MonokitVersion      string    `json:"monokitVersion"`
-	Os                  string    `json:"os"`
-	DisabledComponents  string    `json:"disabledComponents"`
-	InstalledComponents string    `json:"installedComponents"`
+	gorm.Model          `swaggerignore:"true"`
+	Name                string    `json:"name" gorm:"uniqueIndex:idx_host_name_domain" example:"web-server-01"` // Unique within domain
+	DomainID            uint      `json:"domain_id" gorm:"uniqueIndex:idx_host_name_domain;index" example:"1"`
+	Domain              Domain    `json:"domain,omitempty" swaggerignore:"true"`
+	CpuCores            int       `json:"cpuCores" example:"8"`
+	Ram                 string    `json:"ram" example:"16GB"`
+	MonokitVersion      string    `json:"monokitVersion" example:"1.0.0"`
+	Os                  string    `json:"os" example:"Ubuntu 22.04"`
+	DisabledComponents  string    `json:"disabledComponents" example:"nil"`
+	InstalledComponents string    `json:"installedComponents" example:"osHealth,mysqlHealth"`
 	IpAddress           string    `json:"ipAddress"`
 	Status              string    `json:"status"`
 	AwxHostId           string    `json:"awxHostId"`
@@ -99,23 +110,46 @@ type Host struct {
 	AwxOnly             bool      `json:"awx_only"` // If true, this host is only in AWX and should not be shown in dashboard
 }
 
-// Inventory represents a collection of hosts
-type Inventory struct {
-	ID    uint   `json:"id" gorm:"primarykey"`
-	Name  string `json:"name" gorm:"unique"`
-	Hosts []Host `json:"hosts" gorm:"foreignKey:Inventory;references:Name"`
+// Domain represents a tenant domain in the multi-tenant system
+// @Description Domain model for multi-tenant system
+type Domain struct {
+	gorm.Model  `swaggerignore:"true"`
+	Name        string `json:"name" gorm:"unique" example:"production"`
+	Description string `json:"description" example:"Production environment domain"`
+	Settings    string `json:"settings" gorm:"type:text" example:"{\"theme\":\"dark\"}"` // JSON for domain-specific config
+	Active      bool   `json:"active" gorm:"default:true" example:"true"`
 }
 
-// User represents a system user
+// DomainUser represents the many-to-many relationship between users and domains with roles
+type DomainUser struct {
+	ID       uint   `json:"id" gorm:"primarykey" example:"1"`
+	DomainID uint   `json:"domain_id" gorm:"uniqueIndex:idx_domain_user;index" example:"1"`
+	UserID   uint   `json:"user_id" gorm:"uniqueIndex:idx_domain_user;index" example:"1"`
+	Role     string `json:"role" example:"domain_admin"` // "domain_admin", "domain_user"
+	Domain   Domain `json:"domain,omitempty" swaggerignore:"true"`
+	User     User   `json:"user,omitempty" swaggerignore:"true"`
+}
+
+// Inventory represents a collection of hosts (now domain-scoped)
+type Inventory struct {
+	ID       uint   `json:"id" gorm:"primarykey"`
+	Name     string `json:"name" gorm:"uniqueIndex:idx_inventory_name_domain"` // Unique within domain
+	DomainID uint   `json:"domain_id" gorm:"uniqueIndex:idx_inventory_name_domain;index"`
+	Domain   Domain `json:"domain"`
+	Hosts    []Host `json:"hosts" gorm:"foreignKey:Inventory;references:Name"`
+}
+
+// User represents a system user (now with domain associations)
 type User struct {
 	gorm.Model
-	Username    string `json:"username" gorm:"unique"`
-	Password    string `json:"-"`
-	Email       string `json:"email"`
-	Role        string `json:"role"`
-	Groups      string `json:"groups"`
-	Inventories string `json:"inventories"`
-	AuthMethod  string `json:"auth_method"`
+	Username    string       `json:"username" gorm:"unique"`
+	Password    string       `json:"-"`
+	Email       string       `json:"email"`
+	Role        string       `json:"role"` // "global_admin" for global access, or empty for domain-scoped users
+	Groups      string       `json:"groups"`
+	AuthMethod  string       `json:"auth_method"`
+	DomainUsers []DomainUser `json:"domain_users" gorm:"foreignKey:UserID"` // Many-to-many with domains through DomainUser
+	Inventories string       `json:"inventories,omitempty"`                 // Deprecated: kept for backward compatibility during migration
 }
 
 // HostKey represents an API key for a host
@@ -135,12 +169,15 @@ type Session struct {
 	User      User      `json:"user"`
 }
 
-// Group represents a group in the system
+// Group represents a group in the system (now domain-scoped)
+// @Description Group model for organizing hosts and users within a domain
 type Group struct {
-	ID    uint   `json:"id" gorm:"primarykey"`
-	Name  string `json:"name" gorm:"unique"`
-	Hosts []Host `json:"hosts" gorm:"many2many:group_hosts;"`
-	Users []User `json:"users" gorm:"many2many:group_users;"`
+	ID       uint   `json:"id" gorm:"primarykey"`
+	Name     string `json:"name" gorm:"uniqueIndex:idx_group_name_domain"` // Unique within domain
+	DomainID uint   `json:"domain_id" gorm:"uniqueIndex:idx_group_name_domain;index"`
+	Domain   Domain `json:"domain" swaggerignore:"true"`
+	Hosts    []Host `json:"hosts" gorm:"many2many:group_hosts;" swaggerignore:"true"`
+	Users    []User `json:"users" gorm:"many2many:group_users;" swaggerignore:"true"`
 }
 
 // HostFileConfig model
@@ -178,6 +215,47 @@ type HostHealthData struct {
 // TableName specifies the database table name for the HostHealthData model.
 func (HostHealthData) TableName() string {
 	return "host_health_data"
+}
+
+// Domain-related request/response types
+type CreateDomainRequest struct {
+	Name        string `json:"name" binding:"required"`
+	Description string `json:"description"`
+	Settings    string `json:"settings"`
+}
+
+type UpdateDomainRequest struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Settings    string `json:"settings"`
+	Active      *bool  `json:"active"`
+}
+
+type DomainResponse struct {
+	ID          uint   `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Settings    string `json:"settings"`
+	Active      bool   `json:"active"`
+	CreatedAt   string `json:"created_at"`
+	UpdatedAt   string `json:"updated_at"`
+}
+
+type AssignUserToDomainRequest struct {
+	UserID uint   `json:"user_id" binding:"required"`
+	Role   string `json:"role" binding:"required"` // "domain_admin" or "domain_user"
+}
+
+type UpdateDomainUserRoleRequest struct {
+	Role string `json:"role" binding:"required"` // "domain_admin" or "domain_user"
+}
+
+type DomainUserResponse struct {
+	ID       uint         `json:"id"`
+	DomainID uint         `json:"domain_id"`
+	UserID   uint         `json:"user_id"`
+	Role     string       `json:"role"`
+	User     UserResponse `json:"user"`
 }
 
 // Global variables

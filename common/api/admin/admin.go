@@ -19,6 +19,8 @@ type (
 	Host                    = models.Host
 	User                    = models.User
 	Group                   = models.Group
+	GroupResponse           = models.GroupResponse
+	ErrorResponse           = models.ErrorResponse
 	DBTX                    = models.DBTX
 	RegisterRequest         = models.RegisterRequest
 	UpdateUserGroupsRequest = models.UpdateUserGroupsRequest
@@ -99,7 +101,7 @@ func ExportGetUser(db DBTX) gin.HandlerFunc {
 // @Security ApiKeyAuth
 // @Accept json
 // @Produce json
-// @Success 200 {array} Group
+// @Success 200 {array} GroupResponse
 // @Failure 403 {object} ErrorResponse
 // @Router /admin/groups [get]
 func listGroups(db *gorm.DB) gin.HandlerFunc {
@@ -126,7 +128,7 @@ func listGroups(db *gorm.DB) gin.HandlerFunc {
 // @Accept json
 // @Produce json
 // @Param group body CreateGroupRequest true "Group information"
-// @Success 200 {object} Group
+// @Success 200 {object} GroupResponse
 // @Failure 403 {object} ErrorResponse
 // @Failure 409 {object} ErrorResponse
 // @Router /admin/groups [post]

@@ -47,14 +47,14 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/common.Group"
+                                "$ref": "#/definitions/admin.GroupResponse"
                             }
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/admin.ErrorResponse"
                         }
                     }
                 }
@@ -83,7 +83,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/common.CreateGroupRequest"
+                            "$ref": "#/definitions/admin.CreateGroupRequest"
                         }
                     }
                 ],
@@ -91,19 +91,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/common.Group"
+                            "$ref": "#/definitions/admin.GroupResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/admin.ErrorResponse"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/admin.ErrorResponse"
                         }
                     }
                 }
@@ -155,13 +155,13 @@ const docTemplate = `{
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/admin.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/admin.ErrorResponse"
                         }
                     }
                 }
@@ -214,13 +214,13 @@ const docTemplate = `{
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/admin.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/admin.ErrorResponse"
                         }
                     }
                 }
@@ -271,13 +271,13 @@ const docTemplate = `{
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/admin.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/admin.ErrorResponse"
                         }
                     }
                 }
@@ -323,13 +323,13 @@ const docTemplate = `{
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/admin.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/admin.ErrorResponse"
                         }
                     }
                 }
@@ -382,13 +382,13 @@ const docTemplate = `{
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/admin.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/admin.ErrorResponse"
                         }
                     }
                 }
@@ -418,14 +418,14 @@ const docTemplate = `{
                         "schema": {
                             "type": "array",
                             "items": {
-                                "$ref": "#/definitions/common.UserResponse"
+                                "$ref": "#/definitions/admin.UserResponse"
                             }
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/admin.ErrorResponse"
                         }
                     }
                 }
@@ -454,7 +454,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/common.RegisterRequest"
+                            "$ref": "#/definitions/admin.RegisterRequest"
                         }
                     }
                 ],
@@ -471,19 +471,19 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/admin.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/admin.ErrorResponse"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/admin.ErrorResponse"
                         }
                     }
                 }
@@ -520,19 +520,19 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/common.UserResponse"
+                            "$ref": "#/definitions/admin.UserResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/admin.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/admin.ErrorResponse"
                         }
                     }
                 }
@@ -568,7 +568,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/common.UpdateUserRequest"
+                            "$ref": "#/definitions/admin.UpdateUserRequest"
                         }
                     }
                 ],
@@ -585,25 +585,25 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/admin.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/admin.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/admin.ErrorResponse"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/admin.ErrorResponse"
                         }
                     }
                 }
@@ -647,13 +647,13 @@ const docTemplate = `{
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/admin.ErrorResponse"
                         }
                     },
                     "404": {
                         "description": "Not Found",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/admin.ErrorResponse"
                         }
                     }
                 }
@@ -691,7 +691,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/common.UpdateUserGroupsRequest"
+                            "$ref": "#/definitions/admin.UpdateUserGroupsRequest"
                         }
                     }
                 ],
@@ -708,7 +708,7 @@ const docTemplate = `{
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/admin.ErrorResponse"
                         }
                     }
                 }
@@ -734,7 +734,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/github_com_monobilisim_monokit_common_api.LoginRequest"
+                            "$ref": "#/definitions/auth.LoginRequest"
                         }
                     }
                 ],
@@ -742,13 +742,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/github_com_monobilisim_monokit_common_api.LoginResponse"
+                            "$ref": "#/definitions/auth.LoginResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/auth.ErrorResponse"
                         }
                     }
                 }
@@ -785,7 +785,7 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/auth.ErrorResponse"
                         }
                     }
                 }
@@ -813,13 +813,13 @@ const docTemplate = `{
                     "200": {
                         "description": "OK",
                         "schema": {
-                            "$ref": "#/definitions/common.UserResponse"
+                            "$ref": "#/definitions/auth.UserResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/auth.ErrorResponse"
                         }
                     }
                 }
@@ -848,7 +848,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/common.UpdateMeRequest"
+                            "$ref": "#/definitions/auth.UpdateMeRequest"
                         }
                     }
                 ],
@@ -865,13 +865,13 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/auth.ErrorResponse"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/auth.ErrorResponse"
                         }
                     }
                 }
@@ -906,7 +906,7 @@ const docTemplate = `{
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/auth.ErrorResponse"
                         }
                     }
                 }
@@ -937,7 +937,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/common.RegisterRequest"
+                            "$ref": "#/definitions/auth.RegisterRequest"
                         }
                     }
                 ],
@@ -954,19 +954,595 @@ const docTemplate = `{
                     "400": {
                         "description": "Bad Request",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/auth.ErrorResponse"
                         }
                     },
                     "403": {
                         "description": "Forbidden",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/auth.ErrorResponse"
                         }
                     },
                     "409": {
                         "description": "Conflict",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/auth.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/domains": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Get list of all domains (global admin only)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "domains"
+                ],
+                "summary": "Get all domains",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/domains.DomainResponse"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Create a new domain (global admin only)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "domains"
+                ],
+                "summary": "Create new domain",
+                "parameters": [
+                    {
+                        "description": "Domain information",
+                        "name": "domain",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/domains.CreateDomainRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/domains.DomainResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/domains/{domain_id}/users/{user_id}": {
+            "put": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Update a user's role within a domain (global admin only)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "domains"
+                ],
+                "summary": "Update domain user role",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Domain ID",
+                        "name": "domain_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "User ID",
+                        "name": "user_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Role update information",
+                        "name": "role",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/domains.UpdateDomainUserRoleRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domains.DomainUserResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Remove a user from a domain (global admin only)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "domains"
+                ],
+                "summary": "Remove user from domain",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Domain ID",
+                        "name": "domain_id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "type": "integer",
+                        "description": "User ID",
+                        "name": "user_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/domains/{id}": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Get specific domain information (global admin only)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "domains"
+                ],
+                "summary": "Get domain by ID",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Domain ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domains.DomainResponse"
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "put": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Update domain information (global admin only)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "domains"
+                ],
+                "summary": "Update domain",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Domain ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "Domain update information",
+                        "name": "domain",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/domains.UpdateDomainRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "$ref": "#/definitions/domains.DomainResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Delete domain (global admin only)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "domains"
+                ],
+                "summary": "Delete domain",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Domain ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/domains/{id}/users": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Get all users assigned to a domain (global admin only)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "domains"
+                ],
+                "summary": "Get domain users",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Domain ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/domains.DomainUserResponse"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Assign a user to a domain with a specific role (global admin only)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "domains"
+                ],
+                "summary": "Assign user to domain",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Domain ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    },
+                    {
+                        "description": "User assignment information",
+                        "name": "assignment",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "$ref": "#/definitions/domains.AssignUserToDomainRequest"
+                        }
+                    }
+                ],
+                "responses": {
+                    "201": {
+                        "description": "Created",
+                        "schema": {
+                            "$ref": "#/definitions/domains.DomainUserResponse"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "409": {
+                        "description": "Conflict",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
@@ -997,10 +1573,16 @@ const docTemplate = `{
                             }
                         }
                     },
+                    "401": {
+                        "description": "Unauthorized - authentication required",
+                        "schema": {
+                            "$ref": "#/definitions/server.ErrorResponse"
+                        }
+                    },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/server.ErrorResponse"
                         }
                     }
                 }
@@ -1050,19 +1632,19 @@ const docTemplate = `{
                     "400": {
                         "description": "Invalid JSON data or missing tool name",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/server.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized (invalid host token)",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/server.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/server.ErrorResponse"
                         }
                     }
                 }
@@ -1093,13 +1675,13 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/common.APILogRequest"
+                            "$ref": "#/definitions/server.APILogRequest"
                         }
                     }
                 ],
                 "responses": {
-                    "201": {
-                        "description": "Log entry saved response",
+                    "202": {
+                        "description": "Log entry accepted response",
                         "schema": {
                             "type": "object",
                             "additionalProperties": true
@@ -1544,13 +2126,13 @@ const docTemplate = `{
                     "404": {
                         "description": "Host not found",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/server.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/server.ErrorResponse"
                         }
                     }
                 }
@@ -1595,13 +2177,13 @@ const docTemplate = `{
                     "404": {
                         "description": "Host not found or Tool not found",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/server.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/server.ErrorResponse"
                         }
                     }
                 }
@@ -1737,19 +2319,65 @@ const docTemplate = `{
                     "200": {
                         "description": "Paginated logs response",
                         "schema": {
-                            "$ref": "#/definitions/common.APILogsResponse"
+                            "$ref": "#/definitions/server.APILogsResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/server.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/server.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/logs/hourly": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Get log statistics for the last hour broken down by 5-minute intervals",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Logs"
+                ],
+                "summary": "Get hourly log statistics",
+                "responses": {
+                    "200": {
+                        "description": "Array of 12 objects containing log counts for each 5-minute interval",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "additionalProperties": {
+                                    "type": "integer"
+                                }
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "$ref": "#/definitions/server.ErrorResponse"
+                        }
+                    },
+                    "500": {
+                        "description": "Internal server error",
+                        "schema": {
+                            "$ref": "#/definitions/server.ErrorResponse"
                         }
                     }
                 }
@@ -1780,7 +2408,7 @@ const docTemplate = `{
                         "in": "body",
                         "required": true,
                         "schema": {
-                            "$ref": "#/definitions/common.APILogSearchRequest"
+                            "$ref": "#/definitions/server.APILogSearchRequest"
                         }
                     }
                 ],
@@ -1788,25 +2416,25 @@ const docTemplate = `{
                     "200": {
                         "description": "Paginated logs response",
                         "schema": {
-                            "$ref": "#/definitions/common.APILogsResponse"
+                            "$ref": "#/definitions/server.APILogsResponse"
                         }
                     },
                     "400": {
                         "description": "Bad request",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/server.ErrorResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/server.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/server.ErrorResponse"
                         }
                     }
                 }
@@ -1855,19 +2483,77 @@ const docTemplate = `{
                     "200": {
                         "description": "Paginated host logs response",
                         "schema": {
-                            "$ref": "#/definitions/common.APIHostLogsResponse"
+                            "$ref": "#/definitions/server.APIHostLogsResponse"
                         }
                     },
                     "401": {
                         "description": "Unauthorized",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/server.ErrorResponse"
                         }
                     },
                     "500": {
                         "description": "Internal server error",
                         "schema": {
-                            "$ref": "#/definitions/common.ErrorResponse"
+                            "$ref": "#/definitions/server.ErrorResponse"
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{user_id}/domains": {
+            "get": {
+                "security": [
+                    {
+                        "ApiKeyAuth": []
+                    }
+                ],
+                "description": "Get all domains a user has access to (global admin only)",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "domains"
+                ],
+                "summary": "Get user's domains",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "User ID",
+                        "name": "user_id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "$ref": "#/definitions/domains.DomainUserResponse"
+                            }
+                        }
+                    },
+                    "403": {
+                        "description": "Forbidden",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
                         }
                     }
                 }
@@ -1875,7 +2561,420 @@ const docTemplate = `{
         }
     },
     "definitions": {
-        "common.APIHostLogsResponse": {
+        "admin.CreateGroupRequest": {
+            "type": "object",
+            "required": [
+                "name"
+            ],
+            "properties": {
+                "name": {
+                    "type": "string"
+                }
+            }
+        },
+        "admin.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string"
+                }
+            }
+        },
+        "admin.GroupResponse": {
+            "type": "object",
+            "properties": {
+                "hosts": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/models.HostResponse"
+                    }
+                },
+                "id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "name": {
+                    "type": "string",
+                    "example": "developers"
+                }
+            }
+        },
+        "admin.RegisterRequest": {
+            "type": "object",
+            "required": [
+                "email",
+                "password",
+                "role",
+                "username"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "groups": {
+                    "type": "string"
+                },
+                "inventory": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                },
+                "role": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "admin.UpdateUserGroupsRequest": {
+            "type": "object",
+            "required": [
+                "groups"
+            ],
+            "properties": {
+                "groups": {
+                    "type": "string"
+                }
+            }
+        },
+        "admin.UpdateUserRequest": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "groups": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                },
+                "role": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "admin.UserResponse": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string",
+                    "example": "john.doe@example.com"
+                },
+                "groups": {
+                    "type": "string",
+                    "example": "developers,admins"
+                },
+                "id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "inventories": {
+                    "type": "string",
+                    "example": "production"
+                },
+                "role": {
+                    "type": "string",
+                    "example": "admin"
+                },
+                "username": {
+                    "type": "string",
+                    "example": "johndoe"
+                }
+            }
+        },
+        "auth.ErrorResponse": {
+            "type": "object",
+            "properties": {
+                "error": {
+                    "type": "string"
+                }
+            }
+        },
+        "auth.LoginRequest": {
+            "type": "object",
+            "required": [
+                "password",
+                "username"
+            ],
+            "properties": {
+                "password": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "auth.LoginResponse": {
+            "type": "object",
+            "properties": {
+                "token": {
+                    "type": "string"
+                },
+                "user": {
+                    "type": "object",
+                    "properties": {
+                        "email": {
+                            "type": "string"
+                        },
+                        "groups": {
+                            "type": "string"
+                        },
+                        "role": {
+                            "type": "string"
+                        },
+                        "username": {
+                            "type": "string"
+                        }
+                    }
+                }
+            }
+        },
+        "auth.RegisterRequest": {
+            "type": "object",
+            "required": [
+                "email",
+                "password",
+                "role",
+                "username"
+            ],
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "groups": {
+                    "type": "string"
+                },
+                "inventory": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                },
+                "role": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "auth.UpdateMeRequest": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string"
+                },
+                "password": {
+                    "type": "string"
+                },
+                "username": {
+                    "type": "string"
+                }
+            }
+        },
+        "auth.UserResponse": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string",
+                    "example": "john.doe@example.com"
+                },
+                "groups": {
+                    "type": "string",
+                    "example": "developers,admins"
+                },
+                "id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "inventories": {
+                    "type": "string",
+                    "example": "production"
+                },
+                "role": {
+                    "type": "string",
+                    "example": "admin"
+                },
+                "username": {
+                    "type": "string",
+                    "example": "johndoe"
+                }
+            }
+        },
+        "domains.AssignUserToDomainRequest": {
+            "type": "object",
+            "required": [
+                "role",
+                "user_id"
+            ],
+            "properties": {
+                "role": {
+                    "description": "\"domain_admin\" or \"domain_user\"",
+                    "type": "string"
+                },
+                "user_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "domains.CreateDomainRequest": {
+            "type": "object",
+            "required": [
+                "name"
+            ],
+            "properties": {
+                "description": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "settings": {
+                    "type": "string"
+                }
+            }
+        },
+        "domains.DomainResponse": {
+            "type": "object",
+            "properties": {
+                "active": {
+                    "type": "boolean"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "settings": {
+                    "type": "string"
+                },
+                "updated_at": {
+                    "type": "string"
+                }
+            }
+        },
+        "domains.DomainUserResponse": {
+            "type": "object",
+            "properties": {
+                "domain_id": {
+                    "type": "integer"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "role": {
+                    "type": "string"
+                },
+                "user": {
+                    "$ref": "#/definitions/models.UserResponse"
+                },
+                "user_id": {
+                    "type": "integer"
+                }
+            }
+        },
+        "domains.UpdateDomainRequest": {
+            "type": "object",
+            "properties": {
+                "active": {
+                    "type": "boolean"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "settings": {
+                    "type": "string"
+                }
+            }
+        },
+        "domains.UpdateDomainUserRoleRequest": {
+            "type": "object",
+            "required": [
+                "role"
+            ],
+            "properties": {
+                "role": {
+                    "description": "\"domain_admin\" or \"domain_user\"",
+                    "type": "string"
+                }
+            }
+        },
+        "models.HostResponse": {
+            "type": "object",
+            "properties": {
+                "disabled_components": {
+                    "type": "string"
+                },
+                "groups": {
+                    "type": "string"
+                },
+                "inventory": {
+                    "type": "string"
+                },
+                "name": {
+                    "type": "string"
+                },
+                "status": {
+                    "type": "string"
+                },
+                "up_for_deletion": {
+                    "type": "boolean"
+                },
+                "version": {
+                    "type": "string"
+                },
+                "wants_update_to": {
+                    "type": "string"
+                }
+            }
+        },
+        "models.UserResponse": {
+            "type": "object",
+            "properties": {
+                "email": {
+                    "type": "string",
+                    "example": "john.doe@example.com"
+                },
+                "groups": {
+                    "type": "string",
+                    "example": "developers,admins"
+                },
+                "id": {
+                    "type": "integer",
+                    "example": 1
+                },
+                "inventories": {
+                    "type": "string",
+                    "example": "production"
+                },
+                "role": {
+                    "type": "string",
+                    "example": "admin"
+                },
+                "username": {
+                    "type": "string",
+                    "example": "johndoe"
+                }
+            }
+        },
+        "server.APIHostLogsResponse": {
             "type": "object",
             "properties": {
                 "hostname": {
@@ -1885,15 +2984,15 @@ const docTemplate = `{
                 "logs": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/common.APILogEntry"
+                        "$ref": "#/definitions/server.APILogEntry"
                     }
                 },
                 "pagination": {
-                    "$ref": "#/definitions/common.APILogPagination"
+                    "$ref": "#/definitions/server.APILogPagination"
                 }
             }
         },
-        "common.APILogEntry": {
+        "server.APILogEntry": {
             "type": "object",
             "properties": {
                 "component": {
@@ -1938,7 +3037,7 @@ const docTemplate = `{
                 }
             }
         },
-        "common.APILogPagination": {
+        "server.APILogPagination": {
             "type": "object",
             "properties": {
                 "page": {
@@ -1959,7 +3058,7 @@ const docTemplate = `{
                 }
             }
         },
-        "common.APILogRequest": {
+        "server.APILogRequest": {
             "type": "object",
             "required": [
                 "component",
@@ -1999,7 +3098,7 @@ const docTemplate = `{
                 }
             }
         },
-        "common.APILogSearchRequest": {
+        "server.APILogSearchRequest": {
             "type": "object",
             "properties": {
                 "component": {
@@ -2040,269 +3139,25 @@ const docTemplate = `{
                 }
             }
         },
-        "common.APILogsResponse": {
+        "server.APILogsResponse": {
             "type": "object",
             "properties": {
                 "logs": {
                     "type": "array",
                     "items": {
-                        "$ref": "#/definitions/common.APILogEntry"
+                        "$ref": "#/definitions/server.APILogEntry"
                     }
                 },
                 "pagination": {
-                    "$ref": "#/definitions/common.APILogPagination"
+                    "$ref": "#/definitions/server.APILogPagination"
                 }
             }
         },
-        "common.CreateGroupRequest": {
-            "type": "object",
-            "required": [
-                "name"
-            ],
-            "properties": {
-                "name": {
-                    "type": "string"
-                }
-            }
-        },
-        "common.ErrorResponse": {
+        "server.ErrorResponse": {
             "type": "object",
             "properties": {
                 "error": {
                     "type": "string"
-                }
-            }
-        },
-        "common.Group": {
-            "type": "object",
-            "properties": {
-                "hosts": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/github_com_monobilisim_monokit_common_api.Host"
-                    }
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "users": {
-                    "type": "array",
-                    "items": {
-                        "$ref": "#/definitions/common.User"
-                    }
-                }
-            }
-        },
-        "common.RegisterRequest": {
-            "type": "object",
-            "required": [
-                "email",
-                "password",
-                "role",
-                "username"
-            ],
-            "properties": {
-                "email": {
-                    "type": "string"
-                },
-                "groups": {
-                    "type": "string"
-                },
-                "inventory": {
-                    "type": "string"
-                },
-                "password": {
-                    "type": "string"
-                },
-                "role": {
-                    "type": "string"
-                },
-                "username": {
-                    "type": "string"
-                }
-            }
-        },
-        "common.UpdateMeRequest": {
-            "type": "object",
-            "properties": {
-                "email": {
-                    "type": "string"
-                },
-                "password": {
-                    "type": "string"
-                },
-                "username": {
-                    "type": "string"
-                }
-            }
-        },
-        "common.UpdateUserGroupsRequest": {
-            "type": "object",
-            "required": [
-                "groups"
-            ],
-            "properties": {
-                "groups": {
-                    "type": "string"
-                }
-            }
-        },
-        "common.UpdateUserRequest": {
-            "type": "object",
-            "properties": {
-                "email": {
-                    "type": "string"
-                },
-                "groups": {
-                    "type": "string"
-                },
-                "password": {
-                    "type": "string"
-                },
-                "role": {
-                    "type": "string"
-                },
-                "username": {
-                    "type": "string"
-                }
-            }
-        },
-        "common.User": {
-            "type": "object",
-            "properties": {
-                "email": {
-                    "type": "string"
-                },
-                "groups": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "inventories": {
-                    "type": "string"
-                },
-                "role": {
-                    "type": "string"
-                },
-                "username": {
-                    "type": "string"
-                }
-            }
-        },
-        "common.UserResponse": {
-            "type": "object",
-            "properties": {
-                "email": {
-                    "type": "string"
-                },
-                "groups": {
-                    "type": "string"
-                },
-                "inventories": {
-                    "type": "string"
-                },
-                "role": {
-                    "type": "string"
-                },
-                "username": {
-                    "type": "string"
-                }
-            }
-        },
-        "github_com_monobilisim_monokit_common_api.Host": {
-            "type": "object",
-            "properties": {
-                "cpuCores": {
-                    "type": "integer"
-                },
-                "createdAt": {
-                    "type": "string"
-                },
-                "disabledComponents": {
-                    "type": "string"
-                },
-                "groups": {
-                    "type": "string"
-                },
-                "id": {
-                    "type": "integer"
-                },
-                "installedComponents": {
-                    "type": "string"
-                },
-                "inventory": {
-                    "type": "string"
-                },
-                "ipAddress": {
-                    "type": "string"
-                },
-                "monokitVersion": {
-                    "type": "string"
-                },
-                "name": {
-                    "type": "string"
-                },
-                "os": {
-                    "type": "string"
-                },
-                "ram": {
-                    "type": "string"
-                },
-                "status": {
-                    "type": "string"
-                },
-                "upForDeletion": {
-                    "type": "boolean"
-                },
-                "updatedAt": {
-                    "type": "string"
-                },
-                "wantsUpdateTo": {
-                    "type": "string"
-                }
-            }
-        },
-        "github_com_monobilisim_monokit_common_api.LoginRequest": {
-            "type": "object",
-            "required": [
-                "password",
-                "username"
-            ],
-            "properties": {
-                "password": {
-                    "type": "string"
-                },
-                "username": {
-                    "type": "string"
-                }
-            }
-        },
-        "github_com_monobilisim_monokit_common_api.LoginResponse": {
-            "type": "object",
-            "properties": {
-                "token": {
-                    "type": "string"
-                },
-                "user": {
-                    "type": "object",
-                    "properties": {
-                        "email": {
-                            "type": "string"
-                        },
-                        "groups": {
-                            "type": "string"
-                        },
-                        "role": {
-                            "type": "string"
-                        },
-                        "username": {
-                            "type": "string"
-                        }
-                    }
                 }
             }
         }

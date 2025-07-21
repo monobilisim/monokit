@@ -23,6 +23,7 @@ type (
 	LoginResponse   = models.LoginResponse
 	RegisterRequest = models.RegisterRequest
 	UserResponse    = models.UserResponse
+	ErrorResponse   = models.ErrorResponse
 	KeycloakConfig  = models.KeycloakConfig
 	DBTX            = models.DBTX
 	Session         = models.Session

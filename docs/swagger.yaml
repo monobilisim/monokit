@@ -1,18 +1,296 @@
 basePath: /api/v1
 definitions:
-  common.APIHostLogsResponse:
+  admin.CreateGroupRequest:
+    properties:
+      name:
+        type: string
+    required:
+    - name
+    type: object
+  admin.ErrorResponse:
+    properties:
+      error:
+        type: string
+    type: object
+  admin.GroupResponse:
+    properties:
+      hosts:
+        items:
+          $ref: '#/definitions/models.HostResponse'
+        type: array
+      id:
+        example: 1
+        type: integer
+      name:
+        example: developers
+        type: string
+    type: object
+  admin.RegisterRequest:
+    properties:
+      email:
+        type: string
+      groups:
+        type: string
+      inventory:
+        type: string
+      password:
+        type: string
+      role:
+        type: string
+      username:
+        type: string
+    required:
+    - email
+    - password
+    - role
+    - username
+    type: object
+  admin.UpdateUserGroupsRequest:
+    properties:
+      groups:
+        type: string
+    required:
+    - groups
+    type: object
+  admin.UpdateUserRequest:
+    properties:
+      email:
+        type: string
+      groups:
+        type: string
+      password:
+        type: string
+      role:
+        type: string
+      username:
+        type: string
+    type: object
+  admin.UserResponse:
+    properties:
+      email:
+        example: john.doe@example.com
+        type: string
+      groups:
+        example: developers,admins
+        type: string
+      id:
+        example: 1
+        type: integer
+      inventories:
+        example: production
+        type: string
+      role:
+        example: admin
+        type: string
+      username:
+        example: johndoe
+        type: string
+    type: object
+  auth.ErrorResponse:
+    properties:
+      error:
+        type: string
+    type: object
+  auth.LoginRequest:
+    properties:
+      password:
+        type: string
+      username:
+        type: string
+    required:
+    - password
+    - username
+    type: object
+  auth.LoginResponse:
+    properties:
+      token:
+        type: string
+      user:
+        properties:
+          email:
+            type: string
+          groups:
+            type: string
+          role:
+            type: string
+          username:
+            type: string
+        type: object
+    type: object
+  auth.RegisterRequest:
+    properties:
+      email:
+        type: string
+      groups:
+        type: string
+      inventory:
+        type: string
+      password:
+        type: string
+      role:
+        type: string
+      username:
+        type: string
+    required:
+    - email
+    - password
+    - role
+    - username
+    type: object
+  auth.UpdateMeRequest:
+    properties:
+      email:
+        type: string
+      password:
+        type: string
+      username:
+        type: string
+    type: object
+  auth.UserResponse:
+    properties:
+      email:
+        example: john.doe@example.com
+        type: string
+      groups:
+        example: developers,admins
+        type: string
+      id:
+        example: 1
+        type: integer
+      inventories:
+        example: production
+        type: string
+      role:
+        example: admin
+        type: string
+      username:
+        example: johndoe
+        type: string
+    type: object
+  domains.AssignUserToDomainRequest:
+    properties:
+      role:
+        description: '"domain_admin" or "domain_user"'
+        type: string
+      user_id:
+        type: integer
+    required:
+    - role
+    - user_id
+    type: object
+  domains.CreateDomainRequest:
+    properties:
+      description:
+        type: string
+      name:
+        type: string
+      settings:
+        type: string
+    required:
+    - name
+    type: object
+  domains.DomainResponse:
+    properties:
+      active:
+        type: boolean
+      created_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: integer
+      name:
+        type: string
+      settings:
+        type: string
+      updated_at:
+        type: string
+    type: object
+  domains.DomainUserResponse:
+    properties:
+      domain_id:
+        type: integer
+      id:
+        type: integer
+      role:
+        type: string
+      user:
+        $ref: '#/definitions/models.UserResponse'
+      user_id:
+        type: integer
+    type: object
+  domains.UpdateDomainRequest:
+    properties:
+      active:
+        type: boolean
+      description:
+        type: string
+      name:
+        type: string
+      settings:
+        type: string
+    type: object
+  domains.UpdateDomainUserRoleRequest:
+    properties:
+      role:
+        description: '"domain_admin" or "domain_user"'
+        type: string
+    required:
+    - role
+    type: object
+  models.HostResponse:
+    properties:
+      disabled_components:
+        type: string
+      groups:
+        type: string
+      inventory:
+        type: string
+      name:
+        type: string
+      status:
+        type: string
+      up_for_deletion:
+        type: boolean
+      version:
+        type: string
+      wants_update_to:
+        type: string
+    type: object
+  models.UserResponse:
+    properties:
+      email:
+        example: john.doe@example.com
+        type: string
+      groups:
+        example: developers,admins
+        type: string
+      id:
+        example: 1
+        type: integer
+      inventories:
+        example: production
+        type: string
+      role:
+        example: admin
+        type: string
+      username:
+        example: johndoe
+        type: string
+    type: object
+  server.APIHostLogsResponse:
     properties:
       hostname:
         example: server1
         type: string
       logs:
         items:
-          $ref: '#/definitions/common.APILogEntry'
+          $ref: '#/definitions/server.APILogEntry'
         type: array
       pagination:
-        $ref: '#/definitions/common.APILogPagination'
+        $ref: '#/definitions/server.APILogPagination'
     type: object
-  common.APILogEntry:
+  server.APILogEntry:
     properties:
       component:
         example: system
@@ -45,7 +323,7 @@ definitions:
         example: "2023-01-01T12:00:01Z"
         type: string
     type: object
-  common.APILogPagination:
+  server.APILogPagination:
     properties:
       page:
         example: 1
@@ -60,7 +338,7 @@ definitions:
         example: 150
         type: integer
     type: object
-  common.APILogRequest:
+  server.APILogRequest:
     properties:
       component:
         example: system
@@ -90,7 +368,7 @@ definitions:
     - level
     - message
     type: object
-  common.APILogSearchRequest:
+  server.APILogSearchRequest:
     properties:
       component:
         example: database
@@ -120,179 +398,19 @@ definitions:
         example: monokit
         type: string
     type: object
-  common.APILogsResponse:
+  server.APILogsResponse:
     properties:
       logs:
         items:
-          $ref: '#/definitions/common.APILogEntry'
+          $ref: '#/definitions/server.APILogEntry'
         type: array
       pagination:
-        $ref: '#/definitions/common.APILogPagination'
+        $ref: '#/definitions/server.APILogPagination'
     type: object
-  common.CreateGroupRequest:
-    properties:
-      name:
-        type: string
-    required:
-    - name
-    type: object
-  common.ErrorResponse:
+  server.ErrorResponse:
     properties:
       error:
         type: string
-    type: object
-  common.Group:
-    properties:
-      hosts:
-        items:
-          $ref: '#/definitions/github_com_monobilisim_monokit_common_api.Host'
-        type: array
-      id:
-        type: integer
-      name:
-        type: string
-      users:
-        items:
-          $ref: '#/definitions/common.User'
-        type: array
-    type: object
-  common.RegisterRequest:
-    properties:
-      email:
-        type: string
-      groups:
-        type: string
-      inventory:
-        type: string
-      password:
-        type: string
-      role:
-        type: string
-      username:
-        type: string
-    required:
-    - email
-    - password
-    - role
-    - username
-    type: object
-  common.UpdateMeRequest:
-    properties:
-      email:
-        type: string
-      password:
-        type: string
-      username:
-        type: string
-    type: object
-  common.UpdateUserGroupsRequest:
-    properties:
-      groups:
-        type: string
-    required:
-    - groups
-    type: object
-  common.UpdateUserRequest:
-    properties:
-      email:
-        type: string
-      groups:
-        type: string
-      password:
-        type: string
-      role:
-        type: string
-      username:
-        type: string
-    type: object
-  common.User:
-    properties:
-      email:
-        type: string
-      groups:
-        type: string
-      id:
-        type: integer
-      inventories:
-        type: string
-      role:
-        type: string
-      username:
-        type: string
-    type: object
-  common.UserResponse:
-    properties:
-      email:
-        type: string
-      groups:
-        type: string
-      inventories:
-        type: string
-      role:
-        type: string
-      username:
-        type: string
-    type: object
-  github_com_monobilisim_monokit_common_api.Host:
-    properties:
-      cpuCores:
-        type: integer
-      createdAt:
-        type: string
-      disabledComponents:
-        type: string
-      groups:
-        type: string
-      id:
-        type: integer
-      installedComponents:
-        type: string
-      inventory:
-        type: string
-      ipAddress:
-        type: string
-      monokitVersion:
-        type: string
-      name:
-        type: string
-      os:
-        type: string
-      ram:
-        type: string
-      status:
-        type: string
-      upForDeletion:
-        type: boolean
-      updatedAt:
-        type: string
-      wantsUpdateTo:
-        type: string
-    type: object
-  github_com_monobilisim_monokit_common_api.LoginRequest:
-    properties:
-      password:
-        type: string
-      username:
-        type: string
-    required:
-    - password
-    - username
-    type: object
-  github_com_monobilisim_monokit_common_api.LoginResponse:
-    properties:
-      token:
-        type: string
-      user:
-        properties:
-          email:
-            type: string
-          groups:
-            type: string
-          role:
-            type: string
-          username:
-            type: string
-        type: object
     type: object
 host: localhost:9989
 info:
@@ -319,12 +437,12 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/common.Group'
+              $ref: '#/definitions/admin.GroupResponse'
             type: array
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/admin.ErrorResponse'
       security:
       - ApiKeyAuth: []
       summary: List all groups
@@ -340,22 +458,22 @@ paths:
         name: group
         required: true
         schema:
-          $ref: '#/definitions/common.CreateGroupRequest'
+          $ref: '#/definitions/admin.CreateGroupRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/common.Group'
+            $ref: '#/definitions/admin.GroupResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/admin.ErrorResponse'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/admin.ErrorResponse'
       security:
       - ApiKeyAuth: []
       summary: Create new group
@@ -388,11 +506,11 @@ paths:
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/admin.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/admin.ErrorResponse'
       security:
       - ApiKeyAuth: []
       summary: Delete a group
@@ -426,11 +544,11 @@ paths:
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/admin.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/admin.ErrorResponse'
       security:
       - ApiKeyAuth: []
       summary: Remove host from group
@@ -463,11 +581,11 @@ paths:
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/admin.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/admin.ErrorResponse'
       security:
       - ApiKeyAuth: []
       summary: Add host to group
@@ -496,11 +614,11 @@ paths:
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/admin.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/admin.ErrorResponse'
       security:
       - ApiKeyAuth: []
       summary: Schedule host for deletion
@@ -534,11 +652,11 @@ paths:
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/admin.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/admin.ErrorResponse'
       security:
       - ApiKeyAuth: []
       summary: Move host to inventory
@@ -556,12 +674,12 @@ paths:
           description: OK
           schema:
             items:
-              $ref: '#/definitions/common.UserResponse'
+              $ref: '#/definitions/admin.UserResponse'
             type: array
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/admin.ErrorResponse'
       security:
       - ApiKeyAuth: []
       summary: Get all users
@@ -577,7 +695,7 @@ paths:
         name: user
         required: true
         schema:
-          $ref: '#/definitions/common.RegisterRequest'
+          $ref: '#/definitions/admin.RegisterRequest'
       produces:
       - application/json
       responses:
@@ -590,15 +708,15 @@ paths:
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/admin.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/admin.ErrorResponse'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/admin.ErrorResponse'
       security:
       - ApiKeyAuth: []
       summary: Create new user
@@ -627,11 +745,11 @@ paths:
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/admin.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/admin.ErrorResponse'
       security:
       - ApiKeyAuth: []
       summary: Delete user
@@ -653,15 +771,15 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/common.UserResponse'
+            $ref: '#/definitions/admin.UserResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/admin.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/admin.ErrorResponse'
       security:
       - ApiKeyAuth: []
       summary: Get user by username
@@ -682,7 +800,7 @@ paths:
         name: user
         required: true
         schema:
-          $ref: '#/definitions/common.UpdateUserRequest'
+          $ref: '#/definitions/admin.UpdateUserRequest'
       produces:
       - application/json
       responses:
@@ -695,19 +813,19 @@ paths:
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/admin.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/admin.ErrorResponse'
         "404":
           description: Not Found
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/admin.ErrorResponse'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/admin.ErrorResponse'
       security:
       - ApiKeyAuth: []
       summary: Update user details
@@ -729,7 +847,7 @@ paths:
         name: groups
         required: true
         schema:
-          $ref: '#/definitions/common.UpdateUserGroupsRequest'
+          $ref: '#/definitions/admin.UpdateUserGroupsRequest'
       produces:
       - application/json
       responses:
@@ -742,7 +860,7 @@ paths:
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/admin.ErrorResponse'
       security:
       - ApiKeyAuth: []
       summary: Update user groups
@@ -759,18 +877,18 @@ paths:
         name: credentials
         required: true
         schema:
-          $ref: '#/definitions/github_com_monobilisim_monokit_common_api.LoginRequest'
+          $ref: '#/definitions/auth.LoginRequest'
       produces:
       - application/json
       responses:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/github_com_monobilisim_monokit_common_api.LoginResponse'
+            $ref: '#/definitions/auth.LoginResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/auth.ErrorResponse'
       summary: Login user
       tags:
       - auth
@@ -791,7 +909,7 @@ paths:
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/auth.ErrorResponse'
       security:
       - ApiKeyAuth: []
       summary: Logout user
@@ -814,7 +932,7 @@ paths:
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/auth.ErrorResponse'
       security:
       - ApiKeyAuth: []
       summary: Delete own account
@@ -830,11 +948,11 @@ paths:
         "200":
           description: OK
           schema:
-            $ref: '#/definitions/common.UserResponse'
+            $ref: '#/definitions/auth.UserResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/auth.ErrorResponse'
       security:
       - ApiKeyAuth: []
       summary: Get current user
@@ -850,7 +968,7 @@ paths:
         name: user
         required: true
         schema:
-          $ref: '#/definitions/common.UpdateMeRequest'
+          $ref: '#/definitions/auth.UpdateMeRequest'
       produces:
       - application/json
       responses:
@@ -863,11 +981,11 @@ paths:
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/auth.ErrorResponse'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/auth.ErrorResponse'
       security:
       - ApiKeyAuth: []
       summary: Update own user details
@@ -884,7 +1002,7 @@ paths:
         name: user
         required: true
         schema:
-          $ref: '#/definitions/common.RegisterRequest'
+          $ref: '#/definitions/auth.RegisterRequest'
       produces:
       - application/json
       responses:
@@ -897,20 +1015,391 @@ paths:
         "400":
           description: Bad Request
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/auth.ErrorResponse'
         "403":
           description: Forbidden
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/auth.ErrorResponse'
         "409":
           description: Conflict
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/auth.ErrorResponse'
       security:
       - ApiKeyAuth: []
       summary: Register user
       tags:
       - auth
+  /domains:
+    get:
+      consumes:
+      - application/json
+      description: Get list of all domains (global admin only)
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/domains.DomainResponse'
+            type: array
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Get all domains
+      tags:
+      - domains
+    post:
+      consumes:
+      - application/json
+      description: Create a new domain (global admin only)
+      parameters:
+      - description: Domain information
+        in: body
+        name: domain
+        required: true
+        schema:
+          $ref: '#/definitions/domains.CreateDomainRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/domains.DomainResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Create new domain
+      tags:
+      - domains
+  /domains/{domain_id}/users/{user_id}:
+    delete:
+      consumes:
+      - application/json
+      description: Remove a user from a domain (global admin only)
+      parameters:
+      - description: Domain ID
+        in: path
+        name: domain_id
+        required: true
+        type: integer
+      - description: User ID
+        in: path
+        name: user_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Remove user from domain
+      tags:
+      - domains
+    put:
+      consumes:
+      - application/json
+      description: Update a user's role within a domain (global admin only)
+      parameters:
+      - description: Domain ID
+        in: path
+        name: domain_id
+        required: true
+        type: integer
+      - description: User ID
+        in: path
+        name: user_id
+        required: true
+        type: integer
+      - description: Role update information
+        in: body
+        name: role
+        required: true
+        schema:
+          $ref: '#/definitions/domains.UpdateDomainUserRoleRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domains.DomainUserResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Update domain user role
+      tags:
+      - domains
+  /domains/{id}:
+    delete:
+      consumes:
+      - application/json
+      description: Delete domain (global admin only)
+      parameters:
+      - description: Domain ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Delete domain
+      tags:
+      - domains
+    get:
+      consumes:
+      - application/json
+      description: Get specific domain information (global admin only)
+      parameters:
+      - description: Domain ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domains.DomainResponse'
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Get domain by ID
+      tags:
+      - domains
+    put:
+      consumes:
+      - application/json
+      description: Update domain information (global admin only)
+      parameters:
+      - description: Domain ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Domain update information
+        in: body
+        name: domain
+        required: true
+        schema:
+          $ref: '#/definitions/domains.UpdateDomainRequest'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/domains.DomainResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Update domain
+      tags:
+      - domains
+  /domains/{id}/users:
+    get:
+      consumes:
+      - application/json
+      description: Get all users assigned to a domain (global admin only)
+      parameters:
+      - description: Domain ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/domains.DomainUserResponse'
+            type: array
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Get domain users
+      tags:
+      - domains
+    post:
+      consumes:
+      - application/json
+      description: Assign a user to a domain with a specific role (global admin only)
+      parameters:
+      - description: Domain ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: User assignment information
+        in: body
+        name: assignment
+        required: true
+        schema:
+          $ref: '#/definitions/domains.AssignUserToDomainRequest'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Created
+          schema:
+            $ref: '#/definitions/domains.DomainUserResponse'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "409":
+          description: Conflict
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Assign user to domain
+      tags:
+      - domains
   /health/tools:
     get:
       description: Retrieves a combined list of names of all registered health check
@@ -924,10 +1413,14 @@ paths:
             items:
               type: string
             type: array
+        "401":
+          description: Unauthorized - authentication required
+          schema:
+            $ref: '#/definitions/server.ErrorResponse'
         "500":
           description: Internal server error
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/server.ErrorResponse'
       security:
       - ApiKeyAuth: []
       summary: Get available health tools
@@ -959,15 +1452,15 @@ paths:
         "400":
           description: Invalid JSON data or missing tool name
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/server.ErrorResponse'
         "401":
           description: Unauthorized (invalid host token)
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/server.ErrorResponse'
         "500":
           description: Internal server error
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/server.ErrorResponse'
       security:
       - ApiKeyAuth: []
       summary: Submit health data from a host agent
@@ -984,12 +1477,12 @@ paths:
         name: log
         required: true
         schema:
-          $ref: '#/definitions/common.APILogRequest'
+          $ref: '#/definitions/server.APILogRequest'
       produces:
       - application/json
       responses:
-        "201":
-          description: Log entry saved response
+        "202":
+          description: Log entry accepted response
           schema:
             additionalProperties: true
             type: object
@@ -1310,11 +1803,11 @@ paths:
         "404":
           description: Host not found
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/server.ErrorResponse'
         "500":
           description: Internal server error
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/server.ErrorResponse'
       security:
       - ApiKeyAuth: []
       summary: Get aggregated health data for a host
@@ -1344,11 +1837,11 @@ paths:
         "404":
           description: Host not found or Tool not found
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/server.ErrorResponse'
         "500":
           description: Internal server error
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/server.ErrorResponse'
       security:
       - ApiKeyAuth: []
       summary: Get specific tool health data for a host
@@ -1404,15 +1897,15 @@ paths:
         "200":
           description: Paginated logs response
           schema:
-            $ref: '#/definitions/common.APILogsResponse'
+            $ref: '#/definitions/server.APILogsResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/server.ErrorResponse'
         "500":
           description: Internal server error
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/server.ErrorResponse'
       security:
       - ApiKeyAuth: []
       summary: Get all logs
@@ -1443,18 +1936,48 @@ paths:
         "200":
           description: Paginated host logs response
           schema:
-            $ref: '#/definitions/common.APIHostLogsResponse'
+            $ref: '#/definitions/server.APIHostLogsResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/server.ErrorResponse'
         "500":
           description: Internal server error
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/server.ErrorResponse'
       security:
       - ApiKeyAuth: []
       summary: Get logs for a specific host
+      tags:
+      - Logs
+  /logs/hourly:
+    get:
+      consumes:
+      - application/json
+      description: Get log statistics for the last hour broken down by 5-minute intervals
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Array of 12 objects containing log counts for each 5-minute
+            interval
+          schema:
+            items:
+              additionalProperties:
+                type: integer
+              type: object
+            type: array
+        "401":
+          description: Unauthorized
+          schema:
+            $ref: '#/definitions/server.ErrorResponse'
+        "500":
+          description: Internal server error
+          schema:
+            $ref: '#/definitions/server.ErrorResponse'
+      security:
+      - ApiKeyAuth: []
+      summary: Get hourly log statistics
       tags:
       - Logs
   /logs/search:
@@ -1468,31 +1991,68 @@ paths:
         name: search
         required: true
         schema:
-          $ref: '#/definitions/common.APILogSearchRequest'
+          $ref: '#/definitions/server.APILogSearchRequest'
       produces:
       - application/json
       responses:
         "200":
           description: Paginated logs response
           schema:
-            $ref: '#/definitions/common.APILogsResponse'
+            $ref: '#/definitions/server.APILogsResponse'
         "400":
           description: Bad request
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/server.ErrorResponse'
         "401":
           description: Unauthorized
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/server.ErrorResponse'
         "500":
           description: Internal server error
           schema:
-            $ref: '#/definitions/common.ErrorResponse'
+            $ref: '#/definitions/server.ErrorResponse'
       security:
       - ApiKeyAuth: []
       summary: Search logs
       tags:
       - Logs
+  /users/{user_id}/domains:
+    get:
+      consumes:
+      - application/json
+      description: Get all domains a user has access to (global admin only)
+      parameters:
+      - description: User ID
+        in: path
+        name: user_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/domains.DomainUserResponse'
+            type: array
+        "403":
+          description: Forbidden
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Get user's domains
+      tags:
+      - domains
 securityDefinitions:
   ApiKeyAuth:
     in: header

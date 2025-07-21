@@ -73,7 +73,7 @@ clean-plugins:
 # Generate swagger documentation
 docs:
 	@echo "$(BLUE)Generating swagger documentation...$(RESET)"
-	swag init --parseDependency --parseInternal -g common/api/server.go
+	swag init --parseDependency --parseInternal -g common/api/server/server.go
 	@echo "$(GREEN)Documentation generation complete$(RESET)"
 
 # Build minimal binary (no API)

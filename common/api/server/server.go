@@ -69,6 +69,8 @@ type (
 	Session        = models.Session
 	Group          = models.Group
 	Inventory      = models.Inventory
+	Domain         = models.Domain
+	DomainUser     = models.DomainUser
 	HostKey        = models.HostKey
 	HostLog        = models.HostLog
 	HostFileConfig = models.HostFileConfig
@@ -132,25 +134,42 @@ func ServerMain(cmd *cobra.Command, args []string) {
 			return gorm.Open(postgres.Open(dsn), &gorm.Config{})
 		},
 		SetupDB: func(db *gorm.DB) {
-			db.AutoMigrate(&Inventory{}) // First create Inventory table
-			db.AutoMigrate(&Host{})      // Then Host table that references Inventory
+			// Create domain-related tables first
+			db.AutoMigrate(&Domain{})     // Create Domain table first
+			db.AutoMigrate(&DomainUser{}) // Create DomainUser junction table
+
+			// Create other tables in dependency order
+			db.AutoMigrate(&Inventory{}) // Inventory now references Domain
+			db.AutoMigrate(&Host{})      // Host now references Domain
 			db.AutoMigrate(&HostKey{})
-			db.AutoMigrate(&Group{})
-			db.AutoMigrate(&User{})
+			db.AutoMigrate(&Group{}) // Group now references Domain
+			db.AutoMigrate(&User{})  // User now has DomainUsers relationship
 			db.AutoMigrate(&Session{})
 			db.AutoMigrate(&HostLog{})        // Add migration for HostLog table
 			db.AutoMigrate(&HostFileConfig{}) // Add migration for host file configs
 			db.AutoMigrate(&HostHealthData{}) // Add migration for HostHealthData
+
+			// Create indexes for performance (only where GORM tags don't handle it)
 			db.Exec("CREATE INDEX IF NOT EXISTS idx_host_logs_timestamp ON host_logs (timestamp)")
+
+			// Create default domain if it doesn't exist
+			var defaultDomain Domain
+			if db.Where("name = ?", "default").First(&defaultDomain).Error == gorm.ErrRecordNotFound {
+				defaultDomain = Domain{Name: "default", Description: "Default domain for existing data", Active: true}
+				db.Create(&defaultDomain)
+			}
+
 			// Create default inventory if it doesn't exist
 			var defaultInventory Inventory
-			if db.Where("name = ?", "default").First(&defaultInventory).Error == gorm.ErrRecordNotFound {
-				db.Create(&Inventory{Name: "default"})
+			if db.Where("name = ? AND domain_id = ?", "default", defaultDomain.ID).First(&defaultInventory).Error == gorm.ErrRecordNotFound {
+				db.Create(&Inventory{Name: "default", DomainID: defaultDomain.ID})
 			}
+
 			// Create initial admin user if no users exist
 			if err := auth.CreateInitialAdmin(db); err != nil {
 				fmt.Printf("Warning: Failed to create initial admin user: %v\n", err)
 			}
+
 			// Get the hosts list from the pgsql database
 			db.Find(&HostsList)
 			// Fix any duplicate host names

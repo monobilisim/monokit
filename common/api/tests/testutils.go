@@ -29,6 +29,8 @@ func SetupTestDB(t require.TestingT) *gorm.DB {
 
 	// Migrate the schema in the correct order to avoid foreign key issues
 	err = db.AutoMigrate(
+		&models.Domain{},
+		&models.DomainUser{},
 		&models.Inventory{},
 		&models.Host{},
 		&models.User{},
@@ -41,8 +43,19 @@ func SetupTestDB(t require.TestingT) *gorm.DB {
 	)
 	require.NoError(t, err, "Failed to migrate test database schema")
 
-	// Create default inventory required by many tests
-	db.Create(&models.Inventory{Name: "default"})
+	// Create default domain required by many tests
+	defaultDomain := models.Domain{
+		Name:        "default",
+		Description: "Default test domain",
+		Active:      true,
+	}
+	db.Create(&defaultDomain)
+
+	// Create default inventory in the default domain
+	db.Create(&models.Inventory{
+		Name:     "default",
+		DomainID: defaultDomain.ID,
+	})
 
 	// Clear global state
 	models.HostsList = []models.Host{}
@@ -60,7 +73,7 @@ func CleanupTestDB(db *gorm.DB) {
 	sqlDB.Close()
 }
 
-// SetupTestAdmin creates an admin user for testing
+// SetupTestAdmin creates a global admin user for testing
 func SetupTestAdmin(t require.TestingT, db *gorm.DB) models.User {
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte("adminpass"), 14)
 	require.NoError(t, err)
@@ -69,16 +82,16 @@ func SetupTestAdmin(t require.TestingT, db *gorm.DB) models.User {
 		Username:    "admin",
 		Password:    string(hashedPassword),
 		Email:       "admin@example.com",
-		Role:        "admin",
+		Role:        "global_admin", // Global admin role for multi-tenant access
 		Groups:      "nil",
-		Inventories: "default",
+		Inventories: "default", // Kept for backward compatibility
 	}
 	result := db.Create(&admin)
 	require.NoError(t, result.Error)
 	return admin
 }
 
-// SetupTestUser creates a regular user for testing
+// SetupTestUser creates a regular user for testing (domain-scoped)
 func SetupTestUser(t require.TestingT, db *gorm.DB, username string) models.User {
 	hashedPassword, err := bcrypt.GenerateFromPassword([]byte("userpass"), 14)
 	require.NoError(t, err)
@@ -87,19 +100,24 @@ func SetupTestUser(t require.TestingT, db *gorm.DB, username string) models.User
 		Username:    username,
 		Password:    string(hashedPassword),
 		Email:       fmt.Sprintf("%s@example.com", username),
-		Role:        "user",
+		Role:        "", // Empty role means domain-scoped user
 		Groups:      "nil",
-		Inventories: "default",
+		Inventories: "default", // Kept for backward compatibility
 	}
 	result := db.Create(&user)
 	require.NoError(t, result.Error)
 	return user
 }
 
-// SetupTestHost creates a host for testing
+// SetupTestHost creates a host for testing in the default domain
 func SetupTestHost(t require.TestingT, db *gorm.DB, hostname string) models.Host {
+	// Get the default domain
+	var defaultDomain models.Domain
+	db.Where("name = ?", "default").First(&defaultDomain)
+
 	host := models.Host{
 		Name:                hostname,
+		DomainID:            defaultDomain.ID,
 		CpuCores:            4,
 		Ram:                 "8GB",
 		MonokitVersion:      "1.0.0",
@@ -117,14 +135,76 @@ func SetupTestHost(t require.TestingT, db *gorm.DB, hostname string) models.Host
 	return host
 }
 
-// SetupTestGroup creates a group for testing
+// SetupTestGroup creates a group for testing in the default domain
 func SetupTestGroup(t require.TestingT, db *gorm.DB, name string) models.Group {
+	// Get the default domain
+	var defaultDomain models.Domain
+	db.Where("name = ?", "default").First(&defaultDomain)
+
 	group := models.Group{
-		Name: name,
+		Name:     name,
+		DomainID: defaultDomain.ID,
 	}
 	result := db.Create(&group)
 	require.NoError(t, result.Error)
 	return group
+}
+
+// SetupTestDomain creates a domain for testing
+func SetupTestDomain(t require.TestingT, db *gorm.DB, name string) models.Domain {
+	domain := models.Domain{
+		Name:        name,
+		Description: fmt.Sprintf("Test domain: %s", name),
+		Active:      true,
+	}
+	result := db.Create(&domain)
+	require.NoError(t, result.Error)
+	return domain
+}
+
+// SetupTestDomainUser assigns a user to a domain with a specific role
+func SetupTestDomainUser(t require.TestingT, db *gorm.DB, user models.User, domain models.Domain, role string) models.DomainUser {
+	domainUser := models.DomainUser{
+		UserID:   user.ID,
+		DomainID: domain.ID,
+		Role:     role, // "domain_admin" or "domain_user"
+	}
+	result := db.Create(&domainUser)
+	require.NoError(t, result.Error)
+	return domainUser
+}
+
+// SetupTestHostInDomain creates a host for testing in a specific domain
+func SetupTestHostInDomain(t require.TestingT, db *gorm.DB, hostname string, domain models.Domain) models.Host {
+	host := models.Host{
+		Name:                hostname,
+		DomainID:            domain.ID,
+		CpuCores:            4,
+		Ram:                 "8GB",
+		MonokitVersion:      "1.0.0",
+		Os:                  "Test OS",
+		DisabledComponents:  "nil",
+		InstalledComponents: "test-component",
+		IpAddress:           "127.0.0.1",
+		Status:              "online",
+		Groups:              "nil",
+		Inventory:           "default",
+		UpForDeletion:       false,
+	}
+	result := db.Create(&host)
+	require.NoError(t, result.Error)
+	return host
+}
+
+// SetupTestInventoryInDomain creates an inventory for testing in a specific domain
+func SetupTestInventoryInDomain(t require.TestingT, db *gorm.DB, name string, domain models.Domain) models.Inventory {
+	inventory := models.Inventory{
+		Name:     name,
+		DomainID: domain.ID,
+	}
+	result := db.Create(&inventory)
+	require.NoError(t, result.Error)
+	return inventory
 }
 
 // CreateTestContext creates a gin context for testing
@@ -138,6 +218,39 @@ func CreateTestContext() (*gin.Context, *httptest.ResponseRecorder) {
 // AuthorizeContext sets up context with authenticated user
 func AuthorizeContext(c *gin.Context, user models.User) {
 	c.Set("user", user)
+}
+
+// AuthorizeContextWithDomain sets up context with authenticated user and domain context
+func AuthorizeContextWithDomain(c *gin.Context, user models.User, db *gorm.DB) {
+	c.Set("user", user)
+
+	// Set up domain context based on user role
+	if user.Role == "global_admin" {
+		// Global admin has access to all domains
+		domainContext := struct {
+			UserDomains       []models.DomainUser `json:"user_domains"`
+			IsGlobalAdmin     bool                `json:"is_global_admin"`
+			RequestedDomainID *uint               `json:"requested_domain_id,omitempty"`
+		}{
+			UserDomains:   []models.DomainUser{},
+			IsGlobalAdmin: true,
+		}
+		c.Set("domain_context", domainContext)
+	} else {
+		// Load user's domain associations
+		var userDomains []models.DomainUser
+		db.Preload("Domain").Where("user_id = ?", user.ID).Find(&userDomains)
+
+		domainContext := struct {
+			UserDomains       []models.DomainUser `json:"user_domains"`
+			IsGlobalAdmin     bool                `json:"is_global_admin"`
+			RequestedDomainID *uint               `json:"requested_domain_id,omitempty"`
+		}{
+			UserDomains:   userDomains,
+			IsGlobalAdmin: false,
+		}
+		c.Set("domain_context", domainContext)
+	}
 }
 
 // CreateRequestContext creates a gin context with a request for testing

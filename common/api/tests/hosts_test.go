@@ -16,9 +16,14 @@ func TestRegisterHost(t *testing.T) {
 	db := SetupTestDB(t)
 	defer CleanupTestDB(db)
 
+	// Get the default domain created by SetupTestDB
+	var defaultDomain models.Domain
+	db.Where("name = ?", "default").First(&defaultDomain)
+
 	// Test: Successful new host registration
 	newHost := models.Host{
 		Name:                "testhost",
+		DomainID:            defaultDomain.ID, // Now required for domain-scoped hosts
 		CpuCores:            4,
 		Ram:                 "8GB",
 		MonokitVersion:      "1.0.0",
@@ -43,11 +48,12 @@ func TestRegisterHost(t *testing.T) {
 	}
 	ExtractJSONResponse(t, w, &response)
 	assert.Equal(t, "testhost", response.Host.Name)
+	assert.Equal(t, defaultDomain.ID, response.Host.DomainID) // Verify domain assignment
 	assert.NotEmpty(t, response.ApiKey)
 
-	// Verify host was created in database
+	// Verify host was created in database with correct domain
 	var dbHost models.Host
-	result := db.Where("name = ?", "testhost").First(&dbHost)
+	result := db.Where("name = ? AND domain_id = ?", "testhost", defaultDomain.ID).First(&dbHost)
 	require.NoError(t, result.Error)
 	assert.Equal(t, "testhost", dbHost.Name)
 	assert.Equal(t, "192.168.1.100", dbHost.IpAddress)
