@@ -42,6 +42,12 @@ func analyzeDiskPartitions(diskPartitions []disk.PartitionStat) ([]DiskInfo, []D
 			continue
 		}
 
+		// Skip ZFS partitions as they are handled separately by dataset checks
+		if partition.Fstype == "zfs" {
+			log.Debug().Msg("Skipping ZFS partition (handled by dataset checks): " + partition.Mountpoint)
+			continue
+		}
+
 		if !slices.Contains(OsHealthConfig.Filesystems, partition.Fstype) {
 			continue
 		}

@@ -115,6 +115,32 @@ func collectHealthData(version string) *HealthData {
 	// Collect ZFS info if available
 	healthData.ZFSPools = collectZFSInfo()
 
+	// Collect ZFS dataset info and handle alarms
+	healthData.ZFSDatasets = collectZFSDatasetInfo()
+	var exceededDatasets []ZFSDatasetInfo
+	for _, d := range healthData.ZFSDatasets {
+		if d.UsedPct > OsHealthConfig.Part_use_limit {
+			exceededDatasets = append(exceededDatasets, d)
+		}
+	}
+	if len(exceededDatasets) > 0 {
+		fullMsg, tableOnly := createExceededZFSDatasetTable(exceededDatasets)
+		subject := common.Config.Identifier + " için ZFS dataset doluluk seviyesi %" + strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64) + " üstüne çıktı"
+		issues.CheckDown("zfsdataset", subject, tableOnly, false, 0)
+		id := issues.Show("zfsdataset")
+		if id != "" {
+			fullMsg = fullMsg + "\n\n" + "Redmine Issue: " + common.Config.Redmine.Url + "/issues/" + id
+			common.AlarmCheckUp("zfsdataset_redmineissue", "Redmine issue exists for ZFS dataset usage", false)
+		} else {
+			log.Debug().Msg("osHealth/main.go: issues.Show(\"zfsdataset\") returned empty. Proceeding without Redmine link in alarm.")
+		}
+		common.AlarmCheckDown("zfsdataset", fullMsg, false, "", "")
+	} else if len(healthData.ZFSDatasets) > 0 {
+		common.AlarmCheckUp("zfsdataset", "All ZFS datasets are below "+strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64)+"% usage.", false)
+		issues.CheckUp("zfsdataset", common.Config.Identifier+" için bütün ZFS datasetleri "+strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64)+"% altına indi, kapatılıyor.")
+		common.AlarmCheckUp("zfsdataset_redmineissue", "ZFS dataset usage normal, clearing any Redmine issue creation failure alarm", false)
+	}
+
 	// Collect systemd unit information if on Linux
 	if runtime.GOOS == "linux" {
 		healthData.SystemdUnits = collectSystemdInfo()

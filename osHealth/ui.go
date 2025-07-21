@@ -17,6 +17,7 @@ type HealthData struct {
 	Memory       MemoryInfo
 	SystemLoad   SystemLoadInfo
 	ZFSPools     []ZFSPoolInfo
+	ZFSDatasets  []ZFSDatasetInfo
 	SystemdUnits []SystemdUnitInfo
 }
 
@@ -67,6 +68,14 @@ type ZFSPoolInfo struct {
 	UsedPct float64
 }
 
+// ZFSDatasetInfo represents ZFS dataset usage information
+type ZFSDatasetInfo struct {
+	Name    string
+	Used    string
+	Avail   string
+	UsedPct float64
+}
+
 // SystemdUnitInfo represents systemd unit information
 type SystemdUnitInfo struct {
 	Name        string
@@ -88,29 +97,34 @@ func NewHealthData() *HealthData {
 func (h *HealthData) RenderCompact() string {
 	var sb strings.Builder
 
-	// Disk Usage section
-	sb.WriteString(common.SectionTitle("Disk Usage"))
-	sb.WriteString("\n")
-
-	// Disk usage details
-	for _, disk := range h.Disk {
-		isSuccess := disk.UsedPct <= OsHealthConfig.Part_use_limit
-
-		limits := fmt.Sprintf("%.0f%%", OsHealthConfig.Part_use_limit)
-		current := fmt.Sprintf("%.0f%%", disk.UsedPct)
-
-		sb.WriteString(common.StatusListItem(
-			disk.Mountpoint,
-			"", // use default prefix
-			limits,
-			current,
-			isSuccess))
+	// Disk Usage section - only show if there are disk partitions
+	if len(h.Disk) > 0 {
+		sb.WriteString(common.SectionTitle("Disk Usage"))
 		sb.WriteString("\n")
+
+		// Disk usage details
+		for _, disk := range h.Disk {
+			isSuccess := disk.UsedPct <= OsHealthConfig.Part_use_limit
+
+			limits := fmt.Sprintf("%.0f%%", OsHealthConfig.Part_use_limit)
+			current := fmt.Sprintf("%.0f%%", disk.UsedPct)
+
+			sb.WriteString(common.StatusListItem(
+				disk.Mountpoint,
+				"", // use default prefix
+				limits,
+				current,
+				isSuccess))
+			sb.WriteString("\n")
+		}
 	}
 
 	// ZFS Pools section if any exist
 	if len(h.ZFSPools) > 0 {
-		sb.WriteString("\n")
+		// Add spacing only if we had a previous section
+		if len(h.Disk) > 0 {
+			sb.WriteString("\n")
+		}
 		sb.WriteString(common.SectionTitle("ZFS Pools"))
 		sb.WriteString("\n")
 
@@ -137,7 +151,10 @@ func (h *HealthData) RenderCompact() string {
 	}
 
 	// System Load and RAM section
-	sb.WriteString("\n")
+	// Add spacing only if we had a previous section (either Disk or ZFS Pools)
+	if len(h.Disk) > 0 || len(h.ZFSPools) > 0 {
+		sb.WriteString("\n")
+	}
 	sb.WriteString(common.SectionTitle("System Load and RAM"))
 	sb.WriteString("\n")
 

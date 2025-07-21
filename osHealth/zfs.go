@@ -85,6 +85,79 @@ func parseBytesFromString(s string) (uint64, error) {
 	return uint64(val * multiplier), nil
 }
 
+// createExceededZFSDatasetTable creates a table for datasets that exceeded the usage limit
+func createExceededZFSDatasetTable(exceededDatasets []ZFSDatasetInfo) (string, string) {
+	var tableData [][]string
+	for _, d := range exceededDatasets {
+		tableData = append(tableData, []string{
+			strconv.FormatFloat(d.UsedPct, 'f', 0, 64),
+			d.Used,
+			d.Avail,
+			d.Name,
+		})
+	}
+	output := &strings.Builder{}
+	table := tablewriter.NewWriter(output)
+	table.SetHeader([]string{"%", "Used", "Avail", "Dataset"})
+	table.SetBorders(tablewriter.Border{Left: true, Top: false, Right: true, Bottom: false})
+	table.SetCenterSeparator("|")
+	table.AppendBulk(tableData)
+	table.Render()
+
+	tableOnly := output.String()
+	fullMsg := "ZFS dataset usage level has exceeded " + strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64) + "% for the following datasets;\n\n" + tableOnly
+
+	return fullMsg, tableOnly
+}
+
+// collectZFSDatasetInfo parses `zfs list -H -p -o name,used,avail` and returns []ZFSDatasetInfo
+func collectZFSDatasetInfo() []ZFSDatasetInfo {
+	if !slices.Contains(OsHealthConfig.Filesystems, "zfs") {
+		return nil
+	}
+	if _, err := exec.LookPath("zfs"); err != nil {
+		return nil
+	}
+	cmd := exec.Command("zfs", "list", "-H", "-p", "-o", "name,used,avail")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Error().Err(err).Str("component", "osHealth").Str("operation", "collectZFSDatasetInfo").Msg("Failed to run zfs list: " + err.Error())
+		return nil
+	}
+	lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+	var datasets []ZFSDatasetInfo
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+		fields := strings.Split(line, "\t")
+		if len(fields) < 3 {
+			continue
+		}
+		name := fields[0]
+		usedStr := fields[1]
+		availStr := fields[2]
+		used, err1 := strconv.ParseUint(usedStr, 10, 64)
+		avail, err2 := strconv.ParseUint(availStr, 10, 64)
+		if err1 != nil || err2 != nil {
+			log.Error().Str("dataset", name).Msg("Failed to parse used/avail for dataset")
+			continue
+		}
+		total := used + avail
+		usedPct := 0.0
+		if total > 0 {
+			usedPct = float64(used) * 100 / float64(total)
+		}
+		datasets = append(datasets, ZFSDatasetInfo{
+			Name:    name,
+			Used:    common.ConvertBytes(used),
+			Avail:   common.ConvertBytes(avail),
+			UsedPct: usedPct,
+		})
+	}
+	return datasets
+}
+
 // ZFSHealth checks the health status of ZFS pools and reports any issues
 // It replicates the functionality of the zfs-health-check Ansible playbook
 func ZFSHealth() []ZFSPoolInfo {
