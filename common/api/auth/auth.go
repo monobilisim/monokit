@@ -136,7 +136,7 @@ func registerUser(db *gorm.DB) gin.HandlerFunc {
 
 		// Check for admin access
 		userObj, exists := c.Get("user")
-		if !exists || userObj.(User).Role != "admin" {
+		if !exists || (userObj.(User).Role != "admin" && userObj.(User).Role != "global_admin") {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}

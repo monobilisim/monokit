@@ -546,7 +546,7 @@ func adminAuthMiddleware(db *gorm.DB) gin.HandlerFunc {
 		if user, exists := c.Get("user"); exists {
 			// User is already authenticated, check if admin
 			currentUser := user.(User)
-			if currentUser.Role != "admin" {
+			if currentUser.Role != "admin" && currentUser.Role != "global_admin" {
 				c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 				c.Abort()
 				return
@@ -599,7 +599,7 @@ func adminAuthMiddleware(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		if session.User.Role != "admin" {
+		if session.User.Role != "admin" && session.User.Role != "global_admin" {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			c.Abort()
 			return

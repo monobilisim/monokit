@@ -620,7 +620,7 @@ func getAllUsers(db DBTX) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Check for admin access
 		user, exists := c.Get("user")
-		if !exists || user.(User).Role != "admin" {
+		if !exists || (user.(User).Role != "admin" && user.(User).Role != "global_admin") {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}
@@ -752,7 +752,7 @@ func moveHostToInventory(db DBTX) gin.HandlerFunc {
 // @Router /admin/users/{username} [get]
 func getUser(db DBTX) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		if userCtx, exists := c.Get("user"); !exists || userCtx.(User).Role != "admin" {
+		if userCtx, exists := c.Get("user"); !exists || (userCtx.(User).Role != "admin" && userCtx.(User).Role != "global_admin") {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}
