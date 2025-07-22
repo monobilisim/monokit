@@ -25,7 +25,14 @@ type Zimbra struct {
 }
 
 type Pmg struct {
-	Queue_Limit int
+	Queue_Limit      int
+	Email_monitoring struct {
+		Enabled          bool `default:false`
+		Threshold_factor struct {
+			Daily  float64
+			Hourly float64
+		}
+	}
 }
 
 type MailHealth struct {
