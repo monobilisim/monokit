@@ -120,11 +120,23 @@ func PostHostHealth(toolName string, payload interface{}) error {
 	keyPath := filepath.Join("/var/lib/mono/api/hostkey", Config.Identifier)
 	hostKey, err := os.ReadFile(keyPath)
 	if err != nil {
-		// Log this, but proceed? Or fail?
-		// For now, let's make it a hard requirement for posting health.
-		// If the agent is running, it should have its key.
-		log.Error().Str("keyPath", keyPath).Err(err).Str("toolName", toolName).Msg("Failed to read host key")
-		return fmt.Errorf("failed to read host key from %s: %w. Cannot authenticate health POST", keyPath, err)
+		// Host key doesn't exist, attempt to register the host to obtain one
+		log.Warn().Str("keyPath", keyPath).Err(err).Str("toolName", toolName).Msg("Host key not found, attempting host registration")
+
+		// Try to register the host to get an API key
+		if regErr := attemptHostRegistration(); regErr != nil {
+			log.Error().Err(regErr).Str("toolName", toolName).Msg("Failed to register host and obtain API key")
+			return fmt.Errorf("failed to read host key from %s: %w. Host registration also failed: %v. Cannot authenticate health POST", keyPath, err, regErr)
+		}
+
+		// Try to read the key again after registration
+		hostKey, err = os.ReadFile(keyPath)
+		if err != nil {
+			log.Error().Str("keyPath", keyPath).Err(err).Str("toolName", toolName).Msg("Host key still not available after registration attempt")
+			return fmt.Errorf("failed to read host key from %s even after registration attempt: %w. Cannot authenticate health POST", keyPath, err)
+		}
+
+		log.Info().Str("keyPath", keyPath).Str("toolName", toolName).Msg("Successfully obtained host key after registration")
 	}
 	// The server expects the host token in the "Authorization" header for routes protected by hostAuthMiddleware.
 	req.Header.Set("Authorization", string(hostKey))
@@ -145,4 +157,100 @@ func PostHostHealth(toolName string, payload interface{}) error {
 	}
 
 	return nil
+}
+
+// attemptHostRegistration tries to register the host with the API server to obtain an API key
+func attemptHostRegistration() error {
+	if ClientURL == "" {
+		return fmt.Errorf("client URL not configured")
+	}
+	if Config.Identifier == "" {
+		return fmt.Errorf("host identifier not configured")
+	}
+
+	// Create a basic host registration payload
+	host := struct {
+		Name           string `json:"name"`
+		CpuCores       int    `json:"cpuCores"`
+		Ram            string `json:"ram"`
+		MonokitVersion string `json:"monokitVersion"`
+		Os             string `json:"os"`
+		IpAddress      string `json:"ipAddress"`
+		Status         string `json:"status"`
+	}{
+		Name:           Config.Identifier,
+		CpuCores:       0, // Will be filled by server if needed
+		Ram:            "Unknown",
+		MonokitVersion: MonokitVersion,
+		Os:             "Unknown",
+		IpAddress:      "Unknown",
+		Status:         "Online",
+	}
+
+	hostJSON, err := json.Marshal(host)
+	if err != nil {
+		return fmt.Errorf("failed to marshal host data: %w", err)
+	}
+
+	// Send registration request
+	url := ClientURL + "/api/v1/hosts"
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(hostJSON))
+	if err != nil {
+		return fmt.Errorf("failed to create registration request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to send registration request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 300 {
+		bodyBytes, readErr := io.ReadAll(resp.Body)
+		if readErr != nil {
+			return fmt.Errorf("registration failed with status %d, and failed to read response body: %w", resp.StatusCode, readErr)
+		}
+		return fmt.Errorf("registration failed with status %d: %s", resp.StatusCode, string(bodyBytes))
+	}
+
+	// Parse response to get API key
+	var response struct {
+		Host   interface{} `json:"host"`
+		ApiKey string      `json:"apiKey,omitempty"`
+		Error  string      `json:"error,omitempty"`
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("failed to read registration response: %w", err)
+	}
+
+	if err := json.Unmarshal(body, &response); err != nil {
+		return fmt.Errorf("failed to decode registration response: %w", err)
+	}
+
+	if response.Error != "" {
+		return fmt.Errorf("server error during registration: %s", response.Error)
+	}
+
+	// Save the API key if received
+	if response.ApiKey != "" {
+		keyDir := "/var/lib/mono/api/hostkey"
+		if err := os.MkdirAll(keyDir, 0755); err != nil {
+			return fmt.Errorf("failed to create key directory: %w", err)
+		}
+
+		keyPath := filepath.Join(keyDir, Config.Identifier)
+		if err := os.WriteFile(keyPath, []byte(response.ApiKey), 0600); err != nil {
+			return fmt.Errorf("failed to write API key to file: %w", err)
+		}
+
+		log.Info().Str("keyPath", keyPath).Msg("Successfully saved API key from host registration")
+		return nil
+	}
+
+	return fmt.Errorf("no API key received in registration response")
 }
