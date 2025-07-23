@@ -42,7 +42,8 @@ func TestFixDuplicateHosts_TwoDuplicates(t *testing.T) {
 	db := SetupTestDB(t)
 	defer CleanupTestDB(db)
 
-	db.Exec("DROP INDEX IF EXISTS idx_hosts_name")
+	// Temporarily drop the unique constraint to allow creating duplicates for testing
+	db.Exec("DROP INDEX IF EXISTS idx_host_name_domain")
 
 	SetupTestHost(t, db, "dupehost")
 	SetupTestHost(t, db, "dupehost") // duplicate name
@@ -73,7 +74,8 @@ func TestFixDuplicateHosts_ThreeDuplicates(t *testing.T) {
 	db := SetupTestDB(t)
 	defer CleanupTestDB(db)
 
-	db.Exec("DROP INDEX IF EXISTS idx_hosts_name")
+	// Temporarily drop the unique constraint to allow creating duplicates for testing
+	db.Exec("DROP INDEX IF EXISTS idx_host_name_domain")
 
 	SetupTestHost(t, db, "clash")
 	SetupTestHost(t, db, "clash")
@@ -106,7 +108,8 @@ func TestFixDuplicateHosts_Mixed(t *testing.T) {
 	db := SetupTestDB(t)
 	defer CleanupTestDB(db)
 
-	db.Exec("DROP INDEX IF EXISTS idx_hosts_name")
+	// Temporarily drop the unique constraint to allow creating duplicates for testing
+	db.Exec("DROP INDEX IF EXISTS idx_host_name_domain")
 
 	// M: 2 dups; N: 3 dups; O: unique
 	SetupTestHost(t, db, "M")

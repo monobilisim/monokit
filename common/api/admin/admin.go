@@ -101,7 +101,7 @@ func ExportGetUser(db DBTX) gin.HandlerFunc {
 func listGroups(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user, exists := c.Get("user")
-		if !exists || user.(User).Role != "admin" {
+		if !exists || (user.(User).Role != "admin" && user.(User).Role != "global_admin") {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}
@@ -129,7 +129,7 @@ func listGroups(db *gorm.DB) gin.HandlerFunc {
 func createGroup(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user, exists := c.Get("user")
-		if !exists || user.(User).Role != "admin" {
+		if !exists || (user.(User).Role != "admin" && user.(User).Role != "global_admin") {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}
@@ -177,7 +177,7 @@ func createGroup(db *gorm.DB) gin.HandlerFunc {
 func deleteGroup(db DBTX) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user, exists := c.Get("user")
-		if !exists || user.(User).Role != "admin" {
+		if !exists || (user.(User).Role != "admin" && user.(User).Role != "global_admin") {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}
@@ -292,7 +292,7 @@ func deleteGroup(db DBTX) gin.HandlerFunc {
 func addHostToGroup(db DBTX) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user, exists := c.Get("user")
-		if !exists || user.(User).Role != "admin" {
+		if !exists || (user.(User).Role != "admin" && user.(User).Role != "global_admin") {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}
@@ -351,7 +351,7 @@ func addHostToGroup(db DBTX) gin.HandlerFunc {
 func removeHostFromGroup(db DBTX) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user, exists := c.Get("user")
-		if !exists || user.(User).Role != "admin" {
+		if !exists || (user.(User).Role != "admin" && user.(User).Role != "global_admin") {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}
@@ -415,7 +415,7 @@ func removeHostFromGroup(db DBTX) gin.HandlerFunc {
 func updateUserGroups(db DBTX) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user, exists := c.Get("user")
-		if !exists || user.(User).Role != "admin" {
+		if !exists || (user.(User).Role != "admin" && user.(User).Role != "global_admin") {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}
@@ -457,7 +457,7 @@ func updateUserGroups(db DBTX) gin.HandlerFunc {
 func createUser(db DBTX) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		user, exists := c.Get("user")
-		if !exists || user.(User).Role != "admin" {
+		if !exists || (user.(User).Role != "admin" && user.(User).Role != "global_admin") {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}
@@ -500,7 +500,7 @@ func createUser(db DBTX) gin.HandlerFunc {
 func deleteUser(db DBTX) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		currentUser, exists := c.Get("user")
-		if !exists || currentUser.(User).Role != "admin" {
+		if !exists || (currentUser.(User).Role != "admin" && currentUser.(User).Role != "global_admin") {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}
@@ -545,7 +545,7 @@ func deleteUser(db DBTX) gin.HandlerFunc {
 func updateUser(db DBTX) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		currentUser, exists := c.Get("user")
-		if !exists || currentUser.(User).Role != "admin" {
+		if !exists || (currentUser.(User).Role != "admin" && currentUser.(User).Role != "global_admin") {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}
@@ -655,7 +655,7 @@ func scheduleHostDeletion(db DBTX) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		// Check for admin access
 		user, exists := c.Get("user")
-		if !exists || user.(User).Role != "admin" {
+		if !exists || (user.(User).Role != "admin" && user.(User).Role != "global_admin") {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}
