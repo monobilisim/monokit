@@ -125,6 +125,9 @@ func collectHealthData() *ZimbraHealthData {
 	// SSL Check (run regardless of time for UI, but actual issue creation might depend on time)
 	healthData.SSLCert = CheckSSL()
 
+	// Hosts File Check (always run for UI display, but actual monitoring depends on scheduling)
+	healthData.HostsFile = CheckHostsFile()
+
 	// Webhook Tail Info (config only for now)
 	healthData.WebhookTail.Logfile = MailHealthConfig.Zimbra.Webhook_tail.Logfile
 	healthData.WebhookTail.QuotaLimit = MailHealthConfig.Zimbra.Webhook_tail.Quota_limit
@@ -160,6 +163,20 @@ func runPeriodicTasks(healthData *ZimbraHealthData) {
 	// The Redmine issue creation logic within CheckSSL might still be relevant here
 	// if it should only happen at 01:00. Consider refactoring CheckSSL further if needed.
 	//	}
+
+	// Hosts file monitoring - run every 12 hours (at 12:00 AM and 12:00 PM)
+	currentTime := time.Now().Format("15:04") // Use 15:04 for HH:MM format
+	if currentTime == "00:00" || currentTime == "12:00" || os.Getenv("ZIMBRA_HEALTH_TEST_HOSTS_CHECK") == "true" {
+		log.Debug().Str("time", currentTime).Msg("Running scheduled hosts file check...")
+		// The actual check is already performed in collectHealthData for UI display
+		// This scheduled run ensures alarms are sent at the right time
+		hostsInfo := CheckHostsFile()
+		if hostsInfo.HasChanges {
+			log.Warn().Str("backup_path", hostsInfo.BackupPath).Msg("Scheduled hosts file check detected changes")
+		} else {
+			log.Debug().Str("backup_path", hostsInfo.BackupPath).Msg("Scheduled hosts file check completed - no changes")
+		}
+	}
 }
 
 // escapeJSON remains unchanged
@@ -1028,6 +1045,95 @@ func CheckSSL() SSLCertInfo {
 		common.AlarmCheckUp("sslcert", alarmMsg, false)
 		// Close existing Redmine issue if it's no longer expiring soon
 		issues.CheckUp("sslcert", "SSL sertifikası artık "+fmt.Sprintf("%d gün sonra sona erecek şekilde güncellendi", info.DaysUntilExpiry))
+	}
+
+	return info
+}
+
+// CheckHostsFile monitors /etc/hosts file for changes
+func CheckHostsFile() HostsFileInfo {
+	info := HostsFileInfo{CheckStatus: false} // Default to check failed
+	info.LastChecked = time.Now().Format("2006-01-02 15:04:05")
+
+	hostsFilePath := "/etc/hosts"
+	backupFileName := "hosts_backup"
+	info.BackupPath = filepath.Join(common.TmpDir, backupFileName)
+
+	// Check if /etc/hosts exists
+	if _, err := os.Stat(hostsFilePath); os.IsNotExist(err) {
+		info.Message = "/etc/hosts file does not exist"
+		log.Error().Str("hosts_file", hostsFilePath).Msg("/etc/hosts file does not exist")
+		return info
+	}
+
+	// Check if backup exists, create if it doesn't
+	if _, err := os.Stat(info.BackupPath); os.IsNotExist(err) {
+		log.Debug().Str("backup_path", info.BackupPath).Msg("Creating initial backup of /etc/hosts")
+
+		// Read current hosts file
+		hostsContent, err := os.ReadFile(hostsFilePath)
+		if err != nil {
+			info.Message = "Failed to read /etc/hosts: " + err.Error()
+			log.Error().Err(err).Str("hosts_file", hostsFilePath).Msg("Failed to read /etc/hosts")
+			return info
+		}
+
+		// Create backup
+		err = os.WriteFile(info.BackupPath, hostsContent, 0644)
+		if err != nil {
+			info.Message = "Failed to create backup: " + err.Error()
+			log.Error().Err(err).Str("backup_path", info.BackupPath).Msg("Failed to create hosts backup")
+			return info
+		}
+
+		info.BackupExists = true
+		info.HasChanges = false
+		info.CheckStatus = true
+		info.Message = "Initial backup created successfully"
+		log.Debug().Str("backup_path", info.BackupPath).Msg("Initial hosts backup created")
+		return info
+	}
+
+	info.BackupExists = true
+
+	// Read current hosts file
+	currentContent, err := os.ReadFile(hostsFilePath)
+	if err != nil {
+		info.Message = "Failed to read current /etc/hosts: " + err.Error()
+		log.Error().Err(err).Str("hosts_file", hostsFilePath).Msg("Failed to read current /etc/hosts")
+		return info
+	}
+
+	// Read backup file
+	backupContent, err := os.ReadFile(info.BackupPath)
+	if err != nil {
+		info.Message = "Failed to read backup file: " + err.Error()
+		log.Error().Err(err).Str("backup_path", info.BackupPath).Msg("Failed to read hosts backup")
+		return info
+	}
+
+	// Compare files
+	info.CheckStatus = true
+	if !bytes.Equal(currentContent, backupContent) {
+		info.HasChanges = true
+		info.Message = "Changes detected in /etc/hosts file"
+		log.Warn().Str("hosts_file", hostsFilePath).Msg("Changes detected in /etc/hosts file")
+
+		// Send alarm for changes detected
+		common.AlarmCheckDown("hosts_file_changed", "/etc/hosts file has been modified since last backup", true, "", "")
+
+		// Update backup with current content for next comparison
+		err = os.WriteFile(info.BackupPath, currentContent, 0644)
+		if err != nil {
+			log.Error().Err(err).Str("backup_path", info.BackupPath).Msg("Failed to update hosts backup after change detection")
+		} else {
+			log.Debug().Str("backup_path", info.BackupPath).Msg("Updated hosts backup with current content")
+		}
+	} else {
+		info.HasChanges = false
+		info.Message = "No changes detected"
+		// Send up alarm to clear any previous down state
+		common.AlarmCheckUp("hosts_file_changed", "/etc/hosts file is unchanged", true)
 	}
 
 	return info

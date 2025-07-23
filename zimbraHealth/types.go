@@ -9,6 +9,7 @@ type ZimbraHealthData struct {
 	ZPush          ZPushInfo
 	QueuedMessages QueuedMessagesInfo
 	SSLCert        SSLCertInfo
+	HostsFile      HostsFileInfo   // /etc/hosts file monitoring
 	WebhookTail    WebhookTailInfo // Placeholder for potential future UI integration
 }
 
@@ -76,6 +77,16 @@ type SSLCertInfo struct {
 	ExpiringSoon    bool   // True if days < threshold (e.g., 10)
 	CheckStatus     bool   // True if the check could be performed successfully
 	Message         string // Any error or status message
+}
+
+// HostsFileInfo holds information about /etc/hosts file monitoring.
+type HostsFileInfo struct {
+	BackupExists bool   // True if backup file exists in TmpDir
+	HasChanges   bool   // True if current file differs from backup
+	LastChecked  string // Timestamp of last check
+	CheckStatus  bool   // True if the check could be performed successfully
+	Message      string // Any error or status message
+	BackupPath   string // Path to the backup file
 }
 
 // WebhookTailInfo holds information related to webhook tailing (currently not displayed in UI).

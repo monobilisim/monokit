@@ -1,11 +1,11 @@
 package zimbraHealth
 
 import (
-"fmt"
-"strings"
+	"fmt"
+	"strings"
 
-"github.com/monobilisim/monokit/common"
-ui "github.com/monobilisim/monokit/common/ui" // Import the ui package
+	"github.com/monobilisim/monokit/common"
+	ui "github.com/monobilisim/monokit/common/ui" // Import the ui package
 )
 
 // RenderAll renders all Zimbra health data as a single string for box display.
@@ -41,13 +41,13 @@ func (h *ZimbraHealthData) RenderAll() string {
 	sb.WriteString("\n")
 	sb.WriteString(common.SectionTitle("Zimbra Services"))
 	sb.WriteString("\n")
-if len(h.Services) > 0 {
-for _, service := range h.Services {
-// Use the ServiceStatusListItem from the ui package
-sb.WriteString(ui.ServiceStatusListItem(service.Name, service.Running))
-sb.WriteString("\n")
-}
-} else {
+	if len(h.Services) > 0 {
+		for _, service := range h.Services {
+			// Use the ServiceStatusListItem from the ui package
+			sb.WriteString(ui.ServiceStatusListItem(service.Name, service.Running))
+			sb.WriteString("\n")
+		}
+	} else {
 		sb.WriteString("  No service status information available.\n")
 	}
 
@@ -158,6 +158,47 @@ sb.WriteString("\n")
 		}
 		sb.WriteString("\n")
 	}
+
+	// Hosts File Monitoring Section
+	sb.WriteString("\n")
+	sb.WriteString(common.SectionTitle("Hosts File Monitoring"))
+	sb.WriteString("\n")
+	if h.HostsFile.CheckStatus {
+		expectedState := "No changes"
+		if h.HostsFile.HasChanges {
+			expectedState = "Changes detected"
+		}
+		sb.WriteString(common.SimpleStatusListItem(
+			"File Status",
+			expectedState,
+			!h.HostsFile.HasChanges, // Success = no changes (green)
+		))
+		sb.WriteString("\n")
+
+		// Show backup status
+		backupState := "Not created"
+		if h.HostsFile.BackupExists {
+			backupState = "Created"
+		}
+		sb.WriteString(common.SimpleStatusListItem(
+			"Backup Status",
+			backupState,
+			h.HostsFile.BackupExists, // Success = backup exists (green)
+		))
+
+		// Show last checked time if available
+		if h.HostsFile.LastChecked != "" {
+			sb.WriteString(fmt.Sprintf("  └─ Last checked: %s\n", h.HostsFile.LastChecked))
+		}
+	} else {
+		sb.WriteString(common.SimpleStatusListItem(
+			"Hosts File Check",
+			"Check Failed",
+			false,
+		))
+		sb.WriteString(fmt.Sprintf("  └─ Error: %s\n", h.HostsFile.Message))
+	}
+	sb.WriteString("\n")
 
 	return sb.String()
 }
