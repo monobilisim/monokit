@@ -34,12 +34,8 @@ func DetectZimbra() bool {
 		log.Debug().Msg("Zimbra detected at /opt/zimbra.")
 		return true
 	}
-	// Check for Carbonio/Zextras path
-	if _, err := os.Stat("/opt/zextras"); !os.IsNotExist(err) {
-		log.Debug().Str("path", "/opt/zextras").Msg("Zextras/Carbonio detected")
-		return true
-	}
-	log.Debug().Str("path", "neither /opt/zimbra nor /opt/zextras").Msg("Zimbra not detected")
+
+	log.Debug().Str("path", "/opt/zimbra").Msg("Zimbra not detected")
 	return false
 }
 
@@ -90,15 +86,12 @@ func collectHealthData() *ZimbraHealthData {
 	healthData := NewZimbraHealthData()
 	healthData.System.LastChecked = time.Now().Format("2006-01-02 15:04:05")
 
-	// Determine Zimbra/Zextras path and set basic system info
+	// Determine Zimbra path and set basic system info
 	if _, err := os.Stat("/opt/zimbra"); !os.IsNotExist(err) {
 		zimbraPath = "/opt/zimbra"
 		healthData.System.ProductPath = zimbraPath
-	} else if _, err := os.Stat("/opt/zextras"); !os.IsNotExist(err) {
-		zimbraPath = "/opt/zextras"
-		healthData.System.ProductPath = zimbraPath
 	} else {
-		log.Error().Str("path", "neither /opt/zimbra nor /opt/zextras").Msg("Zimbra not detected")
+		log.Error().Str("path", "/opt/zimbra").Msg("Zimbra not detected")
 		// Return partially filled data or handle error appropriately
 		return healthData // Or perhaps os.Exit(1) if unusable
 	}
@@ -283,11 +276,8 @@ func CheckIpAccess() IPAccessInfo {
 		log.Error().Str("zimbra_path", zimbraPath).Msg("Zimbra path not determined")
 		return info
 	}
-	if strings.Contains(zimbraPath, "zextras") {
-		productName = "carbonio"
-	} else {
-		productName = "zimbra"
-	}
+
+	productName = "zimbra"
 
 	certFile = zimbraPath + "/ssl/" + productName + "/server/server.crt"
 	keyFile = zimbraPath + "/ssl/" + productName + "/server/server.key"
@@ -773,10 +763,7 @@ func ExecZimbraCommand(command string, fullPath bool, runAsRoot bool) (string, e
 
 	// Check if zimbra user exists
 	cmd := exec.Command("id", "zimbra")
-	err := cmd.Run()
-	if err != nil {
-		zimbraUser = "zextras"
-	}
+	_ = cmd.Run()
 
 	if runAsRoot {
 		zimbraUser = "root"

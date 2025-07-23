@@ -11,7 +11,7 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// ZimbraCheck detects the installed Zimbra/Zextras version, compares it with the previously stored version,
+// ZimbraCheck detects the installed Zimbra version, compares it with the previously stored version,
 // potentially creates a Redmine news item, stores the current version, and returns the current version string.
 func ZimbraCheck() (string, error) {
 	var zimbraPath string
@@ -22,21 +22,16 @@ func ZimbraCheck() (string, error) {
 		zimbraUser = "zimbra"
 	}
 
-	if _, err := os.Stat("/opt/zextras"); !os.IsNotExist(err) {
-		zimbraPath = "/opt/zextras"
-		zimbraUser = "zextras"
-	}
-
 	// Check if zimbraPath is empty
 	if zimbraPath == "" {
-		return "", nil // Zimbra/Zextras not found, ignore it
+		return "", nil // Zimbra not found, ignore it
 	}
 
-	// Get the version of Zimbra/Zextras
+	// Get the version of Zimbra
 	cmd := exec.Command("/bin/su", zimbraUser, "-c", zimbraPath+"/bin/zmcontrol -v")
 	out, err := cmd.Output()
 	if err != nil {
-		errMsgLog := "Error getting Zimbra/Zextras version"
+		errMsgLog := "Error getting Zimbra version"
 		errMsg := errMsgLog + ": " + err.Error()
 		log.Error().Err(err).Msg(errMsgLog)
 		return "", fmt.Errorf(errMsg)
@@ -56,18 +51,18 @@ func ZimbraCheck() (string, error) {
 	}
 	version := strings.Split(versionParts[1], "_GA_")[0] // Extract version like "8.8.15" or "10.0.7"
 
-	log.Debug().Str("version", version).Msg("Detected Zimbra/Zextras version")
+	log.Debug().Str("version", version).Msg("Detected Zimbra version")
 
 	oldVersion := GatherVersion("zimbra") // Use "zimbra" key for both Zimbra and Zextras
 
 	if oldVersion != "" && oldVersion == version {
-		log.Debug().Msg("Zimbra/Zextras version unchanged.")
+		log.Debug().Msg("Zimbra version unchanged.")
 	} else if oldVersion != "" && oldVersion != version {
-		log.Debug().Msg("Zimbra/Zextras has been updated.")
-		log.Debug().Str("old_version", oldVersion).Str("new_version", version).Msg("Zimbra/Zextras has been updated")
-		CreateNews("Zimbra/Zextras", oldVersion, version, false) // Update news title
+		log.Debug().Msg("Zimbra has been updated.")
+		log.Debug().Str("old_version", oldVersion).Str("new_version", version).Msg("Zimbra has been updated")
+		CreateNews("Zimbra", oldVersion, version, false) // Update news title
 	} else {
-		log.Debug().Str("version", version).Msg("Storing initial Zimbra/Zextras version")
+		log.Debug().Str("version", version).Msg("Storing initial Zimbra version")
 	}
 
 	StoreVersion("zimbra", version) // Store the detected version
