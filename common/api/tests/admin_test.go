@@ -286,12 +286,11 @@ func TestCreateUser(t *testing.T) {
 
 	// Test: Successful user creation
 	userReq := models.RegisterRequest{
-		Username:  "newuser",
-		Password:  "password123",
-		Email:     "new@example.com",
-		Role:      "user",
-		Groups:    "group1,group2",
-		Inventory: "default",
+		Username: "newuser",
+		Password: "password123",
+		Email:    "new@example.com",
+		Role:     "user",
+		Groups:   "group1,group2",
 	}
 	c, w := CreateRequestContext("POST", "/api/v1/admin/users", userReq)
 	AuthorizeContext(c, adminUser)
@@ -468,48 +467,6 @@ func TestScheduleHostDeletion(t *testing.T) {
 	c, w = CreateRequestContext("DELETE", "/api/v1/admin/hosts/nonexistent", nil)
 	AuthorizeContext(c, adminUser)
 	SetPathParams(c, map[string]string{"hostname": "nonexistent"})
-
-	handler(c)
-	assert.Equal(t, http.StatusNotFound, w.Code)
-}
-
-func TestMoveHostToInventory(t *testing.T) {
-	// Setup
-	db := SetupTestDB(t)
-	defer CleanupTestDB(db)
-
-	adminUser := SetupTestAdmin(t, db)
-	host := SetupTestHost(t, db, "hosttomove")
-
-	// Create another inventory
-	db.Create(&models.Inventory{Name: "newinventory"})
-	models.HostsList = []models.Host{host}
-
-	// Test: Successful request
-	c, w := CreateRequestContext("POST", "/api/v1/admin/hosts/hosttomove/move/newinventory", nil)
-	AuthorizeContext(c, adminUser)
-	SetPathParams(c, map[string]string{
-		"hostname":  "hosttomove",
-		"inventory": "newinventory",
-	})
-
-	handler := admin.ExportMoveHostToInventory(db)
-	handler(c)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-
-	// Verify host was moved
-	var updatedHost models.Host
-	db.Where("name = ?", "hosttomove").First(&updatedHost)
-	assert.Equal(t, "newinventory", updatedHost.Inventory)
-
-	// Test: Invalid inventory
-	c, w = CreateRequestContext("POST", "/api/v1/admin/hosts/hosttomove/move/nonexistent", nil)
-	AuthorizeContext(c, adminUser)
-	SetPathParams(c, map[string]string{
-		"hostname":  "hosttomove",
-		"inventory": "nonexistent",
-	})
 
 	handler(c)
 	assert.Equal(t, http.StatusNotFound, w.Code)

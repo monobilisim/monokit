@@ -43,20 +43,6 @@ func ExportGetAssignedHosts(db *gorm.DB) gin.HandlerFunc {
 	return server.GetAssignedHosts(db)
 }
 
-// ============ INVENTORY MANAGEMENT EXPORTS ============
-
-func ExportGetAllInventories(db *gorm.DB) gin.HandlerFunc {
-	return server.GetAllInventories(db)
-}
-
-func ExportCreateInventory(db *gorm.DB) gin.HandlerFunc {
-	return server.CreateInventory(db)
-}
-
-func ExportDeleteInventory(db *gorm.DB) gin.HandlerFunc {
-	return server.DeleteInventory(db)
-}
-
 // ============ GROUP MANAGEMENT EXPORTS ============
 
 func ExportGetAllGroups(db *gorm.DB) gin.HandlerFunc {

@@ -22,13 +22,12 @@ import (
 
 // Type aliases for commonly used types from models package
 type (
-	Host              = models.Host
-	User              = models.User
-	LoginRequest      = models.LoginRequest
-	LoginResponse     = models.LoginResponse
-	RegisterRequest   = models.RegisterRequest
-	UpdateMeRequest   = models.UpdateMeRequest
-	InventoryResponse = models.InventoryResponse
+	Host            = models.Host
+	User            = models.User
+	LoginRequest    = models.LoginRequest
+	LoginResponse   = models.LoginResponse
+	RegisterRequest = models.RegisterRequest
+	UpdateMeRequest = models.UpdateMeRequest
 )
 
 type Client struct {
@@ -270,9 +269,6 @@ func SendReq(apiVersion string) {
 	// Get installed components directly
 	installedComponents := getInstalledComponents()
 
-	// Split identifier to get inventory name
-	inventoryName := strings.Split(getIdentifier(), "-")[0]
-
 	// Marshal the response to Host struct
 	host := Host{
 		Name:                common.Config.Identifier,
@@ -286,7 +282,6 @@ func SendReq(apiVersion string) {
 		Status:              "Online",
 		WantsUpdateTo:       "",
 		Groups:              groups,
-		Inventory:           inventoryName,
 	}
 
 	// Marshal the response to JSON

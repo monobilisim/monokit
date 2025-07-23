@@ -18,7 +18,6 @@ type Host struct {
 	WantsUpdateTo       string    `json:"wants_update_to"`
 	Groups              string    `json:"groups"`
 	UpForDeletion       bool      `json:"up_for_deletion"`
-	Inventory           string    `json:"inventory"`
 }
 
 // LoginRequest represents a login request
@@ -34,10 +33,4 @@ type LoginResponse struct {
 		Username string `json:"username"`
 		Role     string `json:"role"`
 	} `json:"user"`
-}
-
-// InventoryResponse represents an inventory response from the API
-type InventoryResponse struct {
-	Name  string `json:"name"`
-	Hosts []Host `json:"hosts"`
 }

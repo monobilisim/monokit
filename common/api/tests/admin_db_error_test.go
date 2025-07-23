@@ -33,7 +33,7 @@ func TestSetupAdminRoutes_CoversAll(t *testing.T) {
 		"/api/v1/admin/users",
 		"/api/v1/admin/users/:username",
 		"/api/v1/admin/hosts/:hostname",
-		"/api/v1/admin/hosts/:hostname/move/:inventory",
+
 		"/api/v1/admin/users/:username",
 	}
 	var got []string

@@ -21,7 +21,6 @@ type APIHost struct {
 	WantsUpdateTo       string    `json:"wantsUpdateTo"`
 	Groups              string    `json:"groups"`
 	UpForDeletion       bool      `json:"upForDeletion"`
-	Inventory           string    `json:"inventory"`
 }
 
 // ErrorResponse represents an error response
@@ -31,11 +30,11 @@ type ErrorResponse struct {
 
 // HostResponse represents a host response
 type HostResponse struct {
-	Name               string `json:"name"`
-	Version            string `json:"version"`
-	Status             string `json:"status"`
-	Groups             string `json:"groups"`
-	Inventory          string `json:"inventory"`
+	Name    string `json:"name"`
+	Version string `json:"version"`
+	Status  string `json:"status"`
+	Groups  string `json:"groups"`
+
 	DisabledComponents string `json:"disabled_components"`
 	WantsUpdateTo      string `json:"wants_update_to"`
 	UpForDeletion      bool   `json:"up_for_deletion"`
@@ -50,12 +49,11 @@ type GroupResponse struct {
 
 // UserResponse represents a user response
 type UserResponse struct {
-	ID          uint   `json:"id" example:"1"`
-	Username    string `json:"username" example:"johndoe"`
-	Email       string `json:"email" example:"john.doe@example.com"`
-	Role        string `json:"role" example:"admin"`
-	Groups      string `json:"groups" example:"developers,admins"`
-	Inventories string `json:"inventories" example:"production"`
+	ID       uint   `json:"id" example:"1"`
+	Username string `json:"username" example:"johndoe"`
+	Email    string `json:"email" example:"john.doe@example.com"`
+	Role     string `json:"role" example:"admin"`
+	Groups   string `json:"groups" example:"developers,admins"`
 }
 
 // LoginRequest represents a login request
@@ -77,12 +75,11 @@ type LoginResponse struct {
 
 // RegisterRequest represents a registration request
 type RegisterRequest struct {
-	Username  string `json:"username" binding:"required"`
-	Password  string `json:"password" binding:"required"`
-	Email     string `json:"email" binding:"required,email"`
-	Role      string `json:"role" binding:"required"`
-	Groups    string `json:"groups"`
-	Inventory string `json:"inventory"`
+	Username string `json:"username" binding:"required"`
+	Password string `json:"password" binding:"required"`
+	Email    string `json:"email" binding:"required,email"`
+	Role     string `json:"role" binding:"required"`
+	Groups   string `json:"groups"`
 }
 
 // UpdateMeRequest represents a request to update the current user
@@ -99,15 +96,4 @@ type UpdateUserRequest struct {
 	Email    string `json:"email"`
 	Role     string `json:"role"`
 	Groups   string `json:"groups"`
-}
-
-// InventoryResponse represents an inventory response
-type InventoryResponse struct {
-	Name  string `json:"name"`
-	Hosts []Host `json:"hosts"`
-}
-
-// CreateInventoryRequest represents a request to create a new inventory
-type CreateInventoryRequest struct {
-	Name string `json:"name" binding:"required"`
 }

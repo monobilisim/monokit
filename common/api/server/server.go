@@ -68,7 +68,6 @@ type (
 	User           = models.User
 	Session        = models.Session
 	Group          = models.Group
-	Inventory      = models.Inventory
 	Domain         = models.Domain
 	DomainUser     = models.DomainUser
 	HostKey        = models.HostKey
@@ -139,8 +138,7 @@ func ServerMain(cmd *cobra.Command, args []string) {
 			db.AutoMigrate(&DomainUser{}) // Create DomainUser junction table
 
 			// Create other tables in dependency order
-			db.AutoMigrate(&Inventory{}) // Inventory now references Domain
-			db.AutoMigrate(&Host{})      // Host now references Domain
+			db.AutoMigrate(&Host{}) // Host now references Domain
 			db.AutoMigrate(&HostKey{})
 			db.AutoMigrate(&Group{}) // Group now references Domain
 			db.AutoMigrate(&User{})  // User now has DomainUsers relationship
@@ -157,12 +155,6 @@ func ServerMain(cmd *cobra.Command, args []string) {
 			if db.Where("name = ?", "default").First(&defaultDomain).Error == gorm.ErrRecordNotFound {
 				defaultDomain = Domain{Name: "default", Description: "Default domain for existing data", Active: true}
 				db.Create(&defaultDomain)
-			}
-
-			// Create default inventory if it doesn't exist
-			var defaultInventory Inventory
-			if db.Where("name = ? AND domain_id = ?", "default", defaultDomain.ID).First(&defaultInventory).Error == gorm.ErrRecordNotFound {
-				db.Create(&Inventory{Name: "default", DomainID: defaultDomain.ID})
 			}
 
 			// Create initial admin user if no users exist

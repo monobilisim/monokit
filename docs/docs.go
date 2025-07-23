@@ -335,65 +335,6 @@ const docTemplate = `{
                 }
             }
         },
-        "/admin/hosts/{hostname}/move/{inventory}": {
-            "post": {
-                "security": [
-                    {
-                        "ApiKeyAuth": []
-                    }
-                ],
-                "description": "Move a host to a different inventory (admin only)",
-                "consumes": [
-                    "application/json"
-                ],
-                "produces": [
-                    "application/json"
-                ],
-                "tags": [
-                    "admin"
-                ],
-                "summary": "Move host to inventory",
-                "parameters": [
-                    {
-                        "type": "string",
-                        "description": "Host name",
-                        "name": "hostname",
-                        "in": "path",
-                        "required": true
-                    },
-                    {
-                        "type": "string",
-                        "description": "Target inventory name",
-                        "name": "inventory",
-                        "in": "path",
-                        "required": true
-                    }
-                ],
-                "responses": {
-                    "200": {
-                        "description": "OK",
-                        "schema": {
-                            "type": "object",
-                            "additionalProperties": {
-                                "type": "string"
-                            }
-                        }
-                    },
-                    "403": {
-                        "description": "Forbidden",
-                        "schema": {
-                            "$ref": "#/definitions/admin.ErrorResponse"
-                        }
-                    },
-                    "404": {
-                        "description": "Not Found",
-                        "schema": {
-                            "$ref": "#/definitions/admin.ErrorResponse"
-                        }
-                    }
-                }
-            }
-        },
         "/admin/users": {
             "get": {
                 "security": [
@@ -2614,9 +2555,6 @@ const docTemplate = `{
                 "groups": {
                     "type": "string"
                 },
-                "inventory": {
-                    "type": "string"
-                },
                 "password": {
                     "type": "string"
                 },
@@ -2663,28 +2601,19 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "email": {
-                    "type": "string",
-                    "example": "john.doe@example.com"
+                    "type": "string"
                 },
                 "groups": {
-                    "type": "string",
-                    "example": "developers,admins"
-                },
-                "id": {
-                    "type": "integer",
-                    "example": 1
+                    "type": "string"
                 },
                 "inventories": {
-                    "type": "string",
-                    "example": "production"
+                    "type": "string"
                 },
                 "role": {
-                    "type": "string",
-                    "example": "admin"
+                    "type": "string"
                 },
                 "username": {
-                    "type": "string",
-                    "example": "johndoe"
+                    "type": "string"
                 }
             }
         },
@@ -2751,9 +2680,6 @@ const docTemplate = `{
                 "groups": {
                     "type": "string"
                 },
-                "inventory": {
-                    "type": "string"
-                },
                 "password": {
                     "type": "string"
                 },
@@ -2783,28 +2709,19 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "email": {
-                    "type": "string",
-                    "example": "john.doe@example.com"
+                    "type": "string"
                 },
                 "groups": {
-                    "type": "string",
-                    "example": "developers,admins"
-                },
-                "id": {
-                    "type": "integer",
-                    "example": 1
+                    "type": "string"
                 },
                 "inventories": {
-                    "type": "string",
-                    "example": "production"
+                    "type": "string"
                 },
                 "role": {
-                    "type": "string",
-                    "example": "admin"
+                    "type": "string"
                 },
                 "username": {
-                    "type": "string",
-                    "example": "johndoe"
+                    "type": "string"
                 }
             }
         },
@@ -2925,9 +2842,6 @@ const docTemplate = `{
                 "groups": {
                     "type": "string"
                 },
-                "inventory": {
-                    "type": "string"
-                },
                 "name": {
                     "type": "string"
                 },
@@ -2949,28 +2863,19 @@ const docTemplate = `{
             "type": "object",
             "properties": {
                 "email": {
-                    "type": "string",
-                    "example": "john.doe@example.com"
+                    "type": "string"
                 },
                 "groups": {
-                    "type": "string",
-                    "example": "developers,admins"
-                },
-                "id": {
-                    "type": "integer",
-                    "example": 1
+                    "type": "string"
                 },
                 "inventories": {
-                    "type": "string",
-                    "example": "production"
+                    "type": "string"
                 },
                 "role": {
-                    "type": "string",
-                    "example": "admin"
+                    "type": "string"
                 },
                 "username": {
-                    "type": "string",
-                    "example": "johndoe"
+                    "type": "string"
                 }
             }
         },

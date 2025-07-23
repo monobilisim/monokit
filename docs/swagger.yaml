@@ -31,8 +31,6 @@ definitions:
         type: string
       groups:
         type: string
-      inventory:
-        type: string
       password:
         type: string
       role:
@@ -68,22 +66,14 @@ definitions:
   admin.UserResponse:
     properties:
       email:
-        example: john.doe@example.com
         type: string
       groups:
-        example: developers,admins
         type: string
-      id:
-        example: 1
-        type: integer
       inventories:
-        example: production
         type: string
       role:
-        example: admin
         type: string
       username:
-        example: johndoe
         type: string
     type: object
   auth.ErrorResponse:
@@ -123,8 +113,6 @@ definitions:
         type: string
       groups:
         type: string
-      inventory:
-        type: string
       password:
         type: string
       role:
@@ -149,22 +137,14 @@ definitions:
   auth.UserResponse:
     properties:
       email:
-        example: john.doe@example.com
         type: string
       groups:
-        example: developers,admins
         type: string
-      id:
-        example: 1
-        type: integer
       inventories:
-        example: production
         type: string
       role:
-        example: admin
         type: string
       username:
-        example: johndoe
         type: string
     type: object
   domains.AssignUserToDomainRequest:
@@ -244,8 +224,6 @@ definitions:
         type: string
       groups:
         type: string
-      inventory:
-        type: string
       name:
         type: string
       status:
@@ -260,22 +238,14 @@ definitions:
   models.UserResponse:
     properties:
       email:
-        example: john.doe@example.com
         type: string
       groups:
-        example: developers,admins
         type: string
-      id:
-        example: 1
-        type: integer
       inventories:
-        example: production
         type: string
       role:
-        example: admin
         type: string
       username:
-        example: johndoe
         type: string
     type: object
   server.APIHostLogsResponse:
@@ -622,44 +592,6 @@ paths:
       security:
       - ApiKeyAuth: []
       summary: Schedule host for deletion
-      tags:
-      - admin
-  /admin/hosts/{hostname}/move/{inventory}:
-    post:
-      consumes:
-      - application/json
-      description: Move a host to a different inventory (admin only)
-      parameters:
-      - description: Host name
-        in: path
-        name: hostname
-        required: true
-        type: string
-      - description: Target inventory name
-        in: path
-        name: inventory
-        required: true
-        type: string
-      produces:
-      - application/json
-      responses:
-        "200":
-          description: OK
-          schema:
-            additionalProperties:
-              type: string
-            type: object
-        "403":
-          description: Forbidden
-          schema:
-            $ref: '#/definitions/admin.ErrorResponse'
-        "404":
-          description: Not Found
-          schema:
-            $ref: '#/definitions/admin.ErrorResponse'
-      security:
-      - ApiKeyAuth: []
-      summary: Move host to inventory
       tags:
       - admin
   /admin/users:

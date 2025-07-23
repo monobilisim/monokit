@@ -23,7 +23,6 @@ type Host struct {
 	WantsUpdateTo       string    `json:"wantsUpdateTo"`
 	Groups              string    `json:"groups"`
 	UpForDeletion       bool      `json:"upForDeletion"`
-	Inventory           string    `json:"inventory"`
 }
 
 // User represents a system user
@@ -53,7 +52,6 @@ type HostResponse struct {
 	Version            string `json:"version"`
 	Status             string `json:"status"`
 	Groups             string `json:"groups"`
-	Inventory          string `json:"inventory"`
 	DisabledComponents string `json:"disabled_components"`
 	WantsUpdateTo      string `json:"wants_update_to"`
 	UpForDeletion      bool   `json:"up_for_deletion"`
@@ -70,7 +68,6 @@ type APIHost struct {
 	Version             string    `json:"version"`
 	Status              string    `json:"status"`
 	Groups              string    `json:"groups"`
-	Inventory           string    `json:"inventory"`
 	DisabledComponents  string    `json:"disabled_components"`
 	InstalledComponents string    `json:"installed_components"`
 	IpAddress           string    `json:"ip_address"`
@@ -106,12 +103,11 @@ type LoginResponse struct {
 
 // RegisterRequest represents a registration request
 type RegisterRequest struct {
-	Username  string `json:"username" binding:"required"`
-	Password  string `json:"password" binding:"required"`
-	Email     string `json:"email" binding:"required,email"`
-	Role      string `json:"role" binding:"required"`
-	Groups    string `json:"groups"`
-	Inventory string `json:"inventory"`
+	Username string `json:"username" binding:"required"`
+	Password string `json:"password" binding:"required"`
+	Email    string `json:"email" binding:"required,email"`
+	Role     string `json:"role" binding:"required"`
+	Groups   string `json:"groups"`
 }
 
 // UpdateMeRequest represents a request to update the current user
@@ -119,12 +115,6 @@ type UpdateMeRequest struct {
 	Username string `json:"username"`
 	Password string `json:"password"`
 	Email    string `json:"email"`
-}
-
-// InventoryResponse represents an inventory response
-type InventoryResponse struct {
-	Name  string `json:"name"`
-	Hosts []Host `json:"hosts"`
 }
 
 // UserResponse represents a user response

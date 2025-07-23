@@ -180,7 +180,7 @@ func setupDatabase() *gorm.DB {
 
 	// Auto migrate the rest of the schema in the correct order, using the transaction
 	allModels := []interface{}{
-		&APILogEntry{}, &Inventory{}, &Host{}, &User{}, &HostKey{},
+		&APILogEntry{}, &Host{}, &User{}, &HostKey{},
 		&Session{}, &Group{}, &HostLog{}, &HostFileConfig{}, &HostHealthData{},
 	}
 	if err := tx.AutoMigrate(allModels...); err != nil {
@@ -315,11 +315,6 @@ func setupRoutes(r *gin.Engine, db *gorm.DB, monokitHostname string) {
 
 		// Group management
 		api.GET("/groups", GetAllGroups(db))
-
-		// Inventory management
-		api.GET("/inventory", GetAllInventories(db))
-		api.POST("/inventory", CreateInventory(db))
-		api.DELETE("/inventory/:name", DeleteInventory(db))
 
 		// Log management - ensure these endpoints use the same auth chain
 		api.GET("/logs", GetAllLogs(db))
@@ -623,27 +618,8 @@ func RegisterHost(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		fmt.Printf("Registering host: %s, IP: %s, Inventory: %s\n",
-			host.Name, host.IpAddress, host.Inventory)
-
-		// Set default inventory if not provided
-		if host.Inventory == "" {
-			host.Inventory = "default"
-			fmt.Printf("Using default inventory\n")
-		} else {
-			// Check if the inventory exists, if not create it
-			var inventory Inventory
-			if err := db.Where("name = ?", host.Inventory).First(&inventory).Error; err != nil {
-				fmt.Printf("Creating new inventory: %s\n", host.Inventory)
-				// Create the inventory if it doesn't exist
-				newInventory := Inventory{Name: host.Inventory}
-				if err := db.Create(&newInventory).Error; err != nil {
-					fmt.Printf("Error creating inventory: %v\n", err)
-					c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create inventory"})
-					return
-				}
-			}
-		}
+		fmt.Printf("Registering host: %s, IP: %s\n",
+			host.Name, host.IpAddress)
 
 		// Check if host already exists
 		var existingHost Host
@@ -1830,53 +1806,6 @@ func GetAllGroups(db *gorm.DB) gin.HandlerFunc {
 			}
 		}
 		c.JSON(http.StatusOK, groups)
-	}
-}
-
-// Inventory management handlers
-func GetAllInventories(db *gorm.DB) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		var inventories []Inventory
-		if err := db.Find(&inventories).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch inventories"})
-			return
-		}
-		c.JSON(http.StatusOK, inventories)
-	}
-}
-
-func CreateInventory(db *gorm.DB) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		var inventory Inventory
-		if err := c.ShouldBindJSON(&inventory); err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return
-		}
-
-		if err := db.Create(&inventory).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create inventory"})
-			return
-		}
-
-		c.JSON(http.StatusCreated, inventory)
-	}
-}
-
-func DeleteInventory(db *gorm.DB) gin.HandlerFunc {
-	return func(c *gin.Context) {
-		name := c.Param("name")
-		var inventory Inventory
-		if err := db.Where("name = ?", name).First(&inventory).Error; err != nil {
-			c.JSON(http.StatusNotFound, gin.H{"error": "Inventory not found"})
-			return
-		}
-
-		if err := db.Delete(&inventory).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete inventory"})
-			return
-		}
-
-		c.JSON(http.StatusOK, gin.H{"status": "deleted"})
 	}
 }
 

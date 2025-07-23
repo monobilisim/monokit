@@ -26,7 +26,6 @@ type KeycloakConfig struct {
 	DisableLocalAuth bool   `mapstructure:"disable_local_auth"`
 	AdminRole        string `mapstructure:"admin_role"`
 	DefaultRole      string `mapstructure:"default_role"`
-	DefaultInventory string `mapstructure:"default_inventory"`
 	DefaultGroups    string `mapstructure:"default_groups"`
 }
 
@@ -106,7 +105,6 @@ type Host struct {
 	WantsUpdateTo       string    `json:"wantsUpdateTo"`
 	Groups              string    `json:"groups"`
 	UpForDeletion       bool      `json:"upForDeletion"`
-	Inventory           string    `json:"inventory"`
 	AwxOnly             bool      `json:"awx_only"` // If true, this host is only in AWX and should not be shown in dashboard
 }
 
@@ -128,15 +126,6 @@ type DomainUser struct {
 	Role     string `json:"role" example:"domain_admin"` // "domain_admin", "domain_user"
 	Domain   Domain `json:"domain,omitempty" swaggerignore:"true"`
 	User     User   `json:"user,omitempty" swaggerignore:"true"`
-}
-
-// Inventory represents a collection of hosts (now domain-scoped)
-type Inventory struct {
-	ID       uint   `json:"id" gorm:"primarykey"`
-	Name     string `json:"name" gorm:"uniqueIndex:idx_inventory_name_domain"` // Unique within domain
-	DomainID uint   `json:"domain_id" gorm:"uniqueIndex:idx_inventory_name_domain;index"`
-	Domain   Domain `json:"domain"`
-	Hosts    []Host `json:"hosts" gorm:"foreignKey:Inventory;references:Name"`
 }
 
 // User represents a system user (now with domain associations)
