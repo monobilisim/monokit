@@ -71,3 +71,14 @@ cloudflare:
   timeout: 30
   # Whether to verify SSL certificates
   verify_ssl: true
+
+redmine:
+  enabled: false
+  # Redmine server URL (without trailing slash)
+  url: "https://redmine.example.com"
+  # Redmine API key for authentication
+  api_key: "your-redmine-api-key"
+  # Request timeout in seconds
+  timeout: 30
+  # Whether to verify SSL certificates
+  verify_ssl: true

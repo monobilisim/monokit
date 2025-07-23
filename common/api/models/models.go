@@ -64,6 +64,7 @@ type Server struct {
 	Awx        AwxConfig        `mapstructure:"awx"`
 	Valkey     ValkeyConfig     `mapstructure:"valkey"`
 	Cloudflare CloudflareConfig `mapstructure:"cloudflare"`
+	Redmine    RedmineConfig    `mapstructure:"redmine"`
 }
 
 // AwxConfig represents AWX connection settings
@@ -91,6 +92,15 @@ type CloudflareConfig struct {
 	APIToken  string `mapstructure:"api_token"`  // Global API token for server-level operations
 	APIKey    string `mapstructure:"api_key"`    // Legacy API key (optional)
 	Email     string `mapstructure:"email"`      // Email for legacy API key authentication
+	Timeout   int    `mapstructure:"timeout"`    // Request timeout in seconds
+	VerifySSL bool   `mapstructure:"verify_ssl"` // Whether to verify SSL certificates
+}
+
+// RedmineConfig represents Redmine API connection settings
+type RedmineConfig struct {
+	Enabled   bool   `mapstructure:"enabled"`
+	URL       string `mapstructure:"url"`        // Redmine server URL
+	APIKey    string `mapstructure:"api_key"`    // Redmine API key for authentication
 	Timeout   int    `mapstructure:"timeout"`    // Request timeout in seconds
 	VerifySSL bool   `mapstructure:"verify_ssl"` // Whether to verify SSL certificates
 }
@@ -128,6 +138,7 @@ type Domain struct {
 	Description       string             `json:"description" example:"Production environment domain"`
 	Settings          string             `json:"settings" gorm:"type:text" example:"{\"theme\":\"dark\"}"` // JSON for domain-specific config
 	Active            bool               `json:"active" gorm:"default:true" example:"true"`
+	RedmineProjectID  string             `json:"redmine_project_id,omitempty" example:"production"` // Redmine project identifier (defaults to domain name)
 	CloudflareDomains []CloudflareDomain `json:"cloudflare_domains,omitempty" gorm:"foreignKey:DomainID"`
 }
 
@@ -236,24 +247,27 @@ type CreateDomainRequest struct {
 	Name              string                          `json:"name" binding:"required"`
 	Description       string                          `json:"description"`
 	Settings          string                          `json:"settings"`
+	RedmineProjectID  string                          `json:"redmine_project_id,omitempty"` // Optional Redmine project identifier (defaults to domain name)
 	CloudflareDomains []CreateCloudflareDomainRequest `json:"cloudflare_domains,omitempty"` // Optional Cloudflare domains to create with the domain
 }
 
 type UpdateDomainRequest struct {
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Settings    string `json:"settings"`
-	Active      *bool  `json:"active"`
+	Name             string `json:"name"`
+	Description      string `json:"description"`
+	Settings         string `json:"settings"`
+	Active           *bool  `json:"active"`
+	RedmineProjectID string `json:"redmine_project_id,omitempty"` // Redmine project identifier
 }
 
 type DomainResponse struct {
-	ID          uint   `json:"id"`
-	Name        string `json:"name"`
-	Description string `json:"description"`
-	Settings    string `json:"settings"`
-	Active      bool   `json:"active"`
-	CreatedAt   string `json:"created_at"`
-	UpdatedAt   string `json:"updated_at"`
+	ID               uint   `json:"id"`
+	Name             string `json:"name"`
+	Description      string `json:"description"`
+	Settings         string `json:"settings"`
+	Active           bool   `json:"active"`
+	RedmineProjectID string `json:"redmine_project_id,omitempty"`
+	CreatedAt        string `json:"created_at"`
+	UpdatedAt        string `json:"updated_at"`
 }
 
 type AssignUserToDomainRequest struct {
@@ -314,6 +328,7 @@ var ServerConfig struct {
 	Awx        AwxConfig        `mapstructure:"awx"`
 	Valkey     ValkeyConfig     `mapstructure:"valkey"`
 	Cloudflare CloudflareConfig `mapstructure:"cloudflare"`
+	Redmine    RedmineConfig    `mapstructure:"redmine"`
 }
 
 var HostsList []Host

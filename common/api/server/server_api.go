@@ -270,6 +270,13 @@ func setupRoutes(r *gin.Engine, db *gorm.DB, monokitHostname string) {
 			domainApi.DELETE("/:domain_id/cloudflare/:cf_domain_id", cloudflare.DeleteCloudflareDomain(db, cfService))
 			domainApi.POST("/:domain_id/cloudflare/:cf_domain_id/test", cloudflare.TestCloudflareConnection(db, cfService))
 		}
+
+		// Setup Redmine domain integration routes (domain users and global admins)
+		if ServerConfig.Redmine.Enabled {
+			domainApi.GET("/:id/redmine/project", domains.GetDomainRedmineProject(db))
+			domainApi.GET("/:id/redmine/issues", domains.GetDomainRedmineIssues(db))
+			domainApi.GET("/:id/redmine/issues/:issue_id", domains.GetDomainRedmineIssue(db))
+		}
 	}
 
 	// Setup user domain management routes (global admin only)

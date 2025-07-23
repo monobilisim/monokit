@@ -62,10 +62,11 @@ func CreateDomain(db *gorm.DB) gin.HandlerFunc {
 
 		// Create new domain
 		domain := Domain{
-			Name:        req.Name,
-			Description: req.Description,
-			Settings:    req.Settings,
-			Active:      true,
+			Name:             req.Name,
+			Description:      req.Description,
+			Settings:         req.Settings,
+			Active:           true,
+			RedmineProjectID: req.RedmineProjectID,
 		}
 
 		if err := db.Create(&domain).Error; err != nil {
@@ -99,13 +100,14 @@ func CreateDomain(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		response := DomainResponse{
-			ID:          domain.ID,
-			Name:        domain.Name,
-			Description: domain.Description,
-			Settings:    domain.Settings,
-			Active:      domain.Active,
-			CreatedAt:   domain.CreatedAt.Format("2006-01-02T15:04:05Z"),
-			UpdatedAt:   domain.UpdatedAt.Format("2006-01-02T15:04:05Z"),
+			ID:               domain.ID,
+			Name:             domain.Name,
+			Description:      domain.Description,
+			Settings:         domain.Settings,
+			Active:           domain.Active,
+			RedmineProjectID: domain.RedmineProjectID,
+			CreatedAt:        domain.CreatedAt.Format("2006-01-02T15:04:05Z"),
+			UpdatedAt:        domain.UpdatedAt.Format("2006-01-02T15:04:05Z"),
 		}
 
 		c.JSON(http.StatusCreated, response)
@@ -139,13 +141,14 @@ func GetAllDomains(db *gorm.DB) gin.HandlerFunc {
 		var responses []DomainResponse
 		for _, domain := range domains {
 			responses = append(responses, DomainResponse{
-				ID:          domain.ID,
-				Name:        domain.Name,
-				Description: domain.Description,
-				Settings:    domain.Settings,
-				Active:      domain.Active,
-				CreatedAt:   domain.CreatedAt.Format("2006-01-02T15:04:05Z"),
-				UpdatedAt:   domain.UpdatedAt.Format("2006-01-02T15:04:05Z"),
+				ID:               domain.ID,
+				Name:             domain.Name,
+				Description:      domain.Description,
+				Settings:         domain.Settings,
+				Active:           domain.Active,
+				RedmineProjectID: domain.RedmineProjectID,
+				CreatedAt:        domain.CreatedAt.Format("2006-01-02T15:04:05Z"),
+				UpdatedAt:        domain.UpdatedAt.Format("2006-01-02T15:04:05Z"),
 			})
 		}
 
@@ -191,13 +194,14 @@ func GetDomainByID(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		response := DomainResponse{
-			ID:          domain.ID,
-			Name:        domain.Name,
-			Description: domain.Description,
-			Settings:    domain.Settings,
-			Active:      domain.Active,
-			CreatedAt:   domain.CreatedAt.Format("2006-01-02T15:04:05Z"),
-			UpdatedAt:   domain.UpdatedAt.Format("2006-01-02T15:04:05Z"),
+			ID:               domain.ID,
+			Name:             domain.Name,
+			Description:      domain.Description,
+			Settings:         domain.Settings,
+			Active:           domain.Active,
+			RedmineProjectID: domain.RedmineProjectID,
+			CreatedAt:        domain.CreatedAt.Format("2006-01-02T15:04:05Z"),
+			UpdatedAt:        domain.UpdatedAt.Format("2006-01-02T15:04:05Z"),
 		}
 
 		c.JSON(http.StatusOK, response)
@@ -268,6 +272,9 @@ func UpdateDomain(db *gorm.DB) gin.HandlerFunc {
 		if req.Active != nil {
 			domain.Active = *req.Active
 		}
+		if req.RedmineProjectID != "" {
+			domain.RedmineProjectID = req.RedmineProjectID
+		}
 
 		if err := db.Save(&domain).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update domain"})
@@ -275,13 +282,14 @@ func UpdateDomain(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		response := DomainResponse{
-			ID:          domain.ID,
-			Name:        domain.Name,
-			Description: domain.Description,
-			Settings:    domain.Settings,
-			Active:      domain.Active,
-			CreatedAt:   domain.CreatedAt.Format("2006-01-02T15:04:05Z"),
-			UpdatedAt:   domain.UpdatedAt.Format("2006-01-02T15:04:05Z"),
+			ID:               domain.ID,
+			Name:             domain.Name,
+			Description:      domain.Description,
+			Settings:         domain.Settings,
+			Active:           domain.Active,
+			RedmineProjectID: domain.RedmineProjectID,
+			CreatedAt:        domain.CreatedAt.Format("2006-01-02T15:04:05Z"),
+			UpdatedAt:        domain.UpdatedAt.Format("2006-01-02T15:04:05Z"),
 		}
 
 		c.JSON(http.StatusOK, response)
