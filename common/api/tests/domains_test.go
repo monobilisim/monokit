@@ -167,34 +167,3 @@ func TestGlobalAdminAccess(t *testing.T) {
 	// Test: User should not have access to domain2
 	assert.NotEqual(t, domain2.ID, userDomains[0].DomainID)
 }
-
-func TestDomainInventoryScoping(t *testing.T) {
-	// Setup
-	db := SetupTestDB(t)
-	defer CleanupTestDB(db)
-
-	// Create domains
-	domain1 := SetupTestDomain(t, db, "domain1")
-	domain2 := SetupTestDomain(t, db, "domain2")
-
-	// Create inventories in different domains
-	inventory1 := SetupTestInventoryInDomain(t, db, "inventory1", domain1)
-	inventory2 := SetupTestInventoryInDomain(t, db, "inventory2", domain2)
-
-	// Test: Verify inventories are domain-scoped
-	assert.Equal(t, domain1.ID, inventory1.DomainID)
-	assert.Equal(t, domain2.ID, inventory2.DomainID)
-
-	// Test: Same inventory name can exist in different domains
-	inventory3 := SetupTestInventoryInDomain(t, db, "inventory1", domain2)
-	assert.Equal(t, "inventory1", inventory3.Name)
-	assert.Equal(t, domain2.ID, inventory3.DomainID)
-
-	// Test: Cannot create duplicate inventory name in same domain
-	duplicateInventory := models.Inventory{
-		Name:     "inventory1",
-		DomainID: domain1.ID,
-	}
-	result := db.Create(&duplicateInventory)
-	assert.Error(t, result.Error) // Should fail due to unique constraint
-}

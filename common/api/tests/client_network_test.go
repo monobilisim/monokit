@@ -376,8 +376,8 @@ func TestSendReq_InventoryExtraction(t *testing.T) {
 			var requestBody models.Host
 			json.NewDecoder(r.Body).Decode(&requestBody)
 
-			// Should extract "prod" from "prod-web-01"
-			assert.Equal(t, "prod", requestBody.Inventory)
+			// Verify the host name is correct
+			assert.Equal(t, "prod-web-01", requestBody.Name)
 
 			response := map[string]interface{}{
 				"host": map[string]interface{}{

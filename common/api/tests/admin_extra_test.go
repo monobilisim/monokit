@@ -100,12 +100,11 @@ func TestCreateUser_Unauthorized(t *testing.T) {
 	defer CleanupTestDB(db)
 	user := SetupTestUser(t, db, "user403")
 	userReq := models.RegisterRequest{
-		Username:  "newuser2",
-		Password:  "pw",
-		Email:     "e@x.com",
-		Role:      "user",
-		Groups:    "g",
-		Inventory: "def",
+		Username: "newuser2",
+		Password: "pw",
+		Email:    "e@x.com",
+		Role:     "user",
+		Groups:   "g",
 	}
 	c, w := CreateRequestContext("POST", "/api/v1/admin/users", userReq)
 	AuthorizeContext(c, user)
@@ -180,20 +179,6 @@ func TestScheduleHostDeletion_Unauthorized(t *testing.T) {
 	AuthorizeContext(c, user)
 	SetPathParams(c, map[string]string{"hostname": "hosttodelete"})
 	handler := admin.ExportScheduleHostDeletion(db)
-	handler(c)
-	assert.Equal(t, http.StatusForbidden, w.Code)
-}
-
-// Covers: moveHostToInventory 403 (non-admin)
-func TestMoveHostToInventory_Unauthorized(t *testing.T) {
-	db := SetupTestDB(t)
-	defer CleanupTestDB(db)
-	user := SetupTestUser(t, db, "user403")
-	SetupTestHost(t, db, "hosttomove")
-	c, w := CreateRequestContext("POST", "/api/v1/admin/hosts/hosttomove/move/newinventory", nil)
-	AuthorizeContext(c, user)
-	SetPathParams(c, map[string]string{"hostname": "hosttomove", "inventory": "newinventory"})
-	handler := admin.ExportMoveHostToInventory(db)
 	handler(c)
 	assert.Equal(t, http.StatusForbidden, w.Code)
 }

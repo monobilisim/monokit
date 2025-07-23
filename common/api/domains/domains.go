@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+	"github.com/monobilisim/monokit/common/api/cloudflare"
 	"github.com/monobilisim/monokit/common/api/models"
 	"gorm.io/gorm"
 )
@@ -70,6 +71,31 @@ func CreateDomain(db *gorm.DB) gin.HandlerFunc {
 		if err := db.Create(&domain).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create domain"})
 			return
+		}
+
+		// Create Cloudflare domains if provided and Cloudflare is enabled
+		var cfDomains []models.CloudflareDomain
+		if len(req.CloudflareDomains) > 0 {
+			// Check if Cloudflare is enabled in server config
+			serverConfig := models.ServerConfig
+			if serverConfig.Cloudflare.Enabled {
+				cfService := cloudflare.NewService(db, serverConfig.Cloudflare)
+
+				for _, cfReq := range req.CloudflareDomains {
+					cfDomain, err := cfService.CreateCloudflareDomain(domain.ID, cfReq)
+					if err != nil {
+						// Log error but don't fail domain creation
+						// The domain was already created successfully
+						c.JSON(http.StatusPartialContent, gin.H{
+							"message":   "Domain created but some Cloudflare domains failed",
+							"domain_id": domain.ID,
+							"error":     err.Error(),
+						})
+						return
+					}
+					cfDomains = append(cfDomains, *cfDomain)
+				}
+			}
 		}
 
 		response := DomainResponse{

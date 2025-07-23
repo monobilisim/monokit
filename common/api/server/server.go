@@ -64,16 +64,17 @@ import (
 
 // Type aliases for models
 type (
-	Host           = models.Host
-	User           = models.User
-	Session        = models.Session
-	Group          = models.Group
-	Domain         = models.Domain
-	DomainUser     = models.DomainUser
-	HostKey        = models.HostKey
-	HostLog        = models.HostLog
-	HostFileConfig = models.HostFileConfig
-	HostHealthData = models.HostHealthData
+	Host             = models.Host
+	User             = models.User
+	Session          = models.Session
+	Group            = models.Group
+	Domain           = models.Domain
+	DomainUser       = models.DomainUser
+	CloudflareDomain = models.CloudflareDomain
+	HostKey          = models.HostKey
+	HostLog          = models.HostLog
+	HostFileConfig   = models.HostFileConfig
+	HostHealthData   = models.HostHealthData
 )
 
 // Variable aliases
@@ -134,8 +135,9 @@ func ServerMain(cmd *cobra.Command, args []string) {
 		},
 		SetupDB: func(db *gorm.DB) {
 			// Create domain-related tables first
-			db.AutoMigrate(&Domain{})     // Create Domain table first
-			db.AutoMigrate(&DomainUser{}) // Create DomainUser junction table
+			db.AutoMigrate(&Domain{})           // Create Domain table first
+			db.AutoMigrate(&DomainUser{})       // Create DomainUser junction table
+			db.AutoMigrate(&CloudflareDomain{}) // Create CloudflareDomain table
 
 			// Create other tables in dependency order
 			db.AutoMigrate(&Host{}) // Host now references Domain

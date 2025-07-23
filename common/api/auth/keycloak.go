@@ -326,12 +326,11 @@ func SyncKeycloakUser(db *gorm.DB, claims *KeycloakClaims) (User, error) {
 	if result.Error != nil {
 		// User doesn't exist, create new user as Keycloak user
 		user = User{
-			Username:    username,
-			Email:       claims.Email,
-			Role:        role,
-			Groups:      "nil",
-			Inventories: "default",
-			AuthMethod:  "keycloak",
+			Username:   username,
+			Email:      claims.Email,
+			Role:       role,
+			Groups:     "nil",
+			AuthMethod: "keycloak",
 		}
 		if err := db.Create(&user).Error; err != nil {
 			return User{}, err
@@ -359,12 +358,11 @@ func createOrGetDefaultAdminUser(db *gorm.DB) (User, error) {
 	if result.Error != nil {
 		// Create default admin user
 		user = User{
-			Username:    "admin",
-			Email:       "admin@example.com",
-			Role:        "admin",
-			Groups:      "nil",
-			Inventories: "default",
-			AuthMethod:  "local",
+			Username:   "admin",
+			Email:      "admin@example.com",
+			Role:       "admin",
+			Groups:     "nil",
+			AuthMethod: "local",
 		}
 		if err := db.Create(&user).Error; err != nil {
 			return User{}, err

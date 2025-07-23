@@ -27,13 +27,12 @@ type Host struct {
 
 // User represents a system user
 type User struct {
-	ID          uint   `json:"id"`
-	Username    string `json:"username"`
-	Password    string `json:"-"`
-	Email       string `json:"email"`
-	Role        string `json:"role"`
-	Groups      string `json:"groups"`
-	Inventories string `json:"inventories"`
+	ID       uint   `json:"id"`
+	Username string `json:"username"`
+	Password string `json:"-"`
+	Email    string `json:"email"`
+	Role     string `json:"role"`
+	Groups   string `json:"groups"`
 }
 
 // Session represents a user session
@@ -119,9 +118,8 @@ type UpdateMeRequest struct {
 
 // UserResponse represents a user response
 type UserResponse struct {
-	Username    string `json:"username"`
-	Email       string `json:"email"`
-	Role        string `json:"role"`
-	Groups      string `json:"groups"`
-	Inventories string `json:"inventories"`
+	Username string `json:"username"`
+	Email    string `json:"email"`
+	Role     string `json:"role"`
+	Groups   string `json:"groups"`
 }

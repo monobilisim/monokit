@@ -169,23 +169,3 @@ func TestScheduleHostDeletion_SaveHostError(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	AssertErrorResponse(t, w, "Failed to schedule host for deletion")
 }
-
-// -- 7. MoveHostToInventory Save host error
-func TestMoveHostToInventory_SaveHostError(t *testing.T) {
-	m := setupMockDB(t)
-	adminUser := SetupTestAdmin(t, m.DB)
-	_ = SetupTestHost(t, m.DB, "hostyy")
-	i := &models.Inventory{Name: "inv2"}
-	m.DB.Create(i)
-	c, w := CreateRequestContext("POST", "/api/v1/admin/hosts/hostyy/move/inv2", nil)
-	AuthorizeContext(c, adminUser)
-	SetPathParams(c, map[string]string{
-		"hostname":  "hostyy",
-		"inventory": "inv2",
-	})
-	m.ErrorOnSaveHost = true
-	handler := admin.ExportMoveHostToInventory(m)
-	handler(c)
-	assert.Equal(t, http.StatusInternalServerError, w.Code)
-	AssertErrorResponse(t, w, "Failed to move host")
-}

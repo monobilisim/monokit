@@ -11,7 +11,11 @@ import (
 	"path/filepath"
 
 	"github.com/monobilisim/monokit/common/api/clientport"
+	"github.com/monobilisim/monokit/common/api/models"
 )
+
+// Type aliases
+type Host = models.Host
 
 type Config struct {
 	URL        string

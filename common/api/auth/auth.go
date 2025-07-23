@@ -69,7 +69,7 @@ func HashPassword(password string) (string, error) {
 	return string(bytes), err
 }
 
-func CreateUser(username, password, email, role, groups, inventory string, db DBTX) error {
+func CreateUser(username, password, email, role, groups string, db DBTX) error {
 	hashedPassword, err := HashPassword(password)
 	if err != nil {
 		return err
@@ -77,13 +77,12 @@ func CreateUser(username, password, email, role, groups, inventory string, db DB
 
 	// Mark newly created users as local authentication users.
 	user := User{
-		Username:    username,
-		Password:    hashedPassword,
-		Email:       email,
-		Role:        role,
-		Groups:      groups,
-		Inventories: inventory,
-		AuthMethod:  "local",
+		Username:   username,
+		Password:   hashedPassword,
+		Email:      email,
+		Role:       role,
+		Groups:     groups,
+		AuthMethod: "local",
 	}
 
 	return db.Create(&user).Error
@@ -155,7 +154,7 @@ func registerUser(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// Create new user
-		err := CreateUser(req.Username, req.Password, req.Email, req.Role, req.Groups, req.Inventory, db)
+		err := CreateUser(req.Username, req.Password, req.Email, req.Role, req.Groups, db)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
 			return
@@ -279,11 +278,10 @@ func createInitialAdmin(db *gorm.DB) error {
 
 	// Create initial admin user
 	initialAdmin := User{
-		Username:    "admin",
-		Email:       "admin@localhost",
-		Role:        "admin",
-		Groups:      "admins",
-		Inventories: "default",
+		Username: "admin",
+		Email:    "admin@localhost",
+		Role:     "admin",
+		Groups:   "admins",
 	}
 
 	// Hash the default password "admin"

@@ -60,27 +60,39 @@ type Server struct {
 		Password string `mapstructure:"password"`
 		Dbname   string `mapstructure:"dbname"`
 	} `mapstructure:"postgres"`
-	Keycloak KeycloakConfig `mapstructure:"keycloak"`
-	Awx      AwxConfig      `mapstructure:"awx"`
-	Valkey   ValkeyConfig   `mapstructure:"valkey"`
+	Keycloak   KeycloakConfig   `mapstructure:"keycloak"`
+	Awx        AwxConfig        `mapstructure:"awx"`
+	Valkey     ValkeyConfig     `mapstructure:"valkey"`
+	Cloudflare CloudflareConfig `mapstructure:"cloudflare"`
 }
 
 // AwxConfig represents AWX connection settings
 type AwxConfig struct {
-	Enabled            bool              `mapstructure:"enabled"`
-	Url                string            `mapstructure:"url"`
-	Username           string            `mapstructure:"username"`
-	Password           string            `mapstructure:"password"`
-	VerifySSL          bool              `mapstructure:"verify_ssl"`
-	Timeout            int               `mapstructure:"timeout"`
-	HostIdMap          map[string]string `mapstructure:"host_id_map"`
-	DefaultInventoryID int               `mapstructure:"default_inventory_id"`
+	Enabled   bool              `mapstructure:"enabled"`
+	Url       string            `mapstructure:"url"`
+	Username  string            `mapstructure:"username"`
+	Password  string            `mapstructure:"password"`
+	VerifySSL bool              `mapstructure:"verify_ssl"`
+	Timeout   int               `mapstructure:"timeout"`
+	HostIdMap map[string]string `mapstructure:"host_id_map"`
 	// Map of template names to IDs
 	TemplateIDs map[string]int `mapstructure:"template_ids"`
 	// Map of workflow template names to IDs
 	WorkflowTemplateIDs map[string]int `mapstructure:"workflow_template_ids"`
 	// Default workflow template ID to use if none specified
 	DefaultWorkflowTemplateID int `mapstructure:"default_workflow_template_id"`
+	// Default inventory ID to use for AWX operations
+	DefaultInventoryID int `mapstructure:"default_inventory_id"`
+}
+
+// CloudflareConfig represents Cloudflare API connection settings
+type CloudflareConfig struct {
+	Enabled   bool   `mapstructure:"enabled"`
+	APIToken  string `mapstructure:"api_token"`  // Global API token for server-level operations
+	APIKey    string `mapstructure:"api_key"`    // Legacy API key (optional)
+	Email     string `mapstructure:"email"`      // Email for legacy API key authentication
+	Timeout   int    `mapstructure:"timeout"`    // Request timeout in seconds
+	VerifySSL bool   `mapstructure:"verify_ssl"` // Whether to verify SSL certificates
 }
 
 // Host represents a monitored host (now domain-scoped)
@@ -111,11 +123,25 @@ type Host struct {
 // Domain represents a tenant domain in the multi-tenant system
 // @Description Domain model for multi-tenant system
 type Domain struct {
-	gorm.Model  `swaggerignore:"true"`
-	Name        string `json:"name" gorm:"unique" example:"production"`
-	Description string `json:"description" example:"Production environment domain"`
-	Settings    string `json:"settings" gorm:"type:text" example:"{\"theme\":\"dark\"}"` // JSON for domain-specific config
-	Active      bool   `json:"active" gorm:"default:true" example:"true"`
+	gorm.Model        `swaggerignore:"true"`
+	Name              string             `json:"name" gorm:"unique" example:"production"`
+	Description       string             `json:"description" example:"Production environment domain"`
+	Settings          string             `json:"settings" gorm:"type:text" example:"{\"theme\":\"dark\"}"` // JSON for domain-specific config
+	Active            bool               `json:"active" gorm:"default:true" example:"true"`
+	CloudflareDomains []CloudflareDomain `json:"cloudflare_domains,omitempty" gorm:"foreignKey:DomainID"`
+}
+
+// CloudflareDomain represents a Cloudflare domain configuration for a specific domain
+// @Description Cloudflare domain configuration model
+type CloudflareDomain struct {
+	gorm.Model   `swaggerignore:"true"`
+	DomainID     uint   `json:"domain_id" gorm:"index" example:"1"`
+	Domain       Domain `json:"domain,omitempty" swaggerignore:"true"`
+	ZoneName     string `json:"zone_name" gorm:"not null" example:"example.com"`  // The actual domain name in Cloudflare
+	ZoneID       string `json:"zone_id" gorm:"not null" example:"abc123def456"`   // Cloudflare Zone ID
+	APIToken     string `json:"api_token,omitempty" example:"your-api-token"`     // Domain-specific API token (optional, can use global)
+	ProxyEnabled bool   `json:"proxy_enabled" gorm:"default:true" example:"true"` // Whether to proxy through Cloudflare
+	Active       bool   `json:"active" gorm:"default:true" example:"true"`        // Whether this domain config is active
 }
 
 // DomainUser represents the many-to-many relationship between users and domains with roles
@@ -138,7 +164,6 @@ type User struct {
 	Groups      string       `json:"groups"`
 	AuthMethod  string       `json:"auth_method"`
 	DomainUsers []DomainUser `json:"domain_users" gorm:"foreignKey:UserID"` // Many-to-many with domains through DomainUser
-	Inventories string       `json:"inventories,omitempty"`                 // Deprecated: kept for backward compatibility during migration
 }
 
 // HostKey represents an API key for a host
@@ -208,9 +233,10 @@ func (HostHealthData) TableName() string {
 
 // Domain-related request/response types
 type CreateDomainRequest struct {
-	Name        string `json:"name" binding:"required"`
-	Description string `json:"description"`
-	Settings    string `json:"settings"`
+	Name              string                          `json:"name" binding:"required"`
+	Description       string                          `json:"description"`
+	Settings          string                          `json:"settings"`
+	CloudflareDomains []CreateCloudflareDomainRequest `json:"cloudflare_domains,omitempty"` // Optional Cloudflare domains to create with the domain
 }
 
 type UpdateDomainRequest struct {
@@ -247,6 +273,33 @@ type DomainUserResponse struct {
 	User     UserResponse `json:"user"`
 }
 
+// Cloudflare-related request/response types
+type CreateCloudflareDomainRequest struct {
+	ZoneName     string `json:"zone_name" binding:"required"`
+	ZoneID       string `json:"zone_id" binding:"required"`
+	APIToken     string `json:"api_token"`
+	ProxyEnabled *bool  `json:"proxy_enabled"`
+}
+
+type UpdateCloudflareDomainRequest struct {
+	ZoneName     string `json:"zone_name"`
+	ZoneID       string `json:"zone_id"`
+	APIToken     string `json:"api_token"`
+	ProxyEnabled *bool  `json:"proxy_enabled"`
+	Active       *bool  `json:"active"`
+}
+
+type CloudflareDomainResponse struct {
+	ID           uint   `json:"id"`
+	DomainID     uint   `json:"domain_id"`
+	ZoneName     string `json:"zone_name"`
+	ZoneID       string `json:"zone_id"`
+	ProxyEnabled bool   `json:"proxy_enabled"`
+	Active       bool   `json:"active"`
+	CreatedAt    string `json:"created_at"`
+	UpdatedAt    string `json:"updated_at"`
+}
+
 // Global variables
 var ServerConfig struct {
 	Port     string `mapstructure:"port"`
@@ -257,9 +310,10 @@ var ServerConfig struct {
 		Password string `mapstructure:"password"`
 		Dbname   string `mapstructure:"dbname"`
 	} `mapstructure:"postgres"`
-	Keycloak KeycloakConfig `mapstructure:"keycloak"`
-	Awx      AwxConfig      `mapstructure:"awx"`
-	Valkey   ValkeyConfig   `mapstructure:"valkey"`
+	Keycloak   KeycloakConfig   `mapstructure:"keycloak"`
+	Awx        AwxConfig        `mapstructure:"awx"`
+	Valkey     ValkeyConfig     `mapstructure:"valkey"`
+	Cloudflare CloudflareConfig `mapstructure:"cloudflare"`
 }
 
 var HostsList []Host

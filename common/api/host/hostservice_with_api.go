@@ -44,7 +44,6 @@ func (s *HostService) SendHostReport() error {
 		Status:              "Online",
 		WantsUpdateTo:       "",
 		Groups:              "nil",
-		Inventory:           "", // parse from identifier if needed
 	}
 	hostJSON, err := json.Marshal(hostObj)
 	if err != nil {

@@ -476,7 +476,7 @@ func createUser(db DBTX) gin.HandlerFunc {
 		}
 
 		// Create new user
-		err := CreateUser(req.Username, req.Password, req.Email, req.Role, req.Groups, "", db)
+		err := CreateUser(req.Username, req.Password, req.Email, req.Role, req.Groups, db)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
 			return
@@ -629,11 +629,10 @@ func getAllUsers(db DBTX) gin.HandlerFunc {
 		response := make([]UserResponse, len(users))
 		for i, u := range users {
 			response[i] = UserResponse{
-				Username:    u.Username,
-				Email:       u.Email,
-				Role:        u.Role,
-				Groups:      u.Groups,
-				Inventories: u.Inventories,
+				Username: u.Username,
+				Email:    u.Email,
+				Role:     u.Role,
+				Groups:   u.Groups,
 			}
 		}
 
@@ -708,11 +707,10 @@ func getUser(db DBTX) gin.HandlerFunc {
 		}
 
 		c.JSON(http.StatusOK, UserResponse{
-			Username:    user.Username,
-			Email:       user.Email,
-			Role:        user.Role,
-			Groups:      user.Groups,
-			Inventories: user.Inventories,
+			Username: user.Username,
+			Email:    user.Email,
+			Role:     user.Role,
+			Groups:   user.Groups,
 		})
 	}
 }

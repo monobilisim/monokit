@@ -31,7 +31,7 @@ func SetupTestDB(t require.TestingT) *gorm.DB {
 	err = db.AutoMigrate(
 		&models.Domain{},
 		&models.DomainUser{},
-		&models.Inventory{},
+		&models.CloudflareDomain{},
 		&models.Host{},
 		&models.User{},
 		&models.HostKey{},
@@ -50,12 +50,6 @@ func SetupTestDB(t require.TestingT) *gorm.DB {
 		Active:      true,
 	}
 	db.Create(&defaultDomain)
-
-	// Create default inventory in the default domain
-	db.Create(&models.Inventory{
-		Name:     "default",
-		DomainID: defaultDomain.ID,
-	})
 
 	// Clear global state
 	models.HostsList = []models.Host{}
@@ -79,12 +73,11 @@ func SetupTestAdmin(t require.TestingT, db *gorm.DB) models.User {
 	require.NoError(t, err)
 
 	admin := models.User{
-		Username:    "admin",
-		Password:    string(hashedPassword),
-		Email:       "admin@example.com",
-		Role:        "global_admin", // Global admin role for multi-tenant access
-		Groups:      "nil",
-		Inventories: "default", // Kept for backward compatibility
+		Username: "admin",
+		Password: string(hashedPassword),
+		Email:    "admin@example.com",
+		Role:     "global_admin", // Global admin role for multi-tenant access
+		Groups:   "nil",
 	}
 	result := db.Create(&admin)
 	require.NoError(t, result.Error)
@@ -97,12 +90,11 @@ func SetupTestUser(t require.TestingT, db *gorm.DB, username string) models.User
 	require.NoError(t, err)
 
 	user := models.User{
-		Username:    username,
-		Password:    string(hashedPassword),
-		Email:       fmt.Sprintf("%s@example.com", username),
-		Role:        "", // Empty role means domain-scoped user
-		Groups:      "nil",
-		Inventories: "default", // Kept for backward compatibility
+		Username: username,
+		Password: string(hashedPassword),
+		Email:    fmt.Sprintf("%s@example.com", username),
+		Role:     "", // Empty role means domain-scoped user
+		Groups:   "nil",
 	}
 	result := db.Create(&user)
 	require.NoError(t, result.Error)
@@ -127,7 +119,6 @@ func SetupTestHost(t require.TestingT, db *gorm.DB, hostname string) models.Host
 		IpAddress:           "127.0.0.1",
 		Status:              "online",
 		Groups:              "nil",
-		Inventory:           "default",
 		UpForDeletion:       false,
 	}
 	result := db.Create(&host)
@@ -188,23 +179,11 @@ func SetupTestHostInDomain(t require.TestingT, db *gorm.DB, hostname string, dom
 		IpAddress:           "127.0.0.1",
 		Status:              "online",
 		Groups:              "nil",
-		Inventory:           "default",
 		UpForDeletion:       false,
 	}
 	result := db.Create(&host)
 	require.NoError(t, result.Error)
 	return host
-}
-
-// SetupTestInventoryInDomain creates an inventory for testing in a specific domain
-func SetupTestInventoryInDomain(t require.TestingT, db *gorm.DB, name string, domain models.Domain) models.Inventory {
-	inventory := models.Inventory{
-		Name:     name,
-		DomainID: domain.ID,
-	}
-	result := db.Create(&inventory)
-	require.NoError(t, result.Error)
-	return inventory
 }
 
 // CreateTestContext creates a gin context for testing

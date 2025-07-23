@@ -26,7 +26,6 @@ func TestRegisterHost_Success(t *testing.T) {
 		IpAddress:           "192.168.1.100",
 		Status:              "online",
 		Groups:              "web-servers",
-		Inventory:           "default",
 	}
 
 	c, w := CreateRequestContext("POST", "/api/v1/hosts", hostData)
@@ -68,7 +67,6 @@ func TestRegisterHost_UpdateExisting(t *testing.T) {
 		IpAddress:           "192.168.1.200",
 		Status:              "online",
 		Groups:              "web-servers,db-servers",
-		Inventory:           "default",
 	}
 
 	c, w := CreateRequestContext("POST", "/api/v1/hosts", updateData)
@@ -343,54 +341,6 @@ func TestUpdateHost_NotFound(t *testing.T) {
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }
 
-func TestGetAssignedHosts_WithUser(t *testing.T) {
-	db := SetupTestDB(t)
-	defer CleanupTestDB(db)
-
-	// Create user with specific inventories (filtering is by inventory, not groups)
-	user := SetupTestUser(t, db, "testuser")
-	user.Inventories = "dev,staging"
-	db.Save(&user)
-
-	// Create hosts with different inventories
-	host1 := SetupTestHost(t, db, "dev-host")
-	host1.Inventory = "dev"
-	require.NoError(t, db.Save(&host1).Error)
-
-	host2 := SetupTestHost(t, db, "staging-host")
-	host2.Inventory = "staging"
-	require.NoError(t, db.Save(&host2).Error)
-
-	host3 := SetupTestHost(t, db, "prod-host")
-	host3.Inventory = "production"
-	require.NoError(t, db.Save(&host3).Error)
-
-	// Update global HostsList that the function uses
-	models.HostsList = []models.Host{host1, host2, host3}
-
-	c, w := CreateRequestContext("GET", "/api/v1/hosts/assigned", nil)
-	AuthorizeContext(c, user)
-
-	handler := ExportGetAssignedHosts(db)
-	handler(c)
-
-	assert.Equal(t, http.StatusOK, w.Code)
-
-	var hosts []models.Host
-	ExtractJSONResponse(t, w, &hosts)
-
-	// Should return hosts that match user's inventories (dev, staging)
-	assert.GreaterOrEqual(t, len(hosts), 2)
-
-	hostNames := make(map[string]bool)
-	for _, host := range hosts {
-		hostNames[host.Name] = true
-	}
-	assert.True(t, hostNames["dev-host"])
-	assert.True(t, hostNames["staging-host"])
-	assert.False(t, hostNames["prod-host"]) // Should not include production host
-}
-
 func TestGetAssignedHosts_AdminUser(t *testing.T) {
 	db := SetupTestDB(t)
 	defer CleanupTestDB(db)
@@ -443,7 +393,6 @@ func TestHostRegistration_ConcurrentUpdates(t *testing.T) {
 		MonokitVersion: "1.0.0",
 		Os:             "Test OS",
 		Status:         "online",
-		Inventory:      "default",
 	}
 
 	handler := ExportRegisterHost(db)

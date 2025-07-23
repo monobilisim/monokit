@@ -23,12 +23,11 @@ func TestRegisterUser(t *testing.T) {
 
 	// Test: Successful registration
 	registerReq := models.RegisterRequest{
-		Username:  "newuser",
-		Password:  "password123",
-		Email:     "new@example.com",
-		Role:      "user",
-		Groups:    "nil",
-		Inventory: "default",
+		Username: "newuser",
+		Password: "password123",
+		Email:    "new@example.com",
+		Role:     "user",
+		Groups:   "nil",
 	}
 	c, w := CreateRequestContext("POST", "/api/v1/auth/register", registerReq)
 	AuthorizeContext(c, adminUser)
@@ -70,13 +69,12 @@ func TestLoginUser(t *testing.T) {
 	hashedPassword, err := auth.HashPassword("testpass")
 	require.NoError(t, err)
 	db.Create(&models.User{
-		Username:    "testuser",
-		Password:    hashedPassword,
-		Email:       "test@example.com",
-		Role:        "user",
-		Groups:      "nil",
-		Inventories: "default",
-		AuthMethod:  "local",
+		Username:   "testuser",
+		Password:   hashedPassword,
+		Email:      "test@example.com",
+		Role:       "user",
+		Groups:     "nil",
+		AuthMethod: "local",
 	})
 
 	// Test: Successful login

@@ -58,3 +58,16 @@ valkey:
   health_ttl: 300        # 5 minutes in seconds
   host_ttl: 1800         # 30 minutes in seconds
   key_prefix: "monokit:"
+
+cloudflare:
+  enabled: false
+  # Global API token for server-level operations (optional)
+  # If not provided, each domain must have its own API token
+  api_token: ""
+  # Legacy API key authentication (optional, use api_token instead)
+  api_key: ""
+  email: ""
+  # Request timeout in seconds
+  timeout: 30
+  # Whether to verify SSL certificates
+  verify_ssl: true

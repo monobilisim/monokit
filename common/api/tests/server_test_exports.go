@@ -4,6 +4,7 @@ package tests
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/monobilisim/monokit/common/api/cloudflare"
 	"github.com/monobilisim/monokit/common/api/models"
 	"github.com/monobilisim/monokit/common/api/server"
 	"gorm.io/gorm"
@@ -177,4 +178,30 @@ func ExportDeleteLog(db *gorm.DB) gin.HandlerFunc {
 
 func ExportGetHourlyLogStats(db *gorm.DB) gin.HandlerFunc {
 	return server.GetHourlyLogStats(db)
+}
+
+// ============ CLOUDFLARE MANAGEMENT EXPORTS ============
+
+func ExportCreateCloudflareDomain(db *gorm.DB, cfService *cloudflare.Service) gin.HandlerFunc {
+	return cloudflare.CreateCloudflareDomain(db, cfService)
+}
+
+func ExportGetCloudflareDomains(db *gorm.DB, cfService *cloudflare.Service) gin.HandlerFunc {
+	return cloudflare.GetCloudflareDomains(db, cfService)
+}
+
+func ExportGetCloudflareDomain(db *gorm.DB, cfService *cloudflare.Service) gin.HandlerFunc {
+	return cloudflare.GetCloudflareDomain(db, cfService)
+}
+
+func ExportUpdateCloudflareDomain(db *gorm.DB, cfService *cloudflare.Service) gin.HandlerFunc {
+	return cloudflare.UpdateCloudflareDomain(db, cfService)
+}
+
+func ExportDeleteCloudflareDomain(db *gorm.DB, cfService *cloudflare.Service) gin.HandlerFunc {
+	return cloudflare.DeleteCloudflareDomain(db, cfService)
+}
+
+func ExportTestCloudflareConnection(db *gorm.DB, cfService *cloudflare.Service) gin.HandlerFunc {
+	return cloudflare.TestCloudflareConnection(db, cfService)
 }

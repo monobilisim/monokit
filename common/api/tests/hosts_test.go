@@ -33,7 +33,6 @@ func TestRegisterHost(t *testing.T) {
 		IpAddress:           "192.168.1.100",
 		Status:              "online",
 		Groups:              "nil",
-		Inventory:           "default",
 	}
 
 	c, w := CreateRequestContext("POST", "/api/v1/host/register", newHost)
@@ -93,21 +92,6 @@ func TestRegisterHost(t *testing.T) {
 
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
 
-	// Test: Create host with non-existent inventory
-	hostWithNewInventory := newHost
-	hostWithNewInventory.Name = "hostwithnewinventory"
-	hostWithNewInventory.Inventory = "newinventory"
-
-	c, w = CreateRequestContext("POST", "/api/v1/host/register", hostWithNewInventory)
-	handler(c)
-
-	assert.Equal(t, http.StatusCreated, w.Code)
-
-	// Verify inventory was created
-	var inventory models.Inventory
-	result = db.Where("name = ?", "newinventory").First(&inventory)
-	require.NoError(t, result.Error)
-
 	// Test: Invalid host data - Note: Currently the API accepts empty values, which should be fixed
 	// For now, we'll test that it creates a host with empty values
 	c, w = CreateRequestContext("POST", "/api/v1/host/register", map[string]string{"invalid": "data"})
@@ -133,9 +117,9 @@ func TestGetAllHosts(t *testing.T) {
 		SetupTestHost(t, db, hostname)
 	}
 
-	// Create a host in different inventory
+	// Create a host with different groups
 	host4 := SetupTestHost(t, db, "host4")
-	host4.Inventory = "production"
+	host4.Groups = "production"
 	db.Save(&host4)
 
 	// Create a host with different status
@@ -348,73 +332,6 @@ func TestUpdateHost(t *testing.T) {
 
 	handler(c)
 	assert.Equal(t, http.StatusOK, w.Code)
-}
-
-func TestGetAssignedHosts(t *testing.T) {
-	// Setup
-	db := SetupTestDB(t)
-	defer CleanupTestDB(db)
-
-	// Create admin and regular users
-	adminUser := SetupTestAdmin(t, db)
-	regularUser := SetupTestUser(t, db, "regularuser")
-	regularUser.Inventories = "dev,staging"
-	db.Save(&regularUser)
-
-	// Create hosts in different inventories
-	devHost := SetupTestHost(t, db, "devhost")
-	devHost.Inventory = "dev"
-	db.Save(&devHost)
-
-	stagingHost := SetupTestHost(t, db, "staginghost")
-	stagingHost.Inventory = "staging"
-	db.Save(&stagingHost)
-
-	prodHost := SetupTestHost(t, db, "prodhost")
-	prodHost.Inventory = "production"
-	db.Save(&prodHost)
-
-	// Populate the global HostsList
-	models.HostsList = []models.Host{devHost, stagingHost, prodHost}
-
-	// Test: Admin sees all hosts
-	c1, w1 := CreateRequestContext("GET", "/api/v1/hosts/assigned", nil)
-	AuthorizeContext(c1, adminUser)
-
-	handler := ExportGetAssignedHosts(db)
-	handler(c1)
-
-	assert.Equal(t, http.StatusOK, w1.Code)
-	var adminHostsResponse []models.Host
-	ExtractJSONResponse(t, w1, &adminHostsResponse)
-	assert.Len(t, adminHostsResponse, 3)
-
-	// Test: Regular user sees only their assigned hosts
-	c2, w2 := CreateRequestContext("GET", "/api/v1/hosts/assigned", nil)
-	AuthorizeContext(c2, regularUser)
-
-	handler(c2)
-
-	assert.Equal(t, http.StatusOK, w2.Code)
-	var userHostsResponse []models.Host
-	ExtractJSONResponse(t, w2, &userHostsResponse)
-	assert.Len(t, userHostsResponse, 2)
-
-	// Verify the correct hosts are returned
-	hostNames := make([]string, len(userHostsResponse))
-	for i, h := range userHostsResponse {
-		hostNames[i] = h.Name
-	}
-	assert.Contains(t, hostNames, "devhost")
-	assert.Contains(t, hostNames, "staginghost")
-	assert.NotContains(t, hostNames, "prodhost")
-
-	// Test: Without authentication
-	c3, w3 := CreateRequestContext("GET", "/api/v1/hosts/assigned", nil)
-	handler(c3)
-
-	assert.Equal(t, http.StatusUnauthorized, w3.Code)
-	AssertErrorResponse(t, w3, "Authentication required")
 }
 
 func TestHostAuthMiddleware(t *testing.T) {

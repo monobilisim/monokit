@@ -28,6 +28,7 @@ import (
 	"github.com/monobilisim/monokit/common/api/admin"
 	"github.com/monobilisim/monokit/common/api/auth"
 	"github.com/monobilisim/monokit/common/api/cache"
+	"github.com/monobilisim/monokit/common/api/cloudflare"
 	"github.com/monobilisim/monokit/common/api/domains"
 	"github.com/monobilisim/monokit/common/api/host"
 	"github.com/monobilisim/monokit/common/api/logbuffer"
@@ -221,12 +222,6 @@ func setupDatabase() *gorm.DB {
 		panic(fmt.Sprintf("Failed to commit transaction: %v", err))
 	}
 
-	// Create default inventory if it doesn't exist
-	var defaultInventory Inventory
-	if db.Where("name = ?", "default").First(&defaultInventory).Error == gorm.ErrRecordNotFound {
-		db.Create(&Inventory{Name: "default"})
-	}
-
 	// Create initial admin user if no users exist
 	if err := auth.CreateInitialAdmin(db); err != nil {
 		fmt.Printf("Warning: Failed to create initial admin user: %v\n", err)
@@ -264,6 +259,17 @@ func setupRoutes(r *gin.Engine, db *gorm.DB, monokitHostname string) {
 		domainApi.GET("/:id/users", domains.GetDomainUsers(db))
 		domainApi.PUT("/:id/users/:user_id", domains.UpdateDomainUserRole(db))
 		domainApi.DELETE("/:id/users/:user_id", domains.RemoveUserFromDomain(db))
+
+		// Setup Cloudflare domain management routes (global admin only)
+		if ServerConfig.Cloudflare.Enabled {
+			cfService := cloudflare.NewService(db, ServerConfig.Cloudflare)
+			domainApi.POST("/:domain_id/cloudflare", cloudflare.CreateCloudflareDomain(db, cfService))
+			domainApi.GET("/:domain_id/cloudflare", cloudflare.GetCloudflareDomains(db, cfService))
+			domainApi.GET("/:domain_id/cloudflare/:cf_domain_id", cloudflare.GetCloudflareDomain(db, cfService))
+			domainApi.PUT("/:domain_id/cloudflare/:cf_domain_id", cloudflare.UpdateCloudflareDomain(db, cfService))
+			domainApi.DELETE("/:domain_id/cloudflare/:cf_domain_id", cloudflare.DeleteCloudflareDomain(db, cfService))
+			domainApi.POST("/:domain_id/cloudflare/:cf_domain_id/test", cloudflare.TestCloudflareConnection(db, cfService))
+		}
 	}
 
 	// Setup user domain management routes (global admin only)
@@ -644,11 +650,6 @@ func RegisterHost(db *gorm.DB) gin.HandlerFunc {
 			}
 			fmt.Printf("Host key validation successful\n")
 
-			// Preserve existing inventory if none specified
-			if host.Inventory == "" {
-				host.Inventory = existingHost.Inventory
-			}
-
 			// Preserve existing ID and deletion status
 			host.ID = existingHost.ID
 			host.UpForDeletion = existingHost.UpForDeletion
@@ -742,15 +743,8 @@ func GetAllHosts(db *gorm.DB) gin.HandlerFunc {
 		if currentUser.Role == "admin" {
 			filteredHosts = visibleHosts
 		} else {
-			for _, host := range visibleHosts {
-				userInventories := strings.Split(currentUser.Inventories, ",")
-				for _, inv := range userInventories {
-					if host.Inventory == strings.TrimSpace(inv) {
-						filteredHosts = append(filteredHosts, host)
-						break
-					}
-				}
-			}
+			// No inventory filtering needed anymore - use all visible hosts
+			filteredHosts = visibleHosts
 		}
 
 		for i := range filteredHosts {
@@ -988,7 +982,6 @@ func CreateAwxHost(db *gorm.DB) gin.HandlerFunc {
 			IpAddress: requestData.IpAddress,
 			Os:        "Unknown", // This can be updated later
 			Status:    "Pending",
-			Inventory: "default",                         // Use default inventory
 			Groups:    "",                                // Can be populated later
 			AwxHostId: fmt.Sprintf("%d", int(awxHostID)), // Store the AWX host ID as string
 		}
@@ -1760,7 +1753,7 @@ func GetAssignedHosts(db *gorm.DB) gin.HandlerFunc {
 			fmt.Printf("DEBUG: getAssignedHosts - Successfully cast to User directly\n")
 		}
 
-		fmt.Printf("DEBUG: getAssignedHosts - User role: %s, inventories: %s\n", currentUser.Role, currentUser.Inventories)
+		fmt.Printf("DEBUG: getAssignedHosts - User role: %s, groups: %s\n", currentUser.Role, currentUser.Groups)
 
 		var filteredHosts []Host
 
@@ -1775,14 +1768,24 @@ func GetAssignedHosts(db *gorm.DB) gin.HandlerFunc {
 		if currentUser.Role == "admin" {
 			filteredHosts = visibleHosts
 		} else {
+			// Filter hosts based on user's groups
+			userGroups := strings.Split(currentUser.Groups, ",")
 			for _, host := range visibleHosts {
-				userInventories := strings.Split(currentUser.Inventories, ",")
-				for _, inv := range userInventories {
-					if host.Inventory == strings.TrimSpace(inv) {
-						filteredHosts = append(filteredHosts, host)
-						break
+				hostGroups := strings.Split(host.Groups, ",")
+				for _, userGroup := range userGroups {
+					userGroup = strings.TrimSpace(userGroup)
+					if userGroup == "" || userGroup == "nil" {
+						continue
+					}
+					for _, hostGroup := range hostGroups {
+						hostGroup = strings.TrimSpace(hostGroup)
+						if hostGroup == userGroup {
+							filteredHosts = append(filteredHosts, host)
+							goto nextHost // Break out of both loops
+						}
 					}
 				}
+			nextHost:
 			}
 		}
 
