@@ -38,15 +38,24 @@ type VersionStatus struct {
 	IsUpToDate     bool   `json:"is_up_to_date"`
 }
 
+// ClusterSyncStatus represents PMG cluster sync status
+type ClusterSyncStatus struct {
+	IsMaster    bool   `json:"is_master"`
+	SyncHealthy bool   `json:"sync_healthy"`
+	LastError   string `json:"last_error,omitempty"`
+	Status      string `json:"status"`
+}
+
 // PmgHealthData represents the overall PMG health status
 type PmgHealthData struct {
-	IsHealthy       bool            `json:"is_healthy"`
-	Status          string          `json:"status"`
-	Services        map[string]bool `json:"services"`
-	PostgresRunning bool            `json:"postgres_running"`
-	QueueStatus     QueueStatus     `json:"queue_status"`
-	MailStats       MailStatistics  `json:"mail_stats"`
-	VersionStatus   VersionStatus   `json:"version_status"`
+	IsHealthy         bool              `json:"is_healthy"`
+	Status            string            `json:"status"`
+	Services          map[string]bool   `json:"services"`
+	PostgresRunning   bool              `json:"postgres_running"`
+	QueueStatus       QueueStatus       `json:"queue_status"`
+	MailStats         MailStatistics    `json:"mail_stats"`
+	VersionStatus     VersionStatus     `json:"version_status"`
+	ClusterSyncStatus ClusterSyncStatus `json:"cluster_sync_status"`
 }
 
 // PmgMailStatistics represents the PMG mail statistics API response

@@ -46,6 +46,37 @@ func (data *PmgHealthData) RenderCompact() string {
 		data.PostgresRunning))
 	sb.WriteString("\n")
 
+	// Cluster sync status
+	sb.WriteString("\n")
+	sb.WriteString(common.SectionTitle("Cluster Sync"))
+	sb.WriteString("\n")
+
+	if data.ClusterSyncStatus.IsMaster {
+		sb.WriteString(common.SimpleStatusListItem(
+			"Node Role",
+			"master",
+			true))
+		sb.WriteString("\n")
+
+		sb.WriteString(common.SimpleStatusListItem(
+			"Sync Status",
+			data.ClusterSyncStatus.Status,
+			data.ClusterSyncStatus.SyncHealthy))
+		sb.WriteString("\n")
+	} else {
+		sb.WriteString(common.SimpleStatusListItem(
+			"Node Role",
+			"slave/single",
+			true))
+		sb.WriteString("\n")
+
+		sb.WriteString(common.SimpleStatusListItem(
+			"Sync Check",
+			"not applicable",
+			true))
+		sb.WriteString("\n")
+	}
+
 	// Mail queue status
 	sb.WriteString("\n")
 	sb.WriteString(common.SectionTitle("Mail Queue"))

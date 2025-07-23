@@ -476,6 +476,52 @@ func closeRedmineIssueForThreshold(timeframe string, currentTotal, prevTotal int
 		Msg("Closed Redmine issue - mail traffic returned to normal")
 }
 
+// CheckPmgcmSyncDaily runs the daily pmgcm sync check
+// This should be called once per day via cron or systemd timer, not in regular health checks
+// pmgcm sync exits with code 0 on master nodes and non-zero on non-master nodes
+func CheckPmgcmSyncDaily(skipOutput bool) (bool, string) {
+	// Check if pmgcm command exists
+	if _, err := exec.LookPath("pmgcm"); err != nil {
+		log.Debug().
+			Str("component", "pmgHealth").
+			Str("action", "pmgcm_sync_check").
+			Msg("pmgcm command not found, assuming single node setup")
+		return true, "pmgcm not available"
+	}
+
+	// Run pmgcm sync
+	cmd := exec.Command("pmgcm", "sync")
+	var out bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &out
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+
+	if err != nil {
+		// Exit code != 0 - send alarm with stdout + stderr
+		errorMsg := fmt.Sprintf("pmgcm sync failed (exit code != 0)\nstdout: %s\nstderr: %s", out.String(), stderr.String())
+		log.Error().
+			Err(err).
+			Str("component", "pmgHealth").
+			Str("action", "pmgcm_sync").
+			Str("stdout", out.String()).
+			Str("stderr", stderr.String()).
+			Msg("pmgcm sync command failed")
+		common.AlarmCheckDown("pmgcm_sync", errorMsg, true, "", "")
+		return false, errorMsg
+	}
+
+	// Exit code 0 - success
+	log.Debug().
+		Str("component", "pmgHealth").
+		Str("action", "pmgcm_sync").
+		Str("stdout", out.String()).
+		Msg("pmgcm sync completed successfully")
+	common.AlarmCheckUp("pmgcm_sync", "pmgcm sync completed successfully", true)
+	return true, "pmgcm sync successful"
+}
+
 // CheckPmgHealth performs all PMG health checks and returns a data structure with the results
 func CheckPmgHealth(skipOutput bool) *PmgHealthData {
 	data := &PmgHealthData{
@@ -494,6 +540,24 @@ func CheckPmgHealth(skipOutput bool) *PmgHealthData {
 	data.QueueStatus.Count = queueCount
 	data.QueueStatus.Limit = queueLimit
 	data.QueueStatus.IsHealthy = queueHealthy
+
+	// Check cluster sync status - only run at 00:00 (midnight)
+	now := time.Now()
+	if now.Hour() == 0 && now.Minute() == 0 {
+		syncHealthy, syncStatus := CheckPmgcmSyncDaily(skipOutput)
+		data.ClusterSyncStatus.IsMaster = syncHealthy && syncStatus == "pmgcm sync successful"
+		data.ClusterSyncStatus.SyncHealthy = syncHealthy
+		data.ClusterSyncStatus.Status = syncStatus
+		if !syncHealthy {
+			data.ClusterSyncStatus.LastError = syncStatus
+			// Don't mark overall health as unhealthy for pmgcm sync issues
+		}
+	} else {
+		// Not midnight - set default status
+		data.ClusterSyncStatus.IsMaster = false
+		data.ClusterSyncStatus.SyncHealthy = true
+		data.ClusterSyncStatus.Status = "Waiting for midnight check"
+	}
 
 	// Get mail statistics if enabled
 	data.MailStats.Enabled = MailHealthConfig.Pmg.Email_monitoring.Enabled
