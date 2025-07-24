@@ -93,7 +93,7 @@ func SetupTestUser(t require.TestingT, db *gorm.DB, username string) models.User
 		Username: username,
 		Password: string(hashedPassword),
 		Email:    fmt.Sprintf("%s@example.com", username),
-		Role:     "", // Empty role means domain-scoped user
+		Role:     "user", // Regular user role
 		Groups:   "nil",
 	}
 	result := db.Create(&user)

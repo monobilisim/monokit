@@ -1880,7 +1880,7 @@ func DeleteLog(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		currentUser := user.(User)
-		if currentUser.Role != "admin" {
+		if currentUser.Role != "admin" && currentUser.Role != "global_admin" {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}
