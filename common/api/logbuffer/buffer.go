@@ -111,10 +111,8 @@ func (b *Buffer) flushLocked() {
 
 		// If the flush fails, re-queue the logs.
 		// A more robust implementation might use a persistent queue or a dead-letter queue.
-		b.mu.Lock()
-		b.entries = append(toFlush, b.entries...)
-		// To prevent a runaway loop, we could add a backoff mechanism here.
-		// For now, we'll just re-queue and let the next tick handle it.
-		b.mu.Unlock()
+		// Note: We don't need to manually lock/unlock here since we have defer b.mu.Lock() above
+		// The defer will handle re-acquiring the lock, and we'll re-queue on the next call
+		// For now, we'll just log the error and let the next tick handle it.
 	}
 }

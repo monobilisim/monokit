@@ -35,10 +35,15 @@ type (
 // @Router /domains/{domain_id}/cloudflare [post]
 func CreateCloudflareDomain(db *gorm.DB, cfService *Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Check for global admin access
+		// Check for admin access
 		user, exists := c.Get("user")
-		if !exists || user.(User).Role != "global_admin" {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Global admin access required"})
+		if !exists {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Authentication required"})
+			return
+		}
+		currentUser := user.(User)
+		if currentUser.Role != "global_admin" && currentUser.Role != "admin" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}
 
@@ -102,10 +107,15 @@ func CreateCloudflareDomain(db *gorm.DB, cfService *Service) gin.HandlerFunc {
 // @Router /domains/{domain_id}/cloudflare [get]
 func GetCloudflareDomains(db *gorm.DB, cfService *Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Check for global admin access
+		// Check for admin access
 		user, exists := c.Get("user")
-		if !exists || user.(User).Role != "global_admin" {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Global admin access required"})
+		if !exists {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Authentication required"})
+			return
+		}
+		currentUser := user.(User)
+		if currentUser.Role != "global_admin" && currentUser.Role != "admin" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}
 
@@ -241,10 +251,15 @@ func GetCloudflareDomain(db *gorm.DB, cfService *Service) gin.HandlerFunc {
 // @Router /domains/{domain_id}/cloudflare/{cf_domain_id} [put]
 func UpdateCloudflareDomain(db *gorm.DB, cfService *Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Check for global admin access
+		// Check for admin access
 		user, exists := c.Get("user")
-		if !exists || user.(User).Role != "global_admin" {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Global admin access required"})
+		if !exists {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Authentication required"})
+			return
+		}
+		currentUser := user.(User)
+		if currentUser.Role != "global_admin" && currentUser.Role != "admin" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}
 
@@ -327,10 +342,15 @@ func UpdateCloudflareDomain(db *gorm.DB, cfService *Service) gin.HandlerFunc {
 // @Router /domains/{domain_id}/cloudflare/{cf_domain_id} [delete]
 func DeleteCloudflareDomain(db *gorm.DB, cfService *Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Check for global admin access
+		// Check for admin access
 		user, exists := c.Get("user")
-		if !exists || user.(User).Role != "global_admin" {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Global admin access required"})
+		if !exists {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Authentication required"})
+			return
+		}
+		currentUser := user.(User)
+		if currentUser.Role != "global_admin" && currentUser.Role != "admin" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}
 
@@ -395,10 +415,15 @@ func DeleteCloudflareDomain(db *gorm.DB, cfService *Service) gin.HandlerFunc {
 // @Router /domains/{domain_id}/cloudflare/{cf_domain_id}/test [post]
 func TestCloudflareConnection(db *gorm.DB, cfService *Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Check for global admin access
+		// Check for admin access
 		user, exists := c.Get("user")
-		if !exists || user.(User).Role != "global_admin" {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Global admin access required"})
+		if !exists {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Authentication required"})
+			return
+		}
+		currentUser := user.(User)
+		if currentUser.Role != "global_admin" && currentUser.Role != "admin" {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
 			return
 		}
 

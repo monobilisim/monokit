@@ -747,7 +747,7 @@ func GetAllHosts(db *gorm.DB) gin.HandlerFunc {
 			}
 		}
 
-		if currentUser.Role == "admin" {
+		if currentUser.Role == "admin" || currentUser.Role == "global_admin" {
 			filteredHosts = visibleHosts
 		} else {
 			// No inventory filtering needed anymore - use all visible hosts
@@ -1772,7 +1772,7 @@ func GetAssignedHosts(db *gorm.DB) gin.HandlerFunc {
 			}
 		}
 
-		if currentUser.Role == "admin" {
+		if currentUser.Role == "admin" || currentUser.Role == "global_admin" {
 			filteredHosts = visibleHosts
 		} else {
 			// Filter hosts based on user's groups
