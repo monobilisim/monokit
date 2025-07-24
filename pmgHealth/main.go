@@ -489,6 +489,37 @@ func CheckPmgcmSyncDaily(skipOutput bool) (bool, string) {
 		return true, "pmgcm not available"
 	}
 
+	// First check pmgcm status to see if cluster is defined
+	statusCmd := exec.Command("pmgcm", "status")
+	var statusOut bytes.Buffer
+	var statusStderr bytes.Buffer
+	statusCmd.Stdout = &statusOut
+	statusCmd.Stderr = &statusStderr
+
+	statusErr := statusCmd.Run()
+	statusOutput := strings.TrimSpace(statusOut.String())
+
+	// Check if status output contains "no cluster defined"
+	if strings.Contains(strings.ToLower(statusOutput), "no cluster defined") {
+		log.Debug().
+			Str("component", "pmgHealth").
+			Str("action", "pmgcm_status_check").
+			Str("status_output", statusOutput).
+			Msg("No cluster defined, skipping pmgcm sync")
+		return true, "no cluster defined, sync skipped"
+	}
+
+	// If status command failed, log it but continue with sync attempt
+	if statusErr != nil {
+		log.Warn().
+			Err(statusErr).
+			Str("component", "pmgHealth").
+			Str("action", "pmgcm_status_check").
+			Str("stdout", statusOutput).
+			Str("stderr", statusStderr.String()).
+			Msg("pmgcm status command failed, proceeding with sync attempt")
+	}
+
 	// Run pmgcm sync
 	cmd := exec.Command("pmgcm", "sync")
 	var out bytes.Buffer
