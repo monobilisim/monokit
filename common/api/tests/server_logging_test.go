@@ -542,7 +542,6 @@ func createTestLog(t *testing.T, db *gorm.DB, hostName, level, component, messag
 
 func TestLogBuffer_Batching(t *testing.T) {
 	db := SetupTestDB(t)
-	defer CleanupTestDB(db)
 
 	host := SetupTestHost(t, db, "batch-host")
 	_ = SetupTestHostKey(t, db, host, "batch_key")
@@ -551,7 +550,12 @@ func TestLogBuffer_Batching(t *testing.T) {
 	cfg := logbuffer.Config{BatchSize: 10, FlushInterval: 5 * time.Second}
 	buf := logbuffer.NewBuffer(db, cfg)
 	buf.Start()
-	defer buf.Close()
+
+	// Ensure buffer is closed before database
+	defer func() {
+		buf.Close()
+		CleanupTestDB(db)
+	}()
 
 	c, _ := CreateRequestContext("POST", "/api/v1/host/logs", nil)
 	c.Request.Header.Set("Authorization", "batch_key")

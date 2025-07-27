@@ -75,14 +75,16 @@ func (s *Service) CreateCloudflareDomain(domainID uint, req models.CreateCloudfl
 		cfDomain.ProxyEnabled = *req.ProxyEnabled
 	}
 
-	// Verify the zone exists and is accessible
-	client, err := s.GetClient(&cfDomain)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get Cloudflare client: %w", err)
-	}
+	// Verify the zone exists and is accessible (only if Cloudflare is enabled)
+	if s.config.Enabled {
+		client, err := s.GetClient(&cfDomain)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get Cloudflare client: %w", err)
+		}
 
-	if err := client.VerifyZone(req.ZoneID); err != nil {
-		return nil, fmt.Errorf("failed to verify Cloudflare zone: %w", err)
+		if err := client.VerifyZone(req.ZoneID); err != nil {
+			return nil, fmt.Errorf("failed to verify Cloudflare zone: %w", err)
+		}
 	}
 
 	// Save to database
@@ -123,8 +125,8 @@ func (s *Service) UpdateCloudflareDomain(id uint, req models.UpdateCloudflareDom
 		cfDomain.Active = *req.Active
 	}
 
-	// Verify the zone if zone ID was changed
-	if req.ZoneID != "" {
+	// Verify the zone if zone ID was changed (only if Cloudflare is enabled)
+	if req.ZoneID != "" && s.config.Enabled {
 		client, err := s.GetClient(&cfDomain)
 		if err != nil {
 			return nil, fmt.Errorf("failed to get Cloudflare client: %w", err)
@@ -190,6 +192,10 @@ func (s *Service) GetCloudflareDomain(id uint) (*models.CloudflareDomain, error)
 
 // TestConnection tests the connection to Cloudflare API for a specific domain
 func (s *Service) TestConnection(cfDomainID uint) error {
+	if !s.config.Enabled {
+		return fmt.Errorf("Cloudflare integration is not enabled")
+	}
+
 	cfDomain, err := s.GetCloudflareDomain(cfDomainID)
 	if err != nil {
 		return err

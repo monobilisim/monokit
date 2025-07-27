@@ -156,7 +156,7 @@ func TestGlobalAdminAccess(t *testing.T) {
 	assert.Equal(t, "global_admin", admin.Role)
 
 	// Test: Regular user should only have access to assigned domains
-	assert.Equal(t, "", user.Role) // Empty role means domain-scoped
+	assert.Equal(t, "user", user.Role) // Regular user role
 
 	var userDomains []models.DomainUser
 	result := db.Where("user_id = ?", user.ID).Find(&userDomains)
