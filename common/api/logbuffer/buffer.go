@@ -54,7 +54,16 @@ func (b *Buffer) Start() {
 
 // Close gracefully shuts down the buffer, flushing any remaining logs.
 func (b *Buffer) Close() {
-	close(b.quitChan)
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	select {
+	case <-b.quitChan:
+		// Already closed
+		return
+	default:
+		close(b.quitChan)
+	}
 }
 
 // loop is the main background routine that triggers flushes.

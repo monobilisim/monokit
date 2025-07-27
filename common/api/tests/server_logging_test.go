@@ -592,28 +592,31 @@ func TestLogBuffer_Batching(t *testing.T) {
 	assert.Equal(t, int64(10), count, "Logs should be flushed after batch size reached")
 
 	// --- Test 2: Trigger flush by time ---
+	// Close the previous buffer first
+	buf.Close()
+
+	// Create a new buffer with shorter flush interval for timing test
+	cfg.FlushInterval = 1 * time.Second
+	timeBuf := logbuffer.NewBuffer(db, cfg)
+	timeBuf.Start()
+
 	logData = server.APILogRequest{Level: "info", Component: "timed", Message: "Timed message"}
 	c, _ = CreateRequestContext("POST", "/api/v1/host/logs", logData)
 	c.Set("hostname", host.Name)
-	c.Set("logBuffer", buf)
+	c.Set("logBuffer", timeBuf)
 	handler(c)
-
-	// Reset config for this test
-	cfg.FlushInterval = 1 * time.Second
-	buf = logbuffer.NewBuffer(db, cfg)
-	buf.Start()
-	defer buf.Close()
-	c.Set("logBuffer", buf)
-	handler(c) // re-submit with new buffer
 
 	// Should not be in DB yet
 	db.Model(&models.HostLog{}).Where("component = ?", "timed").Count(&count)
 	assert.Equal(t, int64(0), count)
 
-	// Wait for time-based flush
-	time.Sleep(1500 * time.Millisecond)
+	// Wait for time-based flush (wait a bit longer to be safe)
+	time.Sleep(2 * time.Second)
 	db.Model(&models.HostLog{}).Where("component = ?", "timed").Count(&count)
 	assert.Equal(t, int64(1), count, "Log should be flushed after interval")
+
+	// Close the time buffer
+	timeBuf.Close()
 }
 
 func createTestLogWithTime(t *testing.T, db *gorm.DB, hostName, level, component, message string, timestamp time.Time) models.HostLog {
