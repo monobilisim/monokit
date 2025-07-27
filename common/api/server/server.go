@@ -42,6 +42,7 @@ package server
 import (
 	"fmt"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -208,7 +209,7 @@ func ServerMainWithDeps(deps ServerDeps) {
 	serverMainWithDeps(deps)
 }
 
-// FixDuplicateHosts fixes any duplicate host names in the database (exported for testing)
+// FixDuplicateHosts fixes any duplicate host names within the same domain (exported for testing)
 func FixDuplicateHosts(db *gorm.DB) {
 	fmt.Println("*** CHECKING FOR DUPLICATE HOST NAMES ***")
 
@@ -216,36 +217,47 @@ func FixDuplicateHosts(db *gorm.DB) {
 	var hosts []Host
 	db.Find(&hosts)
 
-	// Track all host names and their counts
-	hostCounts := make(map[string]int)
+	// Track host names by domain - key is "domainID:hostname", value is count
+	domainHostCounts := make(map[string]int)
+	// Track which hosts belong to which domain+name combination
+	domainHostMap := make(map[string][]Host)
+
 	for _, host := range hosts {
-		hostCounts[host.Name]++
+		key := fmt.Sprintf("%d:%s", host.DomainID, host.Name)
+		domainHostCounts[key]++
+		domainHostMap[key] = append(domainHostMap[key], host)
 	}
 
-	// Find duplicates
-	var duplicates []string
-	for name, count := range hostCounts {
+	// Find duplicates within domains
+	var duplicateKeys []string
+	for key, count := range domainHostCounts {
 		if count > 1 {
-			duplicates = append(duplicates, name)
-			fmt.Printf("Found %d hosts with name '%s'\n", count, name)
+			duplicateKeys = append(duplicateKeys, key)
+			parts := strings.Split(key, ":")
+			domainID := parts[0]
+			hostName := parts[1]
+			fmt.Printf("Found %d hosts with name '%s' in domain %s\n", count, hostName, domainID)
 		}
 	}
 
-	if len(duplicates) == 0 {
+	if len(duplicateKeys) == 0 {
 		fmt.Println("No duplicate host names found")
 		db.Find(&HostsList)
 		return
 	}
 
-	// Fix each duplicate
-	for _, name := range duplicates {
-		// Get all hosts with this name
-		var dupeHosts []Host
-		db.Where("name = ?", name).Order("id asc").Find(&dupeHosts)
+	// Fix each duplicate within its domain
+	for _, key := range duplicateKeys {
+		dupeHosts := domainHostMap[key]
+
+		// Sort by ID to ensure consistent ordering
+		sort.Slice(dupeHosts, func(i, j int) bool {
+			return dupeHosts[i].ID < dupeHosts[j].ID
+		})
 
 		// Keep first one, rename others
 		for i := 1; i < len(dupeHosts); i++ {
-			newName := fmt.Sprintf("%s-%d", name, i)
+			newName := fmt.Sprintf("%s-%d", dupeHosts[i].Name, i)
 			fmt.Printf("Renaming host ID=%d from '%s' to '%s'\n",
 				dupeHosts[i].ID, dupeHosts[i].Name, newName)
 
