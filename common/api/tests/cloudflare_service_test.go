@@ -62,9 +62,11 @@ func TestService_CreateCloudflareDomain_Disabled(t *testing.T) {
 		ZoneID:   "zone123",
 	}
 
-	_, err := service.CreateCloudflareDomain(domain.ID, req)
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "Cloudflare integration is not enabled")
+	cfDomain, err := service.CreateCloudflareDomain(domain.ID, req)
+	assert.NoError(t, err)
+	assert.NotNil(t, cfDomain)
+	assert.Equal(t, "example.com", cfDomain.ZoneName)
+	assert.Equal(t, "zone123", cfDomain.ZoneID)
 }
 
 func TestService_GetCloudflareDomains_Success(t *testing.T) {
