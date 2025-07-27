@@ -321,10 +321,16 @@ func TestDeleteCloudflareDomain_Success(t *testing.T) {
 
 	assert.Equal(t, http.StatusNoContent, w.Code)
 
-	// Verify it was deleted from database
+	// Verify it was soft deleted from database (should not be found in normal queries)
 	var deletedCfDomain models.CloudflareDomain
 	err := db.First(&deletedCfDomain, cfDomain.ID).Error
-	assert.Error(t, err) // Should not be found
+	assert.Error(t, err) // Should not be found in normal query due to soft delete
+
+	// Verify it still exists but is soft deleted
+	var softDeletedCfDomain models.CloudflareDomain
+	err = db.Unscoped().First(&softDeletedCfDomain, cfDomain.ID).Error
+	assert.NoError(t, err)                          // Should be found with Unscoped
+	assert.NotNil(t, softDeletedCfDomain.DeletedAt) // Should have deleted_at timestamp
 }
 
 func TestTestCloudflareConnection_Disabled(t *testing.T) {
