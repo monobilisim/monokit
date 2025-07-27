@@ -78,6 +78,9 @@ func TestGetCPUCores_GetRAM_GetOS(t *testing.T) {
 		assert.NotContains(t, osver, "error")
 		assert.NotContains(t, osver, "Error")
 	}
+
+	// Log values for debugging (should not cause test failures)
+	t.Logf("System info test - CPU: %d, RAM: %s, OS: %s", cores, ram, osver)
 }
 
 // Optionally: add edge/branch test for WrapperGetServiceStatus

@@ -8,11 +8,13 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/monobilisim/monokit/common"
 	"github.com/monobilisim/monokit/common/api/models"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -20,6 +22,19 @@ import (
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
+
+func init() {
+	// Disable colors during testing to prevent ANSI escape sequences from interfering with test output
+	os.Setenv("MONOKIT_NOCOLOR", "1")
+	os.Setenv("NO_COLOR", "1")
+	common.RemoveColors()
+
+	// Set gin to test mode to reduce output noise
+	gin.SetMode(gin.TestMode)
+
+	// Disable any terminal formatting that might interfere with test output
+	os.Setenv("TERM", "dumb")
+}
 
 // SetupTestDB sets up an in-memory SQLite database for testing
 func SetupTestDB(t require.TestingT) *gorm.DB {
