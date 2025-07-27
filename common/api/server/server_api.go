@@ -634,11 +634,23 @@ func RegisterHost(db *gorm.DB) gin.HandlerFunc {
 		fmt.Printf("Registering host: %s, IP: %s\n",
 			host.Name, host.IpAddress)
 
-		// Check if host already exists
+		// Ensure host has a domain assigned - use default domain if not specified
+		if host.DomainID == 0 {
+			var defaultDomain Domain
+			if err := db.Where("name = ?", "default").First(&defaultDomain).Error; err != nil {
+				fmt.Printf("Error finding default domain: %v\n", err)
+				c.JSON(http.StatusInternalServerError, gin.H{"error": "Default domain not found"})
+				return
+			}
+			host.DomainID = defaultDomain.ID
+			fmt.Printf("Assigned host to default domain (ID=%d)\n", defaultDomain.ID)
+		}
+
+		// Check if host already exists in the same domain
 		var existingHost Host
-		result := db.Where("name = ?", host.Name).First(&existingHost)
+		result := db.Where("name = ? AND domain_id = ?", host.Name, host.DomainID).First(&existingHost)
 		if result.Error == nil {
-			fmt.Printf("Host already exists: %s (ID=%d)\n", existingHost.Name, existingHost.ID)
+			fmt.Printf("Host already exists in domain: %s (ID=%d, DomainID=%d)\n", existingHost.Name, existingHost.ID, existingHost.DomainID)
 
 			// Verify authentication for existing host
 			token := c.GetHeader("Authorization")
@@ -657,8 +669,9 @@ func RegisterHost(db *gorm.DB) gin.HandlerFunc {
 			}
 			fmt.Printf("Host key validation successful\n")
 
-			// Preserve existing ID and deletion status
+			// Preserve existing ID, domain, and deletion status
 			host.ID = existingHost.ID
+			host.DomainID = existingHost.DomainID // Preserve original domain assignment
 			host.UpForDeletion = existingHost.UpForDeletion
 
 			// Update host
