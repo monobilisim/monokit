@@ -2,6 +2,7 @@ package osHealth
 
 import (
 	"fmt"
+	"math"
 	"strings"
 
 	// "github.com/charmbracelet/lipgloss" // Removed as it's no longer used
@@ -144,7 +145,8 @@ func (h *HealthData) RenderCompact() string {
 
 			// Format usage string using SimpleStatusListItem for consistent "is" formatting
 			usageLabelText := pool.Name + " usage"
-			usageStatusDescription := fmt.Sprintf("%s / %s (%.0f%%)", pool.Used, pool.Total, pool.UsedPct)
+			// Use math.Floor to match zpool list behavior (truncate instead of round)
+			usageStatusDescription := fmt.Sprintf("%s / %s (%.0f%%)", pool.Used, pool.Total, math.Floor(pool.UsedPct))
 			sb.WriteString(common.SimpleStatusListItem(usageLabelText, usageStatusDescription, true)) // true for isSuccess to keep it green/neutral
 			sb.WriteString("\n")
 		}
