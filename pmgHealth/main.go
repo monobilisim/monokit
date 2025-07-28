@@ -208,7 +208,7 @@ func statsCheck24h() error {
 		return nil
 	}
 
-	log.Info().
+	log.Debug().
 		Str("component", "pmgHealth").
 		Str("action", "stats_check_24h").
 		Msg("Starting 24-hour mail statistics check")
@@ -313,7 +313,7 @@ func statsCheck1h() error {
 		return nil
 	}
 
-	log.Info().
+	log.Debug().
 		Str("component", "pmgHealth").
 		Str("action", "stats_check_1h").
 		Msg("Starting 1-hour mail statistics check")
