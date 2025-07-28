@@ -380,7 +380,7 @@ func statsCheck1h() error {
 		common.AlarmCheckDown("pmg_mail_stats_1h", message, false, "", "")
 
 		// Create Redmine issue for threshold violation
-		createRedmineIssueForThreshold("1 saat", lastTotal, prevTotal, threshold, thresholdValue)
+		//createRedmineIssueForThreshold("1 saat", lastTotal, prevTotal, threshold, thresholdValue)
 
 		log.Warn().
 			Str("component", "pmgHealth").
