@@ -13,6 +13,7 @@ package osHealth
 
 import (
 	"fmt"
+	"math"
 	"os/exec"
 	"slices"
 	"strconv"
@@ -90,7 +91,7 @@ func createExceededZFSDatasetTable(exceededDatasets []ZFSDatasetInfo) (string, s
 	var tableData [][]string
 	for _, d := range exceededDatasets {
 		tableData = append(tableData, []string{
-			strconv.FormatFloat(d.UsedPct, 'f', 0, 64),
+			strconv.FormatFloat(math.Floor(d.UsedPct), 'f', 0, 64),
 			d.Used,
 			d.Avail,
 			d.Name,
