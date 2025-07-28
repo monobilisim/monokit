@@ -11,6 +11,7 @@ type ZimbraHealthData struct {
 	SSLCert        SSLCertInfo
 	HostsFile      HostsFileInfo   // /etc/hosts file monitoring
 	WebhookTail    WebhookTailInfo // Placeholder for potential future UI integration
+	LoginTest      LoginTestInfo   // Login test results
 }
 
 // SystemInfo represents basic system information relevant to Zimbra checks.
@@ -94,6 +95,17 @@ type WebhookTailInfo struct {
 	Logfile    string
 	QuotaLimit int
 	// Add fields here if UI representation is needed later
+}
+
+// LoginTestInfo holds information about the login test results.
+type LoginTestInfo struct {
+	Enabled         bool   // True if login test is enabled in config
+	Username        string // Username used for testing (for display purposes)
+	LoginSuccessful bool   // True if login was successful
+	LastMailSubject string // Subject of the last received mail (if any)
+	LastMailDate    string // Date of the last received mail (if any)
+	CheckStatus     bool   // True if the check could be performed successfully
+	Message         string // Any error or status message
 }
 
 // NewZimbraHealthData creates a new initialized ZimbraHealthData struct.

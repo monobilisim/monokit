@@ -22,6 +22,11 @@ type Zimbra struct {
 		Topic  string
 		Stream string
 	}
+	Login_test struct {
+		Enabled  bool
+		Username string
+		Password string
+	}
 }
 
 type Pmg struct {

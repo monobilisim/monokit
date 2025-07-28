@@ -16,3 +16,7 @@ zimbra:
     filter: 'test'
     stream: 'teststream'
     topic: 'testserver-logs'
+  login_test:
+    enabled: false
+    username: 'test@example.com'
+    password: 'testpassword'

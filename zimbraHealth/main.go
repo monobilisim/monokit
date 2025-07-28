@@ -128,6 +128,9 @@ func collectHealthData() *ZimbraHealthData {
 	// Hosts File Check (always run for UI display, but actual monitoring depends on scheduling)
 	healthData.HostsFile = CheckHostsFile()
 
+	// Login Test Check (only if enabled and credentials configured)
+	healthData.LoginTest = CheckLoginTest()
+
 	// Webhook Tail Info (config only for now)
 	healthData.WebhookTail.Logfile = MailHealthConfig.Zimbra.Webhook_tail.Logfile
 	healthData.WebhookTail.QuotaLimit = MailHealthConfig.Zimbra.Webhook_tail.Quota_limit
@@ -1135,6 +1138,99 @@ func CheckHostsFile() HostsFileInfo {
 		// Send up alarm to clear any previous down state
 		common.AlarmCheckUp("hosts_file_changed", "/etc/hosts file is unchanged", true)
 	}
+
+	return info
+}
+
+// CheckLoginTest performs a login test using Zimbra's zmmailbox command
+func CheckLoginTest() LoginTestInfo {
+	info := LoginTestInfo{
+		Enabled:     MailHealthConfig.Zimbra.Login_test.Enabled,
+		Username:    MailHealthConfig.Zimbra.Login_test.Username,
+		CheckStatus: false, // Default to check failed
+	}
+
+	// Skip if not enabled or credentials not configured
+	if !info.Enabled || info.Username == "" || MailHealthConfig.Zimbra.Login_test.Password == "" {
+		if !info.Enabled {
+			info.Message = "Login test is disabled in configuration"
+		} else {
+			info.Message = "Login test credentials not configured"
+		}
+		log.Debug().Str("message", info.Message).Msg("Skipping login test")
+		return info
+	}
+
+	// Check if zimbraPath is available
+	if zimbraPath == "" {
+		info.Message = "Zimbra path not determined"
+		log.Error().Msg(info.Message)
+		return info
+	}
+
+	log.Debug().Str("username", info.Username).Msg("Starting Zimbra login test")
+
+	// For regular user accounts, use -m (mailbox) flag with -p (password)
+	// We'll use 'gms' (get mailbox size) which is a basic read operation
+	// that any user can perform on their own mailbox and also tests authentication
+	authTestCmd := fmt.Sprintf("zmmailbox -m %s -p %s gms",
+		info.Username, MailHealthConfig.Zimbra.Login_test.Password)
+
+	authOutput, err := ExecZimbraCommand(authTestCmd, false, false)
+	if err != nil {
+		info.Message = "Login authentication failed: " + err.Error()
+		log.Error().Str("username", info.Username).Err(err).Msg("Zimbra login test failed")
+		common.AlarmCheckDown("zimbra_login_test", "Zimbra login test failed for "+info.Username+": "+err.Error(), false, "", "")
+		return info
+	}
+
+	// If we get here, authentication was successful and we got mailbox size
+	info.LoginSuccessful = true
+	info.CheckStatus = true
+
+	// Parse mailbox size output and check for errors
+	// Check if there are any ERROR messages in the output
+	if strings.Contains(authOutput, "ERROR:") {
+		// Extract the error message
+		lines := strings.Split(authOutput, "\n")
+		var errorMsg string
+		for _, line := range lines {
+			if strings.Contains(line, "ERROR:") {
+				errorMsg = strings.TrimSpace(line)
+				break
+			}
+		}
+		info.Message = "Login successful, but mailbox access issue: " + errorMsg
+		log.Warn().Str("username", info.Username).Str("error", errorMsg).Msg("Zimbra login successful but with mailbox access warning")
+	} else if strings.Contains(authOutput, "size") || strings.Contains(authOutput, "bytes") || authOutput != "" {
+		// Clean up the output by removing timestamp and keeping only the size info
+		cleanOutput := strings.TrimSpace(authOutput)
+		lines := strings.Split(cleanOutput, "\n")
+		var sizeInfo string
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if strings.Contains(line, "KB") || strings.Contains(line, "MB") || strings.Contains(line, "GB") || strings.Contains(line, "bytes") {
+				sizeInfo = line
+				break
+			}
+		}
+		if sizeInfo != "" {
+			info.Message = "Login successful, mailbox accessible"
+			info.LastMailSubject = "Mailbox size retrieved"
+			info.LastMailDate = sizeInfo
+		} else {
+			info.Message = "Login successful, mailbox accessible"
+			info.LastMailSubject = "Mailbox size retrieved"
+			info.LastMailDate = "Size information available"
+		}
+		log.Debug().Str("username", info.Username).Str("mailbox_size", sizeInfo).Msg("Zimbra login test successful - retrieved mailbox size")
+	} else {
+		info.Message = "Login successful, mailbox accessible"
+		log.Debug().Str("username", info.Username).Msg("Zimbra login test successful")
+	}
+
+	// Send success alarm
+	common.AlarmCheckUp("zimbra_login_test", "Zimbra login test successful for "+info.Username, false)
 
 	return info
 }

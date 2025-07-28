@@ -200,5 +200,57 @@ func (h *ZimbraHealthData) RenderAll() string {
 	}
 	sb.WriteString("\n")
 
+	// Login Test Section (only if enabled)
+	if h.LoginTest.Enabled {
+		sb.WriteString("\n")
+		sb.WriteString(common.SectionTitle("Login Test"))
+		sb.WriteString("\n")
+		if h.LoginTest.CheckStatus {
+			expectedState := "Failed"
+			if h.LoginTest.LoginSuccessful {
+				expectedState = "Successful"
+			}
+			sb.WriteString(common.SimpleStatusListItem(
+				fmt.Sprintf("Login (%s)", h.LoginTest.Username),
+				expectedState,
+				h.LoginTest.LoginSuccessful, // Success = login successful (green)
+			))
+			sb.WriteString("\n")
+
+			// Show mailbox size info if available
+			if h.LoginTest.LastMailSubject != "" && h.LoginTest.LastMailDate != "" {
+				// Check if there's a warning in the message
+				isWarning := strings.Contains(h.LoginTest.Message, "mailbox access issue")
+				statusColor := !isWarning // Green if no warning, yellow/red if warning
+
+				sb.WriteString(common.SimpleStatusListItem(
+					"Mailbox Size",
+					"Retrieved",
+					statusColor,
+				))
+				sb.WriteString(fmt.Sprintf("  └─ %s\n", h.LoginTest.LastMailDate))
+
+				// Show warning message if present
+				if isWarning {
+					sb.WriteString(fmt.Sprintf("  └─ Warning: %s\n", strings.TrimPrefix(h.LoginTest.Message, "Login successful, but ")))
+				}
+			} else if h.LoginTest.LoginSuccessful {
+				sb.WriteString(common.SimpleStatusListItem(
+					"Mailbox Access",
+					"Verified",
+					true, // Still green since login worked
+				))
+			}
+		} else {
+			sb.WriteString(common.SimpleStatusListItem(
+				fmt.Sprintf("Login (%s)", h.LoginTest.Username),
+				"Check Failed",
+				false,
+			))
+			sb.WriteString(fmt.Sprintf("  └─ Error: %s\n", h.LoginTest.Message))
+		}
+		sb.WriteString("\n")
+	}
+
 	return sb.String()
 }
