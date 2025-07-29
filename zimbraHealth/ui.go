@@ -33,7 +33,7 @@ func (h *ZimbraHealthData) RenderAll() string {
 			"Check Failed",
 			false,
 		))
-		sb.WriteString(fmt.Sprintf("  └─ Error: %s\n", h.IPAccess.Message))
+		sb.WriteString(fmt.Sprintf("\n        └─ Error: %s", h.IPAccess.Message))
 	}
 	sb.WriteString("\n")
 
@@ -154,7 +154,7 @@ func (h *ZimbraHealthData) RenderAll() string {
 				"Check Failed",
 				false,
 			))
-			sb.WriteString(fmt.Sprintf("  └─ Error: %s\n", h.SSLCert.Message))
+			sb.WriteString(fmt.Sprintf("\n        └─ Error: %s", h.SSLCert.Message))
 		}
 		sb.WriteString("\n")
 	}
@@ -188,7 +188,7 @@ func (h *ZimbraHealthData) RenderAll() string {
 
 		// Show last checked time if available
 		if h.HostsFile.LastChecked != "" {
-			sb.WriteString(fmt.Sprintf("  └─ Last checked: %s\n", h.HostsFile.LastChecked))
+			sb.WriteString(fmt.Sprintf("\n        └─ Last checked: %s", h.HostsFile.LastChecked))
 		}
 	} else {
 		sb.WriteString(common.SimpleStatusListItem(
@@ -251,6 +251,70 @@ func (h *ZimbraHealthData) RenderAll() string {
 		}
 		sb.WriteString("\n")
 	}
+
+	// CBPolicyd Section
+	sb.WriteString("\n")
+	sb.WriteString(common.SectionTitle("CBPolicyd Status"))
+	sb.WriteString("\n")
+	if h.CBPolicyd.CheckStatus {
+		// Service status
+		serviceState := "Stopped"
+		if h.CBPolicyd.ServiceRunning {
+			serviceState = "Running"
+		}
+		sb.WriteString(common.SimpleStatusListItem(
+			"Service Status",
+			serviceState,
+			h.CBPolicyd.ServiceRunning, // Success = service running (green)
+		))
+		sb.WriteString("\n")
+
+		// Configuration status
+		configState := "Missing"
+		if h.CBPolicyd.ConfigExists {
+			if h.CBPolicyd.DatabaseConfigured {
+				configState = "Configured"
+			} else {
+				configState = "No DB Config"
+			}
+		}
+		sb.WriteString(common.SimpleStatusListItem(
+			"Configuration",
+			configState,
+			h.CBPolicyd.ConfigExists && h.CBPolicyd.DatabaseConfigured, // Success = config exists and DB configured
+		))
+		sb.WriteString("\n")
+
+		// Database connectivity (only if configured)
+		if h.CBPolicyd.DatabaseConfigured {
+			dbState := "Not Accessible"
+			if h.CBPolicyd.DatabaseConnectable {
+				dbState = fmt.Sprintf("Accessible (%s)", h.CBPolicyd.DatabaseType)
+			} else {
+				dbState = fmt.Sprintf("Not Accessible (%s)", h.CBPolicyd.DatabaseType)
+			}
+			sb.WriteString(common.SimpleStatusListItem(
+				"Database",
+				dbState,
+				h.CBPolicyd.DatabaseConnectable, // Success = database accessible (green)
+			))
+
+			// Show database details if available
+			if h.CBPolicyd.DatabaseHost != "" && h.CBPolicyd.DatabaseName != "" {
+				sb.WriteString(fmt.Sprintf("\n        └─ %s@%s", h.CBPolicyd.DatabaseName, h.CBPolicyd.DatabaseHost))
+			} else if h.CBPolicyd.DatabaseName != "" {
+				sb.WriteString(fmt.Sprintf("\n        └─ %s", h.CBPolicyd.DatabaseName))
+			}
+		}
+	} else {
+		sb.WriteString(common.SimpleStatusListItem(
+			"CBPolicyd Check",
+			"Check Failed",
+			false,
+		))
+		sb.WriteString(fmt.Sprintf("  └─ Error: %s\n", h.CBPolicyd.Message))
+	}
+	sb.WriteString("\n")
 
 	return sb.String()
 }

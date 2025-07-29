@@ -12,6 +12,18 @@ type ZimbraHealthData struct {
 	HostsFile      HostsFileInfo   // /etc/hosts file monitoring
 	WebhookTail    WebhookTailInfo // Placeholder for potential future UI integration
 	LoginTest      LoginTestInfo   // Login test results
+	CBPolicyd      CBPolicydInfo   // CBPolicyd service and database checks
+}
+
+// DatabaseConfig holds parsed database configuration
+type DatabaseConfig struct {
+	Type     string
+	Host     string
+	Port     string
+	Database string
+	Username string
+	Password string
+	DSN      string
 }
 
 // SystemInfo represents basic system information relevant to Zimbra checks.
@@ -106,6 +118,19 @@ type LoginTestInfo struct {
 	LastMailDate    string // Date of the last received mail (if any)
 	CheckStatus     bool   // True if the check could be performed successfully
 	Message         string // Any error or status message
+}
+
+// CBPolicydInfo holds information about CBPolicyd service and database connectivity.
+type CBPolicydInfo struct {
+	ServiceRunning      bool   // True if cbpolicyd service is running
+	ConfigExists        bool   // True if cbpolicyd.conf.in exists
+	DatabaseConfigured  bool   // True if database configuration is found in config
+	DatabaseConnectable bool   // True if database connection test succeeds
+	DatabaseType        string // Type of database (mysql, sqlite, etc.)
+	DatabaseHost        string // Database host (for display)
+	DatabaseName        string // Database name (for display)
+	CheckStatus         bool   // True if the check could be performed successfully
+	Message             string // Any error or status message
 }
 
 // NewZimbraHealthData creates a new initialized ZimbraHealthData struct.

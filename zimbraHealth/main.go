@@ -131,6 +131,9 @@ func collectHealthData() *ZimbraHealthData {
 	// Login Test Check (only if enabled and credentials configured)
 	healthData.LoginTest = CheckLoginTest()
 
+	// CBPolicyd Check (service and database connectivity)
+	healthData.CBPolicyd = CheckCBPolicyd()
+
 	// Webhook Tail Info (config only for now)
 	healthData.WebhookTail.Logfile = MailHealthConfig.Zimbra.Webhook_tail.Logfile
 	healthData.WebhookTail.QuotaLimit = MailHealthConfig.Zimbra.Webhook_tail.Quota_limit
