@@ -374,8 +374,8 @@ func statsCheck1h() error {
 	// Check if traffic exceeded threshold
 	if float64(lastTotal) >= thresholdValue {
 		// Traffic is abnormally high - trigger alarm
-		//message := fmt.Sprintf("High mail traffic detected: %d messages (last 1h) vs %d messages (previous 1h), threshold: %.1fx = %.0f",
-		//	lastTotal, prevTotal, threshold, thresholdValue)
+		message := fmt.Sprintf("High mail traffic detected: %d messages (last 1h) vs %d messages (previous 1h), threshold: %.1fx = %.0f",
+			lastTotal, prevTotal, threshold, thresholdValue)
 
 		//common.AlarmCheckDown("pmg_mail_stats_1h", message, false, "", "")
 
@@ -389,8 +389,8 @@ func statsCheck1h() error {
 			Msg("Mail traffic alarm triggered")
 	} else {
 		// Traffic is normal - clear any existing alarm
-		//message := fmt.Sprintf("Mail traffic normal: %d messages (last 1h) vs %d messages (previous 1h), threshold: %.1fx = %.0f",
-		//	lastTotal, prevTotal, threshold, thresholdValue)
+		message := fmt.Sprintf("Mail traffic normal: %d messages (last 1h) vs %d messages (previous 1h), threshold: %.1fx = %.0f",
+			lastTotal, prevTotal, threshold, thresholdValue)
 
 		//common.AlarmCheckUp("pmg_mail_stats_1h", message, false)
 
