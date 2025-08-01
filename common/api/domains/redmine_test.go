@@ -37,7 +37,7 @@ func setupRedmineTestData(t *testing.T, db *gorm.DB) (models.User, models.Domain
 
 	// Create test domain
 	domain := models.Domain{
-		Name:            "test-domain",
+		Name:             "test-domain",
 		RedmineProjectID: "test-project",
 	}
 	require.NoError(t, db.Create(&domain).Error)
@@ -46,7 +46,7 @@ func setupRedmineTestData(t *testing.T, db *gorm.DB) (models.User, models.Domain
 	domainUser := models.DomainUser{
 		UserID:   user.ID,
 		DomainID: domain.ID,
-		IsAdmin:  false,
+		Role:     "domain_user",
 	}
 	require.NoError(t, db.Create(&domainUser).Error)
 
@@ -89,7 +89,7 @@ func TestGetRedmineClient_Enabled(t *testing.T) {
 
 func TestGetDomainRedmineProjectID_WithProjectID(t *testing.T) {
 	domain := &models.Domain{
-		Name:            "test-domain",
+		Name:             "test-domain",
 		RedmineProjectID: "custom-project-id",
 	}
 
@@ -99,7 +99,7 @@ func TestGetDomainRedmineProjectID_WithProjectID(t *testing.T) {
 
 func TestGetDomainRedmineProjectID_WithoutProjectID(t *testing.T) {
 	domain := &models.Domain{
-		Name:            "test-domain",
+		Name:             "test-domain",
 		RedmineProjectID: "",
 	}
 
@@ -109,7 +109,7 @@ func TestGetDomainRedmineProjectID_WithoutProjectID(t *testing.T) {
 
 func TestCheckDomainAccess_NoUser(t *testing.T) {
 	db := setupRedmineTestDB(t)
-	
+
 	// Create gin context without user
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
@@ -121,7 +121,7 @@ func TestCheckDomainAccess_NoUser(t *testing.T) {
 
 func TestCheckDomainAccess_GlobalAdmin(t *testing.T) {
 	db := setupRedmineTestDB(t)
-	
+
 	// Create global admin user
 	user := models.User{
 		Username: "admin",
@@ -148,7 +148,7 @@ func TestCheckDomainAccess_GlobalAdmin(t *testing.T) {
 
 func TestCheckDomainAccess_GlobalAdmin_DomainNotFound(t *testing.T) {
 	db := setupRedmineTestDB(t)
-	
+
 	// Create global admin user
 	user := models.User{
 		Username: "admin",
@@ -183,7 +183,7 @@ func TestCheckDomainAccess_RegularUser_WithAccess(t *testing.T) {
 
 func TestCheckDomainAccess_RegularUser_NoAccess(t *testing.T) {
 	db := setupRedmineTestDB(t)
-	
+
 	// Create user without domain access
 	user := models.User{
 		Username: "testuser",
@@ -209,7 +209,7 @@ func TestCheckDomainAccess_RegularUser_NoAccess(t *testing.T) {
 
 func TestGetDomainRedmineProject_InvalidDomainID(t *testing.T) {
 	db := setupRedmineTestDB(t)
-	
+
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Params = gin.Params{{Key: "id", Value: "invalid"}}
@@ -218,7 +218,7 @@ func TestGetDomainRedmineProject_InvalidDomainID(t *testing.T) {
 	handler(c)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
-	
+
 	var response map[string]string
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	require.NoError(t, err)
@@ -227,7 +227,7 @@ func TestGetDomainRedmineProject_InvalidDomainID(t *testing.T) {
 
 func TestGetDomainRedmineProject_NoAccess(t *testing.T) {
 	db := setupRedmineTestDB(t)
-	
+
 	// Create user without domain access
 	user := models.User{
 		Username: "testuser",
@@ -244,7 +244,7 @@ func TestGetDomainRedmineProject_NoAccess(t *testing.T) {
 	handler(c)
 
 	assert.Equal(t, http.StatusForbidden, w.Code)
-	
+
 	var response map[string]string
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	require.NoError(t, err)
@@ -253,7 +253,7 @@ func TestGetDomainRedmineProject_NoAccess(t *testing.T) {
 
 func TestGetDomainRedmineProject_RedmineDisabled(t *testing.T) {
 	db := setupRedmineTestDB(t)
-	user, domain := setupRedmineTestData(t, db)
+	user, _ := setupRedmineTestData(t, db)
 
 	// Save original config and disable Redmine
 	originalConfig := models.ServerConfig.Redmine
@@ -271,7 +271,7 @@ func TestGetDomainRedmineProject_RedmineDisabled(t *testing.T) {
 	handler(c)
 
 	assert.Equal(t, http.StatusServiceUnavailable, w.Code)
-	
+
 	var response map[string]string
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	require.NoError(t, err)
@@ -280,7 +280,7 @@ func TestGetDomainRedmineProject_RedmineDisabled(t *testing.T) {
 
 func TestGetDomainRedmineIssues_InvalidDomainID(t *testing.T) {
 	db := setupRedmineTestDB(t)
-	
+
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Params = gin.Params{{Key: "id", Value: "invalid"}}
@@ -289,7 +289,7 @@ func TestGetDomainRedmineIssues_InvalidDomainID(t *testing.T) {
 	handler(c)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
-	
+
 	var response map[string]string
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	require.NoError(t, err)
@@ -298,7 +298,7 @@ func TestGetDomainRedmineIssues_InvalidDomainID(t *testing.T) {
 
 func TestGetDomainRedmineIssue_InvalidDomainID(t *testing.T) {
 	db := setupRedmineTestDB(t)
-	
+
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Params = gin.Params{
@@ -310,7 +310,7 @@ func TestGetDomainRedmineIssue_InvalidDomainID(t *testing.T) {
 	handler(c)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
-	
+
 	var response map[string]string
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	require.NoError(t, err)
@@ -319,7 +319,7 @@ func TestGetDomainRedmineIssue_InvalidDomainID(t *testing.T) {
 
 func TestGetDomainRedmineIssue_InvalidIssueID(t *testing.T) {
 	db := setupRedmineTestDB(t)
-	
+
 	w := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(w)
 	c.Params = gin.Params{
@@ -331,7 +331,7 @@ func TestGetDomainRedmineIssue_InvalidIssueID(t *testing.T) {
 	handler(c)
 
 	assert.Equal(t, http.StatusBadRequest, w.Code)
-	
+
 	var response map[string]string
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	require.NoError(t, err)
