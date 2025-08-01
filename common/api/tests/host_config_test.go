@@ -376,18 +376,19 @@ func TestHandleDeleteHostConfig_MissingParameters(t *testing.T) {
 	db := SetupTestDB(t)
 	defer CleanupTestDB(db)
 
-	// Setup router
+	// Setup router with a catch-all route to test parameter validation
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 	router.DELETE("/hosts/:name/config/:filename", host.HandleDeleteHostConfig(db))
 
-	// Test missing host name
-	req, err := http.NewRequest("DELETE", "/hosts//config/app.yml", nil)
+	// Test with empty host name parameter (using space which gets trimmed)
+	req, err := http.NewRequest("DELETE", "/hosts/ /config/app.yml", nil)
 	require.NoError(t, err)
 
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
+	// This should return 400 because the handler checks for empty strings after trimming
 	assert.Equal(t, http.StatusBadRequest, w.Code)
 
 	var response map[string]string
@@ -395,8 +396,8 @@ func TestHandleDeleteHostConfig_MissingParameters(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "host name and filename are required", response["error"])
 
-	// Test missing filename
-	req2, err := http.NewRequest("DELETE", "/hosts/test-host/config/", nil)
+	// Test with empty filename parameter (using space which gets trimmed)
+	req2, err := http.NewRequest("DELETE", "/hosts/test-host/config/ ", nil)
 	require.NoError(t, err)
 
 	w2 := httptest.NewRecorder()

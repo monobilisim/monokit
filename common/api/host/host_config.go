@@ -4,6 +4,7 @@ package host
 
 import (
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -93,8 +94,8 @@ func HandlePutHostConfig(db *gorm.DB) gin.HandlerFunc {
 // HandleDeleteHostConfig deletes a specific host configuration file.
 func HandleDeleteHostConfig(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		name := c.Param("name")
-		filename := c.Param("filename")
+		name := strings.TrimSpace(c.Param("name"))
+		filename := strings.TrimSpace(c.Param("filename"))
 
 		if name == "" || filename == "" {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "host name and filename are required"})

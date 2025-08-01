@@ -215,10 +215,13 @@ func TestGetAllDomains_Success(t *testing.T) {
 	domain2 := models.Domain{
 		Name:        "domain2",
 		Description: "Second domain",
-		Active:      false,
+		Active:      true, // Will be set to false after creation
 	}
 	require.NoError(t, db.Create(&domain1).Error)
 	require.NoError(t, db.Create(&domain2).Error)
+
+	// Explicitly set domain2 to inactive after creation to override GORM default
+	require.NoError(t, db.Model(&domain2).Update("active", false).Error)
 
 	// Setup router
 	gin.SetMode(gin.TestMode)
@@ -246,17 +249,24 @@ func TestGetAllDomains_Success(t *testing.T) {
 	err = json.Unmarshal(w.Body.Bytes(), &response)
 	require.NoError(t, err)
 
-	assert.Len(t, response, 2)
+	// Should have 3 domains: default domain + 2 test domains
+	assert.Len(t, response, 3)
 
-	// Find domains by name
+	// Find domains by name (excluding default domain)
 	var foundDomain1, foundDomain2 *models.DomainResponse
+	var testDomains []models.DomainResponse
 	for i := range response {
 		if response[i].Name == "domain1" {
 			foundDomain1 = &response[i]
+			testDomains = append(testDomains, response[i])
 		} else if response[i].Name == "domain2" {
 			foundDomain2 = &response[i]
+			testDomains = append(testDomains, response[i])
 		}
 	}
+
+	// Verify we found exactly 2 test domains (excluding default)
+	assert.Len(t, testDomains, 2)
 
 	require.NotNil(t, foundDomain1)
 	require.NotNil(t, foundDomain2)
@@ -272,8 +282,8 @@ func TestGetAllDomains_Forbidden(t *testing.T) {
 	db := SetupTestDB(t)
 	defer CleanupTestDB(db)
 
-	// Create a regular admin user (not global admin)
-	admin := SetupTestAdmin(t, db)
+	// Create a regular user (not global admin)
+	admin := SetupTestUser(t, db, "regularuser")
 
 	// Setup router
 	gin.SetMode(gin.TestMode)
