@@ -94,7 +94,14 @@ func ConvertBytes(bytes uint64) string {
 	} else if floatBytes < 0 {
 		return fmt.Sprintf("%d %s", int64(0), sizes[i])
 	}
-	return fmt.Sprintf("%d %s", int64(floatBytes), sizes[i])
+	// Clamp floatBytes to [0, math.MaxInt64] before converting to int64
+	clamped := floatBytes
+	if clamped > float64(math.MaxInt64) {
+		clamped = float64(math.MaxInt64)
+	} else if clamped < 0 {
+		clamped = 0
+	}
+	return fmt.Sprintf("%d %s", int64(clamped), sizes[i])
 }
 
 func RemoveLockfile() {
