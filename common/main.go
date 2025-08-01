@@ -89,12 +89,12 @@ func ConvertBytes(bytes uint64) string {
 	}
 
 	// For smaller units, use integer format
-	if floatBytes > float64(math.MaxInt) {
-		return fmt.Sprintf("%d %s", math.MaxInt, sizes[i])
-	} else if floatBytes < float64(math.MinInt) {
-		return fmt.Sprintf("%d %s", math.MinInt, sizes[i])
+	if floatBytes > float64(math.MaxInt64) {
+		return fmt.Sprintf("%d %s", int64(math.MaxInt64), sizes[i])
+	} else if floatBytes < 0 {
+		return fmt.Sprintf("%d %s", int64(0), sizes[i])
 	}
-	return fmt.Sprintf("%d %s", int(floatBytes), sizes[i])
+	return fmt.Sprintf("%d %s", int64(floatBytes), sizes[i])
 }
 
 func RemoveLockfile() {
