@@ -319,7 +319,12 @@ func TestDeleteCloudflareDomain_Success(t *testing.T) {
 	handler := cloudflare.DeleteCloudflareDomain(db, cfService)
 	handler(c)
 
-	assert.Equal(t, http.StatusNoContent, w.Code)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Verify response contains success message
+	var response map[string]string
+	ExtractJSONResponse(t, w, &response)
+	assert.Equal(t, "Cloudflare domain deleted successfully", response["message"])
 
 	// Verify it was soft deleted from database (should not be found in normal queries)
 	var deletedCfDomain models.CloudflareDomain

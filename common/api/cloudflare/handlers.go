@@ -335,7 +335,7 @@ func UpdateCloudflareDomain(db *gorm.DB, cfService *Service) gin.HandlerFunc {
 // @Produce json
 // @Param domain_id path int true "Domain ID"
 // @Param cf_domain_id path int true "Cloudflare Domain ID"
-// @Success 204 "No Content"
+// @Success 200 {object} map[string]string
 // @Failure 400 {object} map[string]string
 // @Failure 403 {object} map[string]string
 // @Failure 404 {object} map[string]string
@@ -396,7 +396,7 @@ func DeleteCloudflareDomain(db *gorm.DB, cfService *Service) gin.HandlerFunc {
 			return
 		}
 
-		c.Status(http.StatusNoContent)
+		c.JSON(http.StatusOK, gin.H{"message": "Cloudflare domain deleted successfully"})
 	}
 }
 
