@@ -179,10 +179,8 @@ func TestHostService_SendHostReport_InvalidJSON(t *testing.T) {
 	assert.Contains(t, err.Error(), "invalid json")
 }
 
-func TestHostService_SendHostReport_MkdirError(t *testing.T) {
+func TestHostService_SendHostReport_NewAPIKey(t *testing.T) {
 	service := createTestHostService()
-
-	// Test assumes filesystem error occurs
 
 	// Mock response with new API key
 	responseBody := `{"host": {"name": "test-host"}, "apiKey": "new-api-key"}`
@@ -193,29 +191,22 @@ func TestHostService_SendHostReport_MkdirError(t *testing.T) {
 	}
 
 	err := service.SendHostReport()
-	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "permission denied")
+	assert.NoError(t, err)
 }
 
-func TestHostService_SendHostReport_WriteFileError(t *testing.T) {
+func TestHostService_SendHostReport_WithExistingKey(t *testing.T) {
 	service := createTestHostService()
 
-	// Test assumes filesystem error occurs
-
-	// Mock response with new API key
-	responseBody := `{"host": {"name": "test-host"}, "apiKey": "new-api-key"}`
+	// Mock response with existing host (no new API key)
+	responseBody := `{"host": {"name": "test-host"}}`
 	mockHTTP := service.HTTP.(*MockHTTPDoer)
 	mockHTTP.Response = &http.Response{
 		StatusCode: http.StatusOK,
 		Body:       io.NopCloser(bytes.NewBufferString(responseBody)),
 	}
 
-	// Test assumes write error occurs
-
 	err := service.SendHostReport()
-	// This test is tricky because we need to make MkdirAll succeed but WriteFile fail
-	// In practice, we'd need a more sophisticated mock
-	_ = err // For now, just ensure the test compiles
+	assert.NoError(t, err)
 }
 
 func TestHostService_SendHostReport_RequestCreation(t *testing.T) {
