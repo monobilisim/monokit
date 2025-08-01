@@ -40,8 +40,8 @@ func TestSubmitHostLog_Success(t *testing.T) {
 	// Set up host auth middleware context
 	c.Set("hostname", host.Name)
 
-	// Set up log buffer
-	cfg := logbuffer.Config{BatchSize: 10, FlushInterval: 1 * time.Second}
+	// Set up log buffer with shorter intervals for faster tests
+	cfg := logbuffer.Config{BatchSize: 10, FlushInterval: 100 * time.Millisecond}
 	buf := logbuffer.NewBuffer(db, cfg)
 	buf.Start()
 	defer buf.Close()
@@ -53,7 +53,7 @@ func TestSubmitHostLog_Success(t *testing.T) {
 	assert.Equal(t, http.StatusAccepted, w.Code)
 
 	// Verify log was saved (eventually)
-	time.Sleep(1500 * time.Millisecond) // Wait for flush
+	time.Sleep(200 * time.Millisecond) // Wait for flush
 	var savedLog models.HostLog
 	err := db.Where("host_name = ? AND message = ?", "log-host", "Database connection established").First(&savedLog).Error
 	require.NoError(t, err)
@@ -78,8 +78,8 @@ func TestSubmitHostLog_InvalidLevel(t *testing.T) {
 	c, w := CreateRequestContext("POST", "/api/v1/host/logs", logData)
 	c.Set("hostname", host.Name)
 
-	// Set up log buffer
-	cfg := logbuffer.Config{BatchSize: 10, FlushInterval: 1 * time.Second}
+	// Set up log buffer with shorter intervals for faster tests
+	cfg := logbuffer.Config{BatchSize: 10, FlushInterval: 100 * time.Millisecond}
 	buf := logbuffer.NewBuffer(db, cfg)
 	buf.Start()
 	defer buf.Close()
@@ -132,8 +132,8 @@ func TestSubmitHostLog_MissingRequiredFields(t *testing.T) {
 			c, w := CreateRequestContext("POST", "/api/v1/host/logs", tc.logData)
 			c.Set("hostname", host.Name)
 
-			// Set up log buffer
-			cfg := logbuffer.Config{BatchSize: 10, FlushInterval: 1 * time.Second}
+			// Set up log buffer with shorter intervals for faster tests
+			cfg := logbuffer.Config{BatchSize: 10, FlushInterval: 100 * time.Millisecond}
 			buf := logbuffer.NewBuffer(db, cfg)
 			buf.Start()
 			defer buf.Close()
@@ -161,8 +161,8 @@ func TestSubmitHostLog_NoHostInContext(t *testing.T) {
 	c, w := CreateRequestContext("POST", "/api/v1/host/logs", logData)
 	// No host set in context
 
-	// Set up log buffer
-	cfg := logbuffer.Config{BatchSize: 10, FlushInterval: 1 * time.Second}
+	// Set up log buffer with shorter intervals for faster tests
+	cfg := logbuffer.Config{BatchSize: 10, FlushInterval: 100 * time.Millisecond}
 	buf := logbuffer.NewBuffer(db, cfg)
 	buf.Start()
 	defer buf.Close()
@@ -468,8 +468,8 @@ func TestLogSubmission_LargeMessage(t *testing.T) {
 	c, w := CreateRequestContext("POST", "/api/v1/host/logs", logData)
 	c.Set("hostname", host.Name)
 
-	// Set up log buffer
-	cfg := logbuffer.Config{BatchSize: 10, FlushInterval: 1 * time.Second}
+	// Set up log buffer with shorter intervals for faster tests
+	cfg := logbuffer.Config{BatchSize: 10, FlushInterval: 100 * time.Millisecond}
 	buf := logbuffer.NewBuffer(db, cfg)
 	buf.Start()
 	defer buf.Close()
@@ -481,7 +481,7 @@ func TestLogSubmission_LargeMessage(t *testing.T) {
 	assert.Equal(t, http.StatusAccepted, w.Code)
 
 	// Verify large message was saved
-	time.Sleep(1500 * time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
 	var savedLog models.HostLog
 	err := db.Where("host_name = ?", "log-host").First(&savedLog).Error
 	require.NoError(t, err)
@@ -506,8 +506,8 @@ func TestLogSubmission_SpecialCharacters(t *testing.T) {
 	c, w := CreateRequestContext("POST", "/api/v1/host/logs", logData)
 	c.Set("hostname", host.Name)
 
-	// Set up log buffer
-	cfg := logbuffer.Config{BatchSize: 10, FlushInterval: 1 * time.Second}
+	// Set up log buffer with shorter intervals for faster tests
+	cfg := logbuffer.Config{BatchSize: 10, FlushInterval: 100 * time.Millisecond}
 	buf := logbuffer.NewBuffer(db, cfg)
 	buf.Start()
 	defer buf.Close()
@@ -519,7 +519,7 @@ func TestLogSubmission_SpecialCharacters(t *testing.T) {
 	assert.Equal(t, http.StatusAccepted, w.Code)
 
 	// Verify special characters were preserved
-	time.Sleep(1500 * time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
 	var savedLog models.HostLog
 	err := db.Where("host_name = ?", "log-host").First(&savedLog).Error
 	require.NoError(t, err)
@@ -596,7 +596,7 @@ func TestLogBuffer_Batching(t *testing.T) {
 	buf.Close()
 
 	// Create a new buffer with shorter flush interval for timing test
-	cfg.FlushInterval = 1 * time.Second
+	cfg.FlushInterval = 200 * time.Millisecond
 	timeBuf := logbuffer.NewBuffer(db, cfg)
 	timeBuf.Start()
 
@@ -611,7 +611,7 @@ func TestLogBuffer_Batching(t *testing.T) {
 	assert.Equal(t, int64(0), count)
 
 	// Wait for time-based flush (wait a bit longer to be safe)
-	time.Sleep(2 * time.Second)
+	time.Sleep(400 * time.Millisecond)
 	db.Model(&models.HostLog{}).Where("component = ?", "timed").Count(&count)
 	assert.Equal(t, int64(1), count, "Log should be flushed after interval")
 
