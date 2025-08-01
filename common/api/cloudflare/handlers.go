@@ -396,7 +396,7 @@ func DeleteCloudflareDomain(db *gorm.DB, cfService *Service) gin.HandlerFunc {
 			return
 		}
 
-		c.Writer.WriteHeader(http.StatusNoContent)
+		c.Status(http.StatusNoContent)
 	}
 }
 
