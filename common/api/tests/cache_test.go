@@ -10,7 +10,6 @@ import (
 	"github.com/monobilisim/monokit/common/api/cache"
 	"github.com/monobilisim/monokit/common/api/models"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 func TestNoOpCache_BasicOperations(t *testing.T) {
@@ -160,7 +159,7 @@ func TestNoOpCache_UtilityOperations(t *testing.T) {
 
 func TestNoOpCache_Interface(t *testing.T) {
 	noopCache := cache.NewNoOpCache()
-	
+
 	// Verify that NoOpCache implements CacheService interface
 	var cacheService cache.CacheService = noopCache
 	assert.NotNil(t, cacheService)
@@ -170,7 +169,7 @@ func TestNoOpCache_Interface(t *testing.T) {
 func TestGlobalCache_Initialization(t *testing.T) {
 	// Test that GlobalCache is initialized and not nil
 	assert.NotNil(t, cache.GlobalCache)
-	
+
 	// Test that it implements the CacheService interface
 	assert.Implements(t, (*cache.CacheService)(nil), cache.GlobalCache)
 }
@@ -182,7 +181,7 @@ func TestInitCache_DisabledConfig(t *testing.T) {
 
 	err := cache.InitCache(config)
 	assert.NoError(t, err)
-	
+
 	// GlobalCache should be a NoOpCache when disabled
 	assert.NotNil(t, cache.GlobalCache)
 	assert.Implements(t, (*cache.CacheService)(nil), cache.GlobalCache)
@@ -192,17 +191,15 @@ func TestInitCache_DisabledConfig(t *testing.T) {
 func TestInitCache_InvalidConfig(t *testing.T) {
 	config := models.ValkeyConfig{
 		Enabled:  true,
-		Host:     "invalid-host",
-		Port:     9999,
+		Address:  "invalid-host:9999",
 		Password: "invalid-password",
-		DB:       0,
-		Timeout:  1, // Very short timeout to ensure failure
+		Database: 0,
 	}
 
 	// This should fail to connect and fallback to NoOpCache
 	err := cache.InitCache(config)
 	assert.Error(t, err)
-	
+
 	// GlobalCache should still be available (as NoOpCache)
 	assert.NotNil(t, cache.GlobalCache)
 	assert.Implements(t, (*cache.CacheService)(nil), cache.GlobalCache)
@@ -212,11 +209,9 @@ func TestInitCache_InvalidConfig(t *testing.T) {
 func TestNewValkeyCache_InvalidConfig(t *testing.T) {
 	config := models.ValkeyConfig{
 		Enabled:  true,
-		Host:     "invalid-host",
-		Port:     9999,
+		Address:  "invalid-host:9999",
 		Password: "invalid-password",
-		DB:       0,
-		Timeout:  1,
+		Database: 0,
 	}
 
 	valkeyCache, err := cache.NewValkeyCache(config)
@@ -238,7 +233,7 @@ func TestCacheKeyGeneration(t *testing.T) {
 	err := noopCache.SetSession(ctx, "session-token", session)
 	assert.NoError(t, err)
 
-	// Host auth keys  
+	// Host auth keys
 	err = noopCache.SetHostAuth(ctx, "auth-token", "hostname")
 	assert.NoError(t, err)
 

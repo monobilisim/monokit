@@ -22,7 +22,7 @@ func TestCreateDomain_Success(t *testing.T) {
 	defer CleanupTestDB(db)
 
 	// Create a global admin user
-	admin := SetupTestGlobalAdmin(t, db)
+	admin := SetupTestAdmin(t, db)
 
 	// Setup router
 	gin.SetMode(gin.TestMode)
@@ -72,7 +72,7 @@ func TestCreateDomain_Forbidden(t *testing.T) {
 	defer CleanupTestDB(db)
 
 	// Create a regular admin user (not global admin)
-	admin := SetupTestAdmin(t, db)
+	admin := SetupTestUser(t, db, "admin")
 
 	// Setup router
 	gin.SetMode(gin.TestMode)
@@ -117,7 +117,7 @@ func TestCreateDomain_DuplicateName(t *testing.T) {
 	defer CleanupTestDB(db)
 
 	// Create a global admin user
-	admin := SetupTestGlobalAdmin(t, db)
+	admin := SetupTestAdmin(t, db)
 
 	// Create an existing domain
 	existingDomain := models.Domain{
@@ -170,7 +170,7 @@ func TestCreateDomain_InvalidJSON(t *testing.T) {
 	defer CleanupTestDB(db)
 
 	// Create a global admin user
-	admin := SetupTestGlobalAdmin(t, db)
+	admin := SetupTestAdmin(t, db)
 
 	// Setup router
 	gin.SetMode(gin.TestMode)
@@ -204,7 +204,7 @@ func TestGetAllDomains_Success(t *testing.T) {
 	defer CleanupTestDB(db)
 
 	// Create a global admin user
-	admin := SetupTestGlobalAdmin(t, db)
+	admin := SetupTestAdmin(t, db)
 
 	// Create test domains
 	domain1 := models.Domain{
@@ -308,7 +308,7 @@ func TestGetDomainByID_Success(t *testing.T) {
 	defer CleanupTestDB(db)
 
 	// Create a global admin user
-	admin := SetupTestGlobalAdmin(t, db)
+	admin := SetupTestAdmin(t, db)
 
 	// Create test domain
 	domain := models.Domain{
@@ -357,7 +357,7 @@ func TestGetDomainByID_NotFound(t *testing.T) {
 	defer CleanupTestDB(db)
 
 	// Create a global admin user
-	admin := SetupTestGlobalAdmin(t, db)
+	admin := SetupTestAdmin(t, db)
 
 	// Setup router
 	gin.SetMode(gin.TestMode)
@@ -392,7 +392,7 @@ func TestGetDomainByID_InvalidID(t *testing.T) {
 	defer CleanupTestDB(db)
 
 	// Create a global admin user
-	admin := SetupTestGlobalAdmin(t, db)
+	admin := SetupTestAdmin(t, db)
 
 	// Setup router
 	gin.SetMode(gin.TestMode)

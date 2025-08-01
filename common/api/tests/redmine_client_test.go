@@ -15,7 +15,7 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestNewClient(t *testing.T) {
+func TestRedmineNewClient(t *testing.T) {
 	config := models.RedmineConfig{
 		Enabled:   true,
 		URL:       "https://redmine.example.com",
@@ -28,7 +28,7 @@ func TestNewClient(t *testing.T) {
 	assert.NotNil(t, client)
 }
 
-func TestNewClient_WithDefaultTimeout(t *testing.T) {
+func TestRedmineNewClient_WithDefaultTimeout(t *testing.T) {
 	config := models.RedmineConfig{
 		Enabled:   true,
 		URL:       "https://redmine.example.com",
@@ -150,18 +150,18 @@ func TestClient_GetProjectIssues_Success(t *testing.T) {
 
 		issues := []redmine.Issue{
 			{
-				ID:      1,
-				Subject: "Test Issue 1",
-				Project: redmine.Project{ID: 1, Name: "Test Project"},
-				Status:  redmine.Status{ID: 1, Name: "New"},
+				ID:        1,
+				Subject:   "Test Issue 1",
+				Project:   redmine.Project{ID: 1, Name: "Test Project"},
+				Status:    redmine.Status{ID: 1, Name: "New"},
 				CreatedOn: time.Now(),
 				UpdatedOn: time.Now(),
 			},
 			{
-				ID:      2,
-				Subject: "Test Issue 2",
-				Project: redmine.Project{ID: 1, Name: "Test Project"},
-				Status:  redmine.Status{ID: 2, Name: "In Progress"},
+				ID:        2,
+				Subject:   "Test Issue 2",
+				Project:   redmine.Project{ID: 1, Name: "Test Project"},
+				Status:    redmine.Status{ID: 2, Name: "In Progress"},
 				CreatedOn: time.Now(),
 				UpdatedOn: time.Now(),
 			},
@@ -243,7 +243,7 @@ func TestClient_GetIssue_Success(t *testing.T) {
 	assert.Equal(t, "Test Project", issue.Project.Name)
 }
 
-func TestClient_TestConnection_Success(t *testing.T) {
+func TestRedmineClient_TestConnection_Success(t *testing.T) {
 	// Create test server
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		assert.Equal(t, "/projects.json", r.URL.Path)
@@ -274,7 +274,7 @@ func TestClient_TestConnection_Success(t *testing.T) {
 	assert.NoError(t, err)
 }
 
-func TestClient_TestConnection_Failure(t *testing.T) {
+func TestRedmineClient_TestConnection_Failure(t *testing.T) {
 	// Create test server that returns error
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusUnauthorized)

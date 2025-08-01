@@ -4,6 +4,7 @@ package tests
 
 import (
 	"encoding/json"
+	"io/fs"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -66,20 +67,20 @@ func TestHostService_GetHosts_AllHosts(t *testing.T) {
 
 		hosts := []models.Host{
 			{
-				Name:       "host1",
-				CpuCores:   4,
-				Ram:        "8GB",
-				Os:         "Ubuntu 20.04",
-				Status:     "online",
-				IpAddress:  "192.168.1.10",
+				Name:      "host1",
+				CpuCores:  4,
+				Ram:       "8GB",
+				Os:        "Ubuntu 20.04",
+				Status:    "online",
+				IpAddress: "192.168.1.10",
 			},
 			{
-				Name:       "host2",
-				CpuCores:   8,
-				Ram:        "16GB",
-				Os:         "Ubuntu 22.04",
-				Status:     "offline",
-				IpAddress:  "192.168.1.20",
+				Name:      "host2",
+				CpuCores:  8,
+				Ram:       "16GB",
+				Os:        "Ubuntu 22.04",
+				Status:    "offline",
+				IpAddress: "192.168.1.20",
 			},
 		}
 
@@ -258,8 +259,8 @@ func TestHostService_GetServiceStatus_DefaultBehavior(t *testing.T) {
 // MockFS for testing filesystem operations
 type MockFS struct {
 	ReadFileFunc  func(path string) ([]byte, error)
-	WriteFileFunc func(path string, data []byte, perm clientport.FileMode) error
-	MkdirAllFunc  func(path string, perm clientport.FileMode) error
+	WriteFileFunc func(path string, data []byte, perm fs.FileMode) error
+	MkdirAllFunc  func(path string, perm fs.FileMode) error
 }
 
 func (m *MockFS) ReadFile(path string) ([]byte, error) {
@@ -269,14 +270,14 @@ func (m *MockFS) ReadFile(path string) ([]byte, error) {
 	return nil, assert.AnError
 }
 
-func (m *MockFS) WriteFile(path string, data []byte, perm clientport.FileMode) error {
+func (m *MockFS) WriteFile(path string, data []byte, perm fs.FileMode) error {
 	if m.WriteFileFunc != nil {
 		return m.WriteFileFunc(path, data, perm)
 	}
 	return nil
 }
 
-func (m *MockFS) MkdirAll(path string, perm clientport.FileMode) error {
+func (m *MockFS) MkdirAll(path string, perm fs.FileMode) error {
 	if m.MkdirAllFunc != nil {
 		return m.MkdirAllFunc(path, perm)
 	}
