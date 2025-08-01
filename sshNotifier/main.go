@@ -918,6 +918,9 @@ func NotifyAndSave(loginInfo LoginInfoOutput) {
 			Msg("Processing logout event")
 	}
 
+	// Preserve original username for KeyComment field
+	originalUsername := loginInfo.Username
+
 	if strings.Contains(loginInfo.Username, "@") {
 		cleanedUsername := strings.Split(loginInfo.Username, "@")[0]
 		log.Debug().
@@ -989,7 +992,7 @@ func NotifyAndSave(loginInfo LoginInfoOutput) {
 	dbReq.Ppid = "'" + loginInfo.Ppid + "'"
 	dbReq.LinuxUser = "'" + loginInfo.PamUser + "'"
 	dbReq.Type = "'" + loginInfo.EventType + "'"
-	dbReq.KeyComment = "'" + loginInfo.Username + "'"
+	dbReq.KeyComment = "'" + originalUsername + "'"
 	dbReq.Host = "'" + loginInfo.Server + "'"
 	dbReq.ConnectedFrom = "'" + loginInfo.RemoteIp + "'"
 	dbReq.LoginType = "'" + loginInfo.LoginMethod + "'"
