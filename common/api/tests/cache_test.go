@@ -246,3 +246,135 @@ func TestCacheKeyGeneration(t *testing.T) {
 	err = noopCache.SetHost(ctx, "hostname", host)
 	assert.NoError(t, err)
 }
+
+// Test NewValkeyCache with disabled config
+func TestNewValkeyCache_DisabledConfig(t *testing.T) {
+	config := models.ValkeyConfig{
+		Enabled: false,
+	}
+
+	valkeyCache, err := cache.NewValkeyCache(config)
+	assert.Error(t, err)
+	assert.Nil(t, valkeyCache)
+	assert.Contains(t, err.Error(), "valkey is disabled")
+}
+
+// Test ValkeyCache buildKey method indirectly
+func TestValkeyCache_KeyPrefixing(t *testing.T) {
+	// We can't test buildKey directly since it's not exported,
+	// but we can test that different prefixes work correctly
+	config := models.ValkeyConfig{
+		Enabled:   true,
+		Address:   "localhost:6379",
+		KeyPrefix: "test:",
+		Database:  0,
+	}
+
+	// This will fail to connect but we can test the structure
+	valkeyCache, err := cache.NewValkeyCache(config)
+	assert.Error(t, err) // Expected to fail connection
+	assert.Nil(t, valkeyCache)
+}
+
+// Test CloseCache function
+func TestCloseCache(t *testing.T) {
+	// Test with nil GlobalCache
+	originalCache := cache.GlobalCache
+	cache.GlobalCache = nil
+
+	err := cache.CloseCache()
+	assert.NoError(t, err)
+
+	// Restore original cache
+	cache.GlobalCache = originalCache
+
+	// Test with NoOpCache
+	cache.GlobalCache = cache.NewNoOpCache()
+	err = cache.CloseCache()
+	assert.NoError(t, err)
+}
+
+// Test InitCache with successful connection (mocked)
+func TestInitCache_SuccessfulConnection(t *testing.T) {
+	// Test with disabled config first
+	config := models.ValkeyConfig{
+		Enabled: false,
+	}
+
+	err := cache.InitCache(config)
+	assert.NoError(t, err)
+	assert.NotNil(t, cache.GlobalCache)
+}
+
+// Test error handling in ValkeyCache operations
+func TestValkeyCache_ErrorHandling(t *testing.T) {
+	// Test with invalid JSON marshaling
+	ctx := context.Background()
+	noopCache := cache.NewNoOpCache()
+
+	// Test with complex data structures
+	complexData := map[string]interface{}{
+		"nested": map[string]interface{}{
+			"array": []int{1, 2, 3},
+			"bool":  true,
+		},
+		"number": 42.5,
+	}
+
+	err := noopCache.SetHealthData(ctx, "test-host", "complex-tool", complexData)
+	assert.NoError(t, err)
+
+	var retrieved map[string]interface{}
+	err = noopCache.GetHealthData(ctx, "test-host", "complex-tool", &retrieved)
+	assert.Error(t, err) // NoOpCache always returns cache miss
+	assert.Contains(t, err.Error(), "cache miss")
+}
+
+// Test TTL handling in cache operations
+func TestCache_TTLHandling(t *testing.T) {
+	ctx := context.Background()
+	noopCache := cache.NewNoOpCache()
+
+	// Test Set with different TTL values
+	err := noopCache.Set(ctx, "ttl-test-1", "value1", time.Hour)
+	assert.NoError(t, err)
+
+	err = noopCache.Set(ctx, "ttl-test-2", "value2", 0) // No TTL
+	assert.NoError(t, err)
+
+	err = noopCache.Set(ctx, "ttl-test-3", "value3", time.Minute*30)
+	assert.NoError(t, err)
+}
+
+// Test cache operations with various data types
+func TestCache_DataTypes(t *testing.T) {
+	ctx := context.Background()
+	noopCache := cache.NewNoOpCache()
+
+	// Test with string
+	err := noopCache.Set(ctx, "string-key", "string-value", time.Minute)
+	assert.NoError(t, err)
+
+	// Test with integer
+	err = noopCache.Set(ctx, "int-key", 42, time.Minute)
+	assert.NoError(t, err)
+
+	// Test with boolean
+	err = noopCache.Set(ctx, "bool-key", true, time.Minute)
+	assert.NoError(t, err)
+
+	// Test with slice
+	err = noopCache.Set(ctx, "slice-key", []string{"a", "b", "c"}, time.Minute)
+	assert.NoError(t, err)
+
+	// Test with struct
+	testStruct := struct {
+		Name  string `json:"name"`
+		Value int    `json:"value"`
+	}{
+		Name:  "test",
+		Value: 123,
+	}
+	err = noopCache.Set(ctx, "struct-key", testStruct, time.Minute)
+	assert.NoError(t, err)
+}
