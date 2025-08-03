@@ -512,8 +512,8 @@ func TestSyncKeycloakUser_NewUser(t *testing.T) {
 		PreferredUsername: "keycloak-user",
 		Email:             "keycloak@example.com",
 		Name:              "Keycloak User",
-		RealmAccess: auth.RealmAccess{
-			Roles: []string{"user"},
+		RealmAccess: map[string]interface{}{
+			"roles": []interface{}{"user"},
 		},
 	}
 
@@ -542,8 +542,8 @@ func TestSyncKeycloakUser_ExistingUser(t *testing.T) {
 		PreferredUsername: "existing-user",
 		Email:             "new@example.com",
 		Name:              "Updated User",
-		RealmAccess: auth.RealmAccess{
-			Roles: []string{"admin"},
+		RealmAccess: map[string]interface{}{
+			"roles": []interface{}{"admin"},
 		},
 	}
 
@@ -562,8 +562,8 @@ func TestSyncKeycloakUser_AdminRole(t *testing.T) {
 		PreferredUsername: "admin-user",
 		Email:             "admin@example.com",
 		Name:              "Admin User",
-		RealmAccess: auth.RealmAccess{
-			Roles: []string{"admin", "user"},
+		RealmAccess: map[string]interface{}{
+			"roles": []interface{}{"admin", "user"},
 		},
 	}
 
@@ -580,8 +580,8 @@ func TestSyncKeycloakUser_GlobalAdminRole(t *testing.T) {
 		PreferredUsername: "global-admin",
 		Email:             "global@example.com",
 		Name:              "Global Admin",
-		RealmAccess: auth.RealmAccess{
-			Roles: []string{"global_admin", "admin", "user"},
+		RealmAccess: map[string]interface{}{
+			"roles": []interface{}{"global_admin", "admin", "user"},
 		},
 	}
 
@@ -598,8 +598,8 @@ func TestSyncKeycloakUser_NoUsername(t *testing.T) {
 		PreferredUsername: "",
 		Email:             "email-only@example.com",
 		Name:              "Email Only User",
-		RealmAccess: auth.RealmAccess{
-			Roles: []string{"user"},
+		RealmAccess: map[string]interface{}{
+			"roles": []interface{}{"user"},
 		},
 	}
 

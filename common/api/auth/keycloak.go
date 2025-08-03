@@ -16,20 +16,23 @@ import (
 	"github.com/MicahParks/keyfunc"
 	"github.com/gin-gonic/gin"
 	"github.com/golang-jwt/jwt/v4"
+	"github.com/monobilisim/monokit/common/api/models"
 	"github.com/rs/zerolog/log"
 	"gorm.io/gorm"
 )
 
 // Export variables and functions for testing
 var (
-	ExportGenerateRandomState    = generateRandomState
-	ExportHandleSSOLogin         = handleSSOLogin
-	ExportHandleSSOCallback      = handleSSOCallback
-	ExportExchangeCodeForToken   = exchangeCodeForToken
-	ExportSyncKeycloakUser       = SyncKeycloakUser
-	ExportKeycloakAuthMiddleware = KeycloakAuthMiddleware
-	ExportJWKS                   = (*keyfunc.JWKS)(nil)
-	ExportKeyFunc                = func(token *jwt.Token) (interface{}, error) {
+	ExportGenerateRandomState         = generateRandomState
+	ExportHandleSSOLogin              = handleSSOLogin
+	ExportHandleSSOCallback           = handleSSOCallback
+	ExportExchangeCodeForToken        = exchangeCodeForToken
+	ExportSyncKeycloakUser            = SyncKeycloakUser
+	ExportKeycloakAuthMiddleware      = KeycloakAuthMiddleware
+	ExportCreateOrGetDefaultAdminUser = createOrGetDefaultAdminUser
+	ExportContains                    = contains
+	ExportJWKS                        = (*keyfunc.JWKS)(nil)
+	ExportKeyFunc                     = func(token *jwt.Token) (interface{}, error) {
 		if jwks == nil {
 			return nil, fmt.Errorf("JWKS is not initialized")
 		}
@@ -72,14 +75,14 @@ var jwks *keyfunc.JWKS
 
 // SetupKeycloakRoutes configures the Keycloak SSO endpoints
 func SetupKeycloakRoutes(r *gin.Engine, db *gorm.DB) {
-	if !ServerConfig.Keycloak.Enabled {
+	if !models.ServerConfig.Keycloak.Enabled {
 		return
 	}
 
 	// Set the JWKS URL for token validation
 	jwksURL = fmt.Sprintf("%s/realms/%s/protocol/openid-connect/certs",
-		ServerConfig.Keycloak.URL,
-		ServerConfig.Keycloak.Realm)
+		models.ServerConfig.Keycloak.URL,
+		models.ServerConfig.Keycloak.Realm)
 
 	// Initialize JWKS
 	initJWKS()
@@ -135,12 +138,12 @@ func handleSSOLogin() gin.HandlerFunc {
 
 		// Create the OAuth 2.0 authorization endpoint URL
 		authURL := fmt.Sprintf("%s/realms/%s/protocol/openid-connect/auth",
-			ServerConfig.Keycloak.URL,
-			ServerConfig.Keycloak.Realm)
+			models.ServerConfig.Keycloak.URL,
+			models.ServerConfig.Keycloak.Realm)
 
 		// Build the query parameters
 		params := url.Values{}
-		params.Add("client_id", ServerConfig.Keycloak.ClientID)
+		params.Add("client_id", models.ServerConfig.Keycloak.ClientID)
 		// Always generate an absolute redirect URI using the Origin header (or fallback to host)
 		origin := c.Request.Header.Get("Origin")
 		if origin == "" {

@@ -13,11 +13,10 @@ import (
 	"github.com/monobilisim/monokit/common/api/cloudflare"
 	"github.com/monobilisim/monokit/common/api/models"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
 )
 
 // Test error handling in cache operations
-func TestValkeyCache_ErrorHandling(t *testing.T) {
+func TestValkeyCache_DisabledConfig(t *testing.T) {
 	// Test with disabled config
 	config := models.ValkeyConfig{
 		Enabled: false,
@@ -121,7 +120,7 @@ func TestCloudflareClient_InvalidToken(t *testing.T) {
 func TestJSONErrorHandling(t *testing.T) {
 	// Test with invalid JSON data
 	invalidJSON := `{"invalid": json}`
-	
+
 	var result map[string]interface{}
 	err := json.Unmarshal([]byte(invalidJSON), &result)
 	assert.Error(t, err)
@@ -132,10 +131,10 @@ func TestContextTimeoutHandling(t *testing.T) {
 	// Create a context that times out immediately
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Nanosecond)
 	defer cancel()
-	
+
 	// Wait for context to timeout
 	time.Sleep(1 * time.Millisecond)
-	
+
 	// Test that context is cancelled
 	select {
 	case <-ctx.Done():
@@ -186,14 +185,14 @@ func TestHTTPErrorHandling(t *testing.T) {
 // Test configuration validation errors
 func TestConfigValidationErrors(t *testing.T) {
 	// Test various invalid configurations
-	
+
 	// Invalid timeout values
 	config := models.ValkeyConfig{
 		Enabled:      true,
 		Address:      "localhost:6379",
 		WriteTimeout: -1, // Invalid negative timeout
 	}
-	
+
 	// The validation might happen at different levels
 	// This test ensures we handle invalid configs gracefully
 	_, err := cache.NewValkeyCache(config)
@@ -207,11 +206,11 @@ func TestConfigValidationErrors(t *testing.T) {
 func TestStringProcessingEdgeCases(t *testing.T) {
 	// Test empty strings
 	assert.Empty(t, "")
-	
+
 	// Test strings with special characters
 	specialChars := "!@#$%^&*()_+-=[]{}|;':\",./<>?"
 	assert.NotEmpty(t, specialChars)
-	
+
 	// Test unicode strings
 	unicode := "Hello 世界 🌍"
 	assert.Contains(t, unicode, "世界")
@@ -223,7 +222,7 @@ func TestMemoryAllocationEdgeCases(t *testing.T) {
 	// Test large slice allocation
 	largeSlice := make([]byte, 1024*1024) // 1MB
 	assert.Len(t, largeSlice, 1024*1024)
-	
+
 	// Test map allocation
 	largeMap := make(map[string]string)
 	for i := 0; i < 1000; i++ {
@@ -236,11 +235,11 @@ func TestMemoryAllocationEdgeCases(t *testing.T) {
 func TestConcurrentAccessHandling(t *testing.T) {
 	// Test concurrent map access (this is mainly to ensure our tests don't have race conditions)
 	testMap := make(map[string]int)
-	
+
 	// Sequential access (safe)
 	testMap["key1"] = 1
 	testMap["key2"] = 2
-	
+
 	assert.Equal(t, 1, testMap["key1"])
 	assert.Equal(t, 2, testMap["key2"])
 }
@@ -249,11 +248,11 @@ func TestConcurrentAccessHandling(t *testing.T) {
 func TestResourceCleanup(t *testing.T) {
 	// Test that resources are properly cleaned up
 	noopCache := cache.NewNoOpCache()
-	
+
 	// Close should not error
 	err := noopCache.Close()
 	assert.NoError(t, err)
-	
+
 	// Multiple closes should be safe
 	err = noopCache.Close()
 	assert.NoError(t, err)
@@ -265,11 +264,11 @@ func TestBoundaryConditions(t *testing.T) {
 	assert.Equal(t, 0, 0)
 	assert.Equal(t, "", "")
 	assert.Nil(t, nil)
-	
+
 	// Test maximum values (within reason for tests)
 	maxInt := int(^uint(0) >> 1)
 	assert.Greater(t, maxInt, 0)
-	
+
 	// Test minimum values
 	minInt := -maxInt - 1
 	assert.Less(t, minInt, 0)
