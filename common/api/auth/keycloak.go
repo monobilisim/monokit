@@ -301,15 +301,16 @@ func exchangeCodeForToken(code, redirectURI string) (map[string]interface{}, err
 }
 
 // SyncKeycloakUser creates or updates a user in the local database from Keycloak claims
-func SyncKeycloakUser(db *gorm.DB, claims *KeycloakClaims) (User, error) {
-	var user User
+func SyncKeycloakUser(db *gorm.DB, claims *KeycloakClaims) (models.User, error) {
+	var user models.User
 	username := claims.PreferredUsername
 	if username == "" {
 		username = claims.Email
-	}
-	// Split username at '@' to get the local part of the email address
-	if strings.Contains(username, "@") {
-		username = strings.Split(username, "@")[0]
+	} else {
+		// Only split at '@' if we have a PreferredUsername (not when falling back to email)
+		if strings.Contains(username, "@") {
+			username = strings.Split(username, "@")[0]
+		}
 	}
 
 	// Check if user already exists
@@ -319,24 +320,28 @@ func SyncKeycloakUser(db *gorm.DB, claims *KeycloakClaims) (User, error) {
 	role := "user" // Default role
 	if realmRoles, ok := claims.RealmAccess["roles"].([]interface{}); ok {
 		for _, r := range realmRoles {
-			if roleStr, ok := r.(string); ok && roleStr == "admin" {
-				role = "admin"
-				break
+			if roleStr, ok := r.(string); ok {
+				if roleStr == "global_admin" {
+					role = "global_admin"
+					break
+				} else if roleStr == "admin" {
+					role = "admin"
+					// Don't break here in case there's a global_admin role later
+				}
 			}
 		}
 	}
 
 	if result.Error != nil {
 		// User doesn't exist, create new user as Keycloak user
-		user = User{
-			Username:   username,
-			Email:      claims.Email,
-			Role:       role,
-			Groups:     "nil",
-			AuthMethod: "keycloak",
+		user = models.User{
+			Username: username,
+			Email:    claims.Email,
+			Role:     role,
+			Groups:   "nil",
 		}
 		if err := db.Create(&user).Error; err != nil {
-			return User{}, err
+			return models.User{}, err
 		}
 	} else {
 		// User exists, update fields that might have changed and mark as Keycloak user
@@ -346,7 +351,7 @@ func SyncKeycloakUser(db *gorm.DB, claims *KeycloakClaims) (User, error) {
 			"auth_method": "keycloak",
 		}
 		if err := db.Model(&user).Updates(updates).Error; err != nil {
-			return User{}, err
+			return models.User{}, err
 		}
 	}
 
@@ -354,21 +359,20 @@ func SyncKeycloakUser(db *gorm.DB, claims *KeycloakClaims) (User, error) {
 }
 
 // createOrGetDefaultAdminUser creates or retrieves a default admin user
-func createOrGetDefaultAdminUser(db *gorm.DB) (User, error) {
-	var user User
+func createOrGetDefaultAdminUser(db *gorm.DB) (models.User, error) {
+	var user models.User
 	result := db.Where("username = ?", "admin").First(&user)
 
 	if result.Error != nil {
 		// Create default admin user
-		user = User{
-			Username:   "admin",
-			Email:      "admin@example.com",
-			Role:       "admin",
-			Groups:     "nil",
-			AuthMethod: "local",
+		user = models.User{
+			Username: "admin",
+			Email:    "admin@example.com",
+			Role:     "admin",
+			Groups:   "nil",
 		}
 		if err := db.Create(&user).Error; err != nil {
-			return User{}, err
+			return models.User{}, err
 		}
 	}
 
