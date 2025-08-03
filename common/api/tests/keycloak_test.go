@@ -467,3 +467,143 @@ func TestSyncKeycloakUser(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "user.with", user.Username) // Username should be local part of email
 }
+
+func TestKeycloakAuthMiddleware_DisabledKeycloak(t *testing.T) {
+	db := SetupTestDB(t)
+	defer CleanupTestDB(db)
+
+	// Disable Keycloak
+	originalConfig := models.ServerConfig.Keycloak
+	models.ServerConfig.Keycloak.Enabled = false
+	defer func() { models.ServerConfig.Keycloak = originalConfig }()
+
+	c, _ := CreateRequestContext("GET", "/test", nil)
+
+	middleware := auth.KeycloakAuthMiddleware(db)
+	middleware(c)
+
+	// Should proceed without setting user
+	_, exists := c.Get("user")
+	assert.False(t, exists)
+}
+
+func TestGenerateRandomState_Success(t *testing.T) {
+	// We can't directly test the private function, but we can test the SSO login handler
+	// which uses it internally
+	setupKeycloakConfig()
+
+	c, w := CreateRequestContext("GET", "/auth/sso/login", nil)
+
+	handler := auth.ExportHandleSSOLogin()
+	handler(c)
+
+	// Should redirect to Keycloak
+	assert.Equal(t, http.StatusTemporaryRedirect, w.Code)
+	location := w.Header().Get("Location")
+	assert.Contains(t, location, "keycloak.example.com")
+	assert.Contains(t, location, "state=")
+}
+
+func TestSyncKeycloakUser_NewUser(t *testing.T) {
+	db := SetupTestDB(t)
+	defer CleanupTestDB(db)
+
+	claims := &auth.KeycloakClaims{
+		PreferredUsername: "keycloak-user",
+		Email:             "keycloak@example.com",
+		Name:              "Keycloak User",
+		RealmAccess: auth.RealmAccess{
+			Roles: []string{"user"},
+		},
+	}
+
+	user, err := auth.SyncKeycloakUser(db, claims)
+	assert.NoError(t, err)
+	assert.Equal(t, "keycloak-user", user.Username)
+	assert.Equal(t, "keycloak@example.com", user.Email)
+	assert.Equal(t, "keycloak", user.AuthMethod)
+	assert.Equal(t, "user", user.Role)
+}
+
+func TestSyncKeycloakUser_ExistingUser(t *testing.T) {
+	db := SetupTestDB(t)
+	defer CleanupTestDB(db)
+
+	// Create existing user
+	existingUser := models.User{
+		Username:   "existing-user",
+		Email:      "old@example.com",
+		Role:       "user",
+		AuthMethod: "keycloak",
+	}
+	require.NoError(t, db.Create(&existingUser).Error)
+
+	claims := &auth.KeycloakClaims{
+		PreferredUsername: "existing-user",
+		Email:             "new@example.com",
+		Name:              "Updated User",
+		RealmAccess: auth.RealmAccess{
+			Roles: []string{"admin"},
+		},
+	}
+
+	user, err := auth.SyncKeycloakUser(db, claims)
+	assert.NoError(t, err)
+	assert.Equal(t, "existing-user", user.Username)
+	assert.Equal(t, "new@example.com", user.Email) // Should be updated
+	assert.Equal(t, "admin", user.Role)            // Should be updated
+}
+
+func TestSyncKeycloakUser_AdminRole(t *testing.T) {
+	db := SetupTestDB(t)
+	defer CleanupTestDB(db)
+
+	claims := &auth.KeycloakClaims{
+		PreferredUsername: "admin-user",
+		Email:             "admin@example.com",
+		Name:              "Admin User",
+		RealmAccess: auth.RealmAccess{
+			Roles: []string{"admin", "user"},
+		},
+	}
+
+	user, err := auth.SyncKeycloakUser(db, claims)
+	assert.NoError(t, err)
+	assert.Equal(t, "admin", user.Role)
+}
+
+func TestSyncKeycloakUser_GlobalAdminRole(t *testing.T) {
+	db := SetupTestDB(t)
+	defer CleanupTestDB(db)
+
+	claims := &auth.KeycloakClaims{
+		PreferredUsername: "global-admin",
+		Email:             "global@example.com",
+		Name:              "Global Admin",
+		RealmAccess: auth.RealmAccess{
+			Roles: []string{"global_admin", "admin", "user"},
+		},
+	}
+
+	user, err := auth.SyncKeycloakUser(db, claims)
+	assert.NoError(t, err)
+	assert.Equal(t, "global_admin", user.Role)
+}
+
+func TestSyncKeycloakUser_NoUsername(t *testing.T) {
+	db := SetupTestDB(t)
+	defer CleanupTestDB(db)
+
+	claims := &auth.KeycloakClaims{
+		PreferredUsername: "",
+		Email:             "email-only@example.com",
+		Name:              "Email Only User",
+		RealmAccess: auth.RealmAccess{
+			Roles: []string{"user"},
+		},
+	}
+
+	user, err := auth.SyncKeycloakUser(db, claims)
+	assert.NoError(t, err)
+	assert.Equal(t, "email-only@example.com", user.Username) // Should use email as username
+}

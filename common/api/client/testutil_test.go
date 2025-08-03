@@ -1,6 +1,7 @@
 package client
 
 import (
+	"fmt"
 	"io"
 	"net/http"
 	"testing"
@@ -244,15 +245,130 @@ func TestSetupTestServer_TCleanupIntegration(t *testing.T) {
 	assert.Equal(t, originalConf, ClientConf)
 }
 
+func TestSetupTestServer_ErrorResponses(t *testing.T) {
+	routes := map[string]respSpec{
+		"/error":   {Status: http.StatusInternalServerError, Body: "Internal Server Error"},
+		"/badreq":  {Status: http.StatusBadRequest, Body: "Bad Request"},
+		"/notauth": {Status: http.StatusUnauthorized, Body: "Unauthorized"},
+	}
+
+	srv, restore := setupTestServer(t, routes)
+	defer restore()
+
+	// Test error response
+	resp, err := http.Get(srv.URL + "/error")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+
+	// Test bad request
+	resp, err = http.Get(srv.URL + "/badreq")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusBadRequest, resp.StatusCode)
+
+	// Test unauthorized
+	resp, err = http.Get(srv.URL + "/notauth")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	assert.Equal(t, http.StatusUnauthorized, resp.StatusCode)
+}
+
+func TestSetupTestServer_LargeResponse(t *testing.T) {
+	largeBody := string(make([]byte, 10000)) // 10KB of null bytes
+	routes := map[string]respSpec{
+		"/large": {Status: http.StatusOK, Body: largeBody},
+	}
+
+	srv, restore := setupTestServer(t, routes)
+	defer restore()
+
+	resp, err := http.Get(srv.URL + "/large")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.Len(t, body, 10000)
+}
+
+func TestSetupTestServer_SpecialCharacters(t *testing.T) {
+	specialBody := "Special chars: àáâãäåæçèéêë 中文 🚀"
+	routes := map[string]respSpec{
+		"/special": {Status: http.StatusOK, Body: specialBody},
+	}
+
+	srv, restore := setupTestServer(t, routes)
+	defer restore()
+
+	resp, err := http.Get(srv.URL + "/special")
+	require.NoError(t, err)
+	defer resp.Body.Close()
+
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	body, err := io.ReadAll(resp.Body)
+	require.NoError(t, err)
+	assert.Equal(t, specialBody, string(body))
+}
+
+func TestSetupTestServer_ConcurrentRequests(t *testing.T) {
+	routes := map[string]respSpec{
+		"/concurrent": {Status: http.StatusOK, Body: "concurrent response"},
+	}
+
+	srv, restore := setupTestServer(t, routes)
+	defer restore()
+
+	// Make multiple concurrent requests
+	const numRequests = 10
+	results := make(chan error, numRequests)
+
+	for i := 0; i < numRequests; i++ {
+		go func() {
+			resp, err := http.Get(srv.URL + "/concurrent")
+			if err != nil {
+				results <- err
+				return
+			}
+			defer resp.Body.Close()
+
+			if resp.StatusCode != http.StatusOK {
+				results <- fmt.Errorf("expected status 200, got %d", resp.StatusCode)
+				return
+			}
+
+			body, err := io.ReadAll(resp.Body)
+			if err != nil {
+				results <- err
+				return
+			}
+
+			if string(body) != "concurrent response" {
+				results <- fmt.Errorf("unexpected body: %s", string(body))
+				return
+			}
+
+			results <- nil
+		}()
+	}
+
+	// Wait for all requests to complete
+	for i := 0; i < numRequests; i++ {
+		err := <-results
+		assert.NoError(t, err)
+	}
+}
+
 func TestRespSpec_Structure(t *testing.T) {
-	// Test that respSpec struct works as expected
+	// Test that respSpec structure works as expected
 	spec := respSpec{
 		Status: http.StatusCreated,
-		Body:   "test body",
+		Body:   "created",
 	}
 
 	assert.Equal(t, http.StatusCreated, spec.Status)
-	assert.Equal(t, "test body", spec.Body)
+	assert.Equal(t, "created", spec.Body)
 
 	// Test zero values
 	var zeroSpec respSpec
