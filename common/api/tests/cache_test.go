@@ -4,6 +4,8 @@ package tests
 
 import (
 	"context"
+	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -377,4 +379,332 @@ func TestCache_DataTypes(t *testing.T) {
 	}
 	err = noopCache.Set(ctx, "struct-key", testStruct, time.Minute)
 	assert.NoError(t, err)
+}
+
+// Test ValkeyCache structure and configuration
+func TestValkeyCache_Configuration(t *testing.T) {
+	config := models.ValkeyConfig{
+		Enabled:      true,
+		Address:      "localhost:6379",
+		Password:     "test-password",
+		Database:     1,
+		WriteTimeout: 30,
+		KeyPrefix:    "test:",
+		SessionTTL:   3600,
+		HostTTL:      1800,
+		HealthTTL:    300,
+	}
+
+	// This will fail to connect but we can test the configuration handling
+	valkeyCache, err := cache.NewValkeyCache(config)
+	assert.Error(t, err) // Expected to fail connection
+	assert.Nil(t, valkeyCache)
+	assert.Contains(t, err.Error(), "failed to create valkey client")
+}
+
+// Test ValkeyCache with various invalid configurations
+func TestValkeyCache_InvalidConfigurations(t *testing.T) {
+	testCases := []struct {
+		name   string
+		config models.ValkeyConfig
+	}{
+		{
+			name: "empty address",
+			config: models.ValkeyConfig{
+				Enabled: true,
+				Address: "",
+			},
+		},
+		{
+			name: "invalid address format",
+			config: models.ValkeyConfig{
+				Enabled: true,
+				Address: "invalid-address-format",
+			},
+		},
+		{
+			name: "negative database",
+			config: models.ValkeyConfig{
+				Enabled:  true,
+				Address:  "localhost:6379",
+				Database: -1,
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			valkeyCache, err := cache.NewValkeyCache(tc.config)
+			assert.Error(t, err)
+			assert.Nil(t, valkeyCache)
+		})
+	}
+}
+
+// Test InitCache with various scenarios
+func TestInitCache_Scenarios(t *testing.T) {
+	originalCache := cache.GlobalCache
+
+	t.Run("disabled config", func(t *testing.T) {
+		config := models.ValkeyConfig{Enabled: false}
+		err := cache.InitCache(config)
+		assert.NoError(t, err)
+		assert.NotNil(t, cache.GlobalCache)
+	})
+
+	t.Run("invalid connection", func(t *testing.T) {
+		config := models.ValkeyConfig{
+			Enabled: true,
+			Address: "nonexistent:9999",
+		}
+		err := cache.InitCache(config)
+		assert.Error(t, err)
+		assert.NotNil(t, cache.GlobalCache) // Should fallback to NoOpCache
+	})
+
+	// Restore original cache
+	cache.GlobalCache = originalCache
+}
+
+// Test FlushAll operation with NoOpCache
+func TestNoOpCache_FlushAll(t *testing.T) {
+	ctx := context.Background()
+	noopCache := cache.NewNoOpCache()
+
+	// FlushAll should always succeed with NoOpCache
+	err := noopCache.FlushAll(ctx)
+	assert.NoError(t, err)
+}
+
+// Test cache operations with nil values
+func TestCache_NilValues(t *testing.T) {
+	ctx := context.Background()
+	noopCache := cache.NewNoOpCache()
+
+	// Test Set with nil value
+	err := noopCache.Set(ctx, "nil-key", nil, time.Minute)
+	assert.NoError(t, err)
+
+	// Test Get with nil destination
+	var nilResult interface{}
+	err = noopCache.Get(ctx, "nil-key", &nilResult)
+	assert.Error(t, err) // NoOpCache always returns cache miss
+	assert.Contains(t, err.Error(), "cache miss")
+}
+
+// Test cache operations with empty keys
+func TestCache_EmptyKeys(t *testing.T) {
+	ctx := context.Background()
+	noopCache := cache.NewNoOpCache()
+
+	// Test operations with empty keys
+	err := noopCache.Set(ctx, "", "value", time.Minute)
+	assert.NoError(t, err)
+
+	var result string
+	err = noopCache.Get(ctx, "", &result)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "cache miss")
+
+	err = noopCache.Delete(ctx, "")
+	assert.NoError(t, err)
+
+	exists, err := noopCache.Exists(ctx, "")
+	assert.NoError(t, err)
+	assert.False(t, exists)
+}
+
+// Test specialized cache operations with edge cases
+func TestCache_EdgeCases(t *testing.T) {
+	ctx := context.Background()
+	noopCache := cache.NewNoOpCache()
+
+	// Test session operations with nil session
+	err := noopCache.SetSession(ctx, "token", nil)
+	assert.NoError(t, err)
+
+	session, err := noopCache.GetSession(ctx, "token")
+	assert.Error(t, err)
+	assert.Nil(t, session)
+
+	// Test host auth with empty values
+	err = noopCache.SetHostAuth(ctx, "", "")
+	assert.NoError(t, err)
+
+	hostName, err := noopCache.GetHostAuth(ctx, "")
+	assert.Error(t, err)
+	assert.Empty(t, hostName)
+
+	// Test health data with empty parameters
+	err = noopCache.SetHealthData(ctx, "", "", nil)
+	assert.NoError(t, err)
+
+	var healthData interface{}
+	err = noopCache.GetHealthData(ctx, "", "", &healthData)
+	assert.Error(t, err)
+
+	// Test host operations with nil host
+	err = noopCache.SetHost(ctx, "hostname", nil)
+	assert.NoError(t, err)
+
+	host, err := noopCache.GetHost(ctx, "hostname")
+	assert.Error(t, err)
+	assert.Nil(t, host)
+}
+
+// Test cache operations with complex data structures
+func TestCache_ComplexDataStructures(t *testing.T) {
+	ctx := context.Background()
+	noopCache := cache.NewNoOpCache()
+
+	// Test with nested maps
+	complexData := map[string]interface{}{
+		"level1": map[string]interface{}{
+			"level2": map[string]interface{}{
+				"level3": []interface{}{
+					map[string]string{"key": "value"},
+					42,
+					true,
+					nil,
+				},
+			},
+		},
+		"array": []interface{}{1, "two", 3.0, false},
+		"null":  nil,
+	}
+
+	err := noopCache.Set(ctx, "complex", complexData, time.Hour)
+	assert.NoError(t, err)
+
+	var retrieved map[string]interface{}
+	err = noopCache.Get(ctx, "complex", &retrieved)
+	assert.Error(t, err) // NoOpCache always returns cache miss
+}
+
+// Test cache operations with large data
+func TestCache_LargeData(t *testing.T) {
+	ctx := context.Background()
+	noopCache := cache.NewNoOpCache()
+
+	// Create large data structure
+	largeData := make(map[string]string)
+	for i := 0; i < 1000; i++ {
+		largeData[fmt.Sprintf("key_%d", i)] = fmt.Sprintf("value_%d_with_some_longer_content_to_make_it_bigger", i)
+	}
+
+	err := noopCache.Set(ctx, "large-data", largeData, time.Hour)
+	assert.NoError(t, err)
+
+	var retrieved map[string]string
+	err = noopCache.Get(ctx, "large-data", &retrieved)
+	assert.Error(t, err) // NoOpCache always returns cache miss
+}
+
+// Test concurrent cache operations
+func TestCache_ConcurrentOperations(t *testing.T) {
+	ctx := context.Background()
+	noopCache := cache.NewNoOpCache()
+
+	// Run multiple goroutines performing cache operations
+	const numGoroutines = 10
+	const numOperations = 100
+
+	var wg sync.WaitGroup
+	wg.Add(numGoroutines)
+
+	for i := 0; i < numGoroutines; i++ {
+		go func(goroutineID int) {
+			defer wg.Done()
+			for j := 0; j < numOperations; j++ {
+				key := fmt.Sprintf("concurrent_%d_%d", goroutineID, j)
+				value := fmt.Sprintf("value_%d_%d", goroutineID, j)
+
+				// Set operation
+				err := noopCache.Set(ctx, key, value, time.Minute)
+				assert.NoError(t, err)
+
+				// Get operation
+				var result string
+				err = noopCache.Get(ctx, key, &result)
+				assert.Error(t, err) // NoOpCache always returns cache miss
+
+				// Delete operation
+				err = noopCache.Delete(ctx, key)
+				assert.NoError(t, err)
+
+				// Exists operation
+				exists, err := noopCache.Exists(ctx, key)
+				assert.NoError(t, err)
+				assert.False(t, exists)
+			}
+		}(i)
+	}
+
+	wg.Wait()
+}
+
+// Test cache operations with different TTL values
+func TestCache_TTLVariations(t *testing.T) {
+	ctx := context.Background()
+	noopCache := cache.NewNoOpCache()
+
+	ttlValues := []time.Duration{
+		0,                    // No TTL
+		time.Second,          // 1 second
+		time.Minute,          // 1 minute
+		time.Hour,            // 1 hour
+		24 * time.Hour,       // 1 day
+		7 * 24 * time.Hour,   // 1 week
+		30 * 24 * time.Hour,  // 1 month
+		365 * 24 * time.Hour, // 1 year
+	}
+
+	for i, ttl := range ttlValues {
+		key := fmt.Sprintf("ttl_test_%d", i)
+		value := fmt.Sprintf("value_with_ttl_%v", ttl)
+
+		err := noopCache.Set(ctx, key, value, ttl)
+		assert.NoError(t, err)
+
+		var result string
+		err = noopCache.Get(ctx, key, &result)
+		assert.Error(t, err) // NoOpCache always returns cache miss
+	}
+}
+
+// Test cache key patterns and naming
+func TestCache_KeyPatterns(t *testing.T) {
+	ctx := context.Background()
+	noopCache := cache.NewNoOpCache()
+
+	keyPatterns := []string{
+		"simple",
+		"with:colons",
+		"with-dashes",
+		"with_underscores",
+		"with.dots",
+		"with/slashes",
+		"with spaces",
+		"with@symbols#and%more",
+		"unicode:测试:🚀",
+		"very-long-key-name-that-exceeds-normal-length-expectations-and-continues-for-a-while-to-test-edge-cases",
+	}
+
+	for _, key := range keyPatterns {
+		value := fmt.Sprintf("value_for_%s", key)
+
+		err := noopCache.Set(ctx, key, value, time.Minute)
+		assert.NoError(t, err)
+
+		var result string
+		err = noopCache.Get(ctx, key, &result)
+		assert.Error(t, err) // NoOpCache always returns cache miss
+
+		exists, err := noopCache.Exists(ctx, key)
+		assert.NoError(t, err)
+		assert.False(t, exists)
+
+		err = noopCache.Delete(ctx, key)
+		assert.NoError(t, err)
+	}
 }

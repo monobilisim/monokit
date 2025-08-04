@@ -431,3 +431,144 @@ func TestGetDomainByID_InvalidID(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, "Invalid domain ID", response["error"])
 }
+
+// Test UpdateDomain functionality
+func TestUpdateDomain_Success(t *testing.T) {
+	db := SetupTestDB(t)
+	defer CleanupTestDB(db)
+
+	admin := SetupTestAdmin(t, db)
+
+	// Create test domain
+	domain := models.Domain{
+		Name:        "original-domain",
+		Description: "Original description",
+		Settings:    `{"theme": "dark"}`,
+		Active:      true,
+	}
+	require.NoError(t, db.Create(&domain).Error)
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+
+	router.Use(func(c *gin.Context) {
+		c.Set("user", admin)
+		c.Next()
+	})
+
+	router.PUT("/domains/:id", domains.UpdateDomain(db))
+
+	updateRequest := models.UpdateDomainRequest{
+		Name:        "updated-domain",
+		Description: "Updated description",
+		Settings:    `{"theme": "light"}`,
+	}
+
+	jsonData, err := json.Marshal(updateRequest)
+	require.NoError(t, err)
+
+	req, err := http.NewRequest("PUT", "/domains/"+strconv.Itoa(int(domain.ID)), bytes.NewBuffer(jsonData))
+	require.NoError(t, err)
+	req.Header.Set("Content-Type", "application/json")
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var response models.DomainResponse
+	err = json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+
+	assert.Equal(t, "updated-domain", response.Name)
+	assert.Equal(t, "Updated description", response.Description)
+	assert.Equal(t, `{"theme": "light"}`, response.Settings)
+}
+
+// Test DeleteDomain functionality
+func TestDeleteDomain_Success(t *testing.T) {
+	db := SetupTestDB(t)
+	defer CleanupTestDB(db)
+
+	admin := SetupTestAdmin(t, db)
+
+	// Create test domain
+	domain := models.Domain{
+		Name:        "domain-to-delete",
+		Description: "Domain to be deleted",
+		Active:      true,
+	}
+	require.NoError(t, db.Create(&domain).Error)
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+
+	router.Use(func(c *gin.Context) {
+		c.Set("user", admin)
+		c.Next()
+	})
+
+	router.DELETE("/domains/:id", domains.DeleteDomain(db))
+
+	req, err := http.NewRequest("DELETE", "/domains/"+strconv.Itoa(int(domain.ID)), nil)
+	require.NoError(t, err)
+
+	w := httptest.NewRecorder()
+	router.ServeHTTP(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	// Verify domain was deleted
+	var deletedDomain models.Domain
+	err = db.First(&deletedDomain, domain.ID).Error
+	assert.Error(t, err) // Should be gorm.ErrRecordNotFound
+}
+
+// Test domain operations with no authentication
+func TestDomainOperations_NoAuth(t *testing.T) {
+	db := SetupTestDB(t)
+	defer CleanupTestDB(db)
+
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+
+	// No auth middleware - user context will be missing
+	router.POST("/domains", domains.CreateDomain(db))
+	router.GET("/domains", domains.GetAllDomains(db))
+	router.GET("/domains/:id", domains.GetDomainByID(db))
+
+	testCases := []struct {
+		method string
+		path   string
+		body   string
+	}{
+		{"POST", "/domains", `{"name": "test"}`},
+		{"GET", "/domains", ""},
+		{"GET", "/domains/1", ""},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.method+"_"+tc.path, func(t *testing.T) {
+			var req *http.Request
+			var err error
+
+			if tc.body != "" {
+				req, err = http.NewRequest(tc.method, tc.path, bytes.NewBufferString(tc.body))
+				req.Header.Set("Content-Type", "application/json")
+			} else {
+				req, err = http.NewRequest(tc.method, tc.path, nil)
+			}
+			require.NoError(t, err)
+
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			assert.Equal(t, http.StatusForbidden, w.Code)
+
+			var response map[string]string
+			err = json.Unmarshal(w.Body.Bytes(), &response)
+			require.NoError(t, err)
+			assert.Equal(t, "Global admin access required", response["error"])
+		})
+	}
+}

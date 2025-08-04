@@ -228,9 +228,64 @@ func GetReq(apiVersion string) (map[string]interface{}, error) {
 	return host, nil
 }
 
+// GetHosts retrieves hosts from the API
+func GetHosts(apiVersion string, hostName string) []Host {
+	var url string
+	if hostName != "" {
+		url = ClientConf.URL + "/api/v" + apiVersion + "/hosts/" + hostName
+	} else {
+		url = ClientConf.URL + "/api/v" + apiVersion + "/hosts"
+	}
+
+	req, err := http.NewRequest("GET", url, nil)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to create GET request")
+		return nil
+	}
+
+	// Add auth header if token is available
+	if AuthConfig.Token != "" {
+		req.Header.Set("Authorization", "Bearer "+AuthConfig.Token)
+	}
+
+	client := ClientConf.hc()
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to send GET request")
+		return nil
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		body, _ := io.ReadAll(resp.Body)
+		log.Error().Int("status", resp.StatusCode).Str("body", string(body)).Msg("HTTP error")
+		return nil
+	}
+
+	var hosts []Host
+	if hostName != "" {
+		// Single host response
+		var host Host
+		if err := json.NewDecoder(resp.Body).Decode(&host); err != nil {
+			log.Error().Err(err).Msg("Failed to decode single host response")
+			return nil
+		}
+		hosts = []Host{host}
+	} else {
+		// Multiple hosts response
+		if err := json.NewDecoder(resp.Body).Decode(&hosts); err != nil {
+			log.Error().Err(err).Msg("Failed to decode hosts response")
+			return nil
+		}
+	}
+
+	return hosts
+}
+
 // ---- Begin shims for test injection ----
 // These function vars are used for unit tests. Production code uses the original implementations below.
 var (
+	syncConfigFn           = SyncConfig
 	getReqFn               = GetReq
 	getInstalledComponents = common.GetInstalledComponents
 	netInterfacesFn        = net.Interfaces

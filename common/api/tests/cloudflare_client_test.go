@@ -255,3 +255,166 @@ func TestClient_ConfigurationVariations(t *testing.T) {
 		})
 	}
 }
+
+// Test DNS record structure and validation
+func TestDNSRecord_Structure(t *testing.T) {
+	// Test that we can create DNS records with various configurations
+	testCases := []struct {
+		name   string
+		record cloudflare.DNSRecord
+	}{
+		{
+			name: "A Record",
+			record: cloudflare.DNSRecord{
+				Type:    "A",
+				Name:    "test.example.com",
+				Content: "192.168.1.1",
+				TTL:     300,
+			},
+		},
+		{
+			name: "CNAME Record",
+			record: cloudflare.DNSRecord{
+				Type:    "CNAME",
+				Name:    "www.example.com",
+				Content: "example.com",
+				TTL:     3600,
+			},
+		},
+		{
+			name: "MX Record",
+			record: cloudflare.DNSRecord{
+				Type:     "MX",
+				Name:     "example.com",
+				Content:  "mail.example.com",
+				TTL:      3600,
+				Priority: &[]uint16{10}[0],
+			},
+		},
+		{
+			name: "TXT Record",
+			record: cloudflare.DNSRecord{
+				Type:    "TXT",
+				Name:    "example.com",
+				Content: "v=spf1 include:_spf.google.com ~all",
+				TTL:     300,
+			},
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			// Verify record structure
+			assert.NotEmpty(t, tc.record.Type)
+			assert.NotEmpty(t, tc.record.Name)
+			assert.NotEmpty(t, tc.record.Content)
+			assert.Greater(t, tc.record.TTL, 0)
+		})
+	}
+}
+
+// Test client method signatures and error handling
+func TestClient_MethodSignatures(t *testing.T) {
+	// Create a client that will fail API calls but has valid structure
+	config := models.CloudflareConfig{
+		Enabled:   true,
+		APIToken:  "invalid-token-for-testing",
+		Timeout:   1, // Short timeout to fail quickly
+		VerifySSL: true,
+	}
+
+	client, err := cloudflare.NewClient(config)
+	assert.NoError(t, err)
+	assert.NotNil(t, client)
+
+	// Test method signatures by calling them (they will fail but we test the interface)
+	t.Run("GetZones", func(t *testing.T) {
+		zones, err := client.GetZones()
+		assert.Error(t, err) // Expected to fail with invalid token
+		assert.Nil(t, zones)
+		assert.Contains(t, err.Error(), "failed to list zones")
+	})
+
+	t.Run("GetZone", func(t *testing.T) {
+		zone, err := client.GetZone("invalid-zone-id")
+		assert.Error(t, err) // Expected to fail
+		assert.Nil(t, zone)
+		assert.Contains(t, err.Error(), "failed to get zone details")
+	})
+
+	t.Run("GetZoneByName", func(t *testing.T) {
+		zone, err := client.GetZoneByName("nonexistent.example.com")
+		assert.Error(t, err) // Expected to fail
+		assert.Nil(t, zone)
+		assert.Contains(t, err.Error(), "not found")
+	})
+
+	t.Run("VerifyZone", func(t *testing.T) {
+		err := client.VerifyZone("invalid-zone-id")
+		assert.Error(t, err) // Expected to fail
+	})
+
+	t.Run("TestConnection", func(t *testing.T) {
+		err := client.TestConnection()
+		assert.Error(t, err) // Expected to fail with invalid token
+		assert.Contains(t, err.Error(), "failed to verify Cloudflare API connection")
+	})
+}
+
+// Test DNS operations method signatures
+func TestClient_DNSOperations(t *testing.T) {
+	config := models.CloudflareConfig{
+		Enabled:   true,
+		APIToken:  "invalid-token-for-testing",
+		Timeout:   1, // Short timeout
+		VerifySSL: true,
+	}
+
+	client, err := cloudflare.NewClient(config)
+	assert.NoError(t, err)
+	assert.NotNil(t, client)
+
+	testZoneID := "invalid-zone-id"
+	testRecordID := "invalid-record-id"
+
+	t.Run("GetDNSRecords", func(t *testing.T) {
+		records, err := client.GetDNSRecords(testZoneID)
+		assert.Error(t, err) // Expected to fail
+		assert.Nil(t, records)
+		assert.Contains(t, err.Error(), "failed to list DNS records")
+	})
+
+	t.Run("CreateDNSRecord", func(t *testing.T) {
+		record := cloudflare.DNSRecord{
+			Type:    "A",
+			Name:    "test.example.com",
+			Content: "192.168.1.1",
+			TTL:     300,
+		}
+
+		createdRecord, err := client.CreateDNSRecord(testZoneID, record)
+		assert.Error(t, err) // Expected to fail
+		assert.Nil(t, createdRecord)
+		assert.Contains(t, err.Error(), "failed to create DNS record")
+	})
+
+	t.Run("UpdateDNSRecord", func(t *testing.T) {
+		record := cloudflare.DNSRecord{
+			Type:    "A",
+			Name:    "test.example.com",
+			Content: "192.168.1.2",
+			TTL:     600,
+		}
+
+		updatedRecord, err := client.UpdateDNSRecord(testZoneID, testRecordID, record)
+		assert.Error(t, err) // Expected to fail
+		assert.Nil(t, updatedRecord)
+		assert.Contains(t, err.Error(), "failed to update DNS record")
+	})
+
+	t.Run("DeleteDNSRecord", func(t *testing.T) {
+		err := client.DeleteDNSRecord(testZoneID, testRecordID)
+		assert.Error(t, err) // Expected to fail
+		assert.Contains(t, err.Error(), "failed to delete DNS record")
+	})
+}
