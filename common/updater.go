@@ -404,7 +404,11 @@ func DownloadAndExtract(url string) {
 	os.Rename(MonokitPath, MonokitPath+".bak")
 
 	// Move monokit binary to the correct path
-	os.Rename(TmpDir+"monokit", MonokitPath)
+	err = os.Rename(TmpDir+"monokit", MonokitPath)
+	if err != nil {
+		log.Error().Err(err).Msg("Couldn't move monokit binary, using backup instead")
+		os.Rename(MonokitPath+".bak", MonokitPath)
+	}
 	os.Chmod(MonokitPath, 0755)
 }
 
@@ -443,6 +447,8 @@ func Update(specificVersion string, force bool, updatePlugins bool, specificPlug
 			}
 		}
 	}
+
+	log.Debug().Str("url", url).Str("version", version).Msg("Update URL and version")
 
 	if url == "" {
 		fmt.Println("No release found for your OS and architecture")
