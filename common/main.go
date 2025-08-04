@@ -75,6 +75,10 @@ func ConvertBytes(bytes uint64) string {
 		return "0 B"
 	}
 
+	// Clamp bytes to math.MaxInt64 before converting to float64 to avoid incorrect conversion
+	if bytes > uint64(math.MaxInt64) {
+		bytes = uint64(math.MaxInt64)
+	}
 	// Convert to float64 to preserve decimal precision
 	floatBytes := float64(bytes)
 	var i int
