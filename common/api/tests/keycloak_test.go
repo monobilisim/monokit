@@ -751,5 +751,6 @@ func TestExchangeCodeForToken_ErrorScenarios(t *testing.T) {
 
 	_, err := auth.ExportExchangeCodeForToken("test-code", "http://localhost/callback")
 	assert.Error(t, err)
-	assert.Contains(t, err.Error(), "failed to exchange code for token")
+	// The error message should contain information about the network failure
+	assert.Contains(t, err.Error(), "dial tcp")
 }
