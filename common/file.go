@@ -1,6 +1,8 @@
 package common
 
 import (
+	"fmt"
+	"io"
 	"os"
 	"os/user"
 	"strconv"
@@ -28,11 +30,57 @@ func IsOlderThan(filePath string, minutes int) bool {
 	return duration > time.Duration(minutes)*time.Minute
 }
 
-func MoveFile(src, dst string) {
+func moveFileManual(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return fmt.Errorf("couldn't open source file: %s", err)
+	}
+
+	out, err := os.Create(dst)
+	if err != nil {
+		in.Close()
+		return fmt.Errorf("couldn't open dest file: %s", err)
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, in)
+	in.Close()
+	if err != nil {
+		return fmt.Errorf("writing to output file failed: %s", err)
+	}
+
+	err = out.Sync()
+	if err != nil {
+		return fmt.Errorf("sync error: %s", err)
+	}
+
+	si, err := os.Stat(src)
+	if err != nil {
+		return fmt.Errorf("stat error: %s", err)
+	}
+	err = os.Chmod(dst, si.Mode())
+	if err != nil {
+		return fmt.Errorf("chmod error: %s", err)
+	}
+
+	err = os.Remove(src)
+	if err != nil {
+		return fmt.Errorf("failed removing original file: %s", err)
+	}
+	return nil
+}
+
+func MoveFile(src, dst string) error {
 	err := os.Rename(src, dst)
 	if err != nil {
-		log.Error().Str("src", src).Str("dst", dst).Err(err).Msg("Error moving file")
+		log.Debug().Str("src", src).Str("dst", dst).Err(err).Msg("Error renaming file, possibly cross-device link. Using moveFileManual instead")
+		err = moveFileManual(src, dst)
+		if err != nil {
+			log.Error().Str("src", src).Str("dst", dst).Err(err).Msg("Error moving file")
+			return err
+		}
 	}
+	return nil
 }
 
 func ChangeOwnership(filePath, ownerGroup string) {

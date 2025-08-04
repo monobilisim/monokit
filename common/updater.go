@@ -401,13 +401,13 @@ func DownloadAndExtract(url string) {
 		}
 	}
 
-	os.Rename(MonokitPath, MonokitPath+".bak")
+	MoveFile(MonokitPath, MonokitPath+".bak")
 
 	// Move monokit binary to the correct path
-	err = os.Rename(TmpDir+"monokit", MonokitPath)
+	err = MoveFile(TmpDir+"monokit", MonokitPath)
 	if err != nil {
 		log.Error().Err(err).Msg("Couldn't move monokit binary, using backup instead")
-		os.Rename(MonokitPath+".bak", MonokitPath)
+		MoveFile(MonokitPath+".bak", MonokitPath)
 	}
 	os.Chmod(MonokitPath, 0755)
 }
