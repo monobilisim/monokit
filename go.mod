@@ -8,6 +8,7 @@ require (
 	github.com/MicahParks/keyfunc v1.9.0
 	github.com/charmbracelet/bubbletea v1.3.3
 	github.com/charmbracelet/lipgloss v1.0.0
+	github.com/cloudflare/cloudflare-go v0.115.0
 	github.com/coreos/go-systemd/v22 v22.5.0
 	github.com/docker/docker v27.3.1+incompatible
 	github.com/gin-gonic/gin v1.10.0
@@ -17,6 +18,7 @@ require (
 	github.com/hashicorp/go-hclog v1.5.0
 	github.com/itchyny/gojq v0.12.17
 	github.com/lib/pq v1.10.9
+	github.com/mattn/go-sqlite3 v1.14.22
 	github.com/michaelklishin/rabbit-hole/v2 v2.16.0
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/rs/zerolog v1.34.0
@@ -45,7 +47,6 @@ require (
 	github.com/bytedance/sonic/loader v0.1.1 // indirect
 	github.com/charmbracelet/x/ansi v0.8.0 // indirect
 	github.com/charmbracelet/x/term v0.2.1 // indirect
-	github.com/cloudflare/cloudflare-go v0.115.0 // indirect
 	github.com/cloudwego/base64x v0.1.4 // indirect
 	github.com/cloudwego/iasm v0.2.0 // indirect
 	github.com/containerd/log v0.1.0 // indirect
@@ -97,7 +98,6 @@ require (
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-localereader v0.0.1 // indirect
 	github.com/mattn/go-runewidth v0.0.16 // indirect
-	github.com/mattn/go-sqlite3 v1.14.22 // indirect
 	github.com/mitchellh/go-testing-interface v1.14.1 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
