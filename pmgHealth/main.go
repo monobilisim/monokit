@@ -572,9 +572,9 @@ func CheckPmgHealth(skipOutput bool) *PmgHealthData {
 	data.QueueStatus.Limit = queueLimit
 	data.QueueStatus.IsHealthy = queueHealthy
 
-	// Check cluster sync status - only run at 00:00 (midnight)
+	// Check cluster sync status - only run at 00:00 (midnight) or when test env var is set
 	now := time.Now()
-	if now.Hour() == 0 && now.Minute() == 0 {
+	if (now.Hour() == 0 && now.Minute() == 0) || os.Getenv("MONOKIT_PMG_HEALTH_TEST_CLUSTER_SYNC") == "1" {
 		syncHealthy, syncStatus := CheckPmgcmSyncDaily(skipOutput)
 		data.ClusterSyncStatus.IsMaster = syncHealthy && syncStatus == "pmgcm sync successful"
 		data.ClusterSyncStatus.SyncHealthy = syncHealthy

@@ -2,8 +2,10 @@ package pmgHealth
 
 import (
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/monobilisim/monokit/common"
 )
@@ -51,7 +53,8 @@ func (data *PmgHealthData) RenderCompact() string {
 	sb.WriteString(common.SectionTitle("Cluster Sync"))
 	sb.WriteString("\n")
 
-	if data.ClusterSyncStatus.IsMaster {
+	now := time.Now()
+	if data.ClusterSyncStatus.IsMaster && ((now.Hour() == 0 && now.Minute() == 0) || os.Getenv("MONOKIT_PMG_HEALTH_TEST_CLUSTER_SYNC") == "1") {
 		sb.WriteString(common.SimpleStatusListItem(
 			"Node Role",
 			"master",
