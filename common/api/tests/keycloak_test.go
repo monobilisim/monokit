@@ -607,3 +607,149 @@ func TestSyncKeycloakUser_NoUsername(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, "email-only@example.com", user.Username) // Should use email as username
 }
+
+// Test the contains helper function
+func TestContains(t *testing.T) {
+	arr := []string{"admin", "user", "global_admin"}
+
+	assert.True(t, auth.ExportContains(arr, "admin"))
+	assert.True(t, auth.ExportContains(arr, "user"))
+	assert.True(t, auth.ExportContains(arr, "global_admin"))
+	assert.False(t, auth.ExportContains(arr, "nonexistent"))
+	assert.False(t, auth.ExportContains([]string{}, "admin"))
+	assert.False(t, auth.ExportContains(nil, "admin"))
+}
+
+// Test JWKS initialization error handling
+func TestInitJWKS_ErrorHandling(t *testing.T) {
+	// Save original config
+	originalConfig := models.ServerConfig.Keycloak
+	defer func() { models.ServerConfig.Keycloak = originalConfig }()
+
+	// Set invalid JWKS URL to trigger error
+	models.ServerConfig.Keycloak = models.KeycloakConfig{
+		Enabled: true,
+		URL:     "http://invalid-keycloak-url-that-does-not-exist",
+		Realm:   "test-realm",
+	}
+
+	// This should not panic even with invalid URL
+	// The initJWKS function should handle errors gracefully
+	assert.NotPanics(t, func() {
+		// We can't directly call initJWKS as it's private, but we can test
+		// the setup routes which calls it
+		gin.SetMode(gin.TestMode)
+		r := gin.New()
+		db := SetupTestDB(t)
+		defer CleanupTestDB(db)
+
+		// This should not panic even with invalid JWKS URL
+		auth.SetupKeycloakRoutes(r, db)
+	})
+}
+
+// Test KeyFunc export function
+func TestExportKeyFunc(t *testing.T) {
+	// Test with nil JWKS
+	auth.SetTestJWKS(nil)
+
+	token := &jwt.Token{}
+	_, err := auth.ExportKeyFunc(token)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "JWKS is not initialized")
+
+	// Test with valid JWKS
+	setupMockJWKS(t)
+
+	// Create a token with the correct key ID
+	token = jwt.NewWithClaims(jwt.SigningMethodRS256, jwt.MapClaims{})
+	token.Header["kid"] = "test-key-id"
+
+	key, err := auth.ExportKeyFunc(token)
+	assert.NoError(t, err)
+	assert.NotNil(t, key)
+}
+
+// Test createOrGetDefaultAdminUser function
+func TestCreateOrGetDefaultAdminUser(t *testing.T) {
+	db := SetupTestDB(t)
+	defer CleanupTestDB(db)
+
+	// Test creating default admin user when none exists
+	user, err := auth.ExportCreateOrGetDefaultAdminUser(db)
+	assert.NoError(t, err)
+	assert.Equal(t, "admin", user.Username)
+	assert.Equal(t, "admin", user.Role)
+	assert.Equal(t, "local", user.AuthMethod)
+
+	// Test getting existing admin user
+	user2, err := auth.ExportCreateOrGetDefaultAdminUser(db)
+	assert.NoError(t, err)
+	assert.Equal(t, user.ID, user2.ID) // Should be the same user
+	assert.Equal(t, "admin", user2.Username)
+}
+
+// Test Keycloak middleware with malformed tokens
+func TestKeycloakAuthMiddleware_MalformedToken(t *testing.T) {
+	db := SetupTestDB(t)
+	defer CleanupTestDB(db)
+	setupKeycloakConfig()
+
+	// Test with malformed token (not a JWT)
+	c, _ := CreateRequestContext("GET", "/test", nil)
+	c.Request.Header.Set("Authorization", "Bearer not-a-jwt-token")
+
+	middleware := auth.ExportKeycloakAuthMiddleware(db)
+	middleware(c)
+
+	// Should proceed without setting user (falls back to regular auth)
+	_, exists := c.Get("user")
+	assert.False(t, exists)
+
+	// Test with empty bearer token
+	c, _ = CreateRequestContext("GET", "/test", nil)
+	c.Request.Header.Set("Authorization", "Bearer ")
+
+	middleware(c)
+	_, exists = c.Get("user")
+	assert.False(t, exists)
+
+	// Test with invalid authorization header format
+	c, _ = CreateRequestContext("GET", "/test", nil)
+	c.Request.Header.Set("Authorization", "InvalidFormat token")
+
+	middleware(c)
+	_, exists = c.Get("user")
+	assert.False(t, exists)
+}
+
+// Test SyncKeycloakUser with database errors
+func TestSyncKeycloakUser_DatabaseError(t *testing.T) {
+	db := SetupTestDB(t)
+	CleanupTestDB(db) // Close the database to trigger errors
+
+	claims := &auth.KeycloakClaims{
+		PreferredUsername: "test-user",
+		Email:             "test@example.com",
+		RealmAccess: map[string]interface{}{
+			"roles": []interface{}{"user"},
+		},
+	}
+
+	_, err := auth.ExportSyncKeycloakUser(db, claims)
+	assert.Error(t, err) // Should fail due to closed database
+}
+
+// Test exchangeCodeForToken error scenarios
+func TestExchangeCodeForToken_ErrorScenarios(t *testing.T) {
+	setupKeycloakConfig()
+
+	// Test with invalid URL (will cause network error)
+	originalURL := models.ServerConfig.Keycloak.URL
+	models.ServerConfig.Keycloak.URL = "http://invalid-keycloak-server-that-does-not-exist"
+	defer func() { models.ServerConfig.Keycloak.URL = originalURL }()
+
+	_, err := auth.ExportExchangeCodeForToken("test-code", "http://localhost/callback")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "failed to exchange code for token")
+}
