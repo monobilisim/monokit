@@ -169,6 +169,83 @@ func (data *PmgHealthData) RenderCompact() string {
 		sb.WriteString("\n")
 	}
 
+	// Blacklist status - if enabled
+	if data.BlacklistStatus.Enabled {
+		sb.WriteString("\n")
+		sb.WriteString(common.SectionTitle("Blacklist Status"))
+		sb.WriteString("\n")
+
+		if data.BlacklistStatus.CheckStatus {
+			// Show overall blacklist status
+			blacklistStatusText := "clean"
+			if data.BlacklistStatus.ListedCount > 0 {
+				blacklistStatusText = fmt.Sprintf("listed on %d list(s)", data.BlacklistStatus.ListedCount)
+			}
+
+			// Build status details with ignored count if applicable
+			statusDetails := fmt.Sprintf("off %d lists", data.BlacklistStatus.TotalLists)
+			if data.BlacklistStatus.IgnoredCount > 0 {
+				statusDetails += fmt.Sprintf(", %d ignored", data.BlacklistStatus.IgnoredCount)
+			}
+
+			sb.WriteString(common.StatusListItem(
+				"IP Address",
+				blacklistStatusText,
+				data.BlacklistStatus.IPAddress,
+				statusDetails,
+				data.BlacklistStatus.IsHealthy))
+			sb.WriteString("\n")
+
+			// Show individual blacklist results if any are listed
+			if data.BlacklistStatus.ListedCount > 0 {
+				listedBlacklists := make([]string, 0, data.BlacklistStatus.ListedCount)
+				for _, bl := range data.BlacklistStatus.Blacklists {
+					if bl.Listed {
+						listedBlacklists = append(listedBlacklists, bl.Name)
+					}
+				}
+				if len(listedBlacklists) > 0 {
+					sb.WriteString(common.SimpleStatusListItem(
+						"Listed On",
+						strings.Join(listedBlacklists, ", "),
+						false))
+					sb.WriteString("\n")
+				}
+			}
+
+			// Show last checked time and cache status
+			lastCheckedText := data.BlacklistStatus.LastChecked
+			if data.BlacklistStatus.FromCache {
+				lastCheckedText += " (cached)"
+			}
+			sb.WriteString(common.SimpleStatusListItem(
+				"Last Checked",
+				lastCheckedText,
+				true))
+			sb.WriteString("\n")
+
+			// Show next check time if available
+			if data.BlacklistStatus.NextCheck != "" {
+				sb.WriteString(common.SimpleStatusListItem(
+					"Next Check",
+					data.BlacklistStatus.NextCheck,
+					true))
+				sb.WriteString("\n")
+			}
+		} else {
+			// Show error status
+			errorMsg := "check failed"
+			if data.BlacklistStatus.CheckError != "" {
+				errorMsg = data.BlacklistStatus.CheckError
+			}
+			sb.WriteString(common.SimpleStatusListItem(
+				"Blacklist Check",
+				errorMsg,
+				false))
+			sb.WriteString("\n")
+		}
+	}
+
 	// Version status - if available
 	if data.VersionStatus.CurrentVersion != "unknown" {
 		sb.WriteString("\n")

@@ -655,6 +655,9 @@ func CheckPmgHealth(skipOutput bool) *PmgHealthData {
 	data.VersionStatus.LatestVersion = "unknown"
 	data.VersionStatus.IsUpToDate = true
 
+	// Check blacklist status if enabled
+	data.BlacklistStatus = CheckBlacklistStatus(skipOutput)
+
 	// Determine overall health
 	for _, serviceStatus := range data.Services {
 		if !serviceStatus {
@@ -668,6 +671,10 @@ func CheckPmgHealth(skipOutput bool) *PmgHealthData {
 	}
 
 	if !data.QueueStatus.IsHealthy {
+		data.IsHealthy = false
+	}
+
+	if data.BlacklistStatus.Enabled && !data.BlacklistStatus.IsHealthy {
 		data.IsHealthy = false
 	}
 

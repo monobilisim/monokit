@@ -1,5 +1,11 @@
 pmg:
   queue_limit: 50
+  blacklist_check:
+    enabled: false
+    ip: ""  # Leave empty to auto-detect external IP
+    ignorelist:  # List of blacklist names to ignore
+      - "TIMEOUT"
+      - "Example Blacklist"
 
 postal:
   message_threshold: 100

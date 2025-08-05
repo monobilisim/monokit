@@ -46,6 +46,29 @@ type ClusterSyncStatus struct {
 	Status      string `json:"status"`
 }
 
+// BlacklistEntry represents a single blacklist check result
+type BlacklistEntry struct {
+	Name       string `json:"name"`
+	Listed     bool   `json:"listed"`
+	CheckError string `json:"check_error,omitempty"`
+}
+
+// BlacklistStatus represents the overall blacklist check status
+type BlacklistStatus struct {
+	Enabled      bool             `json:"enabled"`
+	IPAddress    string           `json:"ip_address"`
+	CheckStatus  bool             `json:"check_status"` // True if check was performed successfully
+	TotalLists   int              `json:"total_lists"`
+	ListedCount  int              `json:"listed_count"`
+	IgnoredCount int              `json:"ignored_count"` // Number of blacklists ignored
+	IsHealthy    bool             `json:"is_healthy"`    // True if not listed on any blacklists
+	Blacklists   []BlacklistEntry `json:"blacklists"`
+	LastChecked  string           `json:"last_checked"`
+	NextCheck    string           `json:"next_check"` // When the next check will run
+	FromCache    bool             `json:"from_cache"` // True if data is from cache
+	CheckError   string           `json:"check_error,omitempty"`
+}
+
 // PmgHealthData represents the overall PMG health status
 type PmgHealthData struct {
 	IsHealthy         bool              `json:"is_healthy"`
@@ -56,6 +79,7 @@ type PmgHealthData struct {
 	MailStats         MailStatistics    `json:"mail_stats"`
 	VersionStatus     VersionStatus     `json:"version_status"`
 	ClusterSyncStatus ClusterSyncStatus `json:"cluster_sync_status"`
+	BlacklistStatus   BlacklistStatus   `json:"blacklist_status"`
 }
 
 // PmgMailStatistics represents the PMG mail statistics API response

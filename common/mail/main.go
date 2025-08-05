@@ -32,11 +32,16 @@ type Zimbra struct {
 type Pmg struct {
 	Queue_Limit      int
 	Email_monitoring struct {
-		Enabled          bool `default:false`
+		Enabled          bool `default:"false"`
 		Threshold_factor struct {
 			Daily  float64
 			Hourly float64
 		}
+	}
+	Blacklist_check struct {
+		Enabled    bool     `default:"false"`
+		IP         string   // IP address to check, if empty will auto-detect
+		Ignorelist []string // List of blacklist names to ignore
 	}
 }
 
