@@ -9,10 +9,11 @@ type ZimbraHealthData struct {
 	ZPush          ZPushInfo
 	QueuedMessages QueuedMessagesInfo
 	SSLCert        SSLCertInfo
-	HostsFile      HostsFileInfo   // /etc/hosts file monitoring
-	WebhookTail    WebhookTailInfo // Placeholder for potential future UI integration
-	LoginTest      LoginTestInfo   // Login test results
-	CBPolicyd      CBPolicydInfo   // CBPolicyd service and database checks
+	HostsFile      HostsFileInfo     // /etc/hosts file monitoring
+	WebhookTail    WebhookTailInfo   // Placeholder for potential future UI integration
+	LoginTest      LoginTestInfo     // Login test results
+	EmailSendTest  EmailSendTestInfo // Email send test results
+	CBPolicyd      CBPolicydInfo     // CBPolicyd service and database checks
 }
 
 // DatabaseConfig holds parsed database configuration
@@ -118,6 +119,21 @@ type LoginTestInfo struct {
 	LastMailDate    string // Date of the last received mail (if any)
 	CheckStatus     bool   // True if the check could be performed successfully
 	Message         string // Any error or status message
+}
+
+// EmailSendTestInfo holds information about the email send test results.
+type EmailSendTestInfo struct {
+	Enabled     bool   // True if email send test is enabled in config
+	FromEmail   string // From email address used for testing (for display purposes)
+	ToEmail     string // To email address used for testing (for display purposes)
+	SMTPServer  string // SMTP server used for testing (for display purposes)
+	SMTPPort    int    // SMTP port used for testing (for display purposes)
+	UseTLS      bool   // True if TLS is used for SMTP connection
+	Subject     string // Email subject used for testing
+	SendSuccess bool   // True if email was sent successfully
+	CheckStatus bool   // True if the check could be performed successfully
+	Message     string // Any error or status message
+	SentAt      string // Timestamp when email was sent (if successful)
 }
 
 // CBPolicydInfo holds information about CBPolicyd service and database connectivity.

@@ -25,6 +25,7 @@ import (
 	ver "github.com/monobilisim/monokit/common/versionCheck"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
+	"gopkg.in/gomail.v2"
 )
 
 // DetectZimbra checks for the presence of Zimbra installation directories.
@@ -130,6 +131,9 @@ func collectHealthData() *ZimbraHealthData {
 
 	// Login Test Check (only if enabled and credentials configured)
 	healthData.LoginTest = CheckLoginTest()
+
+	// Email Send Test Check (only if enabled and configured)
+	healthData.EmailSendTest = CheckEmailSendTest()
 
 	// CBPolicyd Check (service and database connectivity)
 	healthData.CBPolicyd = CheckCBPolicyd()
@@ -1239,6 +1243,142 @@ func CheckLoginTest() LoginTestInfo {
 
 	// Send success alarm
 	common.AlarmCheckUp("zimbra_login_test", "Zimbra login test successful for "+info.Username, false)
+
+	return info
+}
+
+// CheckEmailSendTest performs an email send test using the configured SMTP settings
+func CheckEmailSendTest() EmailSendTestInfo {
+	info := EmailSendTestInfo{
+		Enabled:     MailHealthConfig.Zimbra.Email_send_test.Enabled,
+		FromEmail:   MailHealthConfig.Zimbra.Email_send_test.From_email,
+		ToEmail:     MailHealthConfig.Zimbra.Email_send_test.To_email,
+		SMTPServer:  MailHealthConfig.Zimbra.Email_send_test.Smtp_server,
+		SMTPPort:    MailHealthConfig.Zimbra.Email_send_test.Smtp_port,
+		UseTLS:      MailHealthConfig.Zimbra.Email_send_test.Use_tls,
+		Subject:     MailHealthConfig.Zimbra.Email_send_test.Subject,
+		CheckStatus: false, // Default to check failed
+	}
+
+	// Skip if not enabled or not properly configured
+	if !info.Enabled {
+		info.Message = "Email send test is disabled in configuration"
+		log.Debug().Str("message", info.Message).Msg("Skipping email send test")
+		return info
+	}
+
+	if info.ToEmail == "" || info.SMTPServer == "" {
+		info.Message = "Email send test not properly configured (missing to_email or smtp_server)"
+		log.Debug().Str("message", info.Message).Msg("Skipping email send test")
+		return info
+	}
+
+	// Use login test credentials for SMTP authentication
+	if !MailHealthConfig.Zimbra.Login_test.Enabled || MailHealthConfig.Zimbra.Login_test.Username == "" || MailHealthConfig.Zimbra.Login_test.Password == "" {
+		info.Message = "Email send test requires login test credentials to be configured for SMTP authentication"
+		log.Debug().Str("message", info.Message).Msg("Skipping email send test")
+		return info
+	}
+
+	// Use login test username as from_email if not explicitly configured
+	if info.FromEmail == "" {
+		info.FromEmail = MailHealthConfig.Zimbra.Login_test.Username
+		log.Debug().Str("from_email", info.FromEmail).Msg("Using login test username as from_email")
+	}
+
+	// Set default port if not specified
+	if info.SMTPPort == 0 {
+		if info.UseTLS {
+			info.SMTPPort = 587 // Default TLS port
+		} else {
+			info.SMTPPort = 25 // Default non-TLS port
+		}
+	}
+
+	// Set default subject if not specified
+	if info.Subject == "" {
+		info.Subject = "Zimbra Health Check Test Email"
+	}
+
+	log.Debug().
+		Str("from_email", info.FromEmail).
+		Str("to_email", info.ToEmail).
+		Str("smtp_server", info.SMTPServer).
+		Int("smtp_port", info.SMTPPort).
+		Bool("use_tls", info.UseTLS).
+		Msg("Starting Zimbra email send test")
+
+	// Create the email message
+	m := gomail.NewMessage()
+	m.SetHeader("From", info.FromEmail)
+	m.SetHeader("To", info.ToEmail)
+	m.SetHeader("Subject", info.Subject)
+
+	// Create email body with timestamp and test information
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
+	hostname, _ := os.Hostname()
+	body := fmt.Sprintf(`This is a test email sent by Zimbra Health Check.
+
+Test Details:
+- Sent at: %s
+- From server: %s
+- SMTP Server: %s:%d
+- TLS Enabled: %t
+
+If you receive this email, the Zimbra email sending functionality is working correctly.
+
+This is an automated test message - no action is required.`,
+		timestamp, hostname, info.SMTPServer, info.SMTPPort, info.UseTLS)
+
+	m.SetBody("text/plain", body)
+
+	// Create SMTP dialer with authentication using login test credentials
+	d := gomail.NewDialer(info.SMTPServer, info.SMTPPort, MailHealthConfig.Zimbra.Login_test.Username, MailHealthConfig.Zimbra.Login_test.Password)
+
+	// Configure TLS settings
+	if info.UseTLS {
+		d.TLSConfig = &tls.Config{
+			ServerName:         info.SMTPServer,
+			InsecureSkipVerify: false, // Use proper TLS verification for email
+		}
+	} else {
+		// For non-TLS connections, we might still want to use STARTTLS if available
+		d.TLSConfig = &tls.Config{
+			ServerName:         info.SMTPServer,
+			InsecureSkipVerify: true, // More lenient for internal servers
+		}
+	}
+
+	// Note: gomail.Dialer doesn't have a Timeout field, but it uses reasonable defaults
+
+	// Attempt to send the email
+	if err := d.DialAndSend(m); err != nil {
+		info.Message = "Failed to send test email: " + err.Error()
+		log.Error().
+			Str("from_email", info.FromEmail).
+			Str("to_email", info.ToEmail).
+			Str("smtp_server", info.SMTPServer).
+			Int("smtp_port", info.SMTPPort).
+			Err(err).
+			Msg("Zimbra email send test failed")
+		common.AlarmCheckDown("zimbra_email_send_test", "Zimbra email send test failed: "+err.Error(), true, "", "")
+		return info
+	}
+
+	// Email sent successfully
+	info.SendSuccess = true
+	info.CheckStatus = true
+	info.SentAt = timestamp
+	info.Message = "Test email sent successfully"
+
+	log.Debug().
+		Str("from_email", info.FromEmail).
+		Str("to_email", info.ToEmail).
+		Str("sent_at", info.SentAt).
+		Msg("Zimbra email send test successful")
+
+	// Send success alarm
+	common.AlarmCheckUp("zimbra_email_send_test", "Zimbra email send test successful - email sent from "+info.FromEmail+" to "+info.ToEmail, false)
 
 	return info
 }

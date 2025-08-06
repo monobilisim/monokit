@@ -252,6 +252,49 @@ func (h *ZimbraHealthData) RenderAll() string {
 		sb.WriteString("\n")
 	}
 
+	// Email Send Test Section (only if enabled)
+	if h.EmailSendTest.Enabled {
+		sb.WriteString("\n")
+		sb.WriteString(common.SectionTitle("Email Send Test"))
+		sb.WriteString("\n")
+		if h.EmailSendTest.CheckStatus {
+			expectedState := "Failed"
+			if h.EmailSendTest.SendSuccess {
+				expectedState = "Successful"
+			}
+			sb.WriteString(common.SimpleStatusListItem(
+				fmt.Sprintf("Send (%s → %s)", h.EmailSendTest.FromEmail, h.EmailSendTest.ToEmail),
+				expectedState,
+				h.EmailSendTest.SendSuccess, // Success = email sent successfully (green)
+			))
+			sb.WriteString("\n")
+
+			// Show SMTP server info
+			smtpInfo := fmt.Sprintf("%s:%d", h.EmailSendTest.SMTPServer, h.EmailSendTest.SMTPPort)
+			if h.EmailSendTest.UseTLS {
+				smtpInfo += " (TLS)"
+			}
+			sb.WriteString(common.SimpleStatusListItem(
+				"SMTP Server",
+				smtpInfo,
+				true, // Always green for display info
+			))
+
+			// Show sent timestamp if available
+			if h.EmailSendTest.SentAt != "" {
+				sb.WriteString(fmt.Sprintf("  └─ Sent at: %s\n", h.EmailSendTest.SentAt))
+			}
+		} else {
+			sb.WriteString(common.SimpleStatusListItem(
+				fmt.Sprintf("Send (%s → %s)", h.EmailSendTest.FromEmail, h.EmailSendTest.ToEmail),
+				"Check Failed",
+				false,
+			))
+			sb.WriteString(fmt.Sprintf("  └─ Error: %s\n", h.EmailSendTest.Message))
+		}
+		sb.WriteString("\n")
+	}
+
 	// CBPolicyd Section
 	sb.WriteString("\n")
 	sb.WriteString(common.SectionTitle("CBPolicyd Status"))

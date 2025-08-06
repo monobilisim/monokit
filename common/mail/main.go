@@ -27,6 +27,15 @@ type Zimbra struct {
 		Username string
 		Password string
 	}
+	Email_send_test struct {
+		Enabled     bool
+		From_email  string
+		To_email    string
+		Smtp_server string
+		Smtp_port   int
+		Use_tls     bool
+		Subject     string
+	}
 }
 
 type Pmg struct {
