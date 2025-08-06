@@ -16,7 +16,6 @@ import (
 
 	// Database drivers
 	_ "github.com/go-sql-driver/mysql"
-	_ "github.com/mattn/go-sqlite3"
 )
 
 // CheckCBPolicyd performs comprehensive checks for cbpolicyd service and database connectivity
@@ -245,21 +244,11 @@ func testDatabaseConnection(config *DatabaseConfig) bool {
 		return true
 
 	case "sqlite":
-		// Test SQLite database
-		db, err = sql.Open("sqlite3", config.Database)
-		if err != nil {
-			log.Error().Err(err).Str("database", config.Database).Msg("Failed to open SQLite connection for cbpolicyd")
-			return false
-		}
-		defer db.Close()
+		// Send alarm for SQLite usage
+		log.Warn().Msg("cbpolicyd is using SQLite database which is not recommended")
+		common.AlarmCheckDown("cbpolicyd_sqlite", "cbpolicyd is using SQLite database which is not recommended", false, "", "")
 
-		err = db.Ping()
-		if err != nil {
-			log.Error().Err(err).Str("database", config.Database).Msg("Failed to ping SQLite database for cbpolicyd")
-			return false
-		}
-
-		log.Debug().Str("database", config.Database).Msg("Successfully connected to SQLite database for cbpolicyd")
+		// Return true since we're not actually testing the connection
 		return true
 
 	default:
