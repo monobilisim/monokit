@@ -248,6 +248,10 @@ func setupRoutes(r *gin.Engine, db *gorm.DB, monokitHostname string) {
 
 	// Setup domain management routes (global admin only)
 	domainApi := r.Group("/api/v1/domains")
+	// Apply Keycloak middleware first if enabled, then fall back to standard auth
+	if ServerConfig.Keycloak.Enabled {
+		domainApi.Use(auth.KeycloakAuthMiddleware(db))
+	}
 	domainApi.Use(AuthMiddleware(db))
 	{
 		domainApi.POST("", domains.CreateDomain(db))
