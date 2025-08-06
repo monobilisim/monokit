@@ -1138,8 +1138,13 @@ func CheckHostsFile() HostsFileInfo {
 	} else {
 		info.HasChanges = false
 		info.Message = "No changes detected"
-		// Send up alarm to clear any previous down state
-		common.AlarmCheckUp("hosts_file_changed", "/etc/hosts file is unchanged", true)
+		// Remove alarm file so we are in a clean slate
+		err = os.Remove(common.TmpDir + "/hosts_file.log")
+		if err != nil {
+			log.Error().Err(err).Str("file_path", common.TmpDir+"/hosts_file.log").Msg("Failed to remove hosts file alarm file")
+		} else {
+			log.Debug().Str("file_path", common.TmpDir+"/hosts_file.log").Msg("Removed hosts file alarm file")
+		}
 	}
 
 	return info
