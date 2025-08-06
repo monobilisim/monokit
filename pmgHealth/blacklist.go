@@ -768,12 +768,20 @@ func extractBlacklistDataRegex(htmlContent string) []BlacklistEntry {
 
 // CheckBlacklistStatus performs the blacklist check and returns the status
 func CheckBlacklistStatus(skipOutput bool) BlacklistStatus {
+	log.Debug().
+		Bool("skip_output", skipOutput).
+		Msg("CheckBlacklistStatus called")
+
 	status := BlacklistStatus{
 		Enabled:     MailHealthConfig.Pmg.Blacklist_check.Enabled,
 		CheckStatus: false,
 		IsHealthy:   true,
 		LastChecked: time.Now().Format("2006-01-02 15:04:05"),
 	}
+
+	log.Debug().
+		Bool("enabled", status.Enabled).
+		Msg("Blacklist check configuration")
 
 	if !status.Enabled {
 		log.Debug().Msg("Blacklist check is disabled")
@@ -793,7 +801,8 @@ func CheckBlacklistStatus(skipOutput bool) BlacklistStatus {
 			log.Debug().
 				Time("cached_at", cache.CachedAt).
 				Time("next_check", cache.NextCheckAt).
-				Msg("Returning cached blacklist data")
+				Bool("skip_output", skipOutput).
+				Msg("Returning cached blacklist data - ALARM LOGIC WILL BE SKIPPED")
 			return cachedStatus
 		}
 	}
@@ -869,19 +878,35 @@ func CheckBlacklistStatus(skipOutput bool) BlacklistStatus {
 	status.IsHealthy = listedCount == 0
 
 	// Handle alarms
-	if !skipOutput {
-		if status.IsHealthy {
-			common.AlarmCheckUp("blacklist_check", fmt.Sprintf("IP %s is not listed on any blacklists (%d lists checked)", ipToCheck, status.TotalLists), false)
-		} else {
-			listedNames := make([]string, 0, listedCount)
-			for _, bl := range blacklists {
-				if bl.Listed {
-					listedNames = append(listedNames, bl.Name)
-				}
-			}
-			message := fmt.Sprintf("IP %s is listed on %d blacklist(s): %s", ipToCheck, listedCount, strings.Join(listedNames, ", "))
-			common.AlarmCheckDown("blacklist_check", message, false, "", "")
+	// Note: Alarms should always be sent regardless of skipOutput (skipOutput is for UI rendering only)
+	// Check for blacklists that we are LISTED on AND are not in the ignorelist
+	listedNonIgnoredBlacklists := make([]string, 0)
+
+	for _, bl := range blacklists {
+		if bl.Listed && !isBlacklistIgnored(bl.Name) {
+			listedNonIgnoredBlacklists = append(listedNonIgnoredBlacklists, bl.Name)
 		}
+	}
+
+	log.Debug().
+		Str("ip", ipToCheck).
+		Int("listed_non_ignored_count", len(listedNonIgnoredBlacklists)).
+		Strs("listed_non_ignored_blacklists", listedNonIgnoredBlacklists).
+		Msg("Checking for blacklists we are listed on that are not in ignorelist")
+
+	// Send alarm if we are listed on blacklists that are not in the ignorelist
+	if len(listedNonIgnoredBlacklists) > 0 {
+		message := fmt.Sprintf("IP %s is listed on %d blacklist(s) not in ignorelist: %s",
+			ipToCheck, len(listedNonIgnoredBlacklists), strings.Join(listedNonIgnoredBlacklists, ", "))
+		common.AlarmCheckDown("blacklist_not_ignored", message, true, "", "")
+
+		log.Debug().
+			Str("ip", ipToCheck).
+			Int("listed_non_ignored_count", len(listedNonIgnoredBlacklists)).
+			Strs("listed_non_ignored_blacklists", listedNonIgnoredBlacklists).
+			Msg("Alarm sent for blacklists we are listed on that are not in ignorelist")
+	} else {
+		common.AlarmCheckUp("blacklist_not_ignored", fmt.Sprintf("All blacklists for IP %s are now fixed (%d lists checked)", ipToCheck, status.TotalLists), false)
 	}
 
 	log.Debug().
