@@ -18,7 +18,6 @@ require (
 	github.com/hashicorp/go-hclog v1.5.0
 	github.com/itchyny/gojq v0.12.17
 	github.com/lib/pq v1.10.9
-	github.com/mattn/go-sqlite3 v1.14.22
 	github.com/michaelklishin/rabbit-hole/v2 v2.16.0
 	github.com/olekukonko/tablewriter v0.0.5
 	github.com/rs/zerolog v1.34.0
@@ -31,6 +30,7 @@ require (
 	github.com/swaggo/swag v1.16.4
 	github.com/valkey-io/valkey-go v1.0.52
 	golang.org/x/crypto v0.40.0
+	golang.org/x/net v0.42.0
 	google.golang.org/protobuf v1.36.5
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/driver/postgres v1.5.11
@@ -98,6 +98,7 @@ require (
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/mattn/go-localereader v0.0.1 // indirect
 	github.com/mattn/go-runewidth v0.0.16 // indirect
+	github.com/mattn/go-sqlite3 v1.14.22 // indirect
 	github.com/mitchellh/go-testing-interface v1.14.1 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect
@@ -141,7 +142,6 @@ require (
 	go.uber.org/multierr v1.11.0 // indirect
 	golang.org/x/arch v0.8.0 // indirect
 	golang.org/x/exp v0.0.0-20240719175910-8a7402abbf56 // indirect
-	golang.org/x/net v0.42.0 // indirect
 	golang.org/x/sync v0.16.0 // indirect
 	golang.org/x/sys v0.34.0 // indirect
 	golang.org/x/text v0.27.0 // indirect
