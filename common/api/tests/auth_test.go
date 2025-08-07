@@ -374,7 +374,7 @@ func TestGenerateRandomString(t *testing.T) {
 	}
 }
 
-func TestCreateUser(t *testing.T) {
+func TestCreateUserAuth(t *testing.T) {
 	db := SetupTestDB(t)
 	defer CleanupTestDB(db)
 

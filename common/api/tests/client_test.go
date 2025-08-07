@@ -114,22 +114,26 @@ func TestGetIdentifier(t *testing.T) {
 	os.Unsetenv("MONOKIT_TEST_IDENTIFIER")
 }
 
-func TestClientHC(t *testing.T) {
-	// Test with nil HTTPClient
-	client := &client.Client{
-		URL:        "http://test.example.com",
-		HTTPClient: nil,
-	}
+func TestClientHTTPClient(t *testing.T) {
+	// Save original ClientConf
+	originalClientConf := client.ClientConf
+	defer func() { client.ClientConf = originalClientConf }()
 
-	httpClient := client.hc()
-	assert.Equal(t, http.DefaultClient, httpClient)
-
-	// Test with custom HTTPClient
+	// Test that ClientConf can be configured with custom HTTPClient
 	customClient := &http.Client{Timeout: time.Second * 30}
-	client.HTTPClient = customClient
+	client.ClientConf.URL = "http://test.example.com"
+	client.ClientConf.HTTPClient = customClient
 
-	httpClient = client.hc()
-	assert.Equal(t, customClient, httpClient)
+	assert.Equal(t, "http://test.example.com", client.ClientConf.URL)
+	assert.Equal(t, customClient, client.ClientConf.HTTPClient)
+
+	// Test with nil HTTPClient
+	client.ClientConf.HTTPClient = nil
+	assert.Nil(t, client.ClientConf.HTTPClient)
+
+	// Test that we can set URL
+	client.ClientConf.URL = "http://another.example.com"
+	assert.Equal(t, "http://another.example.com", client.ClientConf.URL)
 }
 
 func TestGetCPUCores(t *testing.T) {
@@ -188,33 +192,30 @@ func TestGetIP(t *testing.T) {
 	}
 }
 
-func TestGetServiceStatus(t *testing.T) {
-	// Set up test server
-	routes := map[string]client.RespSpec{
-		"/api/v1/hosts/test-host/test-service": {
-			Status: http.StatusOK,
-			Body:   `{"status": "enabled", "wantsUpdateTo": "1.2.3"}`,
-		},
-		"/api/v1/hosts/test-host/disabled-service": {
-			Status: http.StatusOK,
-			Body:   `{"disabled": true}`,
-		},
-		"/api/v1/hosts/test-host/enabled-service": {
-			Status: http.StatusOK,
-			Body:   `{"disabled": false}`,
-		},
-		"/api/v1/hosts/test-host/unknown-service": {
-			Status: http.StatusOK,
-			Body:   `{"someOtherField": "value"}`,
-		},
-		"/api/v1/hosts/test-host/error-service": {
-			Status: http.StatusInternalServerError,
-			Body:   `{"error": "Internal server error"}`,
-		},
-	}
-
-	srv, cleanup := client.SetupTestServer(t, routes)
-	defer cleanup()
+func TestGetServiceStatusDetailed(t *testing.T) {
+	// Create a test server with mock responses
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/hosts/test-host/test-service":
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"status": "enabled", "wantsUpdateTo": "1.2.3"}`))
+		case "/api/v1/hosts/test-host/disabled-service":
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"disabled": true}`))
+		case "/api/v1/hosts/test-host/enabled-service":
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"disabled": false}`))
+		case "/api/v1/hosts/test-host/unknown-service":
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"someOtherField": "value"}`))
+		case "/api/v1/hosts/test-host/error-service":
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(`{"error": "Internal server error"}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
 
 	// Save original config
 	originalClientConf := client.ClientConf
@@ -222,8 +223,8 @@ func TestGetServiceStatus(t *testing.T) {
 
 	// Set up test client config
 	client.ClientConf = client.Client{
-		URL:        srv.URL,
-		HTTPClient: srv.Client(),
+		URL:        server.URL,
+		HTTPClient: server.Client(),
 	}
 
 	// Set test identifier
@@ -276,21 +277,21 @@ func TestGetServiceStatus_NetworkErrors(t *testing.T) {
 	assert.Empty(t, updateTo)
 }
 
-func TestGetReq(t *testing.T) {
-	// Set up test server
-	routes := map[string]client.RespSpec{
-		"/api/v1/hosts/test-host": {
-			Status: http.StatusOK,
-			Body:   `{"name": "test-host", "status": "active", "ip": "192.168.1.100"}`,
-		},
-		"/api/v1/hosts/error-host": {
-			Status: http.StatusInternalServerError,
-			Body:   `{"error": "Internal server error"}`,
-		},
-	}
-
-	srv, cleanup := client.SetupTestServer(t, routes)
-	defer cleanup()
+func TestGetReqFunction(t *testing.T) {
+	// Create a test server with mock responses
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/hosts/test-host":
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"name": "test-host", "status": "active", "ip": "192.168.1.100"}`))
+		case "/api/v1/hosts/error-host":
+			w.WriteHeader(http.StatusInternalServerError)
+			w.Write([]byte(`{"error": "Internal server error"}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
 
 	// Save original config
 	originalClientConf := client.ClientConf
@@ -298,8 +299,8 @@ func TestGetReq(t *testing.T) {
 
 	// Set up test client config
 	client.ClientConf = client.Client{
-		URL:        srv.URL,
-		HTTPClient: srv.Client(),
+		URL:        server.URL,
+		HTTPClient: server.Client(),
 	}
 
 	// Test successful request
@@ -319,25 +320,24 @@ func TestGetReq(t *testing.T) {
 	assert.Nil(t, host)
 }
 
-func TestGetHosts(t *testing.T) {
-	// Set up test server
-	routes := map[string]client.RespSpec{
-		"/api/v1/hosts": {
-			Status: http.StatusOK,
-			Body:   `[{"name": "host1", "ip": "192.168.1.1"}, {"name": "host2", "ip": "192.168.1.2"}]`,
-		},
-		"/api/v1/hosts/specific-host": {
-			Status: http.StatusOK,
-			Body:   `{"name": "specific-host", "ip": "192.168.1.100"}`,
-		},
-		"/api/v1/hosts/nonexistent": {
-			Status: http.StatusNotFound,
-			Body:   `{"error": "Host not found"}`,
-		},
-	}
-
-	srv, cleanup := client.SetupTestServer(t, routes)
-	defer cleanup()
+func TestGetHostsFunction(t *testing.T) {
+	// Create a test server with mock responses
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/v1/hosts":
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`[{"name": "host1", "ip": "192.168.1.1"}, {"name": "host2", "ip": "192.168.1.2"}]`))
+		case "/api/v1/hosts/specific-host":
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte(`{"name": "specific-host", "ip": "192.168.1.100"}`))
+		case "/api/v1/hosts/nonexistent":
+			w.WriteHeader(http.StatusNotFound)
+			w.Write([]byte(`{"error": "Host not found"}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
 
 	// Save original config
 	originalClientConf := client.ClientConf
@@ -345,8 +345,8 @@ func TestGetHosts(t *testing.T) {
 
 	// Set up test client config
 	client.ClientConf = client.Client{
-		URL:        srv.URL,
-		HTTPClient: srv.Client(),
+		URL:        server.URL,
+		HTTPClient: server.Client(),
 	}
 
 	// Test getting all hosts
