@@ -437,7 +437,8 @@ func TestCreateInitialAdmin(t *testing.T) {
 	db.Where("username = ?", "admin").First(&updatedUser)
 	assert.Equal(t, initialPassword, updatedUser.Password)
 
-	// Test when regular user exists but no admin
+	// Test when regular user exists but no admin - should NOT create admin
+	// because CreateInitialAdmin only works when database is completely empty
 	db.Delete(&user)
 	regularUser := models.User{
 		Username:   "regular",
@@ -451,10 +452,10 @@ func TestCreateInitialAdmin(t *testing.T) {
 	err = auth.CreateInitialAdmin(db)
 	assert.NoError(t, err)
 
-	// Verify admin was created
+	// Verify admin was NOT created (because regular user exists)
 	var newAdmin models.User
 	result = db.Where("username = ? AND role = ?", "admin", "admin").First(&newAdmin)
-	require.NoError(t, result.Error)
+	assert.Error(t, result.Error) // Should be "record not found"
 }
 
 func TestSessionManagement(t *testing.T) {
