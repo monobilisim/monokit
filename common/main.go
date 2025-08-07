@@ -105,6 +105,12 @@ func ConvertBytes(bytes uint64) string {
 	} else if clamped < 0 {
 		clamped = 0
 	}
+	// Ensure clamped is within int64 bounds before conversion
+	if clamped < float64(math.MinInt64) {
+		clamped = float64(math.MinInt64)
+	} else if clamped > float64(math.MaxInt64) {
+		clamped = float64(math.MaxInt64)
+	}
 	return fmt.Sprintf("%d %s", int64(clamped), sizes[i])
 }
 
