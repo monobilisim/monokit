@@ -3,6 +3,7 @@
 package tests
 
 import (
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -300,4 +301,240 @@ func TestAuthMiddleware(t *testing.T) {
 	router.ServeHTTP(w, req)
 	assert.False(t, handlerCalled)
 	assert.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+// Test additional auth functions and edge cases
+func TestHashPassword(t *testing.T) {
+	// Test normal password hashing
+	password := "testpassword123"
+	hash, err := auth.HashPassword(password)
+	assert.NoError(t, err)
+	assert.NotEmpty(t, hash)
+	assert.NotEqual(t, password, hash)
+
+	// Test empty password
+	emptyHash, err := auth.HashPassword("")
+	assert.NoError(t, err)
+	assert.NotEmpty(t, emptyHash)
+
+	// Test very long password
+	longPassword := string(make([]byte, 1000))
+	for i := range longPassword {
+		longPassword = longPassword[:i] + "a" + longPassword[i+1:]
+	}
+	longHash, err := auth.HashPassword(longPassword)
+	assert.NoError(t, err)
+	assert.NotEmpty(t, longHash)
+}
+
+func TestVerifyPassword(t *testing.T) {
+	password := "testpassword123"
+	hash, err := auth.HashPassword(password)
+	require.NoError(t, err)
+
+	// Test correct password
+	assert.True(t, auth.VerifyPassword(password, hash))
+
+	// Test wrong password
+	assert.False(t, auth.VerifyPassword("wrongpassword", hash))
+
+	// Test empty password against hash
+	assert.False(t, auth.VerifyPassword("", hash))
+
+	// Test password against empty hash
+	assert.False(t, auth.VerifyPassword(password, ""))
+
+	// Test invalid hash format
+	assert.False(t, auth.VerifyPassword(password, "invalid-hash"))
+}
+
+func TestGenerateRandomString(t *testing.T) {
+	// Test different lengths
+	lengths := []int{0, 1, 10, 32, 64, 100}
+
+	for _, length := range lengths {
+		result := auth.GenerateRandomString(length)
+		assert.Len(t, result, length)
+
+		if length > 0 {
+			// Test that result contains only valid characters
+			charset := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+			for _, char := range result {
+				assert.Contains(t, charset, string(char))
+			}
+		}
+	}
+
+	// Test uniqueness - generate multiple strings and ensure they're different
+	strings := make(map[string]bool)
+	for i := 0; i < 100; i++ {
+		str := auth.GenerateRandomString(32)
+		assert.False(t, strings[str], "Generated duplicate string: %s", str)
+		strings[str] = true
+	}
+}
+
+func TestCreateUser(t *testing.T) {
+	db := SetupTestDB(t)
+	defer CleanupTestDB(db)
+
+	// Test successful user creation
+	err := auth.CreateUser("testuser", "password123", "test@example.com", "user", "group1", db)
+	assert.NoError(t, err)
+
+	// Verify user was created
+	var user models.User
+	result := db.Where("username = ?", "testuser").First(&user)
+	require.NoError(t, result.Error)
+	assert.Equal(t, "test@example.com", user.Email)
+	assert.Equal(t, "user", user.Role)
+	assert.Equal(t, "group1", user.Groups)
+	assert.Equal(t, "local", user.AuthMethod)
+	assert.True(t, auth.VerifyPassword("password123", user.Password))
+
+	// Test duplicate username
+	err = auth.CreateUser("testuser", "password456", "test2@example.com", "admin", "group2", db)
+	assert.Error(t, err)
+
+	// Test with empty fields
+	err = auth.CreateUser("", "", "", "", "", db)
+	assert.NoError(t, err) // Should succeed but create user with empty fields
+
+	// Test with special characters
+	err = auth.CreateUser("user@domain.com", "p@ssw0rd!", "email@test.com", "admin", "group1,group2", db)
+	assert.NoError(t, err)
+}
+
+func TestCreateInitialAdmin(t *testing.T) {
+	db := SetupTestDB(t)
+	defer CleanupTestDB(db)
+
+	// Test creating initial admin when no users exist
+	err := auth.CreateInitialAdmin(db)
+	assert.NoError(t, err)
+
+	// Verify admin user was created
+	var user models.User
+	result := db.Where("username = ?", "admin").First(&user)
+	require.NoError(t, result.Error)
+	assert.Equal(t, "admin", user.Username)
+	assert.Equal(t, "admin", user.Role)
+	assert.Equal(t, "local", user.AuthMethod)
+	assert.NotEmpty(t, user.Password)
+
+	// Test that it doesn't create another admin if one already exists
+	initialPassword := user.Password
+	err = auth.CreateInitialAdmin(db)
+	assert.NoError(t, err)
+
+	// Verify password didn't change
+	var updatedUser models.User
+	db.Where("username = ?", "admin").First(&updatedUser)
+	assert.Equal(t, initialPassword, updatedUser.Password)
+
+	// Test when regular user exists but no admin
+	db.Delete(&user)
+	regularUser := models.User{
+		Username:   "regular",
+		Password:   "hashedpass",
+		Email:      "regular@example.com",
+		Role:       "user",
+		AuthMethod: "local",
+	}
+	db.Create(&regularUser)
+
+	err = auth.CreateInitialAdmin(db)
+	assert.NoError(t, err)
+
+	// Verify admin was created
+	var newAdmin models.User
+	result = db.Where("username = ? AND role = ?", "admin", "admin").First(&newAdmin)
+	require.NoError(t, result.Error)
+}
+
+func TestSessionManagement(t *testing.T) {
+	db := SetupTestDB(t)
+	defer CleanupTestDB(db)
+
+	user := SetupTestUser(t, db, "testuser")
+
+	// Test creating session
+	token := auth.GenerateRandomString(32)
+	session := models.Session{
+		Token:  token,
+		UserID: user.ID,
+	}
+	result := db.Create(&session)
+	require.NoError(t, result.Error)
+
+	// Test finding session
+	var foundSession models.Session
+	result = db.Where("token = ?", token).First(&foundSession)
+	require.NoError(t, result.Error)
+	assert.Equal(t, user.ID, foundSession.UserID)
+
+	// Test session cleanup (delete)
+	result = db.Delete(&foundSession)
+	require.NoError(t, result.Error)
+
+	// Verify session was deleted
+	var count int64
+	db.Model(&models.Session{}).Where("token = ?", token).Count(&count)
+	assert.Equal(t, int64(0), count)
+}
+
+func TestAuthenticationEdgeCases(t *testing.T) {
+	db := SetupTestDB(t)
+	defer CleanupTestDB(db)
+
+	// Test login with empty request
+	c, w := CreateRequestContext("POST", "/api/v1/auth/login", models.LoginRequest{})
+	handler := auth.ExportLoginUser(db)
+	handler(c)
+	assert.Equal(t, http.StatusUnauthorized, w.Code)
+
+	// Test register with invalid JSON
+	c, w = CreateRequestContext("POST", "/api/v1/auth/register", "invalid json")
+	adminUser := SetupTestAdmin(t, db)
+	AuthorizeContext(c, adminUser)
+	registerHandler := auth.ExportRegisterUser(db)
+	registerHandler(c)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+
+	// Test update me with invalid JSON
+	c, w = CreateRequestContext("PUT", "/api/v1/auth/me", "invalid json")
+	user := SetupTestUser(t, db, "testuser")
+	AuthorizeContext(c, user)
+	updateHandler := auth.ExportUpdateMe(db)
+	updateHandler(c)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+}
+
+func TestPasswordValidation(t *testing.T) {
+	// Test various password scenarios
+	testCases := []struct {
+		password string
+		valid    bool
+	}{
+		{"", true},                // Empty password should hash successfully
+		{"short", true},           // Short password
+		{"averagepassword", true}, // Average length
+		{"verylongpasswordwithmanycharacters", true}, // Long password
+		{"password with spaces", true},               // Password with spaces
+		{"пароль", true},                             // Unicode password
+		{"🔒🔑", true},                                 // Emoji password
+	}
+
+	for _, tc := range testCases {
+		t.Run(fmt.Sprintf("password_%s", tc.password), func(t *testing.T) {
+			hash, err := auth.HashPassword(tc.password)
+			if tc.valid {
+				assert.NoError(t, err)
+				assert.NotEmpty(t, hash)
+				assert.True(t, auth.VerifyPassword(tc.password, hash))
+			} else {
+				assert.Error(t, err)
+			}
+		})
+	}
 }
