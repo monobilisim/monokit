@@ -108,6 +108,193 @@ func TestCreateDomain_InvalidJSONRequest(t *testing.T) {
 	assert.Contains(t, response["error"], "invalid character")
 }
 
+// Test database error scenarios
+func TestCreateDomain_DatabaseError(t *testing.T) {
+	db := SetupTestDB(t)
+	defer CleanupTestDB(db)
+
+	// Create admin user
+	user := models.User{
+		Username: "admin",
+		Email:    "admin@example.com",
+		Role:     "global_admin",
+	}
+	require.NoError(t, db.Create(&user).Error)
+
+	// Close the database to simulate error
+	sqlDB, _ := db.DB()
+	sqlDB.Close()
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Set("user", user)
+
+	reqBody := models.CreateDomainRequest{
+		Name:        "test-domain",
+		Description: "Test domain",
+	}
+	jsonBody, _ := json.Marshal(reqBody)
+	c.Request = httptest.NewRequest("POST", "/domains", bytes.NewBuffer(jsonBody))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := domains.CreateDomain(db)
+	handler(c)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+}
+
+// Test duplicate domain creation
+func TestCreateDomain_DuplicateName(t *testing.T) {
+	db := SetupTestDB(t)
+	defer CleanupTestDB(db)
+
+	// Create admin user
+	user := models.User{
+		Username: "admin",
+		Email:    "admin@example.com",
+		Role:     "global_admin",
+	}
+	require.NoError(t, db.Create(&user).Error)
+
+	// Create existing domain
+	existingDomain := models.Domain{
+		Name:        "existing-domain",
+		Description: "Existing domain",
+		Active:      true,
+	}
+	require.NoError(t, db.Create(&existingDomain).Error)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Set("user", user)
+
+	reqBody := models.CreateDomainRequest{
+		Name:        "existing-domain", // Same name
+		Description: "Duplicate domain",
+	}
+	jsonBody, _ := json.Marshal(reqBody)
+	c.Request = httptest.NewRequest("POST", "/domains", bytes.NewBuffer(jsonBody))
+	c.Request.Header.Set("Content-Type", "application/json")
+
+	handler := domains.CreateDomain(db)
+	handler(c)
+
+	assert.Equal(t, http.StatusConflict, w.Code)
+
+	var response map[string]string
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+	assert.Equal(t, "Domain name already exists", response["error"])
+}
+
+// Test GetAllDomains with no user context
+func TestGetAllDomains_NoUser(t *testing.T) {
+	db := SetupTestDB(t)
+	defer CleanupTestDB(db)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+
+	handler := domains.GetAllDomains(db)
+	handler(c)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+
+	var response map[string]string
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+	assert.Equal(t, "Global admin access required", response["error"])
+}
+
+// Test GetAllDomains with non-admin user
+func TestGetAllDomains_NonAdmin(t *testing.T) {
+	db := SetupTestDB(t)
+	defer CleanupTestDB(db)
+
+	// Create regular user
+	user := models.User{
+		Username: "user",
+		Email:    "user@example.com",
+		Role:     "user",
+	}
+	require.NoError(t, db.Create(&user).Error)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Set("user", user)
+
+	handler := domains.GetAllDomains(db)
+	handler(c)
+
+	assert.Equal(t, http.StatusForbidden, w.Code)
+
+	var response map[string]string
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+	assert.Equal(t, "Global admin access required", response["error"])
+}
+
+// Test GetAllDomains success
+func TestGetAllDomains_Success(t *testing.T) {
+	db := SetupTestDB(t)
+	defer CleanupTestDB(db)
+
+	// Create admin user
+	user := models.User{
+		Username: "admin",
+		Email:    "admin@example.com",
+		Role:     "global_admin",
+	}
+	require.NoError(t, db.Create(&user).Error)
+
+	// Create test domains
+	domain1 := models.Domain{
+		Name:        "domain1",
+		Description: "First domain",
+		Active:      true,
+	}
+	domain2 := models.Domain{
+		Name:        "domain2",
+		Description: "Second domain",
+		Active:      false,
+	}
+	require.NoError(t, db.Create(&domain1).Error)
+	require.NoError(t, db.Create(&domain2).Error)
+
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Set("user", user)
+
+	handler := domains.GetAllDomains(db)
+	handler(c)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	var response []models.DomainResponse
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+	assert.Len(t, response, 2)
+
+	// Check first domain
+	assert.Equal(t, "domain1", response[0].Name)
+	assert.Equal(t, "First domain", response[0].Description)
+	assert.True(t, response[0].Active)
+
+	// Check second domain
+	assert.Equal(t, "domain2", response[1].Name)
+	assert.Equal(t, "Second domain", response[1].Description)
+	assert.False(t, response[1].Active)
+}
+	handler(c)
+
+	assert.Equal(t, http.StatusBadRequest, w.Code)
+
+	var response map[string]string
+	err := json.Unmarshal(w.Body.Bytes(), &response)
+	require.NoError(t, err)
+	assert.Contains(t, response["error"], "invalid character")
+}
+
 func TestGetAllDomains_MissingUser(t *testing.T) {
 	db := SetupTestDB(t)
 	defer CleanupTestDB(db)
