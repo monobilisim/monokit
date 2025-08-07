@@ -17,6 +17,7 @@ zimbra:
   restart: false
   queue_limit: 50
   restart_limit: 2
+  cache_interval: 12   # hours between full health checks (default: 12)
   webhook_tail:
     logfile: /opt/zimbra/log/cbpolicyd.log
     filter: 'test'
@@ -26,3 +27,20 @@ zimbra:
     enabled: false
     username: 'test@example.com'
     password: 'testpassword'
+  email_send_test:
+    enabled: false
+    from_email: ''  # Optional: defaults to login_test username if empty
+    to_email: 'test@example.com'
+    smtp_server: 'localhost'
+    smtp_port: 587
+    use_tls: true
+    subject: 'Zimbra Health Check Test Email'  # Will be made unique with timestamp
+    # Email checking configuration (to verify email was received)
+    check_received: false  # Enable to check if email was actually received
+    imap_server: 'localhost'
+    imap_port: 993
+    imap_use_tls: true
+    to_email_username: ''                  # Username for IMAP login (defaults to to_email if empty)
+    to_email_password: 'testpassword'      # Password for IMAP login
+    check_retries: 3                       # Number of retry attempts (default: 3)
+    check_retry_interval: 30               # Seconds between retry attempts (default: 30)

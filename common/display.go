@@ -24,7 +24,7 @@ func DisplayBox(title string, content string) string {
 		BorderStyle(lipgloss.RoundedBorder()).
 		BorderForeground(PrimaryColor).
 		Padding(0).
-		Width(80)
+		Width(120)
 
 	// Style the title
 	titleStyle := lipgloss.NewStyle().

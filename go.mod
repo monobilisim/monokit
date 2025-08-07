@@ -11,6 +11,7 @@ require (
 	github.com/cloudflare/cloudflare-go v0.115.0
 	github.com/coreos/go-systemd/v22 v22.5.0
 	github.com/docker/docker v27.3.1+incompatible
+	github.com/emersion/go-imap v1.2.1
 	github.com/gin-gonic/gin v1.10.0
 	github.com/go-ini/ini v1.67.0
 	github.com/go-sql-driver/mysql v1.8.1
@@ -32,6 +33,7 @@ require (
 	golang.org/x/crypto v0.40.0
 	golang.org/x/net v0.42.0
 	google.golang.org/protobuf v1.36.5
+	gopkg.in/gomail.v2 v2.0.0-20160411212932-81ebce5c23df
 	gopkg.in/yaml.v3 v3.0.1
 	gorm.io/driver/postgres v1.5.11
 	gorm.io/driver/sqlite v1.5.7
@@ -148,6 +150,7 @@ require (
 	golang.org/x/time v0.9.0 // indirect
 	golang.org/x/tools v0.34.0 // indirect
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20241007155032-5fefd90f89a9 // indirect
+	gopkg.in/alexcesaro/quotedprintable.v3 v3.0.0-20150716171945-2caba252f4dc // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
 	gotest.tools/v3 v3.5.1 // indirect
 )

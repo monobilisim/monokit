@@ -9,10 +9,22 @@ type ZimbraHealthData struct {
 	ZPush          ZPushInfo
 	QueuedMessages QueuedMessagesInfo
 	SSLCert        SSLCertInfo
-	HostsFile      HostsFileInfo   // /etc/hosts file monitoring
-	WebhookTail    WebhookTailInfo // Placeholder for potential future UI integration
-	LoginTest      LoginTestInfo   // Login test results
-	CBPolicyd      CBPolicydInfo   // CBPolicyd service and database checks
+	HostsFile      HostsFileInfo     // /etc/hosts file monitoring
+	WebhookTail    WebhookTailInfo   // Placeholder for potential future UI integration
+	LoginTest      LoginTestInfo     // Login test results
+	EmailSendTest  EmailSendTestInfo // Email send test results
+	CBPolicyd      CBPolicydInfo     // CBPolicyd service and database checks
+	CacheInfo      CacheInfo         // Cache system information
+}
+
+// CacheInfo holds information about the caching system
+type CacheInfo struct {
+	Enabled       bool   `json:"enabled"`         // True if caching is enabled
+	CacheInterval int    `json:"cache_interval"`  // Hours between full checks
+	LastFullCheck string `json:"last_full_check"` // Timestamp of last full check
+	NextFullCheck string `json:"next_full_check"` // Timestamp of next full check
+	FromCache     bool   `json:"from_cache"`      // True if current data is from cache
+	CacheFile     string `json:"cache_file"`      // Path to cache file
 }
 
 // DatabaseConfig holds parsed database configuration
@@ -118,6 +130,36 @@ type LoginTestInfo struct {
 	LastMailDate    string // Date of the last received mail (if any)
 	CheckStatus     bool   // True if the check could be performed successfully
 	Message         string // Any error or status message
+}
+
+// EmailSendTestInfo holds information about the email send test results.
+type EmailSendTestInfo struct {
+	Enabled     bool   // True if email send test is enabled in config
+	FromEmail   string // From email address used for testing (for display purposes)
+	ToEmail     string // To email address used for testing (for display purposes)
+	SMTPServer  string // SMTP server used for testing (for display purposes)
+	SMTPPort    int    // SMTP port used for testing (for display purposes)
+	UseTLS      bool   // True if TLS is used for SMTP connection
+	Subject     string // Email subject used for testing
+	SendSuccess bool   // True if email was sent successfully
+	CheckStatus bool   // True if the check could be performed successfully
+	Message     string // Any error or status message
+	SentAt      string // Timestamp when email was sent (if successful)
+
+	// Mail checking fields
+	CheckReceived      bool   // True if email checking is enabled
+	IMAPServer         string // IMAP server for checking received emails
+	IMAPPort           int    // IMAP port for checking received emails
+	IMAPUseTLS         bool   // True if TLS is used for IMAP connection
+	ToEmailUsername    string // Username for IMAP login (usually same as to_email)
+	ToEmailPassword    string // Password for IMAP login
+	CheckRetries       int    // Number of retry attempts (default: 3)
+	CheckRetryInterval int    // Seconds between retry attempts (default: 30)
+	TestID             string // Unique test ID for email verification
+	ReceiveSuccess     bool   // True if email was found in recipient's mailbox
+	ReceivedAt         string // Timestamp when email was found (if successful)
+	CheckMessage       string // Message about the email checking process
+	ForcedByEnv        bool   // True if test was forced by environment variable
 }
 
 // CBPolicydInfo holds information about CBPolicyd service and database connectivity.

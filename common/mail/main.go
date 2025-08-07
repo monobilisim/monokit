@@ -12,6 +12,7 @@ type Zimbra struct {
 	Queue_Limit      int
 	Restart_Limit    int
 	Restart_Interval int // minutes between restart attempts, default 3
+	Cache_interval   int // hours between full health checks, default 12
 	Webhook_tail     struct {
 		Logfile     string
 		Quota_limit int
@@ -26,6 +27,23 @@ type Zimbra struct {
 		Enabled  bool
 		Username string
 		Password string
+	}
+	Email_send_test struct {
+		Enabled              bool
+		From_email           string
+		To_email             string
+		Smtp_server          string
+		Smtp_port            int
+		Use_tls              bool
+		Subject              string
+		Check_received       bool
+		Imap_server          string
+		Imap_port            int
+		Imap_use_tls         bool
+		To_email_username    string
+		To_email_password    string
+		Check_retries        int // Number of retry attempts (default: 3)
+		Check_retry_interval int // Seconds between retry attempts (default: 30)
 	}
 }
 

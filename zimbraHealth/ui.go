@@ -12,6 +12,42 @@ import (
 func (h *ZimbraHealthData) RenderAll() string {
 	var sb strings.Builder
 
+	// Cache Information Section (if caching is enabled)
+	if h.CacheInfo.Enabled {
+		sb.WriteString(common.SectionTitle("Cache Information"))
+		sb.WriteString("\n")
+
+		// Cache status
+		cacheStatus := "Fresh Data"
+		if h.CacheInfo.FromCache {
+			cacheStatus = "Cached Data"
+		}
+		sb.WriteString(common.SimpleStatusListItem(
+			"Data Source",
+			cacheStatus,
+			true, // Always green for display info
+		))
+
+		// Cache interval
+		sb.WriteString(common.SimpleStatusListItem(
+			"Cache Interval",
+			fmt.Sprintf("%d hours", h.CacheInfo.CacheInterval),
+			true, // Always green for display info
+		))
+
+		// Last full check
+		if h.CacheInfo.LastFullCheck != "" {
+			sb.WriteString(fmt.Sprintf("  └─ Last full check: %s\n", h.CacheInfo.LastFullCheck))
+		}
+
+		// Next full check
+		if h.CacheInfo.NextFullCheck != "" {
+			sb.WriteString(fmt.Sprintf("  └─ Next full check: %s\n", h.CacheInfo.NextFullCheck))
+		}
+
+		sb.WriteString("\n")
+	}
+
 	// IP Access Section
 	sb.WriteString(common.SectionTitle("Access through IP"))
 	sb.WriteString("\n")
@@ -248,6 +284,88 @@ func (h *ZimbraHealthData) RenderAll() string {
 				false,
 			))
 			sb.WriteString(fmt.Sprintf("  └─ Error: %s\n", h.LoginTest.Message))
+		}
+		sb.WriteString("\n")
+	}
+
+	// Email Send Test Section (only if enabled)
+	if h.EmailSendTest.Enabled {
+		sb.WriteString("\n")
+		sectionTitle := "Email Send Test"
+		if h.EmailSendTest.ForcedByEnv {
+			sectionTitle += " (Forced by Environment Variable)"
+		}
+		sb.WriteString(common.SectionTitle(sectionTitle))
+		sb.WriteString("\n")
+		if h.EmailSendTest.CheckStatus {
+			expectedState := "Failed"
+			if h.EmailSendTest.SendSuccess {
+				expectedState = "Successful"
+			}
+			sb.WriteString(common.SimpleStatusListItem(
+				fmt.Sprintf("Send (%s → %s)", h.EmailSendTest.FromEmail, h.EmailSendTest.ToEmail),
+				expectedState,
+				h.EmailSendTest.SendSuccess, // Success = email sent successfully (green)
+			))
+			sb.WriteString("\n")
+
+			// Show SMTP server info
+			smtpInfo := fmt.Sprintf("%s:%d", h.EmailSendTest.SMTPServer, h.EmailSendTest.SMTPPort)
+			if h.EmailSendTest.UseTLS {
+				smtpInfo += " (TLS)"
+			}
+			sb.WriteString(common.SimpleStatusListItem(
+				"SMTP Server",
+				smtpInfo,
+				true, // Always green for display info
+			))
+
+			// Show sent timestamp if available
+			if h.EmailSendTest.SentAt != "" {
+				sb.WriteString(fmt.Sprintf("  └─ Sent at: %s\n", h.EmailSendTest.SentAt))
+			}
+
+			// Show receive check results if enabled
+			if h.EmailSendTest.CheckReceived {
+				receiveState := "Failed"
+				if h.EmailSendTest.ReceiveSuccess {
+					receiveState = "Successful"
+				}
+				sb.WriteString(common.SimpleStatusListItem(
+					fmt.Sprintf("Receive Check (%s)", h.EmailSendTest.ToEmailUsername),
+					receiveState,
+					h.EmailSendTest.ReceiveSuccess, // Success = email received successfully (green)
+				))
+				sb.WriteString("\n")
+
+				// Show IMAP server info
+				imapInfo := fmt.Sprintf("%s:%d", h.EmailSendTest.IMAPServer, h.EmailSendTest.IMAPPort)
+				if h.EmailSendTest.IMAPUseTLS {
+					imapInfo += " (TLS)"
+				}
+				sb.WriteString(common.SimpleStatusListItem(
+					"IMAP Server",
+					imapInfo,
+					true, // Always green for display info
+				))
+
+				// Show retry configuration info
+				sb.WriteString(fmt.Sprintf("  └─ Retry config: %d attempts, %d sec intervals\n", h.EmailSendTest.CheckRetries, h.EmailSendTest.CheckRetryInterval))
+
+				// Show received timestamp or error message
+				if h.EmailSendTest.ReceiveSuccess && h.EmailSendTest.ReceivedAt != "" {
+					sb.WriteString(fmt.Sprintf("  └─ Received at: %s\n", h.EmailSendTest.ReceivedAt))
+				} else if h.EmailSendTest.CheckMessage != "" {
+					sb.WriteString(fmt.Sprintf("  └─ Check: %s\n", h.EmailSendTest.CheckMessage))
+				}
+			}
+		} else {
+			sb.WriteString(common.SimpleStatusListItem(
+				fmt.Sprintf("Send (%s → %s)", h.EmailSendTest.FromEmail, h.EmailSendTest.ToEmail),
+				"Check Failed",
+				false,
+			))
+			sb.WriteString(fmt.Sprintf("  └─ Error: %s\n", h.EmailSendTest.Message))
 		}
 		sb.WriteString("\n")
 	}
