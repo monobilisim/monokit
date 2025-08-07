@@ -18,6 +18,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/emersion/go-imap"
+	imapclient "github.com/emersion/go-imap/client"
 	"github.com/monobilisim/monokit/common"
 	"github.com/monobilisim/monokit/common/api/client"
 	mail "github.com/monobilisim/monokit/common/mail"
@@ -54,6 +56,7 @@ var zimbraPath string // Determined in collectHealthData
 var restartCounter int
 var lastRestart time.Time // Track last restart attempt time
 var templateFile string   // Determined in collectHealthData
+var CacheFilePath = "/tmp/mono/zimbraHealth/cache.json"
 
 // Main entry point for zimbraHealth
 func Main(cmd *cobra.Command, args []string) {
@@ -72,14 +75,40 @@ func Main(cmd *cobra.Command, args []string) {
 		return
 	}
 
-	// Collect health data
-	healthData := collectHealthData()
+	var healthData *ZimbraHealthData
+
+	// Check if we should run a full check or use cached data
+	if shouldRunFullCheck() {
+		log.Debug().Msg("Running full health check")
+		// Collect fresh health data
+		healthData = collectHealthData()
+
+		// Save to cache
+		if err := saveCachedData(healthData); err != nil {
+			log.Error().Err(err).Msg("Failed to save data to cache")
+		}
+	} else {
+		log.Debug().Msg("Loading data from cache")
+		// Load from cache
+		var err error
+		healthData, err = loadCachedData()
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to load cached data, running full check")
+			// Fallback to full check
+			healthData = collectHealthData()
+			if saveErr := saveCachedData(healthData); saveErr != nil {
+				log.Error().Err(saveErr).Msg("Failed to save fallback data to cache")
+			}
+		}
+	}
 
 	// Display as a nice box UI
 	displayBoxUI(healthData)
 
-	// Run background/periodic tasks separately
-	runPeriodicTasks(healthData) // Pass healthData if needed for context
+	// Run background/periodic tasks separately (only on full checks)
+	if !healthData.CacheInfo.FromCache {
+		runPeriodicTasks(healthData) // Pass healthData if needed for context
+	}
 }
 
 // collectHealthData gathers all the health information
@@ -486,6 +515,9 @@ func RestartZimbraService(service string) bool {
 		return false
 	}
 
+	// Clear restart limit alarm since we're within limits
+	common.AlarmCheckUp("service_restart_limit_"+service, "Restart limit not exceeded for "+service+" ("+strconv.Itoa(restartCounter)+"/"+strconv.Itoa(MailHealthConfig.Zimbra.Restart_Limit)+")", false)
+
 	log.Warn().Str("service", service).Msg("Attempting to restart Zimbra services") // Changed to Warn
 	output, err := ExecZimbraCommand("zmcontrol start", false, false)
 	log.Debug().Str("output", output).Msg("zmcontrol start output") // Try starting all services
@@ -500,6 +532,10 @@ func RestartZimbraService(service string) bool {
 	restartCounter++
 	lastRestart = time.Now()
 	log.Warn().Str("restart_counter", strconv.Itoa(restartCounter)).Str("restart_limit", strconv.Itoa(MailHealthConfig.Zimbra.Restart_Limit)).Msg("Zimbra services restart attempted") // Changed to Warn
+
+	// Send success alarm for restart command execution
+	common.AlarmCheckUp("service_restart_failed_"+service, "Zimbra restart command executed successfully for "+service, false)
+
 	// Do not call CheckZimbraServices recursively. Let the next run verify.
 	return true // Restart command executed
 }
@@ -1142,13 +1178,8 @@ func CheckHostsFile() HostsFileInfo {
 	} else {
 		info.HasChanges = false
 		info.Message = "No changes detected"
-		// Remove alarm file so we are in a clean slate
-		err = os.Remove(common.TmpDir + "/hosts_file.log")
-		if err != nil {
-			log.Error().Err(err).Str("file_path", common.TmpDir+"/hosts_file.log").Msg("Failed to remove hosts file alarm file")
-		} else {
-			log.Debug().Str("file_path", common.TmpDir+"/hosts_file.log").Msg("Removed hosts file alarm file")
-		}
+		// Send success alarm for no changes
+		common.AlarmCheckUp("hosts_file_changed", "/etc/hosts file is unchanged since last backup", false)
 	}
 
 	return info
@@ -1250,40 +1281,84 @@ func CheckLoginTest() LoginTestInfo {
 // CheckEmailSendTest performs an email send test using the configured SMTP settings
 func CheckEmailSendTest() EmailSendTestInfo {
 	info := EmailSendTestInfo{
-		Enabled:     MailHealthConfig.Zimbra.Email_send_test.Enabled,
-		FromEmail:   MailHealthConfig.Zimbra.Email_send_test.From_email,
-		ToEmail:     MailHealthConfig.Zimbra.Email_send_test.To_email,
-		SMTPServer:  MailHealthConfig.Zimbra.Email_send_test.Smtp_server,
-		SMTPPort:    MailHealthConfig.Zimbra.Email_send_test.Smtp_port,
-		UseTLS:      MailHealthConfig.Zimbra.Email_send_test.Use_tls,
-		Subject:     MailHealthConfig.Zimbra.Email_send_test.Subject,
-		CheckStatus: false, // Default to check failed
+		Enabled:            MailHealthConfig.Zimbra.Email_send_test.Enabled,
+		FromEmail:          MailHealthConfig.Zimbra.Email_send_test.From_email,
+		ToEmail:            MailHealthConfig.Zimbra.Email_send_test.To_email,
+		SMTPServer:         MailHealthConfig.Zimbra.Email_send_test.Smtp_server,
+		SMTPPort:           MailHealthConfig.Zimbra.Email_send_test.Smtp_port,
+		UseTLS:             MailHealthConfig.Zimbra.Email_send_test.Use_tls,
+		Subject:            MailHealthConfig.Zimbra.Email_send_test.Subject,
+		CheckStatus:        false, // Default to check failed
+		CheckReceived:      MailHealthConfig.Zimbra.Email_send_test.Check_received,
+		IMAPServer:         MailHealthConfig.Zimbra.Email_send_test.Imap_server,
+		IMAPPort:           MailHealthConfig.Zimbra.Email_send_test.Imap_port,
+		IMAPUseTLS:         MailHealthConfig.Zimbra.Email_send_test.Imap_use_tls,
+		ToEmailUsername:    MailHealthConfig.Zimbra.Email_send_test.To_email_username,
+		ToEmailPassword:    MailHealthConfig.Zimbra.Email_send_test.To_email_password,
+		CheckRetries:       MailHealthConfig.Zimbra.Email_send_test.Check_retries,
+		CheckRetryInterval: MailHealthConfig.Zimbra.Email_send_test.Check_retry_interval,
 	}
 
-	// Skip if not enabled or not properly configured
-	if !info.Enabled {
+	// Check for environment variable override
+	forceEmailTest := os.Getenv("MONOKIT_ZIMBRA_HEALTH_MAIL_SEND_TEST") == "1"
+
+	// Skip if not enabled or not properly configured (unless forced by env var)
+	if !info.Enabled && !forceEmailTest {
 		info.Message = "Email send test is disabled in configuration"
 		log.Debug().Str("message", info.Message).Msg("Skipping email send test")
 		return info
 	}
 
-	if info.ToEmail == "" || info.SMTPServer == "" {
+	// If forced by environment variable, log it
+	if forceEmailTest && !info.Enabled {
+		log.Debug().Msg("Email send test forced by MONOKIT_ZIMBRA_HEALTH_MAIL_SEND_TEST environment variable")
+		info.Enabled = true     // Set enabled to true for the test
+		info.ForcedByEnv = true // Mark as forced by environment variable
+	}
+
+	if (info.ToEmail == "" || info.SMTPServer == "") && !forceEmailTest {
 		info.Message = "Email send test not properly configured (missing to_email or smtp_server)"
 		log.Debug().Str("message", info.Message).Msg("Skipping email send test")
 		return info
 	}
 
-	// Use login test credentials for SMTP authentication
-	if !MailHealthConfig.Zimbra.Login_test.Enabled || MailHealthConfig.Zimbra.Login_test.Username == "" || MailHealthConfig.Zimbra.Login_test.Password == "" {
+	// If forced by environment variable but missing basic config, provide a warning
+	if forceEmailTest && (info.ToEmail == "" || info.SMTPServer == "") {
+		log.Warn().Msg("Email send test forced by environment variable but basic configuration (to_email/smtp_server) missing - test will likely fail")
+	}
+
+	// Use login test credentials for SMTP authentication (unless forced by env var)
+	if (!MailHealthConfig.Zimbra.Login_test.Enabled || MailHealthConfig.Zimbra.Login_test.Username == "" || MailHealthConfig.Zimbra.Login_test.Password == "") && !forceEmailTest {
 		info.Message = "Email send test requires login test credentials to be configured for SMTP authentication"
 		log.Debug().Str("message", info.Message).Msg("Skipping email send test")
 		return info
+	}
+
+	// If forced by environment variable but no login credentials, provide a warning
+	if forceEmailTest && (MailHealthConfig.Zimbra.Login_test.Username == "" || MailHealthConfig.Zimbra.Login_test.Password == "") {
+		log.Warn().Msg("Email send test forced by environment variable but login credentials not configured - test may fail")
 	}
 
 	// Use login test username as from_email if not explicitly configured
 	if info.FromEmail == "" {
 		info.FromEmail = MailHealthConfig.Zimbra.Login_test.Username
 		log.Debug().Str("from_email", info.FromEmail).Msg("Using login test username as from_email")
+	}
+
+	// Use to_email as to_email_username if not explicitly configured
+	if info.ToEmailUsername == "" {
+		info.ToEmailUsername = info.ToEmail
+		log.Debug().Str("to_email_username", info.ToEmailUsername).Msg("Using to_email as to_email_username")
+	}
+
+	// Set default retry settings if not specified
+	if info.CheckRetries == 0 {
+		info.CheckRetries = 3 // Default to 3 retries
+		log.Debug().Int("check_retries", info.CheckRetries).Msg("Using default check retries")
+	}
+	if info.CheckRetryInterval == 0 {
+		info.CheckRetryInterval = 30 // Default to 30 seconds
+		log.Debug().Int("check_retry_interval", info.CheckRetryInterval).Msg("Using default check retry interval")
 	}
 
 	// Set default port if not specified
@@ -1300,6 +1375,13 @@ func CheckEmailSendTest() EmailSendTestInfo {
 		info.Subject = "Zimbra Health Check Test Email"
 	}
 
+	// Generate a unique test ID and add it to the subject for reliable matching
+	testID := fmt.Sprintf("ZIMBRA-HEALTH-TEST-%d", time.Now().Unix())
+	timestamp := time.Now().Format("2006-01-02 15:04:05")
+	uniqueSubject := fmt.Sprintf("%s - %s - %s", info.Subject, timestamp, testID)
+	info.Subject = uniqueSubject
+	info.TestID = testID
+
 	log.Debug().
 		Str("from_email", info.FromEmail).
 		Str("to_email", info.ToEmail).
@@ -1315,11 +1397,11 @@ func CheckEmailSendTest() EmailSendTestInfo {
 	m.SetHeader("Subject", info.Subject)
 
 	// Create email body with timestamp and test information
-	timestamp := time.Now().Format("2006-01-02 15:04:05")
 	hostname, _ := os.Hostname()
 	body := fmt.Sprintf(`This is a test email sent by Zimbra Health Check.
 
 Test Details:
+- Test ID: %s
 - Sent at: %s
 - From server: %s
 - SMTP Server: %s:%d
@@ -1328,7 +1410,13 @@ Test Details:
 If you receive this email, the Zimbra email sending functionality is working correctly.
 
 This is an automated test message - no action is required.`,
-		timestamp, hostname, info.SMTPServer, info.SMTPPort, info.UseTLS)
+		info.TestID, timestamp, hostname, info.SMTPServer, info.SMTPPort, info.UseTLS)
+
+	log.Debug().
+		Str("test_id", info.TestID).
+		Str("subject", info.Subject).
+		Int("body_length", len(body)).
+		Msg("Generated test email with unique ID")
 
 	m.SetBody("text/plain", body)
 
@@ -1380,5 +1468,297 @@ This is an automated test message - no action is required.`,
 	// Send success alarm
 	common.AlarmCheckUp("zimbra_email_send_test", "Zimbra email send test successful - email sent from "+info.FromEmail+" to "+info.ToEmail, false)
 
+	// Check if email was received (if enabled)
+	if info.CheckReceived {
+		checkEmailReceived(&info)
+	}
+
 	return info
+}
+
+// checkEmailReceived checks if the sent email was received in the recipient's mailbox
+func checkEmailReceived(info *EmailSendTestInfo) {
+	// Validate IMAP configuration
+	if info.IMAPServer == "" || info.ToEmailUsername == "" || info.ToEmailPassword == "" {
+		info.CheckMessage = "IMAP configuration incomplete (missing server, username, or password)"
+		log.Debug().Str("message", info.CheckMessage).Msg("Skipping email receive check")
+		return
+	}
+
+	// Check for email with retry logic instead of fixed wait
+	log.Debug().
+		Int("check_retries", info.CheckRetries).
+		Int("check_retry_interval", info.CheckRetryInterval).
+		Msg("Starting email check with retry logic")
+
+	// Set default IMAP port if not specified
+	if info.IMAPPort == 0 {
+		if info.IMAPUseTLS {
+			info.IMAPPort = 993 // Default IMAPS port
+		} else {
+			info.IMAPPort = 143 // Default IMAP port
+		}
+	}
+
+	log.Debug().
+		Str("imap_server", info.IMAPServer).
+		Int("imap_port", info.IMAPPort).
+		Bool("imap_use_tls", info.IMAPUseTLS).
+		Str("username", info.ToEmailUsername).
+		Msg("Starting IMAP email receive check")
+
+	// Try to find the email with retry logic
+	for attempt := 1; attempt <= info.CheckRetries; attempt++ {
+		log.Debug().
+			Int("attempt", attempt).
+			Int("max_attempts", info.CheckRetries).
+			Msg("Attempting to check for email")
+
+		if checkEmailExists(info, attempt) {
+			// Email found!
+			info.ReceiveSuccess = true
+			info.ReceivedAt = time.Now().Format("2006-01-02 15:04:05")
+			info.CheckMessage = fmt.Sprintf("Email successfully received on attempt %d - found email with test ID '%s'", attempt, info.TestID)
+
+			log.Debug().
+				Int("attempt", attempt).
+				Str("test_id", info.TestID).
+				Msg("Email found successfully")
+			break
+		}
+
+		// If this wasn't the last attempt, wait before retrying
+		if attempt < info.CheckRetries {
+			waitDuration := time.Duration(info.CheckRetryInterval) * time.Second
+			log.Debug().
+				Int("attempt", attempt).
+				Int("next_attempt_in_seconds", info.CheckRetryInterval).
+				Msg("Email not found, waiting before next attempt")
+			time.Sleep(waitDuration)
+		} else {
+			// Final attempt failed
+			info.CheckMessage = fmt.Sprintf("Email not found after %d attempts with %d second intervals", info.CheckRetries, info.CheckRetryInterval)
+			log.Debug().
+				Int("total_attempts", info.CheckRetries).
+				Str("test_id", info.TestID).
+				Msg("Email not found after all retry attempts")
+		}
+	}
+
+	if info.ReceiveSuccess {
+		log.Debug().
+			Str("test_id", info.TestID).
+			Str("received_at", info.ReceivedAt).
+			Msg("Email receive check successful")
+	}
+
+	// Update alarm status based on email receive result
+	if info.ReceiveSuccess {
+		common.AlarmCheckUp("zimbra_email_receive_test", "Zimbra email receive test successful - email found in "+info.ToEmailUsername+" mailbox", false)
+	} else {
+		common.AlarmCheckDown("zimbra_email_receive_test", "Zimbra email receive test failed: "+info.CheckMessage, false, "", "")
+	}
+}
+
+// checkEmailExists connects to IMAP and checks if the email with the test ID exists
+func checkEmailExists(info *EmailSendTestInfo, attempt int) bool {
+	// Connect to IMAP server
+	var c *imapclient.Client
+	var err error
+
+	if info.IMAPUseTLS {
+		// Connect with TLS
+		c, err = imapclient.DialTLS(fmt.Sprintf("%s:%d", info.IMAPServer, info.IMAPPort), &tls.Config{
+			ServerName:         info.IMAPServer,
+			InsecureSkipVerify: false, // Use proper TLS verification
+		})
+	} else {
+		// Connect without TLS
+		c, err = imapclient.Dial(fmt.Sprintf("%s:%d", info.IMAPServer, info.IMAPPort))
+	}
+
+	if err != nil {
+		log.Error().
+			Int("attempt", attempt).
+			Str("imap_server", info.IMAPServer).
+			Int("imap_port", info.IMAPPort).
+			Err(err).
+			Msg("Failed to connect to IMAP server")
+		return false
+	}
+	defer c.Close()
+
+	// Login
+	if err := c.Login(info.ToEmailUsername, info.ToEmailPassword); err != nil {
+		log.Error().
+			Int("attempt", attempt).
+			Str("username", info.ToEmailUsername).
+			Err(err).
+			Msg("Failed to login to IMAP server")
+		return false
+	}
+
+	// Select INBOX
+	mbox, err := c.Select("INBOX", false)
+	if err != nil {
+		log.Error().
+			Int("attempt", attempt).
+			Err(err).
+			Msg("Failed to select INBOX")
+		return false
+	}
+
+	// Search for emails with the exact subject (which contains our unique test ID)
+	since := time.Now().Add(-10 * time.Minute)
+	criteria := imap.NewSearchCriteria()
+	criteria.Since = since
+	criteria.Header.Set("Subject", info.Subject)
+
+	log.Debug().
+		Int("attempt", attempt).
+		Str("subject", info.Subject).
+		Str("test_id", info.TestID).
+		Time("since", since).
+		Msg("Searching for emails with exact subject match")
+
+	uids, err := c.UidSearch(criteria)
+	if err != nil {
+		log.Error().
+			Int("attempt", attempt).
+			Err(err).
+			Msg("Failed to search for emails")
+		return false
+	}
+
+	log.Debug().
+		Int("attempt", attempt).
+		Int("matching_uids", len(uids)).
+		Uint32("total_messages", mbox.Messages).
+		Msg("Email search completed")
+
+	if len(uids) > 0 {
+		log.Debug().
+			Int("attempt", attempt).
+			Int("matching_emails", len(uids)).
+			Str("test_id", info.TestID).
+			Msg("Email found with matching subject")
+		return true
+	}
+
+	log.Debug().
+		Int("attempt", attempt).
+		Str("subject", info.Subject).
+		Str("test_id", info.TestID).
+		Uint32("total_messages", mbox.Messages).
+		Msg("No matching emails found")
+	return false
+}
+
+// shouldRunFullCheck determines if a full health check should be performed
+func shouldRunFullCheck() bool {
+	// Set default cache interval if not configured
+	cacheInterval := MailHealthConfig.Zimbra.Cache_interval
+	if cacheInterval == 0 {
+		cacheInterval = 12 // Default to 12 hours
+	}
+
+	// Check if cache file exists
+	if _, err := os.Stat(CacheFilePath); os.IsNotExist(err) {
+		log.Debug().Str("cache_file", CacheFilePath).Msg("Cache file does not exist, running full check")
+		return true
+	}
+
+	// Check file modification time
+	fileInfo, err := os.Stat(CacheFilePath)
+	if err != nil {
+		log.Error().Str("cache_file", CacheFilePath).Err(err).Msg("Error checking cache file, running full check")
+		return true
+	}
+
+	// Calculate time since last full check
+	timeSinceLastCheck := time.Since(fileInfo.ModTime())
+	cacheIntervalDuration := time.Duration(cacheInterval) * time.Hour
+
+	if timeSinceLastCheck >= cacheIntervalDuration {
+		log.Debug().
+			Str("cache_file", CacheFilePath).
+			Dur("time_since_last_check", timeSinceLastCheck).
+			Dur("cache_interval", cacheIntervalDuration).
+			Msg("Cache expired, running full check")
+		return true
+	}
+
+	log.Debug().
+		Str("cache_file", CacheFilePath).
+		Dur("time_since_last_check", timeSinceLastCheck).
+		Dur("cache_interval", cacheIntervalDuration).
+		Msg("Using cached data")
+	return false
+}
+
+// loadCachedData loads health data from cache file
+func loadCachedData() (*ZimbraHealthData, error) {
+	data, err := os.ReadFile(CacheFilePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read cache file: %w", err)
+	}
+
+	var healthData ZimbraHealthData
+	if err := json.Unmarshal(data, &healthData); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal cache data: %w", err)
+	}
+
+	// Update cache info to reflect that this is from cache
+	healthData.CacheInfo.FromCache = true
+
+	log.Debug().
+		Str("cache_file", CacheFilePath).
+		Str("last_full_check", healthData.CacheInfo.LastFullCheck).
+		Msg("Loaded data from cache")
+
+	return &healthData, nil
+}
+
+// saveCachedData saves health data to cache file
+func saveCachedData(healthData *ZimbraHealthData) error {
+	// Ensure cache directory exists
+	cacheDir := filepath.Dir(CacheFilePath)
+	if err := os.MkdirAll(cacheDir, 0755); err != nil {
+		return fmt.Errorf("failed to create cache directory: %w", err)
+	}
+
+	// Update cache info
+	now := time.Now()
+	cacheInterval := MailHealthConfig.Zimbra.Cache_interval
+	if cacheInterval == 0 {
+		cacheInterval = 12
+	}
+
+	healthData.CacheInfo = CacheInfo{
+		Enabled:       true,
+		CacheInterval: cacheInterval,
+		LastFullCheck: now.Format("2006-01-02 15:04:05"),
+		NextFullCheck: now.Add(time.Duration(cacheInterval) * time.Hour).Format("2006-01-02 15:04:05"),
+		FromCache:     false,
+		CacheFile:     CacheFilePath,
+	}
+
+	// Marshal to JSON
+	data, err := json.MarshalIndent(healthData, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal health data: %w", err)
+	}
+
+	// Write to cache file
+	if err := os.WriteFile(CacheFilePath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write cache file: %w", err)
+	}
+
+	log.Debug().
+		Str("cache_file", CacheFilePath).
+		Str("last_full_check", healthData.CacheInfo.LastFullCheck).
+		Str("next_full_check", healthData.CacheInfo.NextFullCheck).
+		Msg("Saved data to cache")
+
+	return nil
 }
