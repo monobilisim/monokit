@@ -1059,7 +1059,7 @@ func TestUpdateMeEdgeCases(t *testing.T) {
 
 	// Test: Update username to existing username (should fail)
 	updateReq := models.UpdateMeRequest{
-		Username: "testuser2",
+		Username: user2.Username, // Try to use existing username
 	}
 	c, w := CreateRequestContext("PUT", "/api/v1/auth/me", updateReq)
 	AuthorizeContext(c, user)
