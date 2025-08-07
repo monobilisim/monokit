@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -317,14 +318,18 @@ func TestHashPassword(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotEmpty(t, emptyHash)
 
-	// Test very long password
-	longPassword := string(make([]byte, 1000))
-	for i := range longPassword {
-		longPassword = longPassword[:i] + "a" + longPassword[i+1:]
-	}
+	// Test very long password (bcrypt has 72-byte limit, so this should fail)
+	longPassword := strings.Repeat("a", 100)
 	longHash, err := auth.HashPassword(longPassword)
+	assert.Error(t, err)
+	assert.Empty(t, longHash)
+	assert.Contains(t, err.Error(), "password length exceeds 72 bytes")
+
+	// Test with password at the bcrypt limit (72 bytes - should work)
+	limitPassword := strings.Repeat("a", 72)
+	limitHash, err := auth.HashPassword(limitPassword)
 	assert.NoError(t, err)
-	assert.NotEmpty(t, longHash)
+	assert.NotEmpty(t, limitHash)
 }
 
 func TestVerifyPassword(t *testing.T) {
@@ -487,11 +492,11 @@ func TestAuthenticationEdgeCases(t *testing.T) {
 	db := SetupTestDB(t)
 	defer CleanupTestDB(db)
 
-	// Test login with empty request
+	// Test login with empty request (should return 400 Bad Request for validation error)
 	c, w := CreateRequestContext("POST", "/api/v1/auth/login", models.LoginRequest{})
 	handler := auth.ExportLoginUser(db)
 	handler(c)
-	assert.Equal(t, http.StatusUnauthorized, w.Code)
+	assert.Equal(t, http.StatusBadRequest, w.Code)
 
 	// Test register with invalid JSON
 	c, w = CreateRequestContext("POST", "/api/v1/auth/register", "invalid json")

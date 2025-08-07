@@ -278,10 +278,11 @@ func createInitialAdmin(db *gorm.DB) error {
 
 	// Create initial admin user
 	initialAdmin := User{
-		Username: "admin",
-		Email:    "admin@localhost",
-		Role:     "admin",
-		Groups:   "admins",
+		Username:   "admin",
+		Email:      "admin@localhost",
+		Role:       "admin",
+		Groups:     "admins",
+		AuthMethod: "local",
 	}
 
 	// Hash the default password "admin"
