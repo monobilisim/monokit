@@ -144,12 +144,11 @@ func TestService_GetClient_DomainSpecificToken(t *testing.T) {
 		APIToken: "domain-specific-token",
 	}
 
-	// This will fail because we can't create a real client, but we can test the logic
-	client, err := service.GetClient(cfDomain)
-	// We expect an error because the token is invalid, but the important thing is
-	// that it tried to use the domain-specific token
-	assert.Error(t, err)
-	assert.Nil(t, client)
+    client, err := service.GetClient(cfDomain)
+    require.NoError(t, err)
+    assert.NotNil(t, client)
+    // Ensure domain-specific token is used when provided
+    assert.Equal(t, "domain-specific-token", client.APIToken)
 }
 
 func TestService_GetClient_NoGlobalClient(t *testing.T) {

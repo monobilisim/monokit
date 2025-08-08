@@ -126,18 +126,15 @@ func CreateDomain(db *gorm.DB) gin.HandlerFunc {
 // @Router /domains [get]
 func GetAllDomains(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-        var domains []Domain
-        domainIDs := auth.GetUserDomainIDs(c)
-        query := db.Model(&Domain{})
-        if domainIDs != nil { // nil means global admin (access to all)
-            if len(domainIDs) == 0 {
-                c.JSON(http.StatusOK, []DomainResponse{})
-                return
-            }
-            query = query.Where("id IN ?", domainIDs)
+        // Only global admins are allowed to list all domains
+        user, exists := c.Get("user")
+        if !exists || user.(User).Role != "global_admin" {
+            c.JSON(http.StatusForbidden, gin.H{"error": "Global admin access required"})
+            return
         }
 
-        if err := query.Find(&domains).Error; err != nil {
+        var domains []Domain
+        if err := db.Find(&domains).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch domains"})
 			return
 		}

@@ -93,6 +93,13 @@ func RequireDomainAccess(db *gorm.DB) gin.HandlerFunc {
             return
         }
 
+        // If the user has no domain associations at all, deny access
+        if len(userDomains) == 0 {
+            c.JSON(http.StatusForbidden, gin.H{"error": "User has no domain access"})
+            c.Abort()
+            return
+        }
+
 		domainContext := DomainContext{
 			UserDomains:   userDomains,
 			IsGlobalAdmin: false,
