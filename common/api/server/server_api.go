@@ -246,33 +246,36 @@ func setupRoutes(r *gin.Engine, db *gorm.DB, monokitHostname string) {
 	r.POST("/api/v1/hosts", RegisterHost(db))
 	admin.SetupAdminRoutes(r, db)
 
-	// Setup domain management routes (global admin only)
-	domainApi := r.Group("/api/v1/domains")
+    // Setup domain management routes (domain-scoped permissions)
+    domainApi := r.Group("/api/v1/domains")
 	// Apply Keycloak middleware first if enabled, then fall back to standard auth
 	if ServerConfig.Keycloak.Enabled {
 		domainApi.Use(auth.KeycloakAuthMiddleware(db))
 	}
-	domainApi.Use(AuthMiddleware(db))
+    domainApi.Use(AuthMiddleware(db))
+    // Attach domain access middleware for all domain routes
+    domainApi.Use(auth.RequireDomainAccess(db))
 	{
-		domainApi.POST("", domains.CreateDomain(db))
-		domainApi.GET("", domains.GetAllDomains(db))
-		domainApi.GET("/:id", domains.GetDomainByID(db))
-		domainApi.PUT("/:id", domains.UpdateDomain(db))
-		domainApi.DELETE("/:id", domains.DeleteDomain(db))
-		domainApi.POST("/:id/users", domains.AssignUserToDomain(db))
-		domainApi.GET("/:id/users", domains.GetDomainUsers(db))
-		domainApi.PUT("/:id/users/:user_id", domains.UpdateDomainUserRole(db))
-		domainApi.DELETE("/:id/users/:user_id", domains.RemoveUserFromDomain(db))
+        domainApi.POST("", domains.CreateDomain(db)) // keep global admin check inside
+        domainApi.GET("", domains.GetAllDomains(db))
+        domainApi.GET("/:id", domains.GetDomainByID(db))
+        // Add domain admin requirement for mutating operations (global admin still allowed inside)
+        domainApi.PUT("/:id", auth.RequireDomainAdmin(db), domains.UpdateDomain(db))
+        domainApi.DELETE("/:id", domains.DeleteDomain(db))
+        domainApi.POST("/:id/users", auth.RequireDomainAdmin(db), domains.AssignUserToDomain(db))
+        domainApi.GET("/:id/users", auth.RequireDomainAdmin(db), domains.GetDomainUsers(db))
+        domainApi.PUT("/:id/users/:user_id", auth.RequireDomainAdmin(db), domains.UpdateDomainUserRole(db))
+        domainApi.DELETE("/:id/users/:user_id", auth.RequireDomainAdmin(db), domains.RemoveUserFromDomain(db))
 
-		// Setup Cloudflare domain management routes (global admin only)
+        // Setup Cloudflare domain management routes (domain admin or global admin)
 		if ServerConfig.Cloudflare.Enabled {
 			cfService := cloudflare.NewService(db, ServerConfig.Cloudflare)
-			domainApi.POST("/:domain_id/cloudflare", cloudflare.CreateCloudflareDomain(db, cfService))
-			domainApi.GET("/:domain_id/cloudflare", cloudflare.GetCloudflareDomains(db, cfService))
-			domainApi.GET("/:domain_id/cloudflare/:cf_domain_id", cloudflare.GetCloudflareDomain(db, cfService))
-			domainApi.PUT("/:domain_id/cloudflare/:cf_domain_id", cloudflare.UpdateCloudflareDomain(db, cfService))
-			domainApi.DELETE("/:domain_id/cloudflare/:cf_domain_id", cloudflare.DeleteCloudflareDomain(db, cfService))
-			domainApi.POST("/:domain_id/cloudflare/:cf_domain_id/test", cloudflare.TestCloudflareConnection(db, cfService))
+            domainApi.POST("/:domain_id/cloudflare", auth.RequireDomainAdmin(db), cloudflare.CreateCloudflareDomain(db, cfService))
+            domainApi.GET("/:domain_id/cloudflare", auth.RequireDomainAdmin(db), cloudflare.GetCloudflareDomains(db, cfService))
+            domainApi.GET("/:domain_id/cloudflare/:cf_domain_id", auth.RequireDomainAdmin(db), cloudflare.GetCloudflareDomain(db, cfService))
+            domainApi.PUT("/:domain_id/cloudflare/:cf_domain_id", auth.RequireDomainAdmin(db), cloudflare.UpdateCloudflareDomain(db, cfService))
+            domainApi.DELETE("/:domain_id/cloudflare/:cf_domain_id", auth.RequireDomainAdmin(db), cloudflare.DeleteCloudflareDomain(db, cfService))
+            domainApi.POST("/:domain_id/cloudflare/:cf_domain_id/test", auth.RequireDomainAdmin(db), cloudflare.TestCloudflareConnection(db, cfService))
 		}
 
 		// Setup Redmine domain integration routes (domain users and global admins)

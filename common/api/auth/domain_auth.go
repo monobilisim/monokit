@@ -38,14 +38,25 @@ func RequireDomainAccess(db *gorm.DB) gin.HandlerFunc {
 
 		currentUser := user.(models.User)
 
-		// Global admins have access to all domains
-		if currentUser.Role == "global_admin" {
+        // Treat both global_admin and admin as having access to all domains for domain-scoped routes
+        if currentUser.Role == "global_admin" || currentUser.Role == "admin" {
 			domainContext := DomainContext{
 				IsGlobalAdmin: true,
 			}
 
-			// If domain ID is specified in path, validate it exists
-			if domainIDStr := c.Param("domain_id"); domainIDStr != "" {
+            // If domain ID is specified in path, validate it exists
+            domainIDStr := c.Param("domain_id")
+            if domainIDStr == "" {
+                // Also support routes that use ":id" for domain ID
+                domainIDStr = c.Param("id")
+            }
+            if domainIDStr == "" {
+                // Fallback: try to extract from full path
+                if id := ExtractDomainFromPath(c.Request.URL.Path); id != nil {
+                    domainIDStr = strconv.FormatUint(uint64(*id), 10)
+                }
+            }
+            if domainIDStr != "" {
 				domainID, err := strconv.ParseUint(domainIDStr, 10, 32)
 				if err != nil {
 					c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid domain ID"})
@@ -65,8 +76,8 @@ func RequireDomainAccess(db *gorm.DB) gin.HandlerFunc {
 					return
 				}
 
-				domainIDUint := uint(domainID)
-				domainContext.RequestedDomainID = &domainIDUint
+                domainIDUint := uint(domainID)
+                domainContext.RequestedDomainID = &domainIDUint
 			}
 
 			c.Set("domain_context", domainContext)
@@ -74,27 +85,32 @@ func RequireDomainAccess(db *gorm.DB) gin.HandlerFunc {
 			return
 		}
 
-		// For non-global admins, load their domain associations
-		var userDomains []DomainUser
-		if err := db.Preload("Domain").Where("user_id = ?", currentUser.ID).Find(&userDomains).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load user domains"})
-			c.Abort()
-			return
-		}
-
-		if len(userDomains) == 0 {
-			c.JSON(http.StatusForbidden, gin.H{"error": "User has no domain access"})
-			c.Abort()
-			return
-		}
+        // For non-global admins, load their domain associations
+        var userDomains []DomainUser
+        if err := db.Preload("Domain").Where("user_id = ?", currentUser.ID).Find(&userDomains).Error; err != nil {
+            c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to load user domains"})
+            c.Abort()
+            return
+        }
 
 		domainContext := DomainContext{
 			UserDomains:   userDomains,
 			IsGlobalAdmin: false,
 		}
 
-		// If domain ID is specified in path, ensure user has access to it
-		if domainIDStr := c.Param("domain_id"); domainIDStr != "" {
+        // If domain ID is specified in path, ensure user has access to it
+        domainIDStr := c.Param("domain_id")
+        if domainIDStr == "" {
+            // Also support routes that use ":id" for domain ID
+            domainIDStr = c.Param("id")
+        }
+        if domainIDStr == "" {
+            // Fallback: try to extract from full path
+            if id := ExtractDomainFromPath(c.Request.URL.Path); id != nil {
+                domainIDStr = strconv.FormatUint(uint64(*id), 10)
+            }
+        }
+        if domainIDStr != "" {
 			domainID, err := strconv.ParseUint(domainIDStr, 10, 32)
 			if err != nil {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid domain ID"})
@@ -118,7 +134,7 @@ func RequireDomainAccess(db *gorm.DB) gin.HandlerFunc {
 
 			domainIDUint := uint(domainID)
 			domainContext.RequestedDomainID = &domainIDUint
-		}
+        }
 
 		c.Set("domain_context", domainContext)
 		c.Next()
@@ -145,11 +161,32 @@ func RequireDomainAdmin(db *gorm.DB) gin.HandlerFunc {
 		}
 
 		// Check if user has domain admin role for the requested domain
-		if context.RequestedDomainID == nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Domain ID required for this operation"})
-			c.Abort()
-			return
-		}
+        if context.RequestedDomainID == nil {
+            // Try to infer from route params if not set yet (support both :domain_id and :id)
+            domainIDStr := c.Param("domain_id")
+            if domainIDStr == "" {
+                domainIDStr = c.Param("id")
+            }
+            if domainIDStr == "" {
+                if id := ExtractDomainFromPath(c.Request.URL.Path); id != nil {
+                    domainID := *id
+                    context.RequestedDomainID = &domainID
+                    // Update context in request
+                    c.Set("domain_context", context)
+                }
+            } else {
+                if id64, err := strconv.ParseUint(domainIDStr, 10, 32); err == nil {
+                    id := uint(id64)
+                    context.RequestedDomainID = &id
+                    c.Set("domain_context", context)
+                }
+            }
+            if context.RequestedDomainID == nil {
+                c.JSON(http.StatusBadRequest, gin.H{"error": "Domain ID required for this operation"})
+                c.Abort()
+                return
+            }
+        }
 
 		hasAdminAccess := false
 		for _, userDomain := range context.UserDomains {

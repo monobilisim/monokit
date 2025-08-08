@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+    "github.com/monobilisim/monokit/common/api/auth"
 	"github.com/monobilisim/monokit/common/api/models"
 	"gorm.io/gorm"
 )
@@ -35,17 +36,12 @@ type (
 // @Router /domains/{domain_id}/cloudflare [post]
 func CreateCloudflareDomain(db *gorm.DB, cfService *Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Check for admin access
-		user, exists := c.Get("user")
-		if !exists {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Authentication required"})
-			return
-		}
-		currentUser := user.(User)
-		if currentUser.Role != "global_admin" && currentUser.Role != "admin" {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
-			return
-		}
+        // Require domain admin or global admin via middleware and context check (redundant safety)
+        user, exists := c.Get("user")
+        if !exists {
+            c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+            return
+        }
 
 		domainIDStr := c.Param("domain_id")
 		domainID, err := strconv.ParseUint(domainIDStr, 10, 32)
@@ -53,6 +49,13 @@ func CreateCloudflareDomain(db *gorm.DB, cfService *Service) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid domain ID"})
 			return
 		}
+
+        if user.(User).Role != "global_admin" {
+            if !auth.HasDomainAdminAccess(c, uint(domainID)) {
+                c.JSON(http.StatusForbidden, gin.H{"error": "Domain admin access required"})
+                return
+            }
+        }
 
 		// Verify domain exists
 		var domain models.Domain
@@ -107,17 +110,12 @@ func CreateCloudflareDomain(db *gorm.DB, cfService *Service) gin.HandlerFunc {
 // @Router /domains/{domain_id}/cloudflare [get]
 func GetCloudflareDomains(db *gorm.DB, cfService *Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Check for admin access
-		user, exists := c.Get("user")
-		if !exists {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Authentication required"})
-			return
-		}
-		currentUser := user.(User)
-		if currentUser.Role != "global_admin" && currentUser.Role != "admin" {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
-			return
-		}
+        // Require domain admin or global admin via middleware and context check (redundant safety)
+        user, exists := c.Get("user")
+        if !exists {
+            c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+            return
+        }
 
 		domainIDStr := c.Param("domain_id")
 		domainID, err := strconv.ParseUint(domainIDStr, 10, 32)
@@ -125,6 +123,13 @@ func GetCloudflareDomains(db *gorm.DB, cfService *Service) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid domain ID"})
 			return
 		}
+
+        if user.(User).Role != "global_admin" {
+            if !auth.HasDomainAdminAccess(c, uint(domainID)) {
+                c.JSON(http.StatusForbidden, gin.H{"error": "Domain admin access required"})
+                return
+            }
+        }
 
 		// Verify domain exists
 		var domain models.Domain
@@ -176,12 +181,12 @@ func GetCloudflareDomains(db *gorm.DB, cfService *Service) gin.HandlerFunc {
 // @Router /domains/{domain_id}/cloudflare/{cf_domain_id} [get]
 func GetCloudflareDomain(db *gorm.DB, cfService *Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Check for global admin access
-		user, exists := c.Get("user")
-		if !exists || user.(User).Role != "global_admin" {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Global admin access required"})
-			return
-		}
+        // Require domain admin or global admin via middleware and context check (redundant safety)
+        user, exists := c.Get("user")
+        if !exists {
+            c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+            return
+        }
 
 		domainIDStr := c.Param("domain_id")
 		domainID, err := strconv.ParseUint(domainIDStr, 10, 32)
@@ -196,6 +201,13 @@ func GetCloudflareDomain(db *gorm.DB, cfService *Service) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid Cloudflare domain ID"})
 			return
 		}
+
+        if user.(User).Role != "global_admin" {
+            if !auth.HasDomainAdminAccess(c, uint(domainID)) {
+                c.JSON(http.StatusForbidden, gin.H{"error": "Domain admin access required"})
+                return
+            }
+        }
 
 		// Verify domain exists
 		var domain models.Domain
@@ -251,17 +263,12 @@ func GetCloudflareDomain(db *gorm.DB, cfService *Service) gin.HandlerFunc {
 // @Router /domains/{domain_id}/cloudflare/{cf_domain_id} [put]
 func UpdateCloudflareDomain(db *gorm.DB, cfService *Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Check for admin access
-		user, exists := c.Get("user")
-		if !exists {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Authentication required"})
-			return
-		}
-		currentUser := user.(User)
-		if currentUser.Role != "global_admin" && currentUser.Role != "admin" {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
-			return
-		}
+        // Require domain admin or global admin via middleware and context check (redundant safety)
+        user, exists := c.Get("user")
+        if !exists {
+            c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+            return
+        }
 
 		domainIDStr := c.Param("domain_id")
 		domainID, err := strconv.ParseUint(domainIDStr, 10, 32)
@@ -277,7 +284,7 @@ func UpdateCloudflareDomain(db *gorm.DB, cfService *Service) gin.HandlerFunc {
 			return
 		}
 
-		// Verify domain exists
+        // Verify domain exists
 		var domain models.Domain
 		if err := db.First(&domain, uint(domainID)).Error; err != nil {
 			if err == gorm.ErrRecordNotFound {
@@ -287,6 +294,13 @@ func UpdateCloudflareDomain(db *gorm.DB, cfService *Service) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch domain"})
 			return
 		}
+
+        if user.(User).Role != "global_admin" {
+            if !auth.HasDomainAdminAccess(c, uint(domainID)) {
+                c.JSON(http.StatusForbidden, gin.H{"error": "Domain admin access required"})
+                return
+            }
+        }
 
 		// Verify Cloudflare domain exists and belongs to the domain
 		existingCfDomain, err := cfService.GetCloudflareDomain(uint(cfDomainID))
@@ -342,17 +356,12 @@ func UpdateCloudflareDomain(db *gorm.DB, cfService *Service) gin.HandlerFunc {
 // @Router /domains/{domain_id}/cloudflare/{cf_domain_id} [delete]
 func DeleteCloudflareDomain(db *gorm.DB, cfService *Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Check for admin access
-		user, exists := c.Get("user")
-		if !exists {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Authentication required"})
-			return
-		}
-		currentUser := user.(User)
-		if currentUser.Role != "global_admin" && currentUser.Role != "admin" {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
-			return
-		}
+        // Require domain admin or global admin via middleware and context check (redundant safety)
+        user, exists := c.Get("user")
+        if !exists {
+            c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+            return
+        }
 
 		domainIDStr := c.Param("domain_id")
 		domainID, err := strconv.ParseUint(domainIDStr, 10, 32)
@@ -368,7 +377,7 @@ func DeleteCloudflareDomain(db *gorm.DB, cfService *Service) gin.HandlerFunc {
 			return
 		}
 
-		// Verify domain exists
+        // Verify domain exists
 		var domain models.Domain
 		if err := db.First(&domain, uint(domainID)).Error; err != nil {
 			if err == gorm.ErrRecordNotFound {
@@ -378,6 +387,13 @@ func DeleteCloudflareDomain(db *gorm.DB, cfService *Service) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch domain"})
 			return
 		}
+
+        if user.(User).Role != "global_admin" {
+            if !auth.HasDomainAdminAccess(c, uint(domainID)) {
+                c.JSON(http.StatusForbidden, gin.H{"error": "Domain admin access required"})
+                return
+            }
+        }
 
 		// Verify Cloudflare domain exists and belongs to the domain
 		existingCfDomain, err := cfService.GetCloudflareDomain(uint(cfDomainID))
@@ -415,17 +431,12 @@ func DeleteCloudflareDomain(db *gorm.DB, cfService *Service) gin.HandlerFunc {
 // @Router /domains/{domain_id}/cloudflare/{cf_domain_id}/test [post]
 func TestCloudflareConnection(db *gorm.DB, cfService *Service) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Check for admin access
-		user, exists := c.Get("user")
-		if !exists {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Authentication required"})
-			return
-		}
-		currentUser := user.(User)
-		if currentUser.Role != "global_admin" && currentUser.Role != "admin" {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Admin access required"})
-			return
-		}
+        // Require domain admin or global admin via middleware and context check (redundant safety)
+        user, exists := c.Get("user")
+        if !exists {
+            c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+            return
+        }
 
 		domainIDStr := c.Param("domain_id")
 		domainID, err := strconv.ParseUint(domainIDStr, 10, 32)
@@ -441,7 +452,7 @@ func TestCloudflareConnection(db *gorm.DB, cfService *Service) gin.HandlerFunc {
 			return
 		}
 
-		// Verify domain exists
+        // Verify domain exists
 		var domain models.Domain
 		if err := db.First(&domain, uint(domainID)).Error; err != nil {
 			if err == gorm.ErrRecordNotFound {
@@ -451,6 +462,13 @@ func TestCloudflareConnection(db *gorm.DB, cfService *Service) gin.HandlerFunc {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch domain"})
 			return
 		}
+
+        if user.(User).Role != "global_admin" {
+            if !auth.HasDomainAdminAccess(c, uint(domainID)) {
+                c.JSON(http.StatusForbidden, gin.H{"error": "Domain admin access required"})
+                return
+            }
+        }
 
 		// Verify Cloudflare domain exists and belongs to the domain
 		existingCfDomain, err := cfService.GetCloudflareDomain(uint(cfDomainID))

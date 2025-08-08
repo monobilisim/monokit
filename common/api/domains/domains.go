@@ -7,6 +7,7 @@ import (
 	"strconv"
 
 	"github.com/gin-gonic/gin"
+    "github.com/monobilisim/monokit/common/api/auth"
 	"github.com/monobilisim/monokit/common/api/cloudflare"
 	"github.com/monobilisim/monokit/common/api/models"
 	"gorm.io/gorm"
@@ -40,12 +41,12 @@ type (
 // @Router /domains [post]
 func CreateDomain(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Check for global admin access
-		user, exists := c.Get("user")
-		if !exists || user.(User).Role != "global_admin" {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Global admin access required"})
-			return
-		}
+        // Require global admin for creating domains
+        user, exists := c.Get("user")
+        if !exists || user.(User).Role != "global_admin" {
+            c.JSON(http.StatusForbidden, gin.H{"error": "Global admin access required"})
+            return
+        }
 
 		var req CreateDomainRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -125,15 +126,18 @@ func CreateDomain(db *gorm.DB) gin.HandlerFunc {
 // @Router /domains [get]
 func GetAllDomains(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Check for global admin access
-		user, exists := c.Get("user")
-		if !exists || user.(User).Role != "global_admin" {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Global admin access required"})
-			return
-		}
+        var domains []Domain
+        domainIDs := auth.GetUserDomainIDs(c)
+        query := db.Model(&Domain{})
+        if domainIDs != nil { // nil means global admin (access to all)
+            if len(domainIDs) == 0 {
+                c.JSON(http.StatusOK, []DomainResponse{})
+                return
+            }
+            query = query.Where("id IN ?", domainIDs)
+        }
 
-		var domains []Domain
-		if err := db.Find(&domains).Error; err != nil {
+        if err := query.Find(&domains).Error; err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch domains"})
 			return
 		}
@@ -169,12 +173,7 @@ func GetAllDomains(db *gorm.DB) gin.HandlerFunc {
 // @Router /domains/{id} [get]
 func GetDomainByID(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Check for global admin access
-		user, exists := c.Get("user")
-		if !exists || user.(User).Role != "global_admin" {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Global admin access required"})
-			return
-		}
+        // Access controlled by domain access middleware
 
 		idStr := c.Param("id")
 		id, err := strconv.ParseUint(idStr, 10, 32)
@@ -223,12 +222,12 @@ func GetDomainByID(db *gorm.DB) gin.HandlerFunc {
 // @Router /domains/{id} [put]
 func UpdateDomain(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Check for global admin access
-		user, exists := c.Get("user")
-		if !exists || user.(User).Role != "global_admin" {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Global admin access required"})
-			return
-		}
+        // Allow global admin or domain admin for this domain
+        user, exists := c.Get("user")
+        if !exists {
+            c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+            return
+        }
 
 		idStr := c.Param("id")
 		id, err := strconv.ParseUint(idStr, 10, 32)
@@ -236,6 +235,13 @@ func UpdateDomain(db *gorm.DB) gin.HandlerFunc {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid domain ID"})
 			return
 		}
+
+        if user.(User).Role != "global_admin" {
+            if !auth.HasDomainAdminAccess(c, uint(id)) {
+                c.JSON(http.StatusForbidden, gin.H{"error": "Domain admin access required"})
+                return
+            }
+        }
 
 		var req UpdateDomainRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -310,12 +316,12 @@ func UpdateDomain(db *gorm.DB) gin.HandlerFunc {
 // @Router /domains/{id} [delete]
 func DeleteDomain(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Check for global admin access
-		user, exists := c.Get("user")
-		if !exists || user.(User).Role != "global_admin" {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Global admin access required"})
-			return
-		}
+        // Require global admin to delete domain
+        user, exists := c.Get("user")
+        if !exists || user.(User).Role != "global_admin" {
+            c.JSON(http.StatusForbidden, gin.H{"error": "Global admin access required"})
+            return
+        }
 
 		idStr := c.Param("id")
 		id, err := strconv.ParseUint(idStr, 10, 32)
@@ -368,19 +374,26 @@ func DeleteDomain(db *gorm.DB) gin.HandlerFunc {
 // @Router /domains/{id}/users [post]
 func AssignUserToDomain(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Check for global admin access
-		user, exists := c.Get("user")
-		if !exists || user.(User).Role != "global_admin" {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Global admin access required"})
-			return
-		}
+        // Require global admin or domain admin for this domain
+        user, exists := c.Get("user")
+        if !exists {
+            c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+            return
+        }
 
 		idStr := c.Param("id")
-		domainID, err := strconv.ParseUint(idStr, 10, 32)
+        domainID, err := strconv.ParseUint(idStr, 10, 32)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid domain ID"})
 			return
 		}
+
+        if user.(User).Role != "global_admin" {
+            if !auth.HasDomainAdminAccess(c, uint(domainID)) {
+                c.JSON(http.StatusForbidden, gin.H{"error": "Domain admin access required"})
+                return
+            }
+        }
 
 		var req AssignUserToDomainRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -471,19 +484,26 @@ func AssignUserToDomain(db *gorm.DB) gin.HandlerFunc {
 // @Router /domains/{id}/users [get]
 func GetDomainUsers(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Check for global admin access
-		user, exists := c.Get("user")
-		if !exists || user.(User).Role != "global_admin" {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Global admin access required"})
-			return
-		}
+        // Require global admin or domain admin for this domain
+        user, exists := c.Get("user")
+        if !exists {
+            c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+            return
+        }
 
 		idStr := c.Param("id")
-		domainID, err := strconv.ParseUint(idStr, 10, 32)
+        domainID, err := strconv.ParseUint(idStr, 10, 32)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid domain ID"})
 			return
 		}
+
+        if user.(User).Role != "global_admin" {
+            if !auth.HasDomainAdminAccess(c, uint(domainID)) {
+                c.JSON(http.StatusForbidden, gin.H{"error": "Domain admin access required"})
+                return
+            }
+        }
 
 		// Check if domain exists
 		var domain Domain
@@ -538,19 +558,26 @@ func GetDomainUsers(db *gorm.DB) gin.HandlerFunc {
 // @Router /domains/{domain_id}/users/{user_id} [put]
 func UpdateDomainUserRole(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Check for global admin access
-		user, exists := c.Get("user")
-		if !exists || user.(User).Role != "global_admin" {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Global admin access required"})
-			return
-		}
+        // Require global admin or domain admin for this domain
+        user, exists := c.Get("user")
+        if !exists {
+            c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+            return
+        }
 
-		domainIDStr := c.Param("id")
-		domainID, err := strconv.ParseUint(domainIDStr, 10, 32)
+        domainIDStr := c.Param("id")
+        domainID, err := strconv.ParseUint(domainIDStr, 10, 32)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid domain ID"})
 			return
 		}
+
+        if user.(User).Role != "global_admin" {
+            if !auth.HasDomainAdminAccess(c, uint(domainID)) {
+                c.JSON(http.StatusForbidden, gin.H{"error": "Domain admin access required"})
+                return
+            }
+        }
 
 		userIDStr := c.Param("user_id")
 		userID, err := strconv.ParseUint(userIDStr, 10, 32)
@@ -626,19 +653,26 @@ func UpdateDomainUserRole(db *gorm.DB) gin.HandlerFunc {
 // @Router /domains/{domain_id}/users/{user_id} [delete]
 func RemoveUserFromDomain(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Check for global admin access
-		user, exists := c.Get("user")
-		if !exists || user.(User).Role != "global_admin" {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Global admin access required"})
-			return
-		}
+        // Require global admin or domain admin for this domain
+        user, exists := c.Get("user")
+        if !exists {
+            c.JSON(http.StatusUnauthorized, gin.H{"error": "Authentication required"})
+            return
+        }
 
-		domainIDStr := c.Param("id")
-		domainID, err := strconv.ParseUint(domainIDStr, 10, 32)
+        domainIDStr := c.Param("id")
+        domainID, err := strconv.ParseUint(domainIDStr, 10, 32)
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid domain ID"})
 			return
 		}
+
+        if user.(User).Role != "global_admin" {
+            if !auth.HasDomainAdminAccess(c, uint(domainID)) {
+                c.JSON(http.StatusForbidden, gin.H{"error": "Domain admin access required"})
+                return
+            }
+        }
 
 		userIDStr := c.Param("user_id")
 		userID, err := strconv.ParseUint(userIDStr, 10, 32)
@@ -681,12 +715,12 @@ func RemoveUserFromDomain(db *gorm.DB) gin.HandlerFunc {
 // @Router /users/{user_id}/domains [get]
 func GetUserDomains(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Check for global admin access
-		user, exists := c.Get("user")
-		if !exists || user.(User).Role != "global_admin" {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Global admin access required"})
-			return
-		}
+        // Keep as global admin only
+        user, exists := c.Get("user")
+        if !exists || user.(User).Role != "global_admin" {
+            c.JSON(http.StatusForbidden, gin.H{"error": "Global admin access required"})
+            return
+        }
 
 		userIDStr := c.Param("user_id")
 		userID, err := strconv.ParseUint(userIDStr, 10, 32)
