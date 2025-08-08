@@ -17,7 +17,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"os"
 	"os/exec"
 	"reflect"
 	"strconv"
@@ -26,6 +25,7 @@ import (
 
 	"github.com/monobilisim/monokit/common"
 	db "github.com/monobilisim/monokit/common/db"
+	"github.com/monobilisim/monokit/common/healthdb"
 	issues "github.com/monobilisim/monokit/common/redmine/issues"
 	"github.com/rs/zerolog/log"
 )
@@ -130,24 +130,19 @@ func getClusterStatus(patroniApiUrl string) (*Response, *Response) { // Added pa
 	return &result, oldResult
 }
 
-// loadOldResult loads the previous cluster status from the JSON file
+// loadOldResult loads the previous cluster status from SQLite cache
 // and returns it
 func loadOldResult() *Response {
-	oldOutputFile := common.TmpDir + "/old_raw_output.json"
-	if _, err := os.Stat(oldOutputFile); err == nil {
-		oldOutput, err := os.ReadFile(oldOutputFile)
-		if err != nil {
-			log.Error().Str("component", "pgsqlHealth").Str("operation", "loadOldResult").Str("action", "read_file_failed").Msg(fmt.Sprintf("Error reading file: %v", err))
-			return nil
-		}
-		var oldResult Response
-		if err := json.Unmarshal(oldOutput, &oldResult); err != nil {
-			log.Error().Str("component", "pgsqlHealth").Str("operation", "loadOldResult").Str("action", "unmarshal_failed").Msg(fmt.Sprintf("Error during Unmarshal(): %v", err))
-			return nil
-		}
-		return &oldResult
+	jsonStr, _, _, found, err := healthdb.GetJSON("pgsqlHealth", "cluster_old")
+	if err != nil || !found || jsonStr == "" {
+		return nil
 	}
-	return nil
+	var oldResult Response
+	if err := json.Unmarshal([]byte(jsonStr), &oldResult); err != nil {
+		log.Error().Str("component", "pgsqlHealth").Str("operation", "loadOldResult").Str("action", "unmarshal_failed").Msg(fmt.Sprintf("Error during Unmarshal(): %v", err))
+		return nil
+	}
+	return &oldResult
 }
 
 // checkThisNodeRole checks the role of the current node
@@ -219,7 +214,7 @@ func checkClusterRoleChanges(result, oldResult *Response, dbConfig db.DbHealth, 
 // checkClusterStates checks the state of each cluster member
 // and logs the results
 func checkClusterStates(result *Response, skipOutput bool) ([]Member, []Member) {
-	oldOutputFile := common.TmpDir + "/old_raw_output.json"
+	// persisted previous cluster state is stored in SQLite (healthdb)
 
 	// Don't output section headers
 	// if !skipOutput {
@@ -251,47 +246,39 @@ func checkClusterStates(result *Response, skipOutput bool) ([]Member, []Member) 
 		listTable = manipulatePatroniListOutput(string(out))
 	}
 
-	if _, err := os.Stat(oldOutputFile); err == nil {
-		var oldResult Response
-		oldOutput, err := os.ReadFile(oldOutputFile)
-		if err != nil {
-			log.Error().Str("component", "pgsqlHealth").Str("operation", "checkClusterStates").Str("action", "read_old_output_failed").Msg(fmt.Sprintf("Error reading file: %v", err))
-			return runningClusters, stoppedClusters
+	// Try to load previous cluster state from SQLite
+	var oldResult Response
+	hasOld := false
+	if jsonStr, _, _, found, _ := healthdb.GetJSON("pgsqlHealth", "cluster_old"); found && jsonStr != "" {
+		if err := json.Unmarshal([]byte(jsonStr), &oldResult); err != nil {
+			log.Error().Str("component", "pgsqlHealth").Str("operation", "checkClusterStates").Str("action", "unmarshal_old_result_failed").Msg(fmt.Sprintf("Error during Unmarshal(): %v", err))
+		} else {
+			hasOld = true
 		}
-		err = json.Unmarshal(oldOutput, &oldResult)
+	}
+
+	if hasOld {
 		clusterLen := strconv.Itoa(len(oldResult.Members))
 		if len(runningClusters) <= 1 {
 			issues.CheckDown("cluster_size_issue", "Patroni Cluster Size: "+rcLen+"/"+clusterLen, "Patroni cluster size: "+rcLen+"/"+clusterLen+"\n"+listTable, false, 0)
 		}
-		if err != nil {
-			log.Error().Str("component", "pgsqlHealth").Str("operation", "checkClusterStates").Str("action", "unmarshal_old_result_failed").Msg(fmt.Sprintf("Error during Unmarshal(): %v", err))
-			return runningClusters, stoppedClusters
-		}
-
 		if len(oldResult.Members) == len(result.Members) {
 			issues.CheckUp("cluster_size_issue", "Patroni cluster size returnerd to normal: "+rcLen+"/"+clusterLen+"\n"+listTable)
-			err := os.Remove(oldOutputFile)
-			if err != nil {
-				log.Error().Str("component", "pgsqlHealth").Str("operation", "checkClusterStates").Str("action", "delete_old_output_failed").Msg(fmt.Sprintf("Error deleting file: %v", err))
-			}
+			_ = healthdb.Delete("pgsqlHealth", "cluster_old")
 		} else {
 			issues.Update("cluster_size_issue", "Patroni cluster size: "+rcLen+"/"+clusterLen+"\n"+listTable, true)
 		}
-
 	} else {
 		var rslt Response
 		if result != nil {
 			rslt = *result // Properly dereference the pointer
 		}
 		if len(stoppedClusters) > 0 {
-			f, err := os.Create(oldOutputFile)
-			if err != nil {
-				log.Error().Str("component", "pgsqlHealth").Str("operation", "checkClusterStates").Str("action", "create_old_output_failed").Msg(fmt.Sprintf("Error creating file: %v", err))
-				return runningClusters, stoppedClusters
+			if b, err := json.Marshal(rslt); err == nil {
+				_ = healthdb.PutJSON("pgsqlHealth", "cluster_old", string(b), nil, time.Now())
+			} else {
+				log.Error().Str("component", "pgsqlHealth").Str("operation", "checkClusterStates").Str("action", "marshal_old_result_failed").Msg(fmt.Sprintf("Error marshaling JSON: %v", err))
 			}
-			defer f.Close()
-			encoder := json.NewEncoder(f)
-			encoder.Encode(rslt)
 		}
 		clusterLen := strconv.Itoa(len(rslt.Members))
 		if len(runningClusters) <= 1 {
@@ -302,18 +289,19 @@ func checkClusterStates(result *Response, skipOutput bool) ([]Member, []Member) 
 	return runningClusters, stoppedClusters
 }
 
-// saveOutputJSON saves the current cluster status to a JSON file
-// for future comparison
+// saveOutputJSON saves the current cluster status to SQLite for future comparison
 func saveOutputJSON(result *Response) {
-	outputJSON := common.TmpDir + "/raw_output.json"
-	f, err := os.Create(outputJSON)
-	if err != nil {
-		log.Error().Str("component", "pgsqlHealth").Str("operation", "saveOutputJSON").Str("action", "create_output_failed").Msg(fmt.Sprintf("Error creating file: %v", err))
+	if result == nil {
 		return
 	}
-	defer f.Close()
-	encoder := json.NewEncoder(f)
-	encoder.Encode(result)
+	b, err := json.Marshal(result)
+	if err != nil {
+		log.Error().Str("component", "pgsqlHealth").Str("operation", "saveOutputJSON").Str("action", "marshal_failed").Msg(fmt.Sprintf("Error marshaling JSON: %v", err))
+		return
+	}
+	if err := healthdb.PutJSON("pgsqlHealth", "cluster_old", string(b), nil, time.Now()); err != nil {
+		log.Error().Str("component", "pgsqlHealth").Str("operation", "saveOutputJSON").Str("action", "sqlite_put_failed").Msg(fmt.Sprintf("Error storing JSON: %v", err))
+	}
 }
 
 // manipulatePatroniListOutput manipulates the output of the patroni list command

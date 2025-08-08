@@ -7,12 +7,12 @@ import (
 	"io"
 	"net/http"
 	"os"
-	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
 
 	"github.com/monobilisim/monokit/common"
+	"github.com/monobilisim/monokit/common/healthdb"
 	"github.com/rs/zerolog/log"
 	"golang.org/x/net/html"
 )
@@ -241,10 +241,9 @@ func extractTempAuthKeyFromUserAPI(jsonContent string) (string, error) {
 	return userResponse.TempAuthKey, nil
 }
 
-// getCacheFilePath returns the path to the blacklist cache file
-func getCacheFilePath() string {
-	return filepath.Join(common.TmpDir, "blacklist_cache.json")
-}
+// We migrate file-based cache to SQLite: keep stub for backward-compat if needed.
+// getCacheKey composes the SQLite key for PMG blacklist status.
+func getCacheKey() string { return "blacklist_cache" }
 
 // shouldRunBlacklistCheck determines if we should run a new blacklist check
 func shouldRunBlacklistCheck() bool {
@@ -254,55 +253,58 @@ func shouldRunBlacklistCheck() bool {
 		return true
 	}
 
-	// Check if cache file exists and is valid
-	cacheFile := getCacheFilePath()
-	if _, err := os.Stat(cacheFile); os.IsNotExist(err) {
-		log.Debug().Msg("No blacklist cache file found, running check")
-		return true
-	}
-
-	// Read and parse cache file
-	cache, err := loadBlacklistCache()
+	// Load from SQLite cache
+	_, cachedAt, nextCheckAt, found, err := healthdb.GetJSON("pmgHealth", getCacheKey())
 	if err != nil {
-		log.Debug().Err(err).Msg("Failed to load blacklist cache, running check")
+		log.Debug().Err(err).Msg("Failed to load blacklist cache from SQLite, running check")
+		return true
+	}
+	if !found {
+		log.Debug().Msg("No blacklist cache found in SQLite, running check")
 		return true
 	}
 
-	// Check if it's time for the next check (every 12 hours at 12:00)
+	// Determine next check: we store it explicitly; fallback to 12:00 logic if nil
 	now := time.Now()
-	if now.After(cache.NextCheckAt) {
-		log.Debug().
-			Time("next_check", cache.NextCheckAt).
-			Time("current_time", now).
-			Msg("Cache expired, running new blacklist check")
-		return true
+	if nextCheckAt != nil {
+		if now.After(*nextCheckAt) {
+			log.Debug().Time("next_check", *nextCheckAt).Time("current_time", now).Msg("Cache expired, running new blacklist check")
+			return true
+		}
+	} else {
+		// Fallback: if older than 12 hours since cachedAt
+		if now.Sub(cachedAt) >= 12*time.Hour {
+			log.Debug().Time("cached_at", cachedAt).Msg("Cache older than 12h, running new blacklist check")
+			return true
+		}
 	}
 
-	log.Debug().
-		Time("next_check", cache.NextCheckAt).
-		Time("current_time", now).
-		Msg("Using cached blacklist data")
+	log.Debug().Time("current_time", now).Msg("Using cached blacklist data from SQLite")
 	return false
 }
 
-// loadBlacklistCache loads cached blacklist data from file
+// loadBlacklistCache loads cached blacklist data from SQLite
 func loadBlacklistCache() (*BlacklistCache, error) {
-	cacheFile := getCacheFilePath()
-	data, err := os.ReadFile(cacheFile)
+	jsonStr, _, next, found, err := healthdb.GetJSON("pmgHealth", getCacheKey())
 	if err != nil {
-		return nil, fmt.Errorf("failed to read cache file: %w", err)
+		return nil, fmt.Errorf("failed to read cache: %w", err)
 	}
-
+	if !found {
+		return nil, fmt.Errorf("cache not found")
+	}
 	var cache BlacklistCache
-	err = json.Unmarshal(data, &cache)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse cache file: %w", err)
+	if err := json.Unmarshal([]byte(jsonStr), &cache); err != nil {
+		return nil, fmt.Errorf("failed to parse cache json: %w", err)
 	}
-
+	// Ensure NextCheckAt from DB is retained in Status for callers expecting it formatted
+	if next != nil {
+		cache.Status.NextCheck = next.Format("2006-01-02 15:04:05")
+		cache.NextCheckAt = *next
+	}
 	return &cache, nil
 }
 
-// saveBlacklistCache saves blacklist data to cache file
+// saveBlacklistCache saves blacklist data to SQLite
 func saveBlacklistCache(status BlacklistStatus) error {
 	now := time.Now()
 
@@ -328,17 +330,11 @@ func saveBlacklistCache(status BlacklistStatus) error {
 		return fmt.Errorf("failed to marshal cache data: %w", err)
 	}
 
-	cacheFile := getCacheFilePath()
-	err = os.WriteFile(cacheFile, data, 0644)
-	if err != nil {
-		return fmt.Errorf("failed to write cache file: %w", err)
+	if err := healthdb.PutJSON("pmgHealth", getCacheKey(), string(data), &nextCheck, now); err != nil {
+		return fmt.Errorf("failed to store cache into SQLite: %w", err)
 	}
 
-	log.Debug().
-		Str("cache_file", cacheFile).
-		Time("next_check", nextCheck).
-		Msg("Saved blacklist data to cache")
-
+	log.Debug().Time("next_check", nextCheck).Msg("Saved blacklist data to SQLite")
 	return nil
 }
 

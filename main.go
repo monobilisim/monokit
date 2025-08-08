@@ -14,6 +14,7 @@ import (
 	"github.com/monobilisim/monokit/common/api/server"
 	"github.com/monobilisim/monokit/common/health"
 	plugin "github.com/monobilisim/monokit/common/health/plugin"
+	"github.com/monobilisim/monokit/common/healthdb"
 	issues "github.com/monobilisim/monokit/common/redmine/issues"
 	news "github.com/monobilisim/monokit/common/redmine/news"
 	verCheck "github.com/monobilisim/monokit/common/versionCheck"
@@ -374,6 +375,9 @@ func main() {
 
 	// / Logs
 	RootCmd.AddCommand(logs.NewLogsCmd())
+
+	// / DB inspector (replaces manual cat of cache files)
+	RootCmd.AddCommand(healthdb.NewCmd())
 
 	lbPolicyCmd.AddCommand(lbPolicySwitchCmd)
 	lbPolicySwitchCmd.Flags().StringP("server", "s", "", "Server")

@@ -6,12 +6,12 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/monobilisim/monokit/common"
+	"github.com/monobilisim/monokit/common/healthdb"
 	"github.com/rs/zerolog/log"
 )
 
@@ -31,40 +31,39 @@ type RedmineIssue struct {
 	Issue Issue `json:"issue"`
 }
 
-func redmineCheckIssueLog(service string) bool {
-	serviceReplaced := strings.Replace(service, "/", "-", -1)
-	filePath := common.TmpDir + "/" + serviceReplaced + "-redmine.log"
+func redmineIssueKey(service string) string {
+	return strings.Replace(service, "/", "-", -1) + ":redmine:issue"
+}
+func redmineStatKey(service string) string {
+	return strings.Replace(service, "/", "-", -1) + ":redmine:stat"
+}
 
-	// If file exists, return
-	if _, err := os.Stat(filePath); err == nil {
-		// Check if file is empty, if so delete the file and return
-		if common.IsEmptyOrWhitespace(filePath) {
-			err := os.Remove(filePath)
-			if err != nil {
-				log.Error().Err(err).Msg("os.Remove error")
-			}
-			return false
-		}
+func setIssueID(service, id string) error {
+	return healthdb.PutJSON("redmine", redmineIssueKey(service), id, nil, time.Now())
+}
 
-		// Check if file is 0, if so delete the file and return
-		read, err := os.ReadFile(filePath)
-
-		if err != nil {
-			log.Error().Err(err).Str("component", "redmine").Str("operation", "check_issue_log").Str("file_path", filePath).Msg("Failed to read issue log file")
-		}
-
-		if string(read) == "0" {
-			err := os.Remove(filePath)
-			if err != nil {
-				log.Error().Err(err).Str("component", "redmine").Str("operation", "check_issue_log").Str("file_path", filePath).Msg("Failed to remove zero-content issue log file")
-			}
-			return false
-		}
-
-		return true
+func getIssueID(service string) (string, bool) {
+	s, _, _, found, err := healthdb.GetJSON("redmine", redmineIssueKey(service))
+	if err != nil || !found || s == "" || s == "0" {
+		return "", false
 	}
+	return s, true
+}
 
-	return false
+func deleteIssueID(service string) { _ = healthdb.Delete("redmine", redmineIssueKey(service)) }
+
+func redmineCheckIssueLog(service string) bool {
+	key := redmineIssueKey(service)
+	jsonStr, _, _, found, err := healthdb.GetJSON("redmine", key)
+	if err != nil || !found {
+		return false
+	}
+	// historical file held plain string issue ID, sometimes "0"
+	if jsonStr == "" || jsonStr == "0" {
+		_ = healthdb.Delete("redmine", key)
+		return false
+	}
+	return true
 }
 
 func redmineWrapper(service string, subject string, message string) {
@@ -77,150 +76,71 @@ func redmineWrapper(service string, subject string, message string) {
 }
 
 func CheckUp(service string, message string) {
-	// Remove slashes from service and replace them with -
-	serviceReplaced := strings.Replace(service, "/", "-", -1)
-	file_path := common.TmpDir + "/" + serviceReplaced + "-redmine-stat.log"
-
-	// Check if the file exists, close issue and remove file if it does
-	if _, err := os.Stat(file_path); err == nil {
-		os.Remove(file_path)
+	// If we have a stat record, delete it and close the issue
+	key := redmineStatKey(service)
+	if _, _, _, found, _ := healthdb.GetJSON("redmine", key); found {
+		_ = healthdb.Delete("redmine", key)
 		Close(service, message)
 	}
 }
 
 func CheckDown(service string, subject string, message string, EnableCustomIntervals bool, CustomInterval float64) {
 	var interval float64
-
 	if EnableCustomIntervals {
 		interval = CustomInterval
 	} else {
 		interval = common.Config.Redmine.Interval
 	}
 
-	// Remove slashes from service and replace them with -
-	serviceReplaced := strings.Replace(service, "/", "-", -1)
-	filePath := common.TmpDir + "/" + serviceReplaced + "-redmine-stat.log"
+	key := redmineStatKey(service)
 	currentDate := time.Now().Format("2006-01-02 15:04:05 -0700")
 
-	// Check if the file exists
-	if _, err := os.Stat(filePath); err == nil {
-		// Open file and load the JSON
-
-		file, err := os.OpenFile(filePath, os.O_RDONLY, 0644)
-		defer file.Close()
-
-		if err != nil {
-			log.Error().Err(err).Str("file_path", filePath).Msg("Failed to open file for reading")
-		}
-
+	// Load existing state from SQLite
+	jsonStr, _, _, found, _ := healthdb.GetJSON("redmine", key)
+	if found {
 		var j common.ServiceFile
-
-		fileRead, err := io.ReadAll(file)
-
-		if err != nil {
-			log.Error().Err(err).Str("file_path", filePath).Msg("Failed to read file content")
+		if err := json.Unmarshal([]byte(jsonStr), &j); err != nil {
 			return
 		}
-
-		err = json.Unmarshal(fileRead, &j)
-
-		if err != nil {
-			log.Error().Err(err).Str("file_path", filePath).Msg("Failed to parse JSON from file")
-			return
-		}
-
-		// Return if locked == true
 		if j.Locked {
 			return
 		}
-
-		oldDate := j.Date
-		oldDateParsed, err := time.Parse("2006-01-02 15:04:05 -0700", oldDate)
-
+		oldDateParsed, err := time.Parse("2006-01-02 15:04:05 -0700", j.Date)
 		if err != nil {
-			log.Error().Err(err).Str("date", oldDate).Msg("Failed to parse date from file")
+			log.Error().Err(err).Str("date", j.Date).Msg("Failed to parse date from state")
+			oldDateParsed = time.Now().Add(-25 * time.Hour)
 		}
 
-		finJson := &common.ServiceFile{
-			Date:   currentDate,
-			Locked: true,
-		}
-
+		fin := &common.ServiceFile{Date: currentDate, Locked: true}
 		if interval == 0 {
 			if oldDateParsed.Format("2006-01-02") != time.Now().Format("2006-01-02") {
-				jsonData, err := json.Marshal(&common.ServiceFile{Date: currentDate, Locked: false})
-
-				if err != nil {
-					log.Error().Err(err).Msg("Failed to marshal service file JSON")
-				}
-
-				_ = os.WriteFile(filePath, jsonData, 0644)
-
+				data, _ := json.Marshal(&common.ServiceFile{Date: currentDate, Locked: false})
+				_ = healthdb.PutJSON("redmine", key, string(data), nil, time.Now())
 				redmineWrapper(service, subject, message)
 			}
 			return
 		}
 
 		if time.Since(oldDateParsed).Hours() > 24 {
-			jsonData, err := json.Marshal(finJson)
-
-			if err != nil {
-				log.Error().Err(err).Msg("Failed to marshal service file JSON")
-			}
-
-			err = os.WriteFile(filePath, jsonData, 0644)
-
-			if err != nil {
-				log.Error().Err(err).Str("file_path", filePath).Msg("Failed to write service file")
-			}
-
+			data, _ := json.Marshal(fin)
+			_ = healthdb.PutJSON("redmine", key, string(data), nil, time.Now())
 			redmineWrapper(service, subject, message)
 		} else {
-			if !j.Locked {
-				// currentDate - oldDate in minutes
-				timeDiff := time.Now().Sub(oldDateParsed) //.Minutes()
-
-				if timeDiff.Minutes() >= interval {
-					jsonData, err := json.Marshal(finJson)
-					if err != nil {
-						log.Error().Err(err).Msg("Failed to marshal service file JSON")
-					}
-
-					err = os.WriteFile(filePath, jsonData, 0644)
-
-					if err != nil {
-						log.Error().Err(err).Str("file_path", filePath).Msg("Failed to write service file")
-					}
-
-					redmineWrapper(service, subject, message)
-				}
+			timeDiff := time.Since(oldDateParsed)
+			if timeDiff.Minutes() >= interval {
+				data, _ := json.Marshal(fin)
+				_ = healthdb.PutJSON("redmine", key, string(data), nil, time.Now())
+				redmineWrapper(service, subject, message)
 			}
 		}
-	} else {
+		return
+	}
 
-		file, err := os.OpenFile(filePath, os.O_CREATE|os.O_RDWR, 0644)
-		defer file.Close()
-
-		if err != nil {
-			log.Error().Err(err).Str("file_path", filePath).Msg("Failed to open file for writing")
-			return
-		}
-
-		jsonData, err := json.Marshal(&common.ServiceFile{Date: currentDate, Locked: false})
-
-		if err != nil {
-			log.Error().Err(err).Msg("Failed to marshal service file JSON")
-		}
-
-		err = os.WriteFile(filePath, jsonData, 0644)
-
-		if err != nil {
-			log.Error().Err(err).Str("file_path", filePath).Msg("Failed to write service file")
-		}
-
-		if interval == 0 {
-			redmineWrapper(service, subject, message)
-		}
+	// No existing state: create initial unlocked record
+	data, _ := json.Marshal(&common.ServiceFile{Date: currentDate, Locked: false})
+	_ = healthdb.PutJSON("redmine", key, string(data), nil, time.Now())
+	if interval == 0 {
+		redmineWrapper(service, subject, message)
 	}
 }
 
@@ -503,14 +423,9 @@ func Create(service string, subject string, message string) {
 		Str("subject", subject).
 		Msg("Starting issue creation process")
 
-	serviceReplaced := strings.Replace(service, "/", "-", -1)
-	filePath := common.TmpDir + "/" + serviceReplaced + "-redmine.log"
+	// issue id now in SQLite (no more filePath)
 
-	log.Debug().
-		Str("component", "redmine").
-		Str("operation", "create_issue").
-		Str("file_path", filePath).
-		Msg("Using service log file")
+	log.Debug().Str("component", "redmine").Str("operation", "create_issue").Msg("Using SQLite to store service issue id")
 
 	if !common.Config.Redmine.Enabled {
 		log.Debug().Str("component", "redmine").Msg("Redmine integration is disabled")
@@ -614,11 +529,8 @@ func Create(service string, subject string, message string) {
 							Str("service", service).
 							Msg("Successfully reopened existing issue")
 
-						// Write the issue ID to the service's log file
-						err = os.WriteFile(filePath, []byte(existingIssueId), 0644)
-						if err != nil {
-							log.Error().Err(err).Str("component", "redmine").Str("operation", "create_issue").Str("file_path", filePath).Str("issue_id", existingIssueId).Msg("Failed to write reopened issue ID to log file")
-						}
+						// Persist the issue ID in SQLite
+						_ = setIssueID(service, existingIssueId)
 						return
 					} else {
 						respBody, _ := io.ReadAll(resp.Body)
@@ -704,15 +616,8 @@ func Create(service string, subject string, message string) {
 		log.Error().Err(err).Str("component", "redmine").Str("operation", "create_issue").Str("service", service).Msg("Failed to decode new issue response")
 	}
 
-	// get issue id, convert to string
-	issueId := []byte(strconv.Itoa(data.Issue.Id))
-
-	// write issue id to file
-	err = os.WriteFile(filePath, issueId, 0644)
-
-	if err != nil {
-		log.Error().Err(err).Str("component", "redmine").Str("operation", "create_issue").Str("file_path", filePath).Int("issue_id", data.Issue.Id).Str("service", service).Msg("Failed to write new issue ID to log file")
-	}
+	// persist issue id in SQLite
+	_ = setIssueID(service, strconv.Itoa(data.Issue.Id))
 
 	log.Info().
 		Str("component", "redmine").
@@ -725,39 +630,11 @@ func Create(service string, subject string, message string) {
 
 func ExistsNote(service string, message string) bool {
 	// Check if a note in an issue already exists
-	serviceReplaced := strings.Replace(service, "/", "-", -1)
-	filePath := common.TmpDir + "/" + serviceReplaced + "-redmine.log"
-
-	// check if filePath exists, if not return
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+	idStr, ok := getIssueID(service)
+	if !ok {
 		return false
 	}
-
-	// Check if file is empty, if so delete the file and return
-	if common.IsEmptyOrWhitespace(filePath) {
-		err := os.Remove(filePath)
-		if err != nil {
-			log.Error().Err(err).Str("component", "redmine").Str("operation", "exists_note").Str("file_path", filePath).Str("service", service).Msg("Failed to remove empty log file")
-		}
-		return false
-	}
-
-	// read file
-	file, err := os.ReadFile(filePath)
-
-	if err != nil {
-		log.Error().Err(err).Str("component", "redmine").Str("operation", "exists_note").Str("file_path", filePath).Str("service", service).Msg("Failed to read issue log file")
-		return false
-	}
-
-	if string(file) == "0" {
-		err := os.Remove(filePath)
-		if err != nil {
-			log.Error().Err(err).Str("component", "redmine").Str("operation", "exists_note").Str("file_path", filePath).Str("service", service).Msg("Failed to remove zero-content log file")
-		}
-	}
-
-	redmineUrlFinal := common.Config.Redmine.Url + "/issues/" + string(file) + ".json?include=journals"
+	redmineUrlFinal := common.Config.Redmine.Url + "/issues/" + idStr + ".json?include=journals"
 
 	// Send a GET request to the Redmine API to get all issues
 	req, err := http.NewRequest("GET", redmineUrlFinal, nil)
@@ -855,33 +732,20 @@ func Update(service string, message string, checkNote bool) {
 		}
 	}
 
-	serviceReplaced := strings.Replace(service, "/", "-", -1)
-	filePath := common.TmpDir + "/" + serviceReplaced + "-redmine.log"
-
 	if !redmineCheckIssueLog(service) {
 		return
 	}
-
-	// read file
-	file, err := os.ReadFile(filePath)
-
-	if err != nil {
-		log.Error().Err(err).Str("component", "redmine").Str("operation", "update_issue").Str("file_path", filePath).Str("service", service).Msg("Failed to read issue log file for update")
+	idStr, ok := getIssueID(service)
+	if !ok {
+		return
 	}
-
-	// get issue id
-	issueId, err := strconv.Atoi(string(file))
-
+	issueId, err := strconv.Atoi(idStr)
 	if err != nil {
-		log.Error().Err(err).Str("component", "redmine").Str("operation", "update_issue").Str("content", string(file)).Str("service", service).Msg("Failed to convert issue ID to integer")
+		log.Error().Err(err).Str("component", "redmine").Str("operation", "update_issue").Str("content", idStr).Str("service", service).Msg("Failed to convert issue ID to integer")
+		return
 	}
-
 	if issueId == 0 {
-		// Remove file
-		err := os.Remove(filePath)
-		if err != nil {
-			log.Error().Err(err).Str("component", "redmine").Str("operation", "update_issue").Str("file_path", filePath).Str("service", service).Msg("Failed to remove invalid issue log file")
-		}
+		deleteIssueID(service)
 		return
 	}
 
@@ -894,7 +758,7 @@ func Update(service string, message string, checkNote bool) {
 		log.Error().Err(err).Str("component", "redmine").Str("operation", "update_issue").Str("service", service).Int("issue_id", issueId).Msg("Failed to marshal issue update request")
 	}
 
-	updateUrl := common.Config.Redmine.Url + "/issues/" + string(file) + ".json"
+	updateUrl := common.Config.Redmine.Url + "/issues/" + idStr + ".json"
 	req, err := http.NewRequest("PUT", updateUrl, bytes.NewBuffer(jsonBody))
 	if err != nil {
 		log.Error().Err(err).Str("component", "redmine").Str("operation", "update_issue").Str("url", updateUrl).Str("service", service).Int("issue_id", issueId).Msg("Failed to create issue update request")
@@ -979,11 +843,8 @@ func Close(service string, message string) {
 		return
 	}
 
-	serviceReplaced := strings.Replace(service, "/", "-", -1)
-	filePath := common.TmpDir + "/" + serviceReplaced + "-redmine.log"
-
-	// check if filePath exists, if not return
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+	// Ensure we have an issue ID
+	if id, ok := getIssueID(service); !ok || id == "" {
 		return
 	}
 
@@ -991,28 +852,20 @@ func Close(service string, message string) {
 		return
 	}
 
-	// read file
-	file, err := os.ReadFile(filePath)
+	// read id from sqlite
+	idStr, _ := getIssueID(service)
+	issueId, err := strconv.Atoi(idStr)
 	if err != nil {
-		log.Error().Err(err).Str("component", "redmine").Str("operation", "close_issue").Str("file_path", filePath).Str("service", service).Msg("Failed to read issue log file for closing")
+		log.Error().Err(err).Str("component", "redmine").Str("operation", "close_issue").Str("content", idStr).Str("service", service).Msg("Failed to convert issue ID to integer for closing")
 	}
 
-	issueId, err := strconv.Atoi(string(file))
-
-	if err != nil {
-		log.Error().Err(err).Str("component", "redmine").Str("operation", "close_issue").Str("content", string(file)).Str("service", service).Msg("Failed to convert issue ID to integer for closing")
-	}
-
+	// if parse failed or id empty, stop
 	if issueId == 0 {
-		// Remove file
-		err := os.Remove(filePath)
-		if err != nil {
-			log.Error().Err(err).Str("component", "redmine").Str("operation", "close_issue").Str("file_path", filePath).Str("service", service).Msg("Failed to remove invalid issue log file")
-		}
+		deleteIssueID(service)
 		return
 	}
 
-	assignedToId := getAssignedToId(string(file))
+	assignedToId := getAssignedToId(idStr)
 
 	if assignedToId == "" {
 		assignedToId = "me"
@@ -1026,7 +879,7 @@ func Close(service string, message string) {
 		log.Error().Err(err).Str("component", "redmine").Str("operation", "close_issue").Str("service", service).Int("issue_id", issueId).Msg("Failed to marshal issue close request")
 	}
 
-	closeUrl := common.Config.Redmine.Url + "/issues/" + string(file) + ".json"
+	closeUrl := common.Config.Redmine.Url + "/issues/" + idStr + ".json"
 	req, err := http.NewRequest("PUT", closeUrl, bytes.NewBuffer(jsonBody))
 	if err != nil {
 		log.Error().Err(err).Str("component", "redmine").Str("operation", "close_issue").Str("url", closeUrl).Str("service", service).Int("issue_id", issueId).Msg("Failed to create issue close request")
@@ -1048,12 +901,8 @@ func Close(service string, message string) {
 
 	defer resp.Body.Close()
 
-	// remove file
-	err = os.Remove(filePath)
-
-	if err != nil {
-		log.Error().Err(err).Str("component", "redmine").Str("operation", "close_issue").Str("file_path", filePath).Str("service", service).Int("issue_id", issueId).Msg("Failed to remove issue log file after closing")
-	}
+	// remove stored id
+	deleteIssueID(service)
 
 	log.Info().
 		Str("component", "redmine").
@@ -1068,21 +917,14 @@ func Show(service string) string {
 		return ""
 	}
 
-	serviceReplaced := strings.Replace(service, "/", "-", -1)
-	filePath := common.TmpDir + "/" + serviceReplaced + "-redmine.log"
-
 	if !redmineCheckIssueLog(service) {
 		return ""
 	}
-
-	// read file
-	file, err := os.ReadFile(filePath)
-	if err != nil {
-		log.Error().Err(err).Str("component", "redmine").Str("operation", "show_issue").Str("file_path", filePath).Str("service", service).Msg("Failed to read issue log file for show")
+	id, ok := getIssueID(service)
+	if !ok {
+		return ""
 	}
-
-	// get issue ID
-	return string(file)
+	return id
 }
 
 func Exists(subject string, date string, search bool) string {

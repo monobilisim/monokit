@@ -21,6 +21,7 @@ import (
 
 	"github.com/monobilisim/monokit/common"
 	db "github.com/monobilisim/monokit/common/db"
+	"github.com/monobilisim/monokit/common/healthdb"
 	"github.com/rs/zerolog/log"
 )
 
@@ -100,8 +101,13 @@ func writeActiveConnections() {
 // and compares it to the maximum allowed connections
 func activeConnections(dbConfig db.DbHealth) (*ConnectionsData, error) {
 	var maxConn, used, increase int
-	aboveLimitFile := common.TmpDir + "/last-connection-above-limit.txt"
 	connectionsData := &ConnectionsData{}
+	// Retrieve previous increase value from SQLite (if any)
+	if jsonStr, _, _, found, _ := healthdb.GetJSON("pgsqlHealth", "active_conn_increase"); found && jsonStr != "" {
+		if v, err := strconv.Atoi(jsonStr); err == nil {
+			increase = v
+		}
+	}
 
 	query := `
 		SELECT max_conn, used FROM (SELECT COUNT(*) used
@@ -123,40 +129,22 @@ func activeConnections(dbConfig db.DbHealth) (*ConnectionsData, error) {
 
 	usedPercent := (used * 100) / maxConn
 
-	if _, err := os.Stat(aboveLimitFile); os.IsNotExist(err) {
+	if increase == 0 {
 		increase = 1
-	} else {
-		// set increase to the content of the file
-		content, err := os.ReadFile(aboveLimitFile)
-		if err != nil {
-			log.Error().Err(err).Str("component", "pgsqlHealth").Str("operation", "activeConnections").Str("action", "read_file_failed").Str("file", aboveLimitFile).Msg("Error reading file")
-			increase = 1
-		}
-		increase = int(content[0])
 	}
 
 	if usedPercent >= dbConfig.Postgres.Limits.Conn_percent {
-		if _, err := os.Stat(aboveLimitFile); os.IsNotExist(err) {
-			writeActiveConnections()
-		}
+		writeActiveConnections()
 		common.AlarmCheckDown("postgres_num_active_conn", fmt.Sprintf("Number of active connections: %d/%d and above %d", used, maxConn, dbConfig.Postgres.Limits.Conn_percent), false, "", "")
 		difference := (used - maxConn) / 10
 		if difference > increase {
 			writeActiveConnections()
 			increase = difference + 1
 		}
-		err = os.WriteFile(aboveLimitFile, []byte(strconv.Itoa(increase)), 0644)
-		if err != nil {
-			log.Error().Err(err).Str("component", "pgsqlHealth").Str("operation", "activeConnections").Str("action", "write_file_failed").Str("file", aboveLimitFile).Msg("Error writing file")
-		}
+		_ = healthdb.PutJSON("pgsqlHealth", "active_conn_increase", strconv.Itoa(increase), nil, time.Now())
 	} else {
 		common.AlarmCheckUp("postgres_num_active_conn", fmt.Sprintf("Number of active connections is now: %d/%d", used, maxConn), false)
-		if _, err := os.Stat(aboveLimitFile); err == nil {
-			err := os.Remove(aboveLimitFile)
-			if err != nil {
-				log.Error().Err(err).Str("component", "pgsqlHealth").Str("operation", "activeConnections").Str("action", "delete_file_failed").Str("file", aboveLimitFile).Msg("Error deleting file")
-			}
-		}
+		_ = healthdb.Delete("pgsqlHealth", "active_conn_increase")
 	}
 
 	return connectionsData, nil

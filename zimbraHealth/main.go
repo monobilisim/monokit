@@ -22,6 +22,7 @@ import (
 	imapclient "github.com/emersion/go-imap/client"
 	"github.com/monobilisim/monokit/common"
 	"github.com/monobilisim/monokit/common/api/client"
+	"github.com/monobilisim/monokit/common/healthdb"
 	mail "github.com/monobilisim/monokit/common/mail"
 	issues "github.com/monobilisim/monokit/common/redmine/issues"
 	ver "github.com/monobilisim/monokit/common/versionCheck"
@@ -1662,85 +1663,66 @@ func shouldRunFullCheck() bool {
 		cacheInterval = 12 // Default to 12 hours
 	}
 
-	// Check if cache file exists
-	if _, err := os.Stat(CacheFilePath); os.IsNotExist(err) {
-		log.Debug().Str("cache_file", CacheFilePath).Msg("Cache file does not exist, running full check")
+	// Load cache metadata from SQLite
+	_, cachedAt, nextCheckAt, found, err := healthdb.GetJSON("zimbraHealth", "cache")
+	if err != nil || !found {
+		log.Debug().Msg("No zimbraHealth cache found in SQLite, running full check")
 		return true
 	}
 
-	// Check file modification time
-	fileInfo, err := os.Stat(CacheFilePath)
-	if err != nil {
-		log.Error().Str("cache_file", CacheFilePath).Err(err).Msg("Error checking cache file, running full check")
-		return true
+	now := time.Now()
+	if nextCheckAt != nil {
+		if now.After(*nextCheckAt) {
+			log.Debug().Time("next_check", *nextCheckAt).Msg("Cache expired, running full check")
+			return true
+		}
+	} else {
+		if now.Sub(cachedAt) >= time.Duration(cacheInterval)*time.Hour {
+			log.Debug().Time("cached_at", cachedAt).Msg("Cache older than interval, running full check")
+			return true
+		}
 	}
 
-	// Calculate time since last full check
-	timeSinceLastCheck := time.Since(fileInfo.ModTime())
-	cacheIntervalDuration := time.Duration(cacheInterval) * time.Hour
-
-	if timeSinceLastCheck >= cacheIntervalDuration {
-		log.Debug().
-			Str("cache_file", CacheFilePath).
-			Dur("time_since_last_check", timeSinceLastCheck).
-			Dur("cache_interval", cacheIntervalDuration).
-			Msg("Cache expired, running full check")
-		return true
-	}
-
-	log.Debug().
-		Str("cache_file", CacheFilePath).
-		Dur("time_since_last_check", timeSinceLastCheck).
-		Dur("cache_interval", cacheIntervalDuration).
-		Msg("Using cached data")
+	log.Debug().Time("cached_at", cachedAt).Msg("Using cached data from SQLite")
 	return false
 }
 
-// loadCachedData loads health data from cache file
+// loadCachedData loads health data from SQLite cache
 func loadCachedData() (*ZimbraHealthData, error) {
-	data, err := os.ReadFile(CacheFilePath)
+	jsonStr, _, _, found, err := healthdb.GetJSON("zimbraHealth", "cache")
 	if err != nil {
-		return nil, fmt.Errorf("failed to read cache file: %w", err)
+		return nil, fmt.Errorf("failed to read cache from SQLite: %w", err)
 	}
-
+	if !found || jsonStr == "" {
+		return nil, fmt.Errorf("cache not found")
+	}
 	var healthData ZimbraHealthData
-	if err := json.Unmarshal(data, &healthData); err != nil {
+	if err := json.Unmarshal([]byte(jsonStr), &healthData); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal cache data: %w", err)
 	}
-
 	// Update cache info to reflect that this is from cache
 	healthData.CacheInfo.FromCache = true
-
-	log.Debug().
-		Str("cache_file", CacheFilePath).
-		Str("last_full_check", healthData.CacheInfo.LastFullCheck).
-		Msg("Loaded data from cache")
-
+	log.Debug().Str("source", "sqlite").Str("last_full_check", healthData.CacheInfo.LastFullCheck).Msg("Loaded data from cache")
 	return &healthData, nil
 }
 
-// saveCachedData saves health data to cache file
+// saveCachedData saves health data to SQLite cache
 func saveCachedData(healthData *ZimbraHealthData) error {
-	// Ensure cache directory exists
-	cacheDir := filepath.Dir(CacheFilePath)
-	if err := os.MkdirAll(cacheDir, 0755); err != nil {
-		return fmt.Errorf("failed to create cache directory: %w", err)
-	}
-
 	// Update cache info
 	now := time.Now()
 	cacheInterval := MailHealthConfig.Zimbra.Cache_interval
 	if cacheInterval == 0 {
 		cacheInterval = 12
 	}
+	next := now.Add(time.Duration(cacheInterval) * time.Hour)
 
 	healthData.CacheInfo = CacheInfo{
 		Enabled:       true,
 		CacheInterval: cacheInterval,
 		LastFullCheck: now.Format("2006-01-02 15:04:05"),
-		NextFullCheck: now.Add(time.Duration(cacheInterval) * time.Hour).Format("2006-01-02 15:04:05"),
+		NextFullCheck: next.Format("2006-01-02 15:04:05"),
 		FromCache:     false,
-		CacheFile:     CacheFilePath,
+		CacheFile:     "sqlite://health.db#zimbraHealth/cache",
 	}
 
 	// Marshal to JSON
@@ -1749,16 +1731,11 @@ func saveCachedData(healthData *ZimbraHealthData) error {
 		return fmt.Errorf("failed to marshal health data: %w", err)
 	}
 
-	// Write to cache file
-	if err := os.WriteFile(CacheFilePath, data, 0644); err != nil {
-		return fmt.Errorf("failed to write cache file: %w", err)
+	// Store in SQLite
+	if err := healthdb.PutJSON("zimbraHealth", "cache", string(data), &next, now); err != nil {
+		return fmt.Errorf("failed to store cache in SQLite: %w", err)
 	}
 
-	log.Debug().
-		Str("cache_file", CacheFilePath).
-		Str("last_full_check", healthData.CacheInfo.LastFullCheck).
-		Str("next_full_check", healthData.CacheInfo.NextFullCheck).
-		Msg("Saved data to cache")
-
+	log.Debug().Str("source", "sqlite").Str("last_full_check", healthData.CacheInfo.LastFullCheck).Str("next_full_check", healthData.CacheInfo.NextFullCheck).Msg("Saved data to cache")
 	return nil
 }
