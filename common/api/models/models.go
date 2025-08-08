@@ -137,7 +137,7 @@ type Domain struct {
 	Name              string             `json:"name" gorm:"unique" example:"production"`
 	Description       string             `json:"description" example:"Production environment domain"`
 	Settings          string             `json:"settings" gorm:"type:text" example:"{\"theme\":\"dark\"}"` // JSON for domain-specific config
-	Active            bool               `json:"active" gorm:"default:true" example:"true"`
+	Active            bool               `json:"active" example:"true"`
 	RedmineProjectID  string             `json:"redmine_project_id,omitempty" example:"production"` // Redmine project identifier (defaults to domain name)
 	CloudflareDomains []CloudflareDomain `json:"cloudflare_domains,omitempty" gorm:"foreignKey:DomainID"`
 }
