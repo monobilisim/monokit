@@ -170,7 +170,12 @@ func GetAllDomains(db *gorm.DB) gin.HandlerFunc {
 // @Router /domains/{id} [get]
 func GetDomainByID(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-        // Access controlled by domain access middleware
+        // Require global admin for reading domains in this handler
+        user, exists := c.Get("user")
+        if !exists || user.(User).Role != "global_admin" {
+            c.JSON(http.StatusForbidden, gin.H{"error": "Global admin access required"})
+            return
+        }
 
 		idStr := c.Param("id")
 		id, err := strconv.ParseUint(idStr, 10, 32)

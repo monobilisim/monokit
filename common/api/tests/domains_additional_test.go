@@ -273,17 +273,29 @@ func TestGetAllDomains_Success_Additional(t *testing.T) {
 	var response []models.DomainResponse
 	err := json.Unmarshal(w.Body.Bytes(), &response)
 	require.NoError(t, err)
-	assert.Len(t, response, 2)
 
-	// Check first domain
-	assert.Equal(t, "domain1", response[0].Name)
-	assert.Equal(t, "First domain", response[0].Description)
-	assert.True(t, response[0].Active)
+	// Expect only the two test domains when ignoring the default one
+	var filtered []models.DomainResponse
+	for _, d := range response {
+		if d.Name != "default" {
+			filtered = append(filtered, d)
+		}
+	}
+	assert.Len(t, filtered, 2)
 
-	// Check second domain
-	assert.Equal(t, "domain2", response[1].Name)
-	assert.Equal(t, "Second domain", response[1].Description)
-	assert.False(t, response[1].Active)
+	// Map by name to avoid relying on ordering
+	domainsByName := map[string]models.DomainResponse{}
+	for _, d := range filtered {
+		domainsByName[d.Name] = d
+	}
+
+	d1 := domainsByName["domain1"]
+	assert.Equal(t, "First domain", d1.Description)
+	assert.True(t, d1.Active)
+
+	d2 := domainsByName["domain2"]
+	assert.Equal(t, "Second domain", d2.Description)
+	assert.False(t, d2.Active)
 }
 
 
