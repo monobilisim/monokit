@@ -273,12 +273,6 @@ func TestService_DeleteCloudflareDomain_Success(t *testing.T) {
 	err = db.First(&deletedDomain, cfDomain.ID).Error
 	assert.Error(t, err) // Should not be found
 }
-	require.NoError(t, err)
-
-	assert.Len(t, cfDomains, 2)
-	assert.Equal(t, "example.com", cfDomains[0].ZoneName)
-	assert.Equal(t, "test.com", cfDomains[1].ZoneName)
-}
 
 func TestService_GetCloudflareDomain_Success(t *testing.T) {
 	db := SetupTestDB(t)
