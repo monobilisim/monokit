@@ -1,7 +1,13 @@
 #!/bin/sh
 set -e
 
-NEWS_ID=$(cat /tmp/news_id)
+# Resolve news ID dynamically (avoid reading from temp file)
+NEWS_ID=$(./bin/monokit redmine news exists --title test --description test || true)
+
+if [ -z "$NEWS_ID" ]; then
+  echo "Could not resolve news id for deletion"
+  exit 1
+fi
 
 # Delete the news
 ./bin/monokit redmine news delete --id $NEWS_ID

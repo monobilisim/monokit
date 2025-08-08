@@ -16,10 +16,8 @@ sleep 60
 # Run it again
 ./bin/monokit osHealth
 
-# Check if Redmine issue is created
-ISSUE_ID="$(cat /tmp/mono/osHealth/ram-redmine.log || true)"
-
-if [ -z "$ISSUE_ID" ]; then
+# Check if Redmine issue is created (via SQLite health DB)
+if ! ./bin/monokit db get --module redmine ram:redmine:issue >/dev/null 2>&1; then
   echo "Redmine issue is not created"
   exit 1
 fi
@@ -30,10 +28,8 @@ sed -i 's/ram_limit: 1/ram_limit: 91/g' /etc/mono/os.yml
 # Run it again
 ./bin/monokit osHealth
 
-# Check if Redmine issue is closed
-ISSUE_ID="$(cat /tmp/mono/osHealth/ram-redmine.log || true)"
-
-if [ -n "$ISSUE_ID" ]; then
+# Check if Redmine issue is closed (no key present in health DB)
+if ./bin/monokit db get --module redmine ram:redmine:issue >/dev/null 2>&1; then
   echo "Redmine issue is not closed"
   exit 1
 fi
