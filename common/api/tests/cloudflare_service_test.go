@@ -193,7 +193,7 @@ func TestService_UpdateCloudflareDomain_NotFound(t *testing.T) {
 	assert.Contains(t, err.Error(), "Cloudflare domain not found")
 }
 
-func TestService_UpdateCloudflareDomain_Success(t *testing.T) {
+func TestService_UpdateCloudflareDomain_Success_Disabled(t *testing.T) {
 	db := SetupTestDB(t)
 	defer CleanupTestDB(db)
 
@@ -209,7 +209,7 @@ func TestService_UpdateCloudflareDomain_Success(t *testing.T) {
 	}
 	require.NoError(t, db.Create(&cfDomain).Error)
 
-	config := models.CloudflareConfig{Enabled: false} // Disabled to avoid API calls
+    config := models.CloudflareConfig{Enabled: false} // Disabled to avoid API calls
 	service := cloudflare.NewService(db, config)
 
 	// Test updating various fields
@@ -246,7 +246,7 @@ func TestService_DeleteCloudflareDomain_NotFound(t *testing.T) {
 	assert.Contains(t, err.Error(), "Cloudflare domain not found")
 }
 
-func TestService_DeleteCloudflareDomain_Success(t *testing.T) {
+func TestService_DeleteCloudflareDomain_Success_Disabled(t *testing.T) {
 	db := SetupTestDB(t)
 	defer CleanupTestDB(db)
 

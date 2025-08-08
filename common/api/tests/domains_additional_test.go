@@ -144,7 +144,7 @@ func TestCreateDomain_DatabaseError(t *testing.T) {
 }
 
 // Test duplicate domain creation
-func TestCreateDomain_DuplicateName(t *testing.T) {
+func TestCreateDomain_DuplicateName_Additional(t *testing.T) {
 	db := SetupTestDB(t)
 	defer CleanupTestDB(db)
 
@@ -235,7 +235,7 @@ func TestGetAllDomains_NonAdmin(t *testing.T) {
 }
 
 // Test GetAllDomains success
-func TestGetAllDomains_Success(t *testing.T) {
+func TestGetAllDomains_Success_Additional(t *testing.T) {
 	db := SetupTestDB(t)
 	defer CleanupTestDB(db)
 
@@ -285,15 +285,7 @@ func TestGetAllDomains_Success(t *testing.T) {
 	assert.Equal(t, "Second domain", response[1].Description)
 	assert.False(t, response[1].Active)
 }
-	handler(c)
 
-	assert.Equal(t, http.StatusBadRequest, w.Code)
-
-	var response map[string]string
-	err := json.Unmarshal(w.Body.Bytes(), &response)
-	require.NoError(t, err)
-	assert.Contains(t, response["error"], "invalid character")
-}
 
 func TestGetAllDomains_MissingUser(t *testing.T) {
 	db := SetupTestDB(t)
