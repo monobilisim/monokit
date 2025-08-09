@@ -247,7 +247,7 @@ func processRuleURLs(config *Config, tmpDir string, processedFiles map[string]bo
 		}
 
 		if needsUpdate {
-			if err := os.Rename(tmpFile, destFile); err != nil {
+			if err := common.MoveFile(tmpFile, destFile); err != nil {
 				log.Error().Err(err).Str("component", "ufwApply").Str("operation", "processRuleURLs").Str("action", "move_failed").Str("tmp_file", tmpFile).Str("dest_file", destFile).Msg("Failed to move tmp file to dest file")
 				continue
 			}
