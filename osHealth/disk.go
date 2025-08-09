@@ -97,11 +97,9 @@ func createExceededTable(exceededParts []DiskInfo) (string, string) {
 	}
 
 	output := &strings.Builder{}
-	table := tablewriter.NewWriter(output)
-	table.SetHeader([]string{"%", "Used", "Total", "Partition", "Mount Point"})
-	table.SetBorders(tablewriter.Border{Left: true, Top: false, Right: true, Bottom: false})
-	table.SetCenterSeparator("|")
-	table.AppendBulk(tableData)
+    table := tablewriter.NewWriter(output)
+    table.Header([]string{"%", "Used", "Total", "Partition", "Mount Point"})
+    table.Bulk(tableData)
 	table.Render()
 
 	tableOnly := output.String()
@@ -131,11 +129,9 @@ func createNormalTable(allParts []DiskInfo) (string, string) {
 	}
 
 	output := &strings.Builder{}
-	table := tablewriter.NewWriter(output)
-	table.SetHeader([]string{"%", "Used", "Total", "Partition", "Mount Point"})
-	table.SetBorders(tablewriter.Border{Left: true, Top: false, Right: true, Bottom: false})
-	table.SetCenterSeparator("|")
-	table.AppendBulk(tableData)
+    table := tablewriter.NewWriter(output)
+    table.Header([]string{"%", "Used", "Total", "Partition", "Mount Point"})
+    table.Bulk(tableData)
 	table.Render()
 
 	tableOnly := output.String()

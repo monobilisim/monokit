@@ -28,7 +28,7 @@ func InitList() []string {
 
 func ShowListMulti(args []string) {
     table := tablewriter.NewWriter(os.Stdout)
-    table.SetHeader(InitList())
+    table.Header(InitList())
 
     for _, arg := range args {
         table.Append(ShowList(arg))

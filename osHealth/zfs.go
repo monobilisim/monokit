@@ -98,11 +98,9 @@ func createExceededZFSDatasetTable(exceededDatasets []ZFSDatasetInfo) (string, s
 		})
 	}
 	output := &strings.Builder{}
-	table := tablewriter.NewWriter(output)
-	table.SetHeader([]string{"%", "Used", "Avail", "Dataset"})
-	table.SetBorders(tablewriter.Border{Left: true, Top: false, Right: true, Bottom: false})
-	table.SetCenterSeparator("|")
-	table.AppendBulk(tableData)
+    table := tablewriter.NewWriter(output)
+    table.Header([]string{"%", "Used", "Avail", "Dataset"})
+    table.Bulk(tableData)
 	table.Render()
 
 	tableOnly := output.String()
@@ -368,11 +366,9 @@ func ZFSHealth() []ZFSPoolInfo {
 // createZFSPoolsTable creates a formatted table of ZFS pool information
 func createZFSPoolsTable(poolsInfo [][]string) string {
 	output := &strings.Builder{}
-	table := tablewriter.NewWriter(output)
-	table.SetHeader([]string{"Pool Name", "Health Status"})
-	table.SetBorders(tablewriter.Border{Left: true, Top: false, Right: true, Bottom: false})
-	table.SetCenterSeparator("|")
-	table.AppendBulk(poolsInfo)
+    table := tablewriter.NewWriter(output)
+    table.Header([]string{"Pool Name", "Health Status"})
+    table.Bulk(poolsInfo)
 	table.Render()
 
 	return output.String()
