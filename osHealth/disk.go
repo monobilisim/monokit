@@ -11,16 +11,15 @@
 package osHealth
 
 import (
-	"os"
-	"slices"
-	"strconv"
-	"strings"
+    "os"
+    "slices"
+    "strconv"
+    "strings"
 
-	"github.com/monobilisim/monokit/common"
-	// issues "github.com/monobilisim/monokit/common/redmine/issues" // No longer directly used here
-	"github.com/olekukonko/tablewriter"
-	"github.com/rs/zerolog/log"
-	"github.com/shirou/gopsutil/v4/disk"
+    "github.com/monobilisim/monokit/common"
+    // issues "github.com/monobilisim/monokit/common/redmine/issues" // No longer directly used here
+    "github.com/rs/zerolog/log"
+    "github.com/shirou/gopsutil/v4/disk"
 )
 
 // analyzeDiskPartitions analyzes the disk partitions and returns DiskInfo for exceeded and all parts.
@@ -85,24 +84,18 @@ func analyzeDiskPartitions(diskPartitions []disk.PartitionStat) ([]DiskInfo, []D
 // createExceededTable creates a table for partitions that exceeded the limit
 // It now takes []DiskInfo and converts it internally to [][]string for tablewriter
 func createExceededTable(exceededParts []DiskInfo) (string, string) {
-	var tableData [][]string
+    var tableData [][]string
 	for _, p := range exceededParts {
 		tableData = append(tableData, []string{
 			strconv.FormatFloat(p.UsedPct, 'f', 0, 64),
 			p.Used,
-			p.Total,
+            p.Total,
 			p.Device,
 			p.Mountpoint,
 		})
 	}
 
-	output := &strings.Builder{}
-    table := tablewriter.NewWriter(output)
-    table.Header([]string{"%", "Used", "Total", "Partition", "Mount Point"})
-    table.Bulk(tableData)
-	table.Render()
-
-	tableOnly := output.String()
+    tableOnly := renderMarkdownTable([]string{"%", "Used", "Total", "Partition", "Mount Point"}, tableData)
 	fullMsg := "Partition usage level has exceeded to " + strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64) + "% " + "for the following partitions;\n\n" + tableOnly
 
 	// Write message to file, creating it if it doesn't exist
@@ -117,7 +110,7 @@ func createExceededTable(exceededParts []DiskInfo) (string, string) {
 // createNormalTable creates a table for all partitions when none exceed the limit
 // It now takes []DiskInfo and converts it internally to [][]string for tablewriter
 func createNormalTable(allParts []DiskInfo) (string, string) {
-	var tableData [][]string
+    var tableData [][]string
 	for _, p := range allParts {
 		tableData = append(tableData, []string{
 			strconv.FormatFloat(p.UsedPct, 'f', 0, 64),
@@ -128,13 +121,7 @@ func createNormalTable(allParts []DiskInfo) (string, string) {
 		})
 	}
 
-	output := &strings.Builder{}
-    table := tablewriter.NewWriter(output)
-    table.Header([]string{"%", "Used", "Total", "Partition", "Mount Point"})
-    table.Bulk(tableData)
-	table.Render()
-
-	tableOnly := output.String()
+    tableOnly := renderMarkdownTable([]string{"%", "Used", "Total", "Partition", "Mount Point"}, tableData)
 	fullMsg := "All partitions are now under the limit of " + strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64) + "%" + "\n\n" + tableOnly
 
 	return fullMsg, tableOnly

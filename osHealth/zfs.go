@@ -21,7 +21,6 @@ import (
 
 	"github.com/monobilisim/monokit/common"
 	issues "github.com/monobilisim/monokit/common/redmine/issues"
-	"github.com/olekukonko/tablewriter"
 	"github.com/rs/zerolog/log"
 )
 
@@ -88,22 +87,16 @@ func parseBytesFromString(s string) (uint64, error) {
 
 // createExceededZFSDatasetTable creates a table for datasets that exceeded the usage limit
 func createExceededZFSDatasetTable(exceededDatasets []ZFSDatasetInfo) (string, string) {
-	var tableData [][]string
-	for _, d := range exceededDatasets {
-		tableData = append(tableData, []string{
-			strconv.FormatFloat(math.Floor(d.UsedPct), 'f', 0, 64),
-			d.Used,
-			d.Avail,
-			d.Name,
-		})
-	}
-	output := &strings.Builder{}
-    table := tablewriter.NewWriter(output)
-    table.Header([]string{"%", "Used", "Avail", "Dataset"})
-    table.Bulk(tableData)
-	table.Render()
-
-	tableOnly := output.String()
+    var rows [][]string
+    for _, d := range exceededDatasets {
+        rows = append(rows, []string{
+            strconv.FormatFloat(math.Floor(d.UsedPct), 'f', 0, 64),
+            d.Used,
+            d.Avail,
+            d.Name,
+        })
+    }
+    tableOnly := renderMarkdownTable([]string{"%", "USED", "AVAIL", "DATASET"}, rows)
 	fullMsg := "ZFS dataset usage level has exceeded " + strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64) + "% for the following datasets;\n\n" + tableOnly
 
 	return fullMsg, tableOnly
@@ -365,13 +358,7 @@ func ZFSHealth() []ZFSPoolInfo {
 
 // createZFSPoolsTable creates a formatted table of ZFS pool information
 func createZFSPoolsTable(poolsInfo [][]string) string {
-	output := &strings.Builder{}
-    table := tablewriter.NewWriter(output)
-    table.Header([]string{"Pool Name", "Health Status"})
-    table.Bulk(poolsInfo)
-	table.Render()
-
-	return output.String()
+    return renderMarkdownTable([]string{"Pool Name", "Health Status"}, poolsInfo)
 }
 
 // tryToClearPools attempts to clear errors on degraded ZFS pools
