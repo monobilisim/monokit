@@ -34,10 +34,11 @@ func NewCmd() *cobra.Command {
 
 	cmd.PersistentFlags().BoolVar(&noColors, "no-colors", defaultNoColors, "Disable colored JSON output")
 
-	cmd.AddCommand(newPathCmd())
-	cmd.AddCommand(newListCmd())
-	cmd.AddCommand(newGetCmd(&noColors))
-	cmd.AddCommand(newDumpCmd(&noColors))
+    cmd.AddCommand(newPathCmd())
+    cmd.AddCommand(newListCmd())
+    cmd.AddCommand(newGetCmd(&noColors))
+    cmd.AddCommand(newDumpCmd(&noColors))
+    cmd.AddCommand(newDelCmd())
 	return cmd
 }
 
@@ -134,6 +135,28 @@ func newDumpCmd(noColors *bool) *cobra.Command {
 	}
 	c.Flags().StringVar(&module, "module", "", "Filter by module")
 	return c
+}
+
+func newDelCmd() *cobra.Command {
+    var module string
+    c := &cobra.Command{
+        Use:   "del <key>",
+        Short: "Delete a key (requires --module)",
+        Args:  cobra.ExactArgs(1),
+        RunE: func(cmd *cobra.Command, args []string) error {
+            if module == "" {
+                return fmt.Errorf("--module is required")
+            }
+            key := args[0]
+            if err := Delete(module, key); err != nil {
+                return err
+            }
+            fmt.Printf("deleted: %s/%s\n", module, key)
+            return nil
+        },
+    }
+    c.Flags().StringVar(&module, "module", "", "Module name")
+    return c
 }
 
 // prettyJSON re-indents a raw JSON string
