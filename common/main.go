@@ -2,9 +2,7 @@ package common
 
 import (
     "bufio"
-    "encoding/json"
     "fmt"
-    "io"
     "math"
     "os"
     "os/exec"
@@ -16,6 +14,7 @@ import (
 
     "github.com/rs/zerolog"
     "github.com/rs/zerolog/log"
+    lumberjack "gopkg.in/natefinch/lumberjack.v2"
 )
 
 var Config Common
@@ -259,13 +258,14 @@ func InitZerolog() {
 		logfilePath = xdgStateHome + "/monokit/monokit.log"
 	}
 
-	// Open log file with proper error handling
-	logFile, err := os.OpenFile(logfilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
-	if err != nil {
-		// Fallback to stderr if we can't open the log file
-		fmt.Fprintf(os.Stderr, "Failed to open log file %s: %v, falling back to stderr\n", logfilePath, err)
-		logFile = os.Stderr
-	}
+    // Ensure we can create/write the log file (permission check)
+    var fileUsable bool = true
+    if f, err := os.OpenFile(logfilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666); err != nil {
+        fmt.Fprintf(os.Stderr, "Failed to open log file %s: %v, using stdout only\n", logfilePath, err)
+        fileUsable = false
+    } else {
+        _ = f.Close()
+    }
 
 	// Create console writer for pretty stdout output
 	consoleWriter := zerolog.ConsoleWriter{
@@ -277,8 +277,27 @@ func InitZerolog() {
 		},
 	}
 
-	// Use MultiLevelWriter to send JSON to file and pretty to stdout
-	output := zerolog.MultiLevelWriter(consoleWriter, logFile)
+    // Configure size- and age-based rotation with lumberjack
+    maxSizeMB := getEnvInt("MONOKIT_LOG_MAX_SIZE_MB", 100)        // default 100 MB
+    maxBackups := getEnvInt("MONOKIT_LOG_MAX_BACKUPS", 7)         // default 7 files
+    retentionDays := getEnvInt("MONOKIT_LOG_RETENTION_DAYS", 20) // default 20 days
+    compress := getEnvBool("MONOKIT_LOG_COMPRESS", true)
+
+    var output zerolog.LevelWriter
+    if fileUsable {
+        lj := &lumberjack.Logger{
+            Filename:   logfilePath,
+            MaxSize:    maxSizeMB,
+            MaxBackups: maxBackups,
+            MaxAge:     retentionDays,
+            Compress:   compress,
+        }
+        // Write pretty to stdout and JSON to rotating file
+        output = zerolog.MultiLevelWriter(consoleWriter, lj)
+    } else {
+        // Fallback to stdout only
+        output = zerolog.MultiLevelWriter(consoleWriter)
+    }
 
 	// Create base logger with rich context
 	logger := zerolog.New(output).
@@ -324,196 +343,48 @@ func InitZerolog() {
     // Set the global logger
 	log.Logger = finalLogger
 
-    // Start background log retention enforcer (default: 20 days)
-    retentionDays := 20
-    if v := os.Getenv("MONOKIT_LOG_RETENTION_DAYS"); v != "" {
-        if n, err := strconv.Atoi(v); err == nil && n > 0 {
-            retentionDays = n
-        }
-    }
-    // Prune once immediately, then schedule periodic pruning in background
-    _ = pruneLogFileByAge(logfilePath, time.Duration(retentionDays)*24*time.Hour)
-    go startLogRetentionEnforcer(logfilePath, retentionDays)
-
     // Log successful initialization with comprehensive context
 	log.Debug().
 		Str("component", "logging").
 		Str("level", level.String()).
 		Str("log_file", logfilePath).
+        Int("max_size_mb", maxSizeMB).
+        Int("max_backups", maxBackups).
+        Int("retention_days", retentionDays).
+        Bool("compress", compress).
 		Bool("user_mode", userMode).
 		Bool("colors_enabled", !(os.Getenv("MONOKIT_NOCOLOR") == "true" || os.Getenv("MONOKIT_NOCOLOR") == "1")).
 		Bool("api_hook_enabled", apiHook.GetSubmitter().enabled).
 		Msg("Enhanced zerolog initialized successfully")
 }
 
-// startLogRetentionEnforcer launches a goroutine that enforces log retention
-// by keeping only log lines newer than the configured retention window.
-// It performs an initial prune shortly after startup and then repeats daily.
-func startLogRetentionEnforcer(logfilePath string, retentionDays int) {
-    // Schedule daily
-    ticker := time.NewTicker(24 * time.Hour)
-    for range ticker.C {
-        _ = pruneLogFileByAge(logfilePath, time.Duration(retentionDays)*24*time.Hour)
-    }
-}
-
-// pruneLogFileByAge trims the given JSON-lines log file in-place so it only
-// contains entries whose timestamp is within the given maxAge from now.
-// It is designed to work with writers that keep the file descriptor open by
-// using a copy-truncate approach to avoid inode replacement.
-func pruneLogFileByAge(path string, maxAge time.Duration) error {
-    // Fast path: ensure file exists and is regular
-    info, err := os.Stat(path)
-    if err != nil {
-        return err
-    }
-    if !info.Mode().IsRegular() {
-        return fmt.Errorf("not a regular file: %s", path)
-    }
-
-    // Open for reading
-    src, err := os.Open(path)
-    if err != nil {
-        return err
-    }
-    defer src.Close()
-
-    // Create a temporary file alongside the original
-    dir := filepath.Dir(path)
-    tmp, err := os.CreateTemp(dir, "monokit-log-prune-*.tmp")
-    if err != nil {
-        return err
-    }
-    tmpPath := tmp.Name()
-
-    // Ensure cleanup of tmp on exit
-    defer func() {
-        tmp.Close()
-        os.Remove(tmpPath)
-    }()
-
-    cutoff := time.Now().Add(-maxAge)
-
-    // Scan line by line; increase buffer in case of long lines
-    scanner := bufio.NewScanner(src)
-    const maxScanTokenSize = 1024 * 1024 // 1 MiB per line
-    buf := make([]byte, 0, 64*1024)
-    scanner.Buffer(buf, maxScanTokenSize)
-
-    writer := bufio.NewWriter(tmp)
-
-    kept := 0
-    for scanner.Scan() {
-        line := strings.TrimSpace(scanner.Text())
-        if line == "" {
-            continue
-        }
-        // Parse timestamp from JSON; on error, keep the line (be conservative)
-        ts, perr := extractTimestampRFC3339Nano(line)
-        if perr != nil || ts.IsZero() || !ts.Before(cutoff) {
-            // Keep this line
-            if _, err := writer.WriteString(line + "\n"); err != nil {
-                return err
-            }
-            kept++
-        }
-    }
-    if err := scanner.Err(); err != nil {
-        // If we failed scanning, do not modify the log file
-        return err
-    }
-    if err := writer.Flush(); err != nil {
-        return err
-    }
-
-    // Copy-truncate: replace contents of original file without changing inode
-    // Open the original for read/write
-    dst, err := os.OpenFile(path, os.O_WRONLY, 0)
-    if err != nil {
-        return err
-    }
-    defer dst.Close()
-
-    if err := dst.Truncate(0); err != nil {
-        return err
-    }
-    if _, err := dst.Seek(0, 0); err != nil {
-        return err
-    }
-
-    // Rewind tmp and copy back
-    if _, err := tmp.Seek(0, 0); err != nil {
-        return err
-    }
-    if _, err := io.Copy(dst, tmp); err != nil {
-        return err
-    }
-
-    // Log a brief message to the logger; avoid recursion by using stderr on failure only
-    log.Debug().
-        Str("component", "logging").
-        Str("action", "prune").
-        Str("file", path).
-        Int("kept_lines", kept).
-        Dur("max_age", maxAge).
-        Msg("Pruned log file by age")
-
-    return nil
-}
-
-// extractTimestampRFC3339Nano extracts the timestamp field from a JSON line
-// and parses it as RFC3339 with nanoseconds. Returns zero time on failure.
-func extractTimestampRFC3339Nano(line string) (time.Time, error) {
-    // Fast path: find the "timestamp":"..." substring without full JSON decode
-    // but fall back to json decode if not found.
-    const key = "\"timestamp\""
-    idx := strings.Index(line, key)
-    if idx >= 0 {
-        // Find the next colon and quote
-        colon := strings.Index(line[idx+len(key):], ":")
-        if colon >= 0 {
-            // Skip colon and optional spaces
-            j := idx + len(key) + colon + 1
-            for j < len(line) && (line[j] == ' ' || line[j] == '\t') {
-                j++
-            }
-            if j < len(line) && line[j] == '"' {
-                j++
-                k := j
-                for k < len(line) {
-                    if line[k] == '"' && line[k-1] != '\\' {
-                        break
-                    }
-                    k++
-                }
-                if k <= len(line) {
-                    tsStr := line[j:k]
-                    if t, err := time.Parse(time.RFC3339Nano, tsStr); err == nil {
-                        return t, nil
-                    }
-                    if t, err := time.Parse(time.RFC3339, tsStr); err == nil {
-                        return t, nil
-                    }
-                }
-            }
-        }
-    }
-    // Fallback: decode minimal JSON
-    var tmp map[string]interface{}
-    if err := json.Unmarshal([]byte(line), &tmp); err != nil {
-        return time.Time{}, err
-    }
-    v, _ := tmp["timestamp"].(string)
+// getEnvInt reads an integer environment variable with a default.
+func getEnvInt(name string, def int) int {
+    v := strings.TrimSpace(os.Getenv(name))
     if v == "" {
-        return time.Time{}, fmt.Errorf("no timestamp")
+        return def
     }
-    if t, err := time.Parse(time.RFC3339Nano, v); err == nil {
-        return t, nil
+    if n, err := strconv.Atoi(v); err == nil {
+        return n
     }
-    if t, err := time.Parse(time.RFC3339, v); err == nil {
-        return t, nil
+    return def
+}
+
+// getEnvBool reads a boolean environment variable with a default.
+// Accepts: 1/0, true/false, yes/no, on/off (case-insensitive)
+func getEnvBool(name string, def bool) bool {
+    v := strings.TrimSpace(strings.ToLower(os.Getenv(name)))
+    if v == "" {
+        return def
     }
-    return time.Time{}, fmt.Errorf("invalid timestamp")
+    switch v {
+    case "1", "true", "yes", "on":
+        return true
+    case "0", "false", "no", "off":
+        return false
+    default:
+        return def
+    }
 }
 
 func WriteToFile(filename string, data string) error {

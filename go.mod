@@ -21,7 +21,7 @@ require (
 	github.com/itchyny/gojq v0.12.17
 	github.com/lib/pq v1.10.9
 	github.com/michaelklishin/rabbit-hole/v2 v2.16.0
-    github.com/olekukonko/tablewriter v1.0.9
+	github.com/olekukonko/tablewriter v1.0.9
 	github.com/rs/zerolog v1.34.0
 	github.com/shirou/gopsutil/v4 v4.25.7
 	github.com/spf13/cobra v1.9.1
@@ -171,6 +171,7 @@ require (
 	google.golang.org/genproto/googleapis/rpc v0.0.0-20250804133106-a7a43d27e69b // indirect
 	gopkg.in/alexcesaro/quotedprintable.v3 v3.0.0-20150716171945-2caba252f4dc // indirect
 	gopkg.in/ini.v1 v1.67.0 // indirect
+	gopkg.in/natefinch/lumberjack.v2 v2.2.1 // indirect
 	gotest.tools/v3 v3.5.1 // indirect
 	modernc.org/libc v1.66.6 // indirect
 	modernc.org/mathutil v1.7.1 // indirect
