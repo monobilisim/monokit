@@ -18,13 +18,23 @@ type (
 )
 
 // HandleGetHostConfig retrieves host configuration from the database.
+// If the route includes a ":name" parameter it will be used.
+// Otherwise, it will attempt to read the host name from context key "hostname"
+// which is set by HostAuthMiddleware for /api/v1/host endpoints.
 func HandleGetHostConfig(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		name := c.Param("name")
-		if name == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "host name is required"})
-			return
-		}
+        name := c.Param("name")
+        if name == "" {
+            if ctxHost, ok := c.Get("hostname"); ok {
+                if v, ok2 := ctxHost.(string); ok2 {
+                    name = v
+                }
+            }
+        }
+        if strings.TrimSpace(name) == "" {
+            c.JSON(http.StatusBadRequest, gin.H{"error": "host name is required"})
+            return
+        }
 
 		var configs []HostFileConfig
 		if err := db.Where("host_name = ?", name).Find(&configs).Error; err != nil {
@@ -42,13 +52,21 @@ func HandleGetHostConfig(db *gorm.DB) gin.HandlerFunc {
 }
 
 // HandlePostHostConfig creates or updates host configuration in the database.
+// Host name is taken from path param if present, otherwise from context key "hostname".
 func HandlePostHostConfig(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		name := c.Param("name")
-		if name == "" {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "host name is required"})
-			return
-		}
+        name := c.Param("name")
+        if name == "" {
+            if ctxHost, ok := c.Get("hostname"); ok {
+                if v, ok2 := ctxHost.(string); ok2 {
+                    name = v
+                }
+            }
+        }
+        if strings.TrimSpace(name) == "" {
+            c.JSON(http.StatusBadRequest, gin.H{"error": "host name is required"})
+            return
+        }
 
 		var configMap map[string]string
 		if err := c.ShouldBindJSON(&configMap); err != nil {
@@ -88,13 +106,21 @@ func HandlePostHostConfig(db *gorm.DB) gin.HandlerFunc {
 
 // HandlePutHostConfig updates host configuration in the database.
 func HandlePutHostConfig(db *gorm.DB) gin.HandlerFunc {
-	return HandlePostHostConfig(db) // Reuse Post handler for Put as per requirement
+    return HandlePostHostConfig(db) // Reuse Post handler for Put as per requirement
 }
 
 // HandleDeleteHostConfig deletes a specific host configuration file.
+// Host name is taken from path param if present, otherwise from context key "hostname".
 func HandleDeleteHostConfig(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		name := strings.TrimSpace(c.Param("name"))
+        name := strings.TrimSpace(c.Param("name"))
+        if name == "" {
+            if ctxHost, ok := c.Get("hostname"); ok {
+                if v, ok2 := ctxHost.(string); ok2 {
+                    name = strings.TrimSpace(v)
+                }
+            }
+        }
 		filename := strings.TrimSpace(c.Param("filename"))
 
 		if name == "" || filename == "" {

@@ -449,124 +449,128 @@ func ClientInit() string {
 
 // SyncConfig synchronizes local config with the server.
 func SyncConfig(cmd *cobra.Command, args []string) {
-	apiVersion := ClientInit()
-	hostname := common.Config.Identifier
-	configDir := "/etc/mono"
-	client := ClientConf.hc()
+    apiVersion := ClientInit()
+    hostname := common.Config.Identifier
+    configDir := "/etc/mono"
+    client := ClientConf.hc()
 
-	// Ensure config directory exists
-	if err := os.MkdirAll(configDir, 0755); err != nil {
-		log.Error().Err(err).Msg("Failed to create config directory")
-		return
-	}
+    // Ensure config directory exists
+    if err := os.MkdirAll(configDir, 0755); err != nil {
+        log.Error().Err(err).Msg("Failed to create config directory")
+        return
+    }
 
-	log.Debug().Str("hostname", hostname).Msg("SyncConfig: Starting configuration sync for host")
+    log.Debug().Str("hostname", hostname).Msg("SyncConfig: Starting configuration sync for host")
 
-	// Get host key for authentication
-	keyPath := filepath.Join("/var/lib/mono/api/hostkey", hostname)
-	hostKey, _ := os.ReadFile(keyPath) // Ignore error, we'll just proceed without host key
+    // Get host key for authentication
+    keyPath := filepath.Join("/var/lib/mono/api/hostkey", hostname)
+    hostKey, _ := os.ReadFile(keyPath) // Ignore error, we'll just proceed without host key
 
-	// GET remote configs
-	url := ClientConf.URL + "/api/v" + apiVersion + "/hosts/" + hostname + "/config"
-	req, err := http.NewRequest("GET", url, nil)
-	if err != nil {
-		log.Error().Err(err).Msg("Error creating GET request")
-		return
-	}
+    // Prefer host-token based endpoint that infers hostname from token
+    baseURL := ClientConf.URL + "/api/v" + apiVersion + "/host/config"
 
-	if len(hostKey) > 0 {
-		req.Header.Set("Authorization", string(hostKey))
-	}
+    // GET remote configs
+    req, err := http.NewRequest("GET", baseURL, nil)
+    if err != nil {
+        log.Error().Err(err).Msg("Error creating GET request")
+        return
+    }
 
-	resp, err := client.Do(req)
-	if err != nil {
-		log.Error().Err(err).Msg("Error retrieving remote configs")
-		return
-	}
-	defer resp.Body.Close()
+    if len(hostKey) > 0 {
+        req.Header.Set("Authorization", string(hostKey))
+    }
 
-	var remoteConfigs map[string]string
-	if err := json.NewDecoder(resp.Body).Decode(&remoteConfigs); err != nil {
-		log.Error().Err(err).Msg("Error decoding remote configs")
-		return
-	}
+    resp, err := client.Do(req)
+    if err != nil {
+        log.Error().Err(err).Msg("Error retrieving remote configs")
+        return
+    }
+    defer resp.Body.Close()
 
-	log.Debug().Int("count", len(remoteConfigs)).Msg("Retrieved remote config file(s)")
+    if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusForbidden {
+        log.Error().Int("status", resp.StatusCode).Msg("Unauthorized to fetch remote configs")
+        return
+    }
 
-	// Write remote configs to local files
-	for filename, content := range remoteConfigs {
-		localPath := filepath.Join(configDir, filename)
-		if err := os.WriteFile(localPath, []byte(content), 0644); err != nil {
-			log.Error().Str("filename", filename).Err(err).Msg("Error writing config file")
-			return
-		}
-	}
+    var remoteConfigs map[string]string
+    if err := json.NewDecoder(resp.Body).Decode(&remoteConfigs); err != nil {
+        log.Error().Err(err).Msg("Error decoding remote configs")
+        return
+    }
 
-	// Read local config files
-	localConfigs := make(map[string]string)
-	files, err := os.ReadDir(configDir)
-	if err != nil {
-		log.Error().Err(err).Msg("Error reading config directory")
-		return
-	}
+    log.Debug().Int("count", len(remoteConfigs)).Msg("Retrieved remote config file(s)")
 
-	for _, file := range files {
-		if !file.IsDir() {
-			data, err := os.ReadFile(filepath.Join(configDir, file.Name()))
-			if err != nil {
-				log.Error().Str("filename", file.Name()).Err(err).Msg("Error reading config file")
-				return
-			}
-			localConfigs[file.Name()] = string(data)
-		}
-	}
+    // Write remote configs to local files
+    for filename, content := range remoteConfigs {
+        localPath := filepath.Join(configDir, filename)
+        if err := os.WriteFile(localPath, []byte(content), 0644); err != nil {
+            log.Error().Str("filename", filename).Err(err).Msg("Error writing config file")
+            return
+        }
+    }
 
-	// POST local configs to server
-	payload, err := json.Marshal(localConfigs)
-	if err != nil {
-		log.Error().Err(err).Msg("Error marshaling config data")
-		return
-	}
+    // Read local config files
+    localConfigs := make(map[string]string)
+    files, err := os.ReadDir(configDir)
+    if err != nil {
+        log.Error().Err(err).Msg("Error reading config directory")
+        return
+    }
 
-	postReq, err := http.NewRequest("POST", url, bytes.NewBuffer(payload))
-	if err != nil {
-		log.Error().Err(err).Msg("Error creating POST request")
-		return
-	}
+    for _, file := range files {
+        if !file.IsDir() {
+            data, err := os.ReadFile(filepath.Join(configDir, file.Name()))
+            if err != nil {
+                log.Error().Str("filename", file.Name()).Err(err).Msg("Error reading config file")
+                return
+            }
+            localConfigs[file.Name()] = string(data)
+        }
+    }
 
-	postReq.Header.Set("Content-Type", "application/json")
-	if len(hostKey) > 0 {
-		postReq.Header.Set("Authorization", string(hostKey))
-	}
+    // PUT local configs to server (idempotent)
+    payload, err := json.Marshal(localConfigs)
+    if err != nil {
+        log.Error().Err(err).Msg("Error marshaling config data")
+        return
+    }
 
-	postResp, err := client.Do(postReq)
-	if err != nil {
-		log.Error().Err(err).Msg("Error sending local configs")
-		return
-	}
-	defer postResp.Body.Close()
+    postReq, err := http.NewRequest("PUT", baseURL, bytes.NewBuffer(payload))
+    if err != nil {
+        log.Error().Err(err).Msg("Error creating PUT request")
+        return
+    }
 
-	// Read response body to parse success/error message
-	bodyBytes, err := io.ReadAll(postResp.Body)
-	if err != nil {
-		log.Error().Err(err).Msg("Error reading response body")
-		return
-	}
+    postReq.Header.Set("Content-Type", "application/json")
+    if len(hostKey) > 0 {
+        postReq.Header.Set("Authorization", string(hostKey))
+    }
 
-	// Check for successful status codes OR check if the response contains success indicators
-	if postResp.StatusCode != http.StatusOK && postResp.StatusCode != http.StatusCreated {
-		// Try to parse the response as JSON
-		var respData map[string]string
-		if err := json.Unmarshal(bodyBytes, &respData); err == nil {
-			// If status is "created" or message indicates success, don't treat as error
-			if respData["status"] == "created" || strings.Contains(respData["message"], "updated") {
-				fmt.Println("Configuration synchronized successfully")
-				return
-			}
-		}
-		log.Error().Str("body", string(bodyBytes)).Msg("Server error during sync")
-		return
-	}
+    postResp, err := client.Do(postReq)
+    if err != nil {
+        log.Error().Err(err).Msg("Error sending local configs")
+        return
+    }
+    defer postResp.Body.Close()
 
-	fmt.Println("Configuration synchronized successfully")
+    // Read response body to parse success/error message
+    bodyBytes, err := io.ReadAll(postResp.Body)
+    if err != nil {
+        log.Error().Err(err).Msg("Error reading response body")
+        return
+    }
+
+    if postResp.StatusCode != http.StatusOK && postResp.StatusCode != http.StatusCreated {
+        var respData map[string]string
+        if err := json.Unmarshal(bodyBytes, &respData); err == nil {
+            if respData["status"] == "created" || strings.Contains(respData["message"], "updated") {
+                fmt.Println("Configuration synchronized successfully")
+                return
+            }
+        }
+        log.Error().Int("status", postResp.StatusCode).Str("body", string(bodyBytes)).Msg("Server error during sync")
+        return
+    }
+
+    fmt.Println("Configuration synchronized successfully")
 }
