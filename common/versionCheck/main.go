@@ -1,19 +1,20 @@
 package common
 
 import (
-	"encoding/json"
-	"fmt"
-	"os"
-	"reflect"
-	"strings"
-	"time"
+    "encoding/json"
+    "fmt"
+    "os"
+    "reflect"
+    "strings"
+    "time"
 
-	"github.com/monobilisim/monokit/common"
-	"github.com/monobilisim/monokit/common/health" // For getting plugin providers
-	news "github.com/monobilisim/monokit/common/redmine/news"
-	"github.com/monobilisim/monokit/common/types" // For RKE2Info struct
-	"github.com/rs/zerolog/log"
-	"github.com/spf13/cobra"
+    "github.com/monobilisim/monokit/common"
+    "github.com/monobilisim/monokit/common/health" // For getting plugin providers
+    "github.com/monobilisim/monokit/common/healthdb"
+    news "github.com/monobilisim/monokit/common/redmine/news"
+    "github.com/monobilisim/monokit/common/types" // For RKE2Info struct
+    "github.com/rs/zerolog/log"
+    "github.com/spf13/cobra"
 )
 
 func init() {
@@ -25,22 +26,46 @@ func init() {
 }
 
 func StoreVersion(service string, version string) {
-	common.WriteToFile(common.TmpDir+"/"+service+".version", version)
+    // Persist version info in SQLite healthdb
+    payload := struct {
+        Version   string `json:"version"`
+        UpdatedAt string `json:"updated_at"`
+    }{Version: version, UpdatedAt: time.Now().Format("2006-01-02 15:04:05")}
+
+    b, _ := json.Marshal(payload)
+    _ = healthdb.PutJSON("versionCheck", service, string(b), nil, time.Now())
+
+    // Best-effort cleanup of legacy file storage to avoid future confusion
+    legacyPath := common.TmpDir + "/" + service + ".version"
+    _ = os.Remove(legacyPath)
 }
 
 func GatherVersion(service string) string {
-	// Check if the service has a file
-	if _, err := os.Stat(common.TmpDir + "/" + service + ".version"); os.IsNotExist(err) {
-		return ""
-	}
+    // First, try to read from healthdb
+    if jsonStr, _, _, found, err := healthdb.GetJSON("versionCheck", service); err == nil && found && jsonStr != "" {
+        // Attempt to parse JSON payload; if parsing fails, assume raw string stored
+        var payload struct {
+            Version string `json:"version"`
+        }
+        if json.Unmarshal([]byte(jsonStr), &payload) == nil && payload.Version != "" {
+            return payload.Version
+        }
+        return jsonStr
+    }
 
-	// Read the file
-	content, err := os.ReadFile(common.TmpDir + "/" + service + ".version")
-	if err != nil {
-		return ""
-	}
+    // Fallback for legacy storage: read from tmp file once and migrate
+    legacyPath := common.TmpDir + "/" + service + ".version"
+    if _, err := os.Stat(legacyPath); err == nil {
+        if content, err := os.ReadFile(legacyPath); err == nil {
+            version := strings.TrimSpace(string(content))
+            if version != "" {
+                StoreVersion(service, version) // migrate into healthdb (also removes legacy file)
+                return version
+            }
+        }
+    }
 
-	return string(content)
+    return ""
 }
 
 func CreateNews(service string, oldVersion string, newVersion string, compactTitle bool) {
