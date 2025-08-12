@@ -295,7 +295,7 @@ var (
 
 func SendReq(apiVersion string) {
 	// Sync host configuration with server
-	//syncConfigFn(nil, nil)
+	syncConfigFn(nil, nil)
 
 	beforeHost, err := getReqFn(apiVersion)
 
