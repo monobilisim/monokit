@@ -731,13 +731,7 @@ func buildUfwCommand(action, ip, protocol, port, comment string) []string {
 		return strings.Join(cmdParts, " ")
 	}
 
-	if protocol == "all" {
-		// When protocol is 'all', create both TCP and UDP rules
-		commands = append(commands, buildCommand("tcp"))
-		commands = append(commands, buildCommand("udp"))
-	} else {
-		commands = append(commands, buildCommand(protocol))
-	}
+	commands = append(commands, buildCommand(protocol))
 
 	return commands
 }
