@@ -79,8 +79,11 @@ func VersionCheck(cmd *cobra.Command, args []string) {
 	// RKE2 Kubernetes - Replaced with plugin call
 	handleRKE2VersionCheckViaPlugin()
 
-	// Vault
-	VaultCheck()
+    // Vault
+    VaultCheck()
+
+    // FrankenPHP
+    FrankenPHPCheck()
 }
 
 func handleRKE2VersionCheckViaPlugin() {
