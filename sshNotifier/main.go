@@ -17,12 +17,15 @@ import (
 	"time"
 
 	"github.com/monobilisim/monokit/common"
+	"github.com/monobilisim/monokit/common/healthdb"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"golang.org/x/crypto/ssh"
 )
 
+// TODO(migration): Deprecated fields will be removed after all configs migrate
+// from file-based monitoring to DB-based monitoring.
 var SSHNotifierConfig struct {
 	Exclude struct {
 		Domains []string
@@ -42,9 +45,14 @@ var SSHNotifierConfig struct {
 		Stream string
 	}
 
-	Disable_File_Monitoring bool
+	// New canonical fields
+	Disable_Db_Monitoring bool
+	SkippedComponents     []string
 
-	SkippedDirectories []string
+	// Deprecated (backwards compatibility):
+	// TODO(migration): Remove these after safe rollout
+	Disable_File_Monitoring bool
+	SkippedDirectories      []string
 }
 
 type LoginInfoOutput struct {
@@ -619,17 +627,20 @@ func GetLoginInfo(customType string) LoginInfoOutput {
 	return result
 }
 
+// TODO(migration): This file-based logic is deprecated; keep until all nodes use DB-based detection.
 func listFiles(dir string, ignoredDirectories []string) []string {
 	log.Debug().
 		Str("component", "sshNotifier").
 		Str("operation", "file_monitoring").
 		Str("action", "list_files").
 		Str("directory", dir).
-		Bool("monitoring_disabled", SSHNotifierConfig.Disable_File_Monitoring).
+		// TODO(migration): drop deprecated field after migration
+		Bool("monitoring_disabled", SSHNotifierConfig.Disable_File_Monitoring || SSHNotifierConfig.Disable_Db_Monitoring).
 		Int("ignored_directories", len(ignoredDirectories)).
 		Msg("Starting file listing operation")
 
-	if SSHNotifierConfig.Disable_File_Monitoring {
+	// Backward-compat: consider Disable_File_Monitoring OR Disable_Db_Monitoring
+	if SSHNotifierConfig.Disable_File_Monitoring || SSHNotifierConfig.Disable_Db_Monitoring {
 		log.Debug().
 			Str("component", "sshNotifier").
 			Str("operation", "file_monitoring").
@@ -714,6 +725,7 @@ func listFiles(dir string, ignoredDirectories []string) []string {
 	return files
 }
 
+// TODO(migration): Deprecated file discovery; retained only during migration.
 func getRelevantLogs(skippedDirectories []string) []string {
 	log.Debug().
 		Str("component", "sshNotifier").
@@ -721,7 +733,8 @@ func getRelevantLogs(skippedDirectories []string) []string {
 		Str("action", "start").
 		Msg("Starting to get relevant logs")
 
-	if SSHNotifierConfig.Disable_File_Monitoring {
+	// Backward-compat: consider Disable_File_Monitoring OR Disable_Db_Monitoring
+	if SSHNotifierConfig.Disable_File_Monitoring || SSHNotifierConfig.Disable_Db_Monitoring {
 		log.Debug().
 			Str("component", "sshNotifier").
 			Str("operation", "get_relevant_logs").
@@ -744,12 +757,15 @@ func getRelevantLogs(skippedDirectories []string) []string {
 	var allLogFiles []string
 
 	for _, component := range components {
-		componentDir := filepath.Join("/tmp/mono", component)
+		// Use basename-like behavior to ensure component names without path segments
+		// TODO(migration): remove basename normalization once we're confident only names are present
+		baseComp := filepath.Base(component)
+		componentDir := filepath.Join("/tmp/mono", baseComp)
 		log.Debug().
 			Str("component", "sshNotifier").
 			Str("operation", "get_relevant_logs").
 			Str("action", "checking_component").
-			Str("component_name", component).
+			Str("component_name", baseComp).
 			Str("directory", componentDir).
 			Msg("Checking component directory for log files")
 
@@ -933,25 +949,13 @@ func NotifyAndSave(loginInfo LoginInfoOutput) {
 		loginInfo.Username = cleanedUsername
 	}
 
-	fileList := getRelevantLogs(SSHNotifierConfig.SkippedDirectories)
-	fileCount := len(fileList)
-
-	log.Debug().
-		Str("component", "sshNotifier").
-		Str("operation", "notification_and_save").
-		Str("action", "file_monitoring_check").
-		Int("files_found", fileCount).
-		Msg("Checked monitoring files")
-
-	if fileCount == 0 {
+	// Determine whether there is active monitoring by checking SQLite alarm entries
+	if SSHNotifierConfig.Disable_Db_Monitoring {
 		log.Debug().
 			Str("component", "sshNotifier").
 			Str("operation", "notification_and_save").
-			Str("action", "webhook_notification").
-			Str("webhook_stream", SSHNotifierConfig.Webhook.Stream).
-			Bool("use_stream", SSHNotifierConfig.Webhook.Stream != "").
-			Msg("No monitoring files found, using webhook configuration")
-
+			Str("action", "db_monitoring_disabled").
+			Msg("DB monitoring disabled by configuration - skipping DB lookup and using webhook")
 		if SSHNotifierConfig.Webhook.Stream == "" {
 			common.Alarm(message, "", "", false)
 		} else {
@@ -961,25 +965,57 @@ func NotifyAndSave(loginInfo LoginInfoOutput) {
 			} else {
 				usernameOnStream = loginInfo.Username
 			}
-
-			log.Debug().
-				Str("component", "sshNotifier").
-				Str("operation", "notification_and_save").
-				Str("action", "stream_notification").
-				Str("stream", SSHNotifierConfig.Webhook.Stream).
-				Str("username_on_stream", usernameOnStream).
-				Msg("Sending notification with stream configuration")
-
 			common.Alarm(message, SSHNotifierConfig.Webhook.Stream, usernameOnStream, true)
 		}
+		// continue to DB post below
 	} else {
+		alarmCount := countRecentAlarmsInDB(24 * time.Hour)
+
 		log.Debug().
 			Str("component", "sshNotifier").
 			Str("operation", "notification_and_save").
-			Str("action", "standard_alarm").
-			Int("monitoring_files", fileCount).
-			Msg("Monitoring files found, sending standard alarm")
-		common.Alarm(message, "", "", false)
+			Str("action", "db_alarm_check").
+			Int("recent_alarms", alarmCount).
+			Msg("Checked recent alarms in SQLite database")
+
+		if alarmCount == 0 {
+			log.Debug().
+				Str("component", "sshNotifier").
+				Str("operation", "notification_and_save").
+				Str("action", "webhook_notification_no_recent_alarms").
+				Str("webhook_stream", SSHNotifierConfig.Webhook.Stream).
+				Bool("use_stream", SSHNotifierConfig.Webhook.Stream != "").
+				Msg("No recent alarms found in DB, using webhook configuration")
+
+			if SSHNotifierConfig.Webhook.Stream == "" {
+				common.Alarm(message, "", "", false)
+			} else {
+				var usernameOnStream string
+				if strings.Contains(loginInfo.Username, "@") {
+					usernameOnStream = strings.Split(loginInfo.Username, "@")[0]
+				} else {
+					usernameOnStream = loginInfo.Username
+				}
+
+				log.Debug().
+					Str("component", "sshNotifier").
+					Str("operation", "notification_and_save").
+					Str("action", "stream_notification").
+					Str("stream", SSHNotifierConfig.Webhook.Stream).
+					Str("username_on_stream", usernameOnStream).
+					Msg("Sending notification with stream configuration")
+
+				common.Alarm(message, SSHNotifierConfig.Webhook.Stream, usernameOnStream, true)
+			}
+		} else {
+			log.Debug().
+				Str("component", "sshNotifier").
+				Str("operation", "notification_and_save").
+				Str("action", "standard_alarm_recent_alarms_present").
+				Int("recent_alarms", alarmCount).
+				Msg("Recent alarms exist in DB, sending standard alarm")
+			common.Alarm(message, "", "", false)
+		}
 	}
 
 	var dbReq DatabaseRequest
@@ -1074,6 +1110,20 @@ func NotifyAndSave(loginInfo LoginInfoOutput) {
 		Msg("Notification and save process completed")
 }
 
+// countRecentAlarmsInDB returns the number of alarm records in SQLite within the given duration.
+// If duration is zero or negative, counts all alarm records.
+func countRecentAlarmsInDB(since time.Duration) int {
+	db := healthdb.Get()
+	var cnt int64
+	if since > 0 {
+		sinceTime := time.Now().Add(-since)
+		_ = db.Model(&healthdb.KVEntry{}).Where("module = ? AND cached_at >= ?", "alarm", sinceTime).Count(&cnt).Error
+	} else {
+		_ = db.Model(&healthdb.KVEntry{}).Where("module = ?", "alarm").Count(&cnt).Error
+	}
+	return int(cnt)
+}
+
 func Main(cmd *cobra.Command, args []string) {
 	common.ScriptName = "sshNotifier"
 
@@ -1092,7 +1142,11 @@ func Main(cmd *cobra.Command, args []string) {
 		Msg("Common initialization completed")
 
 	viper.SetDefault("webhook.stream", "ssh")
+	// TODO(migration): Remove old default after migration
 	viper.SetDefault("skipped_directories", []string{})
+	// New keys
+	viper.SetDefault("disable_db_monitoring", false)
+	viper.SetDefault("skipped_components", []string{})
 
 	log.Debug().
 		Str("component", "sshNotifier").
@@ -1112,11 +1166,15 @@ func Main(cmd *cobra.Command, args []string) {
 		Str("primary_post_url", SSHNotifierConfig.Ssh_Post_Url).
 		Str("backup_post_url", SSHNotifierConfig.Ssh_Post_Url_Backup).
 		Str("webhook_stream", SSHNotifierConfig.Webhook.Stream).
+		// TODO(migration): Drop file_monitoring_disabled after migration
 		Bool("file_monitoring_disabled", SSHNotifierConfig.Disable_File_Monitoring).
+		Bool("db_monitoring_disabled", SSHNotifierConfig.Disable_Db_Monitoring).
 		Int("excluded_users", len(SSHNotifierConfig.Exclude.Users)).
 		Int("excluded_ips", len(SSHNotifierConfig.Exclude.IPs)).
 		Int("excluded_domains", len(SSHNotifierConfig.Exclude.Domains)).
+		// TODO(migration): Drop skipped_directories after migration
 		Int("skipped_directories", len(SSHNotifierConfig.SkippedDirectories)).
+		Int("skipped_components", len(SSHNotifierConfig.SkippedComponents)).
 		Msg("SSH notifier configuration loaded successfully")
 
 	loginInfo := GetLoginInfo("")
