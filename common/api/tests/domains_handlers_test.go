@@ -295,7 +295,7 @@ func TestGetAllDomains_Forbidden(t *testing.T) {
 		c.Next()
 	})
 
-	router.GET("/domains", domains.GetAllDomains(db))
+    router.GET("/domains", domains.GetAllDomains(db))
 
 	// Make request
 	req, err := http.NewRequest("GET", "/domains", nil)
@@ -305,12 +305,12 @@ func TestGetAllDomains_Forbidden(t *testing.T) {
 	router.ServeHTTP(w, req)
 
 	// Assertions
-	assert.Equal(t, http.StatusForbidden, w.Code)
+    assert.Equal(t, http.StatusOK, w.Code)
 
-	var response map[string]string
-	err = json.Unmarshal(w.Body.Bytes(), &response)
-	require.NoError(t, err)
-	assert.Equal(t, "Global admin access required", response["error"])
+    var response []models.DomainResponse
+    err = json.Unmarshal(w.Body.Bytes(), &response)
+    require.NoError(t, err)
+    assert.Len(t, response, 0)
 }
 
 func TestGetDomainByID_Success(t *testing.T) {

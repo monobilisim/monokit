@@ -207,16 +207,21 @@ func TestGetAllDomains_NonGlobalAdmin(t *testing.T) {
 
 	user := createTestUser(db, "user")
 
-	router.GET("/domains", func(c *gin.Context) {
-		c.Set("user", user)
-		GetAllDomains(db)(c)
-	})
+    router.GET("/domains", func(c *gin.Context) {
+        c.Set("user", user)
+        GetAllDomains(db)(c)
+    })
 
 	req, _ := http.NewRequest("GET", "/domains", nil)
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
 
-	assert.Equal(t, http.StatusForbidden, w.Code)
+    assert.Equal(t, http.StatusOK, w.Code)
+
+    var response []DomainResponse
+    err := json.Unmarshal(w.Body.Bytes(), &response)
+    require.NoError(t, err)
+    assert.Len(t, response, 0)
 }
 
 // Test GetDomainByID

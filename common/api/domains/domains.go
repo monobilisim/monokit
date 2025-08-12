@@ -116,7 +116,7 @@ func CreateDomain(db *gorm.DB) gin.HandlerFunc {
 }
 
 // @Summary Get all domains
-// @Description Get list of all domains (global admin only)
+// @Description List domains visible to the current user. Global/admin users see all; others see assigned domains.
 // @Tags domains
 // @Security ApiKeyAuth
 // @Accept json
@@ -126,18 +126,56 @@ func CreateDomain(db *gorm.DB) gin.HandlerFunc {
 // @Router /domains [get]
 func GetAllDomains(db *gorm.DB) gin.HandlerFunc {
 	return func(c *gin.Context) {
-        // Only global admins are allowed to list all domains
-        user, exists := c.Get("user")
-        if !exists || user.(User).Role != "global_admin" {
+        // Require authenticated user
+        userVal, exists := c.Get("user")
+        if !exists {
             c.JSON(http.StatusForbidden, gin.H{"error": "Global admin access required"})
             return
         }
+        currentUser := userVal.(User)
 
         var domains []Domain
-        if err := db.Find(&domains).Error; err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch domains"})
-			return
-		}
+
+        // Prefer domain context provided by middleware to determine access
+        domainIDs := auth.GetUserDomainIDs(c)
+
+        if domainIDs == nil {
+            // Global/admin via domain context or role fallback
+            if currentUser.Role == "global_admin" || currentUser.Role == "admin" {
+                if err := db.Find(&domains).Error; err != nil {
+                    c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch domains"})
+                    return
+                }
+            } else {
+                // Fallback when middleware didn't set domain context: filter by memberships
+                var memberships []DomainUser
+                if err := db.Where("user_id = ?", currentUser.ID).Find(&memberships).Error; err != nil {
+                    c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch domains"})
+                    return
+                }
+                if len(memberships) > 0 {
+                    ids := make([]uint, 0, len(memberships))
+                    for _, m := range memberships {
+                        ids = append(ids, m.DomainID)
+                    }
+                    if err := db.Where("id IN ?", ids).Find(&domains).Error; err != nil {
+                        c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch domains"})
+                        return
+                    }
+                } else {
+                    domains = []Domain{}
+                }
+            }
+        } else if len(domainIDs) == 0 {
+            // No access
+            domains = []Domain{}
+        } else {
+            // Restricted list
+            if err := db.Where("id IN ?", domainIDs).Find(&domains).Error; err != nil {
+                c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to fetch domains"})
+                return
+            }
+        }
 
 		var responses []DomainResponse
 		for _, domain := range domains {
@@ -153,7 +191,7 @@ func GetAllDomains(db *gorm.DB) gin.HandlerFunc {
 			})
 		}
 
-		c.JSON(http.StatusOK, responses)
+        c.JSON(http.StatusOK, responses)
 	}
 }
 

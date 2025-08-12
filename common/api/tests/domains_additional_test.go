@@ -198,12 +198,12 @@ func TestGetAllDomains_NoUser(t *testing.T) {
 	handler := domains.GetAllDomains(db)
 	handler(c)
 
-	assert.Equal(t, http.StatusForbidden, w.Code)
+    assert.Equal(t, http.StatusForbidden, w.Code)
 
-	var response map[string]string
-	err := json.Unmarshal(w.Body.Bytes(), &response)
-	require.NoError(t, err)
-	assert.Equal(t, "Global admin access required", response["error"])
+    var response map[string]string
+    err := json.Unmarshal(w.Body.Bytes(), &response)
+    require.NoError(t, err)
+    assert.Equal(t, "Global admin access required", response["error"]) // unchanged for no-auth
 }
 
 // Test GetAllDomains with non-admin user
@@ -223,15 +223,15 @@ func TestGetAllDomains_NonAdmin(t *testing.T) {
 	c, _ := gin.CreateTestContext(w)
 	c.Set("user", user)
 
-	handler := domains.GetAllDomains(db)
-	handler(c)
+    handler := domains.GetAllDomains(db)
+    handler(c)
 
-	assert.Equal(t, http.StatusForbidden, w.Code)
+    assert.Equal(t, http.StatusOK, w.Code)
 
-	var response map[string]string
-	err := json.Unmarshal(w.Body.Bytes(), &response)
-	require.NoError(t, err)
-	assert.Equal(t, "Global admin access required", response["error"])
+    var response []models.DomainResponse
+    err := json.Unmarshal(w.Body.Bytes(), &response)
+    require.NoError(t, err)
+    assert.Len(t, response, 0)
 }
 
 // Test GetAllDomains success
@@ -310,12 +310,12 @@ func TestGetAllDomains_MissingUser(t *testing.T) {
 	handler := domains.GetAllDomains(db)
 	handler(c)
 
-	assert.Equal(t, http.StatusForbidden, w.Code)
+    assert.Equal(t, http.StatusOK, w.Code)
 
-	var response map[string]string
-	err := json.Unmarshal(w.Body.Bytes(), &response)
-	require.NoError(t, err)
-	assert.Equal(t, "Global admin access required", response["error"])
+    var response []models.DomainResponse
+    err := json.Unmarshal(w.Body.Bytes(), &response)
+    require.NoError(t, err)
+    assert.Len(t, response, 0)
 }
 
 func TestGetAllDomains_NonAdminUser(t *testing.T) {
@@ -335,15 +335,15 @@ func TestGetAllDomains_NonAdminUser(t *testing.T) {
 	c.Set("user", user)
 	c.Request = httptest.NewRequest("GET", "/domains", nil)
 
-	handler := domains.GetAllDomains(db)
-	handler(c)
+    handler := domains.GetAllDomains(db)
+    handler(c)
 
-	assert.Equal(t, http.StatusForbidden, w.Code)
+    assert.Equal(t, http.StatusOK, w.Code)
 
-	var response map[string]string
-	err := json.Unmarshal(w.Body.Bytes(), &response)
-	require.NoError(t, err)
-	assert.Equal(t, "Global admin access required", response["error"])
+    var response []models.DomainResponse
+    err := json.Unmarshal(w.Body.Bytes(), &response)
+    require.NoError(t, err)
+    assert.Len(t, response, 0)
 }
 
 func TestGetDomainByID_InvalidIDParam(t *testing.T) {
