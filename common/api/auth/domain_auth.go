@@ -294,3 +294,19 @@ func ExtractDomainFromPath(path string) *uint {
 
 	return nil
 }
+
+// ApplyDomainListFilter prepares context for domain list endpoints.
+// It computes the accessible domain IDs for the current user and stores them
+// under the `domain_list_ids` key in the request context. A nil slice indicates
+// access to all domains (global/admin), an empty slice indicates no access.
+// This middleware is intended to be attached specifically to list endpoints
+// to keep handlers simple.
+func ApplyDomainListFilter(db *gorm.DB) gin.HandlerFunc {
+    return func(c *gin.Context) {
+        // Ensure authentication and domain context have been established by prior middleware
+        // AuthMiddleware and RequireDomainAccess should run before this.
+        domainIDs := GetUserDomainIDs(c)
+        c.Set("domain_list_ids", domainIDs)
+        c.Next()
+    }
+}

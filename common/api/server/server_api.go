@@ -257,7 +257,8 @@ func setupRoutes(r *gin.Engine, db *gorm.DB, monokitHostname string) {
     domainApi.Use(auth.RequireDomainAccess(db))
 	{
         domainApi.POST("", domains.CreateDomain(db)) // keep global admin check inside
-        domainApi.GET("", domains.GetAllDomains(db))
+        // Apply domain list filter middleware so handler can rely on computed IDs
+        domainApi.GET("", auth.ApplyDomainListFilter(db), domains.GetAllDomains(db))
         domainApi.GET("/:id", domains.GetDomainByID(db))
         // Add domain admin requirement for mutating operations (global admin still allowed inside)
         domainApi.PUT("/:id", auth.RequireDomainAdmin(db), domains.UpdateDomain(db))

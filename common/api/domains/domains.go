@@ -136,8 +136,18 @@ func GetAllDomains(db *gorm.DB) gin.HandlerFunc {
 
         var domains []Domain
 
-        // Prefer domain context provided by middleware to determine access
-        domainIDs := auth.GetUserDomainIDs(c)
+        // Prefer middleware-provided IDs for list filtering to keep handler lean
+        var domainIDs []uint
+        if idsVal, ok := c.Get("domain_list_ids"); ok {
+            if ids, ok2 := idsVal.([]uint); ok2 {
+                domainIDs = ids
+            } else {
+                domainIDs = auth.GetUserDomainIDs(c)
+            }
+        } else {
+            // Fall back to computing via domain context
+            domainIDs = auth.GetUserDomainIDs(c)
+        }
 
         if domainIDs == nil {
             // Global/admin via domain context or role fallback
