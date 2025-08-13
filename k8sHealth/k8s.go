@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/monobilisim/monokit/common"
+    "github.com/monobilisim/monokit/common/healthdb"
 	probing "github.com/prometheus-community/pro-bing"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
@@ -1098,9 +1099,9 @@ func CleanupOrphanedAlarms() error {
 		return fmt.Errorf("error reading tmp directory: %w", err)
 	}
 
-	var podLogsCleaned int
-	var containerLogsCleaned int
-	var simpleContainerLogsCleaned int
+    var podLogsCleaned int
+    var containerLogsCleaned int
+    var simpleContainerLogsCleaned int
 
 	// Look for log files that match our patterns but are no longer current
 	for _, file := range files {
@@ -1187,7 +1188,65 @@ func CleanupOrphanedAlarms() error {
 		}
 	}
 
-	log.Debug().
+    // Additionally, cleanup orphaned alarm keys from the SQLite health DB
+    // This removes stale entries like "<ns>-<pod>_pod_status" and container variants
+    db := healthdb.Get()
+    type keyRow struct{ K string }
+    var rows []keyRow
+    if err := db.Model(&healthdb.KVEntry{}).
+        Select("k").
+        Where("module = ?", "alarm").
+        Find(&rows).Error; err != nil {
+        log.Error().
+            Str("component", "k8sHealth").
+            Str("operation", "cleanup_orphaned_alarms").
+            Err(err).
+            Msg("Error querying alarm keys from health DB")
+    } else {
+        var dbPodKeysDeleted int
+        var dbContainerKeysDeleted int
+        for _, r := range rows {
+            key := r.K
+            // Only consider keys created by k8sHealth
+            if strings.HasSuffix(key, "_pod_status") {
+                if !existingPods[key] {
+                    if err := healthdb.Delete("alarm", key); err != nil {
+                        log.Error().
+                            Str("component", "k8sHealth").
+                            Str("operation", "cleanup_orphaned_alarms").
+                            Str("db_key", key).
+                            Err(err).
+                            Msg("Error deleting orphaned pod alarm key from DB")
+                    } else {
+                        dbPodKeysDeleted++
+                    }
+                }
+            } else if strings.HasSuffix(key, "_container_status") || strings.HasSuffix(key, "_init_container_status") {
+                if !existingContainers[key] {
+                    if err := healthdb.Delete("alarm", key); err != nil {
+                        log.Error().
+                            Str("component", "k8sHealth").
+                            Str("operation", "cleanup_orphaned_alarms").
+                            Str("db_key", key).
+                            Err(err).
+                            Msg("Error deleting orphaned container alarm key from DB")
+                    } else {
+                        dbContainerKeysDeleted++
+                    }
+                }
+            }
+        }
+        if dbPodKeysDeleted > 0 || dbContainerKeysDeleted > 0 {
+            log.Debug().
+                Str("component", "k8sHealth").
+                Str("operation", "cleanup_orphaned_alarms").
+                Int("db_pod_keys_deleted", dbPodKeysDeleted).
+                Int("db_container_keys_deleted", dbContainerKeysDeleted).
+                Msg("Removed orphaned alarm keys from DB")
+        }
+    }
+
+    log.Debug().
 		Str("component", "k8sHealth").
 		Str("operation", "cleanup_orphaned_alarms").
 		Int("pod_logs_cleaned", podLogsCleaned).
