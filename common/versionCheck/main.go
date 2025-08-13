@@ -177,7 +177,7 @@ func handleRKE2VersionCheckViaPlugin() {
 						fmt.Printf("New version: %s\n", currentVersion)
 
 						if info.IsMasterNode {
-							CreateNews("RKE2 on "+clusterName, oldVersion, currentVersion, false)
+							CreateNews("RKE2", oldVersion, currentVersion, false)
 						} else {
 							log.Debug().Msg("Skipping news creation (not a master node)")
 						}
