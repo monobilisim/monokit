@@ -35,6 +35,24 @@ These core tools will be available in every monokit installation.
     - Allows you to comprehensively filter components using log types, fields, component, date, version and more.
     - Also has wildcard support for easy searching.
 
+- db
+    - Inspect the monokit health SQLite database.
+    - Subcommands:
+        - `path`: Print the SQLite DB path
+        - `list` [--module <name>]: List keys (optionally filter by module)
+        - `get <key>` --module <name>: Get value for a key
+        - `dump` [--module <name>]: Dump entries as JSON
+        - `del <key>` --module <name>: Delete a key
+    - Examples:
+        ```bash
+        monokit db path
+        monokit db list --module osHealth
+        monokit db get <key> --module pgsqlHealth
+        monokit db dump --module redisHealth
+        monokit db del <key> --module pgsqlHealth
+        ```
+    - Use `--no-colors` or set `MONOKIT_NOCOLOR=1` to disable colored JSON output.
+
 - plugin
     - Plugin management system for monokit.
     - Allows you to install, list, and remove plugins.
