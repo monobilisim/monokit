@@ -125,6 +125,9 @@ func VersionCheck(cmd *cobra.Command, args []string) {
     // Nginx
     NginxCheck()
 
+    // HAProxy
+    HAProxyCheck()
+
     // Docker
     DockerCheck()
 
