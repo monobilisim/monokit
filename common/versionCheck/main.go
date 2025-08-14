@@ -110,6 +110,9 @@ func VersionCheck(cmd *cobra.Command, args []string) {
     // Redis
     RedisCheck()
 
+    // Postal
+    PostalCheck()
+
 	// RKE2 Kubernetes - Replaced with plugin call
 	handleRKE2VersionCheckViaPlugin()
 
