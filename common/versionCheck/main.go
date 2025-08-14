@@ -109,6 +109,9 @@ func VersionCheck(cmd *cobra.Command, args []string) {
 
     // FrankenPHP
     FrankenPHPCheck()
+
+    // Caddy
+    CaddyCheck()
 }
 
 func handleRKE2VersionCheckViaPlugin() {
