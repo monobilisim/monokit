@@ -125,11 +125,17 @@ func ServerMain(cmd *cobra.Command, args []string) {
 	common.Init()
 
 	defaultDeps := ServerDeps{
-		LoadConfig: func() {
-			viper.SetDefault("port", "9989")
-			common.ConfInit("server", &ServerConfig)
-			fmt.Println("Monokit API Server - v" + version + " - " + time.Now().Format("2006-01-02 15:04:05") + " - API v" + apiVersion)
-		},
+        LoadConfig: func() {
+            viper.SetDefault("port", "9989")
+            // Log retention defaults for /logs data to avoid DB bloat
+            viper.SetDefault("logs.retention.enabled", true)
+            viper.SetDefault("logs.retention.max_age_days", 7)
+            viper.SetDefault("logs.retention.purge_interval_minutes", 10)
+            viper.SetDefault("logs.retention.max_rows", 0) // 0 = disabled
+            viper.SetDefault("logs.retention.hard_delete", true)
+            common.ConfInit("server", &ServerConfig)
+            fmt.Println("Monokit API Server - v" + version + " - " + time.Now().Format("2006-01-02 15:04:05") + " - API v" + apiVersion)
+        },
 		OpenDB: func() (*gorm.DB, error) {
 			dsn := "host=" + ServerConfig.Postgres.Host + " user=" + ServerConfig.Postgres.User + " password=" + ServerConfig.Postgres.Password + " dbname=" + ServerConfig.Postgres.Dbname + " port=" + ServerConfig.Postgres.Port + " sslmode=disable TimeZone=Europe/Istanbul"
 			return gorm.Open(postgres.Open(dsn), &gorm.Config{})
@@ -172,9 +178,11 @@ func ServerMain(cmd *cobra.Command, args []string) {
 			FixDuplicateHosts(db)
 			fmt.Println("=============== DUPLICATE HOST FIX COMPLETED (MAIN) ===============")
 		},
-		BuildRouter: func(db *gorm.DB, ctx context.Context) *gin.Engine {
-			gin.SetMode(gin.ReleaseMode)
-			r := gin.Default()
+        BuildRouter: func(db *gorm.DB, ctx context.Context) *gin.Engine {
+            gin.SetMode(gin.ReleaseMode)
+            // Start background log retention for /logs storage
+            startLogRetentionRoutine(db)
+            r := gin.Default()
 			r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 			// Add log buffer to Gin context
@@ -269,4 +277,99 @@ func FixDuplicateHosts(db *gorm.DB) {
 	// Reload hosts list
 	db.Find(&HostsList)
 	fmt.Println("Duplicate host names fixed")
+}
+
+// startLogRetentionRoutine launches a background goroutine that periodically purges
+// old or excess rows from the host_logs table based on configuration.
+func startLogRetentionRoutine(db *gorm.DB) {
+    enabled := viper.GetBool("logs.retention.enabled")
+    if !enabled {
+        log.Info().Str("component", "logs").Msg("Log retention disabled")
+        return
+    }
+
+    // Read settings
+    intervalMinutes := viper.GetInt("logs.retention.purge_interval_minutes")
+    if intervalMinutes <= 0 {
+        intervalMinutes = 10
+    }
+
+    log.Info().
+        Str("component", "logs").
+        Int("interval_minutes", intervalMinutes).
+        Int("max_age_days", viper.GetInt("logs.retention.max_age_days")).
+        Int("max_rows", viper.GetInt("logs.retention.max_rows")).
+        Bool("hard_delete", viper.GetBool("logs.retention.hard_delete")).
+        Msg("Starting log retention routine")
+
+    ticker := time.NewTicker(time.Duration(intervalMinutes) * time.Minute)
+
+    // Run once at startup
+    go func() {
+        if err := applyLogRetention(db); err != nil {
+            log.Error().Str("component", "logs").Err(err).Msg("Initial log retention run failed")
+        }
+        for range ticker.C {
+            if err := applyLogRetention(db); err != nil {
+                log.Error().Str("component", "logs").Err(err).Msg("Log retention run failed")
+            }
+        }
+    }()
+}
+
+// applyLogRetention executes retention policies against host_logs.
+func applyLogRetention(db *gorm.DB) error {
+    // Age-based purge
+    maxAgeDays := viper.GetInt("logs.retention.max_age_days")
+    hardDelete := viper.GetBool("logs.retention.hard_delete")
+
+    if maxAgeDays > 0 {
+        cutoff := time.Now().AddDate(0, 0, -maxAgeDays)
+        var err error
+        if hardDelete {
+            err = db.Where("timestamp < ?", cutoff).Delete(&HostLog{}).Error
+        } else {
+            // Soft delete by setting deleted_at
+            err = db.Model(&HostLog{}).Where("timestamp < ? AND deleted_at IS NULL", cutoff).Update("deleted_at", time.Now()).Error
+        }
+        if err != nil {
+            return err
+        }
+    }
+
+    // Count-based purge: keep only most recent N rows if configured
+    maxRows := viper.GetInt("logs.retention.max_rows")
+    if maxRows > 0 {
+        // Use raw SQL to delete all but the most recent maxRows entries by timestamp
+        if hardDelete {
+            // Postgres-specific OFFSET approach
+            // Delete rows older than the N newest (ORDER BY timestamp DESC)
+            if err := db.Exec(`
+                DELETE FROM host_logs
+                WHERE id IN (
+                    SELECT id FROM host_logs
+                    WHERE deleted_at IS NULL
+                    ORDER BY timestamp DESC
+                    OFFSET ?
+                )
+            `, maxRows).Error; err != nil {
+                return err
+            }
+        } else {
+            // Soft-delete rows older than the N newest
+            if err := db.Exec(`
+                UPDATE host_logs SET deleted_at = NOW()
+                WHERE id IN (
+                    SELECT id FROM host_logs
+                    WHERE deleted_at IS NULL
+                    ORDER BY timestamp DESC
+                    OFFSET ?
+                )
+            `, maxRows).Error; err != nil {
+                return err
+            }
+        }
+    }
+
+    return nil
 }
