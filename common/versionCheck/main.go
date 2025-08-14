@@ -127,6 +127,9 @@ func VersionCheck(cmd *cobra.Command, args []string) {
 
     // Docker
     DockerCheck()
+
+    // RabbitMQ
+    RabbitMQCheck()
 }
 
 func handleRKE2VersionCheckViaPlugin() {
