@@ -43,6 +43,7 @@ var SSHNotifierConfig struct {
 
 	Webhook struct {
 		Stream string
+		Topic  string
 	}
 
 	// New canonical fields
@@ -957,7 +958,14 @@ func NotifyAndSave(loginInfo LoginInfoOutput) {
 			Str("action", "db_monitoring_disabled").
 			Msg("DB monitoring disabled by configuration - skipping DB lookup and using webhook")
 		if SSHNotifierConfig.Webhook.Stream == "" {
-			common.Alarm(message, "", "", false)
+			var topic string
+			if SSHNotifierConfig.Webhook.Topic != "" {
+				topic = SSHNotifierConfig.Webhook.Topic
+			} else {
+				topic = ""
+			}
+
+			common.Alarm(message, "", topic, false)
 		} else {
 			var usernameOnStream string
 			if strings.Contains(loginInfo.Username, "@") {
@@ -965,6 +973,11 @@ func NotifyAndSave(loginInfo LoginInfoOutput) {
 			} else {
 				usernameOnStream = loginInfo.Username
 			}
+
+			if SSHNotifierConfig.Webhook.Topic != "" {
+				usernameOnStream = SSHNotifierConfig.Webhook.Topic
+			}
+
 			common.Alarm(message, SSHNotifierConfig.Webhook.Stream, usernameOnStream, true)
 		}
 		// continue to DB post below
