@@ -1001,13 +1001,25 @@ func NotifyAndSave(loginInfo LoginInfoOutput) {
 				Msg("No recent alarms found in DB, using webhook configuration")
 
 			if SSHNotifierConfig.Webhook.Stream == "" {
-				common.Alarm(message, "", "", false)
+				var topic string
+
+				if SSHNotifierConfig.Webhook.Topic == "" {
+					topic = ""	
+				} else {
+					topic = SSHNotifierConfig.Webhook.Topic
+				}
+
+				common.Alarm(message, "", topic, false)
 			} else {
 				var usernameOnStream string
 				if strings.Contains(loginInfo.Username, "@") {
 					usernameOnStream = strings.Split(loginInfo.Username, "@")[0]
 				} else {
 					usernameOnStream = loginInfo.Username
+				}
+
+				if SSHNotifierConfig.Webhook.Topic != "" {
+					usernameOnStream = SSHNotifierConfig.Webhook.Topic
 				}
 
 				log.Debug().
