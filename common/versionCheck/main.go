@@ -115,6 +115,9 @@ func VersionCheck(cmd *cobra.Command, args []string) {
 
     // Caddy
     CaddyCheck()
+
+    // Docker
+    DockerCheck()
 }
 
 func handleRKE2VersionCheckViaPlugin() {
