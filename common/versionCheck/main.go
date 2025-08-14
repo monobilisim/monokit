@@ -122,6 +122,9 @@ func VersionCheck(cmd *cobra.Command, args []string) {
     // Caddy
     CaddyCheck()
 
+    // Nginx
+    NginxCheck()
+
     // Docker
     DockerCheck()
 }
