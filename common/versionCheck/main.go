@@ -136,6 +136,9 @@ func VersionCheck(cmd *cobra.Command, args []string) {
 
     // RabbitMQ
     RabbitMQCheck()
+
+    // Zabbix
+    ZabbixCheck()
 }
 
 func handleRKE2VersionCheckViaPlugin() {
