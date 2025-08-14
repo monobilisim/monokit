@@ -101,6 +101,9 @@ func VersionCheck(cmd *cobra.Command, args []string) {
 	// PostgreSQL
 	PostgresCheck()
 
+	// MongoDB
+	MongoDBCheck()
+
 	// RKE2 Kubernetes - Replaced with plugin call
 	handleRKE2VersionCheckViaPlugin()
 
