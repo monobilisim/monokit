@@ -90,20 +90,42 @@ func Main(cmd *cobra.Command, args []string) {
 		if err := saveCachedData(healthData); err != nil {
 			log.Error().Err(err).Msg("Failed to save data to cache")
 		}
-	} else {
-		log.Debug().Msg("Loading data from cache")
-		// Load from cache
-		var err error
-		healthData, err = loadCachedData()
-		if err != nil {
-			log.Error().Err(err).Msg("Failed to load cached data, running full check")
-			// Fallback to full check
-			healthData = collectHealthData()
-			if saveErr := saveCachedData(healthData); saveErr != nil {
-				log.Error().Err(saveErr).Msg("Failed to save fallback data to cache")
-			}
-		}
-	}
+    } else {
+        log.Debug().Msg("Loading data from cache")
+        // Load from cache
+        var err error
+        healthData, err = loadCachedData()
+        if err != nil {
+            log.Error().Err(err).Msg("Failed to load cached data, running full check")
+            // Fallback to full check
+            healthData = collectHealthData()
+            if saveErr := saveCachedData(healthData); saveErr != nil {
+                log.Error().Err(saveErr).Msg("Failed to save fallback data to cache")
+            }
+        } else {
+            // Even when using cached data, always perform a live service check
+            // and attempt restarts if needed, then overlay into the cached view.
+            if zimbraPath == "" {
+                if _, derr := os.Stat("/opt/zimbra"); !os.IsNotExist(derr) {
+                    zimbraPath = "/opt/zimbra"
+                } else {
+                    log.Error().Str("path", "/opt/zimbra").Msg("Zimbra not detected for live service refresh")
+                }
+            }
+
+            if zimbraPath != "" {
+                currentServices := CheckZimbraServices()
+                if len(currentServices) > 0 {
+                    healthData.Services = currentServices
+                    // Optionally refresh basic system fields for UI clarity
+                    if healthData.System.ProductPath == "" {
+                        healthData.System.ProductPath = zimbraPath
+                    }
+                    healthData.System.LastChecked = time.Now().Format("2006-01-02 15:04:05")
+                }
+            }
+        }
+    }
 
 	// Display as a nice box UI
 	displayBoxUI(healthData)
@@ -491,121 +513,199 @@ location / {
 
 // RestartZimbraService refactored to avoid recursion and direct call to CheckZimbraServices
 func RestartZimbraService(service string) bool {
-	// Check interval guard first - prevent too frequent restart attempts
-	restartInterval := MailHealthConfig.Zimbra.Restart_Interval
-	if restartInterval <= 0 {
-		restartInterval = 3 // Default to 3 minutes if not configured or invalid
-	}
+    // Enforce per-service restart interval and limit
+    restartInterval := MailHealthConfig.Zimbra.Restart_Interval
+    if restartInterval <= 0 {
+        restartInterval = 3 // minutes
+    }
+    interval := time.Duration(restartInterval) * time.Minute
 
-	interval := time.Duration(restartInterval) * time.Minute
-	log.Debug().Str("interval", interval.String()).Msg("Restart interval")
+    // Check last restart time per service
+    if last := getServiceLastRestartAt(service); !last.IsZero() {
+        if time.Since(last) < interval {
+            log.Warn().Str("service", service).Dur("remaining", interval-time.Since(last)).Msg("Skipping restart due to interval guard")
+            return false
+        }
+    }
 
-	if !lastRestart.IsZero() {
-		timeSinceLastRestart := time.Since(lastRestart)
-		log.Debug().Str("time_since_last_restart", timeSinceLastRestart.Round(time.Second).String()).Msg("Last restart")
+    // Check per-service restart attempt count
+    attempts := getServiceRestartCount(service)
+    if attempts >= MailHealthConfig.Zimbra.Restart_Limit {
+        log.Warn().Str("service", service).Int("attempts", attempts).Int("limit", MailHealthConfig.Zimbra.Restart_Limit).Msg("Restart limit reached")
+        common.AlarmCheckDown("service_restart_limit_"+service, "Restart limit reached for "+service, false, "", "")
+        return false
+    }
 
-		if timeSinceLastRestart < interval {
-			log.Warn().Str("service", service).Str("time_since_last_restart", timeSinceLastRestart.Round(time.Second).String()).Str("interval", interval.String()).Msg("Skipping restart")
-			return false
-		}
-	} else {
-		log.Debug().Msg("No previous restart recorded - proceeding with restart")
-	}
+    // Clear restart limit alarm since we're within limits
+    common.AlarmCheckUp("service_restart_limit_"+service, "Restart limit not exceeded for "+service+" ("+strconv.Itoa(attempts)+"/"+strconv.Itoa(MailHealthConfig.Zimbra.Restart_Limit)+")", false)
 
-	if restartCounter >= MailHealthConfig.Zimbra.Restart_Limit { // Use >= for clarity
-		log.Warn().Str("service", service).Msg("Restart limit reached")
-		common.AlarmCheckDown("service_restart_limit_"+service, "Restart limit reached for "+service, false, "", "")
-		return false
-	}
+    log.Warn().Str("service", service).Msg("Attempting to restart Zimbra services")
+    output, err := ExecZimbraCommand("zmcontrol start", false, false)
+    log.Debug().Str("output", output).Msg("zmcontrol start output")
+    if err != nil {
+        log.Error().Err(err).Str("service", service).Msg("Failed to start Zimbra services")
+        common.AlarmCheckDown("service_restart_failed_"+service, "Failed to execute zmcontrol start for "+service+": "+err.Error(), false, "", "")
+        return false
+    }
 
-	// Clear restart limit alarm since we're within limits
-	common.AlarmCheckUp("service_restart_limit_"+service, "Restart limit not exceeded for "+service+" ("+strconv.Itoa(restartCounter)+"/"+strconv.Itoa(MailHealthConfig.Zimbra.Restart_Limit)+")", false)
+    // Update per-service tracking after executing restart command
+    setServiceRestartCount(service, attempts+1)
+    setServiceLastRestartAt(service, time.Now())
+    common.AlarmCheckUp("service_restart_failed_"+service, "Zimbra restart command executed successfully for "+service, false)
+    return true
+}
 
-	log.Warn().Str("service", service).Msg("Attempting to restart Zimbra services") // Changed to Warn
-	output, err := ExecZimbraCommand("zmcontrol start", false, false)
-	log.Debug().Str("output", output).Msg("zmcontrol start output") // Try starting all services
+// --- Per-service restart attempt tracking ---
+func getServiceRestartCount(service string) int {
+    jsonStr, _, _, found, err := healthdb.GetJSON("zimbraHealth", "service_restart_"+service)
+    if err != nil || !found || jsonStr == "" {
+        return 0
+    }
+    var v struct {
+        Count  int    `json:"count"`
+        LastAt string `json:"last_at"`
+    }
+    if json.Unmarshal([]byte(jsonStr), &v) != nil {
+        return 0
+    }
+    return v.Count
+}
 
-	if err != nil {
-		log.Error().Err(err).Str("service", service).Msg("Failed to start Zimbra services")
-		common.AlarmCheckDown("service_restart_failed_"+service, "Failed to execute zmcontrol start for "+service+": "+err.Error(), false, "", "")
-		return false // Restart command failed
-	}
+func setServiceRestartCount(service string, count int) {
+    // read existing
+    jsonStr, _, _, _, _ := healthdb.GetJSON("zimbraHealth", "service_restart_"+service)
+    var v struct {
+        Count  int    `json:"count"`
+        LastAt string `json:"last_at"`
+    }
+    _ = json.Unmarshal([]byte(jsonStr), &v)
+    v.Count = count
+    b, _ := json.Marshal(v)
+    _ = healthdb.PutJSON("zimbraHealth", "service_restart_"+service, string(b), nil, time.Now())
+}
 
-	// Update tracking variables after successful restart command
-	restartCounter++
-	lastRestart = time.Now()
-	log.Warn().Str("restart_counter", strconv.Itoa(restartCounter)).Str("restart_limit", strconv.Itoa(MailHealthConfig.Zimbra.Restart_Limit)).Msg("Zimbra services restart attempted") // Changed to Warn
+func getServiceLastRestartAt(service string) time.Time {
+    jsonStr, _, _, found, err := healthdb.GetJSON("zimbraHealth", "service_restart_"+service)
+    if err != nil || !found || jsonStr == "" {
+        return time.Time{}
+    }
+    var v struct {
+        Count  int    `json:"count"`
+        LastAt string `json:"last_at"`
+    }
+    if json.Unmarshal([]byte(jsonStr), &v) != nil || strings.TrimSpace(v.LastAt) == "" {
+        return time.Time{}
+    }
+    t, err := time.Parse(time.RFC3339, strings.TrimSpace(v.LastAt))
+    if err != nil {
+        return time.Time{}
+    }
+    return t
+}
 
-	// Send success alarm for restart command execution
-	common.AlarmCheckUp("service_restart_failed_"+service, "Zimbra restart command executed successfully for "+service, false)
+func setServiceLastRestartAt(service string, ts time.Time) {
+    jsonStr, _, _, _, _ := healthdb.GetJSON("zimbraHealth", "service_restart_"+service)
+    var v struct {
+        Count  int    `json:"count"`
+        LastAt string `json:"last_at"`
+    }
+    _ = json.Unmarshal([]byte(jsonStr), &v)
+    v.LastAt = ts.Format(time.RFC3339)
+    b, _ := json.Marshal(v)
+    _ = healthdb.PutJSON("zimbraHealth", "service_restart_"+service, string(b), nil, time.Now())
+}
 
-	// Do not call CheckZimbraServices recursively. Let the next run verify.
-	return true // Restart command executed
+func resetServiceRestartTracking(service string) {
+    v := struct {
+        Count  int    `json:"count"`
+        LastAt string `json:"last_at"`
+    }{Count: 0, LastAt: ""}
+    b, _ := json.Marshal(v)
+    _ = healthdb.PutJSON("zimbraHealth", "service_restart_"+service, string(b), nil, time.Now())
 }
 
 // CheckZimbraServices refactored to return []ServiceInfo with recovery tracking
 func CheckZimbraServices() []ServiceInfo {
-	var currentServices []ServiceInfo
-	currentStatus := make(map[string]bool)
+    // Helper to parse zmcontrol status output
+    parseStatus := func(statusOutput string) ([]ServiceInfo, map[string]bool) {
+        var services []ServiceInfo
+        statusMap := make(map[string]bool)
+        lines := strings.Split(statusOutput, "\n")
+        for _, line := range lines {
+            line = strings.TrimSpace(line)
+            if line == "" || strings.HasPrefix(line, "Host") {
+                continue
+            }
+            svc := strings.Join(strings.Fields(line), " ")
+            var serviceName string
+            var isRunning bool
+            if strings.Contains(svc, "Running") {
+                isRunning = true
+                serviceName = strings.TrimSpace(strings.Split(svc, "Running")[0])
+            } else if strings.Contains(svc, "Stopped") {
+                isRunning = false
+                serviceName = strings.TrimSpace(strings.Split(svc, "Stopped")[0])
+            } else if strings.Contains(svc, "is not running") {
+                isRunning = false
+                serviceName = strings.TrimSpace(strings.Split(svc, "is not running")[0])
+            } else {
+                log.Warn().Str("line", line).Msg("Could not parse service status line")
+                continue
+            }
+            serviceName = strings.TrimPrefix(serviceName, "service ")
+            serviceName = strings.TrimPrefix(serviceName, "carbonio-")
+            services = append(services, ServiceInfo{Name: serviceName, Running: isRunning})
+            statusMap[serviceName] = isRunning
+        }
+        return services, statusMap
+    }
 
-	statusOutput, err := ExecZimbraCommand("zmcontrol status", false, false)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to get zmcontrol status")
-		return currentServices
-	}
+    initialOutput, err := ExecZimbraCommand("zmcontrol status", false, false)
+    if err != nil {
+        log.Error().Err(err).Msg("Failed to get zmcontrol status")
+        return nil
+    }
 
-	// Process current status
-	lines := strings.Split(statusOutput, "\n")
-	for _, line := range lines {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "Host") {
-			continue // Skip empty lines and header
-		}
+    currentServices, currentStatus := parseStatus(initialOutput)
+    restartAttempted := false
 
-		// Normalize spacing and check status
-		svc := strings.Join(strings.Fields(line), " ")
-		var serviceName string
-		var isRunning bool
+    // Attempt restarts for services that are down
+    for _, svc := range currentServices {
+        if !svc.Running {
+            log.Warn().Str("service", svc.Name).Msg("Service is not running")
+            common.WriteToFile(common.TmpDir+"/"+"zmcontrol_status_"+time.Now().Format("2006-01-02_15.04.05")+".log", initialOutput)
+            common.AlarmCheckDown("service_"+svc.Name, svc.Name+" is not running ````spoiler zmcontrol status\n"+initialOutput+"\n```", false, "", "")
+            if MailHealthConfig.Zimbra.Restart {
+                if RestartZimbraService(svc.Name) {
+                    restartAttempted = true
+                }
+            }
+        }
+    }
 
-		if strings.Contains(svc, "Running") {
-			isRunning = true
-			serviceName = strings.TrimSpace(strings.Split(svc, "Running")[0])
-		} else if strings.Contains(svc, "Stopped") { // Handle "Stopped" status
-			isRunning = false
-			serviceName = strings.TrimSpace(strings.Split(svc, "Stopped")[0])
-		} else if strings.Contains(svc, "is not running") {
-			isRunning = false
-			serviceName = strings.TrimSpace(strings.Split(svc, "is not running")[0])
-		} else {
-			log.Warn().Str("line", line).Msg("Could not parse service status line")
-			continue
-		}
+    // If we attempted a restart, re-check status once to reflect success immediately
+    if restartAttempted {
+        // Small grace period for services to come up
+        time.Sleep(5 * time.Second)
+        refreshedOutput, err := ExecZimbraCommand("zmcontrol status", false, false)
+        if err == nil {
+            currentServices, currentStatus = parseStatus(refreshedOutput)
+        } else {
+            log.Warn().Err(err).Msg("Failed to refresh zmcontrol status after restart attempt")
+        }
 
-		// Clean up potential Carbonio prefixes like "service carbonio-"
-		serviceName = strings.TrimPrefix(serviceName, "service ")
-		serviceName = strings.TrimPrefix(serviceName, "carbonio-")
+        // Reset per-service counters for services that recovered successfully
+        for _, svc := range currentServices {
+            if svc.Running {
+                resetServiceRestartTracking(svc.Name)
+            }
+        }
+    }
 
-		currentServices = append(currentServices, ServiceInfo{Name: serviceName, Running: isRunning})
-		currentStatus[serviceName] = isRunning
-
-		// Handle down services for restart logic (existing behavior)
-		if !isRunning {
-			log.Warn().Str("service", serviceName).Msg("Service is not running")
-			common.WriteToFile(common.TmpDir+"/"+"zmcontrol_status_"+time.Now().Format("2006-01-02_15.04.05")+".log", statusOutput)
-			common.AlarmCheckDown("service_"+serviceName, serviceName+" is not running ````spoiler zmcontrol status\n"+statusOutput+"\n```", false, "", "")
-			if MailHealthConfig.Zimbra.Restart {
-				RestartZimbraService(serviceName) // Attempt restart
-			}
-		}
-	}
-
-	// Process state changes and emit recovery alarms
-	allServiceStates := processServiceStateChanges(common.TmpDir, currentStatus)
-
-	// Display summary
-	displayServiceSummary(allServiceStates)
-
-	return currentServices
+    // Track state changes and print summary based on the final observed status
+    allServiceStates := processServiceStateChanges(common.TmpDir, currentStatus)
+    displayServiceSummary(allServiceStates)
+    return currentServices
 }
 
 // --- Service State Persistence & Summary ---
@@ -777,7 +877,6 @@ func displayServiceSummary(states []*ServiceState) {
 
 		log.Debug().Str("name", state.Name).Str("last_failure", lastFailure).Str("restart_info", restartInfo).Str("recovery_time", recoveryTime).Str("status_icon", statusIcon).Msg("Service state")
 	}
-	log.Debug().Msg("================================================================================")
 }
 
 // changeImmutable remains unchanged
