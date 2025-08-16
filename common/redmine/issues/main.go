@@ -577,7 +577,13 @@ func Create(service string, subject string, message string) {
 		projectId = common.Config.Redmine.Project_id
 	}
 
-	body := RedmineIssue{Issue: Issue{ProjectId: projectId, TrackerId: 7, Description: message, Subject: subject, PriorityId: priorityId}}
+    // Determine tracker (job type). Default stays 7; upCheck uses 3
+    trackerId := 7
+    if strings.HasPrefix(service, "upcheck/") {
+        trackerId = 3
+    }
+
+    body := RedmineIssue{Issue: Issue{ProjectId: projectId, TrackerId: trackerId, Description: message, Subject: subject, PriorityId: priorityId}}
 
 	jsonBody, err := json.Marshal(body)
 
