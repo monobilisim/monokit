@@ -90,10 +90,24 @@ func Main(cmd *cobra.Command, args []string) {
             if !exists {
                 reason = "servis bulunamadı"
             }
-            body := "Hedef sunucu: " + common.Config.Identifier + "\n" +
-                "Servis: " + unit + "\n" +
-                "Durum: " + strings.ToUpper(reason) + "\n" +
-                "Kontrol: systemctl status " + unit + "\n"
+            // Prepare Redmine body with optional systemd journal tail
+            tail := common.ServiceTail(unit, 200)
+            bodyBuilder := strings.Builder{}
+            bodyBuilder.WriteString("Hedef sunucu: ")
+            bodyBuilder.WriteString(common.Config.Identifier)
+            bodyBuilder.WriteString("\nServis: ")
+            bodyBuilder.WriteString(unit)
+            bodyBuilder.WriteString("\nDurum: ")
+            bodyBuilder.WriteString(strings.ToUpper(reason))
+            bodyBuilder.WriteString("\nKontrol: systemctl status ")
+            bodyBuilder.WriteString(unit)
+            bodyBuilder.WriteString("\n")
+            if tail != "" {
+                bodyBuilder.WriteString("\nSon 200 satır günlük (systemd journal):\n")
+                bodyBuilder.WriteString("\n")
+                bodyBuilder.WriteString(tail)
+            }
+            body := bodyBuilder.String()
 
             // English alarm messages aligned with other tools
             var alarmMsg string

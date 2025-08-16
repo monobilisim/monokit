@@ -3,11 +3,16 @@
 package common
 
 import (
-	"context"
-	"os"
+    "context"
+    "fmt"
+    "os"
+    "strconv"
+    "strings"
+    "time"
 
-	"github.com/coreos/go-systemd/v22/dbus"
-	"github.com/rs/zerolog/log"
+    "github.com/coreos/go-systemd/v22/dbus"
+    "github.com/coreos/go-systemd/v22/sdjournal"
+    "github.com/rs/zerolog/log"
 )
 
 func SystemdUnitActive(unitName string) bool {
@@ -60,4 +65,80 @@ func SystemdUnitExists(unit string) bool {
 
 	log.Debug().Str("unit", unit).Msg("Systemd unit file not found in common locations")
 	return false // File does not exist in any common location
+}
+
+// ServiceTail returns the last N lines from journald for the given systemd unit.
+// If journalctl is unavailable or an error occurs, it returns an empty string.
+// Linux-only; file has linux build tag.
+func ServiceTail(unit string, maxLines int) string {
+    if unit == "" {
+        return ""
+    }
+    if maxLines <= 0 {
+        maxLines = 100
+    }
+
+    j, err := sdjournal.NewJournal()
+    if err != nil {
+        log.Debug().Err(err).Str("unit", unit).Msg("Failed to open systemd journal")
+        return ""
+    }
+    defer j.Close()
+
+    // Filter by unit
+    match := sdjournal.Match{
+        Field: "_SYSTEMD_UNIT",
+        Value: unit,
+    }
+    if err := j.AddMatch(match.String()); err != nil {
+        log.Debug().Err(err).Str("unit", unit).Msg("Failed to add journal match")
+        return ""
+    }
+
+    // Seek to tail and step back up to maxLines entries
+    if err := j.SeekTail(); err != nil {
+        log.Debug().Err(err).Str("unit", unit).Msg("Failed to seek to journal tail")
+        return ""
+    }
+    // Move iterator to last entry position
+    // Next returns 0 at end; call once to position at last entry
+    _, _ = j.Next()
+
+    // Step backwards to get up to maxLines entries in buffer
+    back := 0
+    for back < maxLines-1 {
+        n, err := j.Previous()
+        if err != nil || n == 0 {
+            break
+        }
+        back++
+    }
+
+    // Now iterate forward collecting up to maxLines entries
+    var builder strings.Builder
+    count := 0
+    for count < maxLines {
+        // Read current entry
+        entry, err := j.GetEntry()
+        if err != nil {
+            break
+        }
+        ts := time.Unix(0, int64(entry.RealtimeTimestamp)*int64(time.Microsecond)).Format(time.RFC3339)
+        msg := entry.Fields["MESSAGE"]
+        priStr := entry.Fields["PRIORITY"]
+        pri := 6
+        if priStr != "" {
+            if v, err := strconv.Atoi(priStr); err == nil {
+                pri = v
+            }
+        }
+        builder.WriteString(fmt.Sprintf("%s [%d] %s\n", ts, pri, msg))
+        count++
+        n, err := j.Next()
+        if err != nil || n == 0 {
+            break
+        }
+    }
+
+    return builder.String()
 }
