@@ -33,3 +33,7 @@ func ZimbraCommandAdd() {
 func VaultCommandAdd() {
 	// vaultHealth is not supported on anything other than Linux
 }
+
+func UpCheckCommandAdd() {
+    // upCheck is not supported on anything other than Linux
+}

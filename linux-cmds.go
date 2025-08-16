@@ -12,6 +12,7 @@ import (
 	"github.com/monobilisim/monokit/vaultHealth"
 	"github.com/monobilisim/monokit/zimbraHealth"
 	"github.com/monobilisim/monokit/zimbraLdap"
+    "github.com/monobilisim/monokit/upCheck"
 	"github.com/spf13/cobra"
 )
 
@@ -100,4 +101,14 @@ func VaultCommandAdd() {
 	}
 
 	RootCmd.AddCommand(vaultHealthCmd)
+}
+
+func UpCheckCommandAdd() {
+    var upCheckCmd = &cobra.Command{
+        Use:   "upCheck",
+        Short: "Generic systemd service uptime checker",
+        Run:   upCheck.Main,
+    }
+
+    RootCmd.AddCommand(upCheckCmd)
 }

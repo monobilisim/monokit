@@ -1,0 +1,15 @@
+# Example configuration for upCheck
+# Place your production config at /etc/mono/upcheck.yaml
+services:
+  - ssh.service
+  - docker.service
+  # - postgresql.service
+
+# Optional URL checks
+urls:
+  - url: https://example.org/health
+    expected: 200
+    timeout_seconds: 5
+  - url: http://127.0.0.1:8080/ready
+    expected: 204
+    method: GET

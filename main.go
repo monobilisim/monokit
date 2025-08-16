@@ -332,6 +332,9 @@ func main() {
 	/// Vault Health
 	VaultCommandAdd()
 
+	// Generic systemd service up checker
+	UpCheckCommandAdd()
+
 	/// Search Health
 	RootCmd.AddCommand(esHealthCmd)
 
