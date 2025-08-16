@@ -16,6 +16,7 @@ alarm:
       - user@example.com
 
 redmine:
+  enabled: true
   api_key: test
   project_id: 5
   url: https://example.com
