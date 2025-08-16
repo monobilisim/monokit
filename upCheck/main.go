@@ -145,7 +145,7 @@ func Main(cmd *cobra.Command, args []string) {
                 body := "Hedef: " + common.Config.Identifier + "\n" +
                     "URL: " + urlStr + "\n" +
                     "Durum: İSTEK OLUŞTURULAMADI\n"
-                common.AlarmCheckDown(alarmKey, "URL check failed: request could not be created", false, "", "")
+                common.AlarmCheckDown(alarmKey, fmt.Sprintf("URL check failed for %s: request could not be created", urlStr), false, "", "")
                 issues.CheckDown("upcheck/url:"+urlStr, subject, body, false, 0)
                 continue
             }
@@ -161,7 +161,7 @@ func Main(cmd *cobra.Command, args []string) {
                 body := "Hedef: " + common.Config.Identifier + "\n" +
                     "URL: " + urlStr + "\n" +
                     "Durum: ERİŞİLEMEDİ (zaman aşımı ya da ağ hatası)\n"
-                common.AlarmCheckDown(alarmKey, "URL check failed: unreachable (timeout or network error)", false, "", "")
+                common.AlarmCheckDown(alarmKey, fmt.Sprintf("URL check failed for %s: unreachable (timeout or network error)", urlStr), false, "", "")
                 issues.CheckDown("upcheck/url:"+urlStr, subject, body, false, 0)
                 continue
             }
@@ -177,7 +177,7 @@ func Main(cmd *cobra.Command, args []string) {
                     "URL: " + urlStr + "\n" +
                     fmt.Sprintf("Beklenen: %d\n", expected) +
                     fmt.Sprintf("Gelen: %d\n", actual)
-                common.AlarmCheckDown(alarmKey, fmt.Sprintf("URL check failed: unexpected status (expected %d, got %d)", expected, actual), false, "", "")
+                common.AlarmCheckDown(alarmKey, fmt.Sprintf("URL check failed for %s: unexpected status (expected %d, got %d)", urlStr, expected, actual), false, "", "")
                 issues.CheckDown("upcheck/url:"+urlStr, subject, body, false, 0)
             } else {
                 writeURLSuccess(&outputBuilder, urlStr, expected)
