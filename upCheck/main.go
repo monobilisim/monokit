@@ -103,9 +103,10 @@ func Main(cmd *cobra.Command, args []string) {
             bodyBuilder.WriteString(unit)
             bodyBuilder.WriteString("\n")
             if tail != "" {
-                bodyBuilder.WriteString("\nSon 200 satır günlük (systemd journal):\n")
-                bodyBuilder.WriteString("\n")
+                bodyBuilder.WriteString("\nSon 200 satır günlük (systemd journal):\n\n")
+                bodyBuilder.WriteString("```text\n")
                 bodyBuilder.WriteString(tail)
+                bodyBuilder.WriteString("\n```\n")
             }
             body := bodyBuilder.String()
 
