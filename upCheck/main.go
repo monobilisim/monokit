@@ -22,6 +22,14 @@ type Config struct {
 
 var UpCheckConfig Config
 
+func init() {
+    common.RegisterComponent(common.Component{
+        Name:       "upCheck",
+        EntryPoint:  Main,
+        Platform:    "linux",
+    })
+}
+
 // URLCheck describes a single URL to check
 type URLCheck struct {
     URL           string `yaml:"url"`
