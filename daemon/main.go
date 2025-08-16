@@ -134,6 +134,15 @@ func RunAll() {
 	}
 	fmt.Println("Finished version checks.")
 
+	// --- Run upCheck unconditionally ---
+	fmt.Println("Running up checks...")
+	if upComp, upExists := common.GetComponent("upCheck"); upExists {
+		executeComponent(upComp) // Use helper function
+	} else {
+		fmt.Println("Warning: upCheck component not found in registry.")
+	}
+	fmt.Println("Finished up checks.")
+
 	// --- Get the list of *other* components to run from the centralized function ---
 	componentsToRunStr := common.GetInstalledComponents() // This might need adjustment if versionCheck is included here
 	if componentsToRunStr == "" {
