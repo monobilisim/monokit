@@ -132,7 +132,7 @@ func AlarmCheckDown(service string, message string, noInterval bool, customStrea
 		if Config.Alarm.Interval == 0 {
 			if oldDateParsed.Format("2006-01-02") != time.Now().Format("2006-01-02") {
 				log.Debug().Str("component", "alarm").Str("action", "daily_alarm").Str("service", service).Str("old_date", oldDateParsed.Format("2006-01-02")).Str("current_date", time.Now().Format("2006-01-02")).Msg("Sending daily alarm for service down")
-				data, _ := json.Marshal(&ServiceFile{Date: currentDate, Locked: false})
+				data, _ := json.Marshal(&ServiceFile{Date: currentDate, Locked: true})
 				_ = healthdb.PutJSON("alarm", key, string(data), nil, time.Now())
 				Alarm(messageFinal, customStream, customTopic, false)
 			}
@@ -165,6 +165,10 @@ func AlarmCheckDown(service string, message string, noInterval bool, customStrea
 
 	if Config.Alarm.Interval == 0 || noInterval {
 		log.Debug().Str("component", "alarm").Str("action", "immediate_alarm").Str("service", service).Float64("interval", Config.Alarm.Interval).Bool("no_interval", noInterval).Dur("processing_time", time.Since(startTime)).Msg("Sending immediate alarm for service down")
+		// As we are going to send the alarm immediately, we can set the state to locked
+		finJSON := &ServiceFile{Date: currentDate, Locked: true}
+		data, _ := json.Marshal(finJSON)
+		_ = healthdb.PutJSON("alarm", key, string(data), nil, time.Now())
 		Alarm(messageFinal, customStream, customTopic, false)
 	} else {
 		log.Debug().Str("component", "alarm").Str("action", "defer_alarm").Str("service", service).Float64("interval_minutes", Config.Alarm.Interval).Msg("Service down alarm deferred due to interval setting")
