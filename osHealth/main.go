@@ -256,6 +256,9 @@ func collectSystemLoad() SystemLoadInfo {
 	limit := float64(cpuCount) * OsHealthConfig.Load.Issue_Multiplier
 	loadInfo.Exceeded = loadAvg.Load5 > limit
 
+    // Trigger sysload alerting via the dedicated function
+    SysLoad()
+
 	return loadInfo
 }
 
