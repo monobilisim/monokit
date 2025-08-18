@@ -22,11 +22,18 @@ type Config struct {
 
 var UpCheckConfig Config
 
+// DetectUpCheck enables running this tool in the daemon only when
+// its configuration exists under /etc/mono/upcheck.{yml,yaml}.
+func DetectUpCheck() bool {
+    return common.ConfExists("upcheck")
+}
+
 func init() {
     common.RegisterComponent(common.Component{
         Name:       "upCheck",
-        EntryPoint:  Main,
-        Platform:    "linux",
+        EntryPoint: Main,
+        Platform:   "linux",
+        AutoDetect: DetectUpCheck,
     })
 }
 
@@ -47,12 +54,12 @@ func Main(cmd *cobra.Command, args []string) {
     common.TmpDir = common.TmpDir + "upCheck"
     common.Init()
 
-    // Load config from /etc/mono/upcheck.yaml if present
-    if common.ConfExists("upcheck") {
-        common.ConfInit("upcheck", &UpCheckConfig)
-    } else {
-        log.Warn().Msg("upCheck: /etc/mono/upcheck.yaml bulunamadı; örnek için repo içindeki config/upcheck.yaml dosyasına bakın")
+    // Silently exit when config is missing
+    if !common.ConfExists("upcheck") {
+        return
     }
+    // Load config from /etc/mono/upcheck.yaml
+    common.ConfInit("upcheck", &UpCheckConfig)
 
     // Check service status with the Monokit server (enable/disable, updates)
     common.WrapperGetServiceStatus("upCheck")
