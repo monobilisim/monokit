@@ -947,8 +947,10 @@ func ExecZimbraCommand(command string, fullPath bool, runAsRoot bool) (string, e
 
 	// Execute command
 	if fullPath {
+		log.Debug().Str("command", command).Msg("Executing Zimbra command with full path")
 		cmd = exec.Command("/bin/su", zimbraUser, "-c", zimbraPath+"/"+command)
 	} else {
+		log.Debug().Str("command", command).Msg("Executing Zimbra command without full path")
 		cmd = exec.Command("/bin/su", zimbraUser, "-c", zimbraPath+"/bin/"+command)
 	}
 
@@ -957,6 +959,7 @@ func ExecZimbraCommand(command string, fullPath bool, runAsRoot bool) (string, e
 	cmd.Stderr = os.Stderr
 	cmd.Run()
 
+	log.Debug().Str("command", command).Str("output", out.String()).Msg("Command executed")
 	if cmd.ProcessState.ExitCode() != 0 {
 		return out.String(), fmt.Errorf("Command failed: " + command + " with stdout: " + out.String())
 	}
