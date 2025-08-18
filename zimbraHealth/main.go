@@ -540,6 +540,15 @@ func RestartZimbraService(service string) bool {
     common.AlarmCheckUp("service_restart_limit_"+service, "Restart limit not exceeded for "+service+" ("+strconv.Itoa(attempts)+"/"+strconv.Itoa(MailHealthConfig.Zimbra.Restart_Limit)+")", false)
 
     log.Warn().Str("service", service).Msg("Attempting to restart Zimbra services")
+
+    // If the affected service is 'stats', stop zmstat first
+    if strings.EqualFold(strings.TrimSpace(service), "stats") {
+        log.Warn().Msg("Detected 'stats' service; running 'zmstatctl stop' before restart")
+        if out, err := ExecZimbraCommand("zmstatctl stop", false, false); err != nil {
+            log.Warn().Err(err).Str("output", out).Msg("zmstatctl stop failed; continuing with restart")
+        }
+    }
+
     output, err := ExecZimbraCommand("zmcontrol start", false, false)
     log.Debug().Str("output", output).Msg("zmcontrol start output")
     if err != nil {
