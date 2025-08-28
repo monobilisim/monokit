@@ -15,6 +15,7 @@ func VaultCheck() (string, error) {
 	_, err := exec.LookPath("vault")
 	if err != nil {
 		log.Debug().Msg("Vault binary not found, skipping version check")
+		addToNotInstalled("Vault")
 		return "", nil // Not an error, just not installed
 	}
 
@@ -50,12 +51,15 @@ func VaultCheck() (string, error) {
 
 	if oldVersion != "" && oldVersion == version {
 		log.Debug().Msg("Vault version unchanged.")
+		addToNotUpdated(AppVersion{Name: "Vault", OldVersion: oldVersion, NewVersion: version})
 	} else if oldVersion != "" && oldVersion != version {
 		log.Debug().Msg("Vault has been updated.")
 		log.Debug().Str("old_version", oldVersion).Str("new_version", version).Msg("Vault has been updated")
+		addToUpdated(AppVersion{Name: "Vault", OldVersion: oldVersion, NewVersion: version})
 		CreateNews("Vault", oldVersion, version, false)
 	} else {
 		log.Debug().Msg("Storing initial Vault version: " + version)
+		addToNotUpdated(AppVersion{Name: "Vault", OldVersion: version})
 	}
 
 	StoreVersion("vault", version)

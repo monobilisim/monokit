@@ -1,44 +1,39 @@
 package common
 
 import (
-    "fmt"
-    "os/exec"
-    "strings"
+	"fmt"
+	"os/exec"
+	"strings"
 )
 
 func OPNsenseCheck() {
-    // Check if OPNsense is installed by checking the existence of command "opnsense-version"
-    _, err := exec.LookPath("opnsense-version")
-    if err != nil {
-        fmt.Println("OPNsense is not installed on this system.")
-        return
-    }
+	// Check if OPNsense is installed by checking the existence of command "opnsense-version"
+	_, err := exec.LookPath("opnsense-version")
+	if err != nil {
+		addToNotInstalled("OPNsense")
+		return
+	}
 
-    // Get the version of OPNsense
-    out, err := exec.Command("opnsense-version").Output()
-    if err != nil {
-        fmt.Println("Error getting OPNsense version.")
-        return
-    }
+	// Get the version of OPNsense
+	out, err := exec.Command("opnsense-version").Output()
+	if err != nil {
+		addToVersionErrors(fmt.Errorf("Error getting OPNsense version"))
+		return
+	}
 
-    // Parse the version
-    // Eg. output
-    // OPNsense 21.1.8_1 (amd64)
-    version := strings.Split(string(out), " ")[1]
-    fmt.Println("OPNsense version:", version)
-    
-    oldVersion := GatherVersion("opnsense")
+	// Parse the version
+	// Eg. output
+	// OPNsense 21.1.8_1 (amd64)
+	version := strings.Split(string(out), " ")[1]
 
-    if oldVersion != "" && oldVersion == version {
-        fmt.Println("OPNsense has not been updated.")
-        return
-    } else if oldVersion != "" && oldVersion != version {
-        fmt.Println("OPNsense got updated.")
-        fmt.Println("Old version:", oldVersion)
-        fmt.Println("New version:", version)
-        CreateNews("OPNsense", oldVersion, version, false)
-    }
+	oldVersion := GatherVersion("opnsense")
 
+	if oldVersion != "" && oldVersion != version {
+		addToUpdated(AppVersion{Name: "OPNsense", OldVersion: oldVersion, NewVersion: version})
+		CreateNews("OPNsense", oldVersion, version, false)
+	} else {
+		addToNotUpdated(AppVersion{Name: "OPNsense", OldVersion: version})
+	}
 
-    StoreVersion("opnsense", version)
+	StoreVersion("opnsense", version)
 }

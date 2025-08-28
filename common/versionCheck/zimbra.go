@@ -24,6 +24,7 @@ func ZimbraCheck() (string, error) {
 
 	// Check if zimbraPath is empty
 	if zimbraPath == "" {
+		addToNotInstalled("Zimbra")
 		return "", nil // Zimbra not found, ignore it
 	}
 
@@ -34,6 +35,7 @@ func ZimbraCheck() (string, error) {
 		errMsgLog := "Error getting Zimbra version"
 		errMsg := errMsgLog + ": " + err.Error()
 		log.Error().Err(err).Msg(errMsgLog)
+		addToVersionErrors(fmt.Errorf(errMsg))
 		return "", fmt.Errorf(errMsg)
 	}
 
@@ -47,6 +49,7 @@ func ZimbraCheck() (string, error) {
 		errMsgLog := "Unexpected output format from zmcontrol -v"
 		errMsg := errMsgLog + ": " + string(out)
 		log.Error().Msg(errMsgLog)
+		addToVersionErrors(fmt.Errorf(errMsg))
 		return "", fmt.Errorf(errMsg)
 	}
 	version := strings.Split(versionParts[1], "_GA_")[0] // Extract version like "8.8.15" or "10.0.7"
@@ -57,12 +60,15 @@ func ZimbraCheck() (string, error) {
 
 	if oldVersion != "" && oldVersion == version {
 		log.Debug().Msg("Zimbra version unchanged.")
+		addToNotUpdated(AppVersion{Name: "Zimbra", OldVersion: oldVersion, NewVersion: version})
 	} else if oldVersion != "" && oldVersion != version {
 		log.Debug().Msg("Zimbra has been updated.")
 		log.Debug().Str("old_version", oldVersion).Str("new_version", version).Msg("Zimbra has been updated")
+		addToUpdated(AppVersion{Name: "Zimbra", OldVersion: oldVersion, NewVersion: version})
 		CreateNews("Zimbra", oldVersion, version, false) // Update news title
 	} else {
 		log.Debug().Str("version", version).Msg("Storing initial Zimbra version")
+		addToNotUpdated(AppVersion{Name: "Zimbra", NewVersion: version})
 	}
 
 	StoreVersion("zimbra", version) // Store the detected version
