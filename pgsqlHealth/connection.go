@@ -56,6 +56,7 @@ func getPatroniUrl() (string, error) {
 // It first checks if the .pgpass file exists and uses it to connect
 func Connect() error {
 	pgPass := "/var/lib/postgresql/.pgpass"
+	var useSocket bool
 	var psqlConn string
 	if _, err := os.Stat(pgPass); err == nil {
 		content, err := os.ReadFile(pgPass)
@@ -93,6 +94,7 @@ func Connect() error {
 	} else {
 		// Try to do UNIX auth
 		psqlConn = "dbname=postgres sslmode=disable host=/var/run/postgresql"
+		useSocket = true
 	}
 
 	// open database
@@ -104,8 +106,22 @@ func Connect() error {
 
 	err = db.Ping()
 	if err != nil {
-		log.Error().Err(err).Str("component", "pgsqlHealth").Str("operation", "Connect").Str("action", "ping_postgresql_failed").Msg("Couldn't ping postgresql")
-		return err
+		if useSocket {
+			psqlConn := "dbname=postgres sslmode=disable host=/data/postgresql/16"
+			db, err = sql.Open("postgres", psqlConn)
+			if err != nil {
+				log.Error().Err(err).Str("component", "pgsqlHealth").Str("operation", "Connect").Str("action", "connect_to_postgresql_failed").Msg("Couldn't connect to postgresql")
+				return err
+			}
+			err = db.Ping()
+			if err != nil {
+				log.Error().Err(err).Str("component", "pgsqlHealth").Str("operation", "Connect").Str("action", "ping_postgresql_failed").Msg("Couldn't ping postgresql")
+				return err
+			}
+		} else {
+			log.Error().Err(err).Str("component", "pgsqlHealth").Str("operation", "Connect").Str("action", "ping_postgresql_failed").Msg("Couldn't ping postgresql")
+			return err
+		}
 	}
 
 	Connection = db
