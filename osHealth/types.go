@@ -10,6 +10,12 @@ type OsHealth struct {
 	Excluded_Mountpoints []string
 	System_Load_And_Ram  bool
 	Part_use_limit       float64
+	Top_Processes        struct {
+		Load_enabled   bool
+		Load_processes int
+		Ram_enabled    bool
+		Ram_processes  int
+	}
 
 	Load struct {
 		Issue_Interval   float64

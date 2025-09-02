@@ -11,6 +11,12 @@ filesystems:
 system_load_and_ram: true
 part_use_limit: 90
 dynamic_limit_interval: 0
+top_processes:
+  load_enabled: true
+  load_processes: 20
+  ram_enabled: true
+  ram_processes: 20
+
 load:
   limit_multiplier: 0.8
   issue_interval: 1

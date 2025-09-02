@@ -19,11 +19,18 @@ import (
 )
 
 // checkLoadIssues checks the system load and creates issues to redmine
-func checkLoadIssues(loadAvg *load.AvgStat, loadLimitIssue float64, cpuCount int) {
+func checkLoadIssues(loadAvg *load.AvgStat, loadLimitIssue float64, cpuCount int, topCPU []ProcessInfo) {
+	var msg string
+	if len(topCPU) > 0 {
+		processTable := FormatProcessesToMarkdown(topCPU)
+		msg = fmt.Sprintf("CPU sayısı: %d\nSistem yükü: %.2f\nLimit: %.2f\n%s", cpuCount, loadAvg.Load1, loadLimitIssue, processTable)
+	} else {
+		msg = fmt.Sprintf("CPU sayısı: %d\nSistem yükü: %.2f\nLimit: %.2f", cpuCount, loadAvg.Load1, loadLimitIssue)
+	}
 	if loadAvg.Load1 > loadLimitIssue {
 		issues.CheckDown("sysload",
 			fmt.Sprintf("%s için sistem yükü %.2f üstüne çıktı", common.Config.Identifier, loadLimitIssue),
-			fmt.Sprintf("CPU sayısı: %d\nSistem yükü: %.2f\nLimit: %.2f", cpuCount, loadAvg.Load1, loadLimitIssue),
+			msg,
 			true, OsHealthConfig.Load.Issue_Interval)
 	} else {
 		issues.CheckUp("sysload",
@@ -33,11 +40,19 @@ func checkLoadIssues(loadAvg *load.AvgStat, loadLimitIssue float64, cpuCount int
 }
 
 // checkLoadAlarms checks the system load and generates alarms
-func checkLoadAlarms(loadAvg *load.AvgStat, loadLimit float64) {
+func checkLoadAlarms(loadAvg *load.AvgStat, loadLimit float64, topCPU []ProcessInfo) {
+	var msg string
+	if len(topCPU) > 0 {
+		processTable := FormatProcessesToMarkdown(topCPU)
+		msg = fmt.Sprintf("System load has been more than %.2f for the last %.2f minutes (%.2f)\n\n%s",
+			loadLimit, common.Config.Alarm.Interval, loadAvg.Load1, processTable)
+	} else {
+		msg = fmt.Sprintf("System load has been more than %.2f for the last %.2f minutes (%.2f)",
+			loadLimit, common.Config.Alarm.Interval, loadAvg.Load1)
+	}
+
 	if loadAvg.Load1 > loadLimit {
-		common.AlarmCheckDown("sysload",
-			fmt.Sprintf("System load has been more than %.2f for the last %.2f minutes (%.2f)",
-				loadLimit, common.Config.Alarm.Interval, loadAvg.Load1), false, "", "")
+		common.AlarmCheckDown("sysload", msg, false, "", "")
 	} else {
 		common.AlarmCheckUp("sysload",
 			fmt.Sprintf("System load is now less than %.2f (%.2f)",
@@ -45,9 +60,9 @@ func checkLoadAlarms(loadAvg *load.AvgStat, loadLimit float64) {
 	}
 }
 
-// SysLoad analyzes the system load and sends the results to redmine and generates alarms
-// It gets the cpu count, calculates the load limit and checks the system load
 func SysLoad() {
+	var topCPU []ProcessInfo
+
 	cpuCount, err := cpu.Counts(true)
 	if err != nil {
 		log.Error().Err(err).Msg("Error getting cpu count")
@@ -62,7 +77,20 @@ func SysLoad() {
 		log.Error().Err(err).Msg("Error getting load average")
 		return
 	}
+	if (loadAvg.Load1 > loadLimitIssue || loadAvg.Load1 > loadLimit) && OsHealthConfig.Top_Processes.Load_enabled {
+		if len(allProcesses) <= 0 {
+			allProcesses, err = GetTopProcesses()
+			if err != nil {
+				log.Error().Err(err).Msg("Error getting top processes")
+			}
+		}
+		if OsHealthConfig.Top_Processes.Load_enabled {
+			topCPU = getTopProcessesBy(allProcesses, OsHealthConfig.Top_Processes.Load_processes, func(p1, p2 *ProcessInfo) bool {
+				return p1.CPUPercent > p2.CPUPercent
+			})
+		}
+	}
 
-	checkLoadIssues(loadAvg, loadLimitIssue, cpuCount)
-	checkLoadAlarms(loadAvg, loadLimit)
+	checkLoadIssues(loadAvg, loadLimitIssue, cpuCount, topCPU)
+	checkLoadAlarms(loadAvg, loadLimit, topCPU)
 }

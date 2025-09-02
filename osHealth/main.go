@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/monobilisim/monokit/common"
@@ -12,6 +14,7 @@ import (
 	issues "github.com/monobilisim/monokit/common/redmine/issues"
 	"github.com/rs/zerolog/log"
 	"github.com/shirou/gopsutil/v4/disk" // For GetDiskPartitions
+	"github.com/shirou/gopsutil/v4/process"
 	"github.com/spf13/cobra"
 )
 
@@ -48,6 +51,16 @@ func init() {
 	})
 	health.Register(&OsHealthProvider{})
 }
+
+type ProcessInfo struct {
+	PID           int32
+	Command       string
+	Username      string
+	CPUPercent    float64
+	MemoryPercent float32
+}
+
+var allProcesses []ProcessInfo
 
 // types.go
 var OsHealthConfig OsHealth
@@ -201,6 +214,10 @@ func collectDiskInfo() []DiskInfo {
 
 // Helper function to collect memory information
 func collectMemoryInfo() MemoryInfo {
+	var topMemory []ProcessInfo
+	var alarmMsg string
+	var issueMsg string
+
 	memInfo := MemoryInfo{
 		Limit: OsHealthConfig.Ram_Limit,
 	}
@@ -220,9 +237,31 @@ func collectMemoryInfo() MemoryInfo {
 	// Integrated Alarm and Redmine Logic from RamUsage()
 	ramLimit := OsHealthConfig.Ram_Limit // This is memInfo.Limit
 
+	if virtualMemory.UsedPercent > ramLimit && OsHealthConfig.Top_Processes.Ram_enabled {
+		if len(allProcesses) <= 0 {
+			allProcesses, err = GetTopProcesses()
+			if err != nil {
+				log.Error().Err(err).Msg("Error getting top processes")
+			}
+		}
+		if OsHealthConfig.Top_Processes.Ram_enabled {
+			topMemory = getTopProcessesBy(allProcesses, OsHealthConfig.Top_Processes.Ram_processes, func(p1, p2 *ProcessInfo) bool {
+				return p1.MemoryPercent > p2.MemoryPercent
+			})
+		}
+	}
+	if len(topMemory) > 0 {
+		processTable := FormatProcessesToMarkdown(topMemory)
+		alarmMsg = "RAM usage limit has exceeded " + strconv.FormatFloat(ramLimit, 'f', 0, 64) + "% (Current: " + strconv.FormatFloat(virtualMemory.UsedPercent, 'f', 0, 64) + "%)\n\n" + processTable
+		issueMsg = "Hafıza kullanımı: " + strconv.FormatFloat(virtualMemory.UsedPercent, 'f', 0, 64) + "%\n Hafıza limiti: " + strconv.FormatFloat(ramLimit, 'f', 0, 64) + "%\n\n" + processTable
+	} else {
+		alarmMsg = "RAM usage limit has exceeded " + strconv.FormatFloat(ramLimit, 'f', 0, 64) + "% (Current: " + strconv.FormatFloat(virtualMemory.UsedPercent, 'f', 0, 64) + "%)"
+		issueMsg = "Hafıza kullanımı: " + strconv.FormatFloat(virtualMemory.UsedPercent, 'f', 0, 64) + "%\n Hafıza limiti: " + strconv.FormatFloat(ramLimit, 'f', 0, 64) + "%"
+	}
+
 	if virtualMemory.UsedPercent > ramLimit {
-		common.AlarmCheckDown("ram", "RAM usage limit has exceeded "+strconv.FormatFloat(ramLimit, 'f', 0, 64)+"% (Current: "+strconv.FormatFloat(virtualMemory.UsedPercent, 'f', 0, 64)+"%)", false, "", "")
-		issues.CheckDown("ram", common.Config.Identifier+" için hafıza kullanımı %"+strconv.FormatFloat(ramLimit, 'f', 0, 64)+" üstüne çıktı", "Hafıza kullanımı: "+strconv.FormatFloat(virtualMemory.UsedPercent, 'f', 0, 64)+"%\n Hafıza limiti: "+strconv.FormatFloat(ramLimit, 'f', 0, 64)+"%", false, 0)
+		common.AlarmCheckDown("ram", alarmMsg, false, "", "")
+		issues.CheckDown("ram", common.Config.Identifier+" için hafıza kullanımı %"+strconv.FormatFloat(ramLimit, 'f', 0, 64)+" üstüne çıktı", issueMsg, false, 0)
 	} else {
 		common.AlarmCheckUp("ram", "RAM usage went below "+strconv.FormatFloat(ramLimit, 'f', 0, 64)+"% (Current: "+strconv.FormatFloat(virtualMemory.UsedPercent, 'f', 0, 64)+"%)", false)
 		issues.CheckUp("ram", common.Config.Identifier+" için hafıza kullanımı %"+strconv.FormatFloat(ramLimit, 'f', 0, 64)+" altına düştü")
@@ -256,8 +295,8 @@ func collectSystemLoad() SystemLoadInfo {
 	limit := float64(cpuCount) * OsHealthConfig.Load.Issue_Multiplier
 	loadInfo.Exceeded = loadAvg.Load5 > limit
 
-    // Trigger sysload alerting via the dedicated function
-    SysLoad()
+	// Trigger sysload alerting via the dedicated function
+	SysLoad()
 
 	return loadInfo
 }
@@ -293,4 +332,79 @@ func collectSystemdInfo() []SystemdUnitInfo {
 	}
 
 	return systemdUnits
+}
+
+func GetTopProcesses() ([]ProcessInfo, error) {
+	procs, err := process.Processes()
+	if err != nil {
+		return nil, fmt.Errorf("failed to get processes: %w", err)
+	}
+
+	for _, p := range procs {
+		p.CPUPercent()
+	}
+	time.Sleep(1 * time.Second)
+
+	var processInfos []ProcessInfo
+	for _, p := range procs {
+		cpuPercent, err := p.CPUPercent()
+		if err != nil {
+			continue
+		}
+
+		memPercent, err := p.MemoryPercent()
+		if err != nil {
+			continue
+		}
+
+		if cpuPercent == 0 && memPercent == 0 {
+			continue
+		}
+
+		cmd, _ := p.Name()
+		user, _ := p.Username()
+
+		processInfos = append(processInfos, ProcessInfo{
+			PID:           p.Pid,
+			Command:       cmd,
+			Username:      user,
+			CPUPercent:    cpuPercent,
+			MemoryPercent: memPercent,
+		})
+	}
+
+	return processInfos, nil
+}
+
+func getTopProcessesBy(processes []ProcessInfo, count int, less func(p1, p2 *ProcessInfo) bool) []ProcessInfo {
+	procCopy := make([]ProcessInfo, len(processes))
+	copy(procCopy, processes)
+
+	sort.Slice(procCopy, func(i, j int) bool {
+		return less(&procCopy[i], &procCopy[j])
+	})
+
+	if len(procCopy) > count {
+		return procCopy[:count]
+	}
+	return procCopy
+}
+
+func FormatProcessesToMarkdown(processes []ProcessInfo) string {
+	var sb strings.Builder
+
+	sb.WriteString("| PID | User | Command | CPU (%) | Memory (%) |\n")
+	sb.WriteString("|---|---|---|---|---|\n")
+
+	for _, p := range processes {
+		fmt.Fprintf(&sb, "| %d | %s | %s | %.2f | %.2f |\n",
+			p.PID,
+			p.Username,
+			p.Command,
+			p.CPUPercent,
+			p.MemoryPercent,
+		)
+	}
+
+	return sb.String()
 }
