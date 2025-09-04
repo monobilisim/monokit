@@ -1,3 +1,5 @@
+//go:build plugin && linux
+
 package zimbraHealth
 
 import (

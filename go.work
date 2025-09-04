@@ -6,6 +6,7 @@ use (
 	.
 	./k8sHealth
 	./redisHealth
-    ./wppconnectHealth
-    ./pritunlHealth
+	./wppconnectHealth
+	./pritunlHealth
+	./zimbraHealth
 )

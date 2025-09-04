@@ -1,15 +1,16 @@
-//go:build linux
+//go:build linux && plugin
 
 package zimbraHealth
 
 import (
 	"bufio"
 	"bytes"
-    "crypto/rand"
+	"crypto/rand"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
+	"math/big"
 	"net/http"
 	"os"
 	"os/exec"
@@ -18,7 +19,6 @@ import (
 	"strconv"
 	"strings"
 	"time"
-    "math/big"
 
 	"github.com/emersion/go-imap"
 	imapclient "github.com/emersion/go-imap/client"
@@ -90,42 +90,42 @@ func Main(cmd *cobra.Command, args []string) {
 		if err := saveCachedData(healthData); err != nil {
 			log.Error().Err(err).Msg("Failed to save data to cache")
 		}
-    } else {
-        log.Debug().Msg("Loading data from cache")
-        // Load from cache
-        var err error
-        healthData, err = loadCachedData()
-        if err != nil {
-            log.Error().Err(err).Msg("Failed to load cached data, running full check")
-            // Fallback to full check
-            healthData = collectHealthData()
-            if saveErr := saveCachedData(healthData); saveErr != nil {
-                log.Error().Err(saveErr).Msg("Failed to save fallback data to cache")
-            }
-        } else {
-            // Even when using cached data, always perform a live service check
-            // and attempt restarts if needed, then overlay into the cached view.
-            if zimbraPath == "" {
-                if _, derr := os.Stat("/opt/zimbra"); !os.IsNotExist(derr) {
-                    zimbraPath = "/opt/zimbra"
-                } else {
-                    log.Error().Str("path", "/opt/zimbra").Msg("Zimbra not detected for live service refresh")
-                }
-            }
+	} else {
+		log.Debug().Msg("Loading data from cache")
+		// Load from cache
+		var err error
+		healthData, err = loadCachedData()
+		if err != nil {
+			log.Error().Err(err).Msg("Failed to load cached data, running full check")
+			// Fallback to full check
+			healthData = collectHealthData()
+			if saveErr := saveCachedData(healthData); saveErr != nil {
+				log.Error().Err(saveErr).Msg("Failed to save fallback data to cache")
+			}
+		} else {
+			// Even when using cached data, always perform a live service check
+			// and attempt restarts if needed, then overlay into the cached view.
+			if zimbraPath == "" {
+				if _, derr := os.Stat("/opt/zimbra"); !os.IsNotExist(derr) {
+					zimbraPath = "/opt/zimbra"
+				} else {
+					log.Error().Str("path", "/opt/zimbra").Msg("Zimbra not detected for live service refresh")
+				}
+			}
 
-            if zimbraPath != "" {
-                currentServices := CheckZimbraServices()
-                if len(currentServices) > 0 {
-                    healthData.Services = currentServices
-                    // Optionally refresh basic system fields for UI clarity
-                    if healthData.System.ProductPath == "" {
-                        healthData.System.ProductPath = zimbraPath
-                    }
-                    healthData.System.LastChecked = time.Now().Format("2006-01-02 15:04:05")
-                }
-            }
-        }
-    }
+			if zimbraPath != "" {
+				currentServices := CheckZimbraServices()
+				if len(currentServices) > 0 {
+					healthData.Services = currentServices
+					// Optionally refresh basic system fields for UI clarity
+					if healthData.System.ProductPath == "" {
+						healthData.System.ProductPath = zimbraPath
+					}
+					healthData.System.LastChecked = time.Now().Format("2006-01-02 15:04:05")
+				}
+			}
+		}
+	}
 
 	// Display as a nice box UI
 	displayBoxUI(healthData)
@@ -513,208 +513,208 @@ location / {
 
 // RestartZimbraService refactored to avoid recursion and direct call to CheckZimbraServices
 func RestartZimbraService(service string) bool {
-    // Enforce per-service restart interval and limit
-    restartInterval := MailHealthConfig.Zimbra.Restart_Interval
-    if restartInterval <= 0 {
-        restartInterval = 3 // minutes
-    }
-    interval := time.Duration(restartInterval) * time.Minute
+	// Enforce per-service restart interval and limit
+	restartInterval := MailHealthConfig.Zimbra.Restart_Interval
+	if restartInterval <= 0 {
+		restartInterval = 3 // minutes
+	}
+	interval := time.Duration(restartInterval) * time.Minute
 
-    // Check last restart time per service
-    if last := getServiceLastRestartAt(service); !last.IsZero() {
-        if time.Since(last) < interval {
-            log.Warn().Str("service", service).Dur("remaining", interval-time.Since(last)).Msg("Skipping restart due to interval guard")
-            return false
-        }
-    }
+	// Check last restart time per service
+	if last := getServiceLastRestartAt(service); !last.IsZero() {
+		if time.Since(last) < interval {
+			log.Warn().Str("service", service).Dur("remaining", interval-time.Since(last)).Msg("Skipping restart due to interval guard")
+			return false
+		}
+	}
 
-    // Check per-service restart attempt count
-    attempts := getServiceRestartCount(service)
-    if attempts >= MailHealthConfig.Zimbra.Restart_Limit {
-        log.Warn().Str("service", service).Int("attempts", attempts).Int("limit", MailHealthConfig.Zimbra.Restart_Limit).Msg("Restart limit reached")
-        common.AlarmCheckDown("service_restart_limit_"+service, "Restart limit reached for "+service, false, "", "")
-        return false
-    }
+	// Check per-service restart attempt count
+	attempts := getServiceRestartCount(service)
+	if attempts >= MailHealthConfig.Zimbra.Restart_Limit {
+		log.Warn().Str("service", service).Int("attempts", attempts).Int("limit", MailHealthConfig.Zimbra.Restart_Limit).Msg("Restart limit reached")
+		common.AlarmCheckDown("service_restart_limit_"+service, "Restart limit reached for "+service, false, "", "")
+		return false
+	}
 
-    // Clear restart limit alarm since we're within limits
-    common.AlarmCheckUp("service_restart_limit_"+service, "Restart limit not exceeded for "+service+" ("+strconv.Itoa(attempts)+"/"+strconv.Itoa(MailHealthConfig.Zimbra.Restart_Limit)+")", false)
+	// Clear restart limit alarm since we're within limits
+	common.AlarmCheckUp("service_restart_limit_"+service, "Restart limit not exceeded for "+service+" ("+strconv.Itoa(attempts)+"/"+strconv.Itoa(MailHealthConfig.Zimbra.Restart_Limit)+")", false)
 
-    log.Warn().Str("service", service).Msg("Attempting to restart Zimbra services")
+	log.Warn().Str("service", service).Msg("Attempting to restart Zimbra services")
 
-    // If the affected service is 'stats', stop zmstat first
-    if strings.EqualFold(strings.TrimSpace(service), "stats") {
-        log.Warn().Msg("Detected 'stats' service; running 'zmstatctl stop' before restart")
-        if out, err := ExecZimbraCommand("zmstatctl stop", false, false); err != nil {
-            log.Warn().Err(err).Str("output", out).Msg("zmstatctl stop failed; continuing with restart")
-        }
-    }
+	// If the affected service is 'stats', stop zmstat first
+	if strings.EqualFold(strings.TrimSpace(service), "stats") {
+		log.Warn().Msg("Detected 'stats' service; running 'zmstatctl stop' before restart")
+		if out, err := ExecZimbraCommand("zmstatctl stop", false, false); err != nil {
+			log.Warn().Err(err).Str("output", out).Msg("zmstatctl stop failed; continuing with restart")
+		}
+	}
 
-    output, err := ExecZimbraCommand("zmcontrol start", false, false)
-    log.Debug().Str("output", output).Msg("zmcontrol start output")
-    if err != nil {
-        log.Error().Err(err).Str("service", service).Msg("Failed to start Zimbra services")
-        common.AlarmCheckDown("service_restart_failed_"+service, "Failed to execute zmcontrol start for "+service+": "+err.Error(), false, "", "")
-        return false
-    }
+	output, err := ExecZimbraCommand("zmcontrol start", false, false)
+	log.Debug().Str("output", output).Msg("zmcontrol start output")
+	if err != nil {
+		log.Error().Err(err).Str("service", service).Msg("Failed to start Zimbra services")
+		common.AlarmCheckDown("service_restart_failed_"+service, "Failed to execute zmcontrol start for "+service+": "+err.Error(), false, "", "")
+		return false
+	}
 
-    // Update per-service tracking after executing restart command
-    setServiceRestartCount(service, attempts+1)
-    setServiceLastRestartAt(service, time.Now())
-    common.AlarmCheckUp("service_restart_failed_"+service, "Zimbra restart command executed successfully for "+service, false)
-    return true
+	// Update per-service tracking after executing restart command
+	setServiceRestartCount(service, attempts+1)
+	setServiceLastRestartAt(service, time.Now())
+	common.AlarmCheckUp("service_restart_failed_"+service, "Zimbra restart command executed successfully for "+service, false)
+	return true
 }
 
 // --- Per-service restart attempt tracking ---
 func getServiceRestartCount(service string) int {
-    jsonStr, _, _, found, err := healthdb.GetJSON("zimbraHealth", "service_restart_"+service)
-    if err != nil || !found || jsonStr == "" {
-        return 0
-    }
-    var v struct {
-        Count  int    `json:"count"`
-        LastAt string `json:"last_at"`
-    }
-    if json.Unmarshal([]byte(jsonStr), &v) != nil {
-        return 0
-    }
-    return v.Count
+	jsonStr, _, _, found, err := healthdb.GetJSON("zimbraHealth", "service_restart_"+service)
+	if err != nil || !found || jsonStr == "" {
+		return 0
+	}
+	var v struct {
+		Count  int    `json:"count"`
+		LastAt string `json:"last_at"`
+	}
+	if json.Unmarshal([]byte(jsonStr), &v) != nil {
+		return 0
+	}
+	return v.Count
 }
 
 func setServiceRestartCount(service string, count int) {
-    // read existing
-    jsonStr, _, _, _, _ := healthdb.GetJSON("zimbraHealth", "service_restart_"+service)
-    var v struct {
-        Count  int    `json:"count"`
-        LastAt string `json:"last_at"`
-    }
-    _ = json.Unmarshal([]byte(jsonStr), &v)
-    v.Count = count
-    b, _ := json.Marshal(v)
-    _ = healthdb.PutJSON("zimbraHealth", "service_restart_"+service, string(b), nil, time.Now())
+	// read existing
+	jsonStr, _, _, _, _ := healthdb.GetJSON("zimbraHealth", "service_restart_"+service)
+	var v struct {
+		Count  int    `json:"count"`
+		LastAt string `json:"last_at"`
+	}
+	_ = json.Unmarshal([]byte(jsonStr), &v)
+	v.Count = count
+	b, _ := json.Marshal(v)
+	_ = healthdb.PutJSON("zimbraHealth", "service_restart_"+service, string(b), nil, time.Now())
 }
 
 func getServiceLastRestartAt(service string) time.Time {
-    jsonStr, _, _, found, err := healthdb.GetJSON("zimbraHealth", "service_restart_"+service)
-    if err != nil || !found || jsonStr == "" {
-        return time.Time{}
-    }
-    var v struct {
-        Count  int    `json:"count"`
-        LastAt string `json:"last_at"`
-    }
-    if json.Unmarshal([]byte(jsonStr), &v) != nil || strings.TrimSpace(v.LastAt) == "" {
-        return time.Time{}
-    }
-    t, err := time.Parse(time.RFC3339, strings.TrimSpace(v.LastAt))
-    if err != nil {
-        return time.Time{}
-    }
-    return t
+	jsonStr, _, _, found, err := healthdb.GetJSON("zimbraHealth", "service_restart_"+service)
+	if err != nil || !found || jsonStr == "" {
+		return time.Time{}
+	}
+	var v struct {
+		Count  int    `json:"count"`
+		LastAt string `json:"last_at"`
+	}
+	if json.Unmarshal([]byte(jsonStr), &v) != nil || strings.TrimSpace(v.LastAt) == "" {
+		return time.Time{}
+	}
+	t, err := time.Parse(time.RFC3339, strings.TrimSpace(v.LastAt))
+	if err != nil {
+		return time.Time{}
+	}
+	return t
 }
 
 func setServiceLastRestartAt(service string, ts time.Time) {
-    jsonStr, _, _, _, _ := healthdb.GetJSON("zimbraHealth", "service_restart_"+service)
-    var v struct {
-        Count  int    `json:"count"`
-        LastAt string `json:"last_at"`
-    }
-    _ = json.Unmarshal([]byte(jsonStr), &v)
-    v.LastAt = ts.Format(time.RFC3339)
-    b, _ := json.Marshal(v)
-    _ = healthdb.PutJSON("zimbraHealth", "service_restart_"+service, string(b), nil, time.Now())
+	jsonStr, _, _, _, _ := healthdb.GetJSON("zimbraHealth", "service_restart_"+service)
+	var v struct {
+		Count  int    `json:"count"`
+		LastAt string `json:"last_at"`
+	}
+	_ = json.Unmarshal([]byte(jsonStr), &v)
+	v.LastAt = ts.Format(time.RFC3339)
+	b, _ := json.Marshal(v)
+	_ = healthdb.PutJSON("zimbraHealth", "service_restart_"+service, string(b), nil, time.Now())
 }
 
 func resetServiceRestartTracking(service string) {
-    v := struct {
-        Count  int    `json:"count"`
-        LastAt string `json:"last_at"`
-    }{Count: 0, LastAt: ""}
-    b, _ := json.Marshal(v)
-    _ = healthdb.PutJSON("zimbraHealth", "service_restart_"+service, string(b), nil, time.Now())
+	v := struct {
+		Count  int    `json:"count"`
+		LastAt string `json:"last_at"`
+	}{Count: 0, LastAt: ""}
+	b, _ := json.Marshal(v)
+	_ = healthdb.PutJSON("zimbraHealth", "service_restart_"+service, string(b), nil, time.Now())
 }
 
 // CheckZimbraServices refactored to return []ServiceInfo with recovery tracking
 func CheckZimbraServices() []ServiceInfo {
-    // Helper to parse zmcontrol status output
-    parseStatus := func(statusOutput string) ([]ServiceInfo, map[string]bool) {
-        var services []ServiceInfo
-        statusMap := make(map[string]bool)
-        lines := strings.Split(statusOutput, "\n")
-        for _, line := range lines {
-            line = strings.TrimSpace(line)
-            if line == "" || strings.HasPrefix(line, "Host") {
-                continue
-            }
-            svc := strings.Join(strings.Fields(line), " ")
-            var serviceName string
-            var isRunning bool
-            if strings.Contains(svc, "Running") {
-                isRunning = true
-                serviceName = strings.TrimSpace(strings.Split(svc, "Running")[0])
-            } else if strings.Contains(svc, "Stopped") {
-                isRunning = false
-                serviceName = strings.TrimSpace(strings.Split(svc, "Stopped")[0])
-            } else if strings.Contains(svc, "is not running") {
-                isRunning = false
-                serviceName = strings.TrimSpace(strings.Split(svc, "is not running")[0])
-            } else {
-                log.Warn().Str("line", line).Msg("Could not parse service status line")
-                continue
-            }
-            serviceName = strings.TrimPrefix(serviceName, "service ")
-            serviceName = strings.TrimPrefix(serviceName, "carbonio-")
-            services = append(services, ServiceInfo{Name: serviceName, Running: isRunning})
-            statusMap[serviceName] = isRunning
-        }
-        return services, statusMap
-    }
+	// Helper to parse zmcontrol status output
+	parseStatus := func(statusOutput string) ([]ServiceInfo, map[string]bool) {
+		var services []ServiceInfo
+		statusMap := make(map[string]bool)
+		lines := strings.Split(statusOutput, "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line == "" || strings.HasPrefix(line, "Host") {
+				continue
+			}
+			svc := strings.Join(strings.Fields(line), " ")
+			var serviceName string
+			var isRunning bool
+			if strings.Contains(svc, "Running") {
+				isRunning = true
+				serviceName = strings.TrimSpace(strings.Split(svc, "Running")[0])
+			} else if strings.Contains(svc, "Stopped") {
+				isRunning = false
+				serviceName = strings.TrimSpace(strings.Split(svc, "Stopped")[0])
+			} else if strings.Contains(svc, "is not running") {
+				isRunning = false
+				serviceName = strings.TrimSpace(strings.Split(svc, "is not running")[0])
+			} else {
+				log.Warn().Str("line", line).Msg("Could not parse service status line")
+				continue
+			}
+			serviceName = strings.TrimPrefix(serviceName, "service ")
+			serviceName = strings.TrimPrefix(serviceName, "carbonio-")
+			services = append(services, ServiceInfo{Name: serviceName, Running: isRunning})
+			statusMap[serviceName] = isRunning
+		}
+		return services, statusMap
+	}
 
-    initialOutput, err := ExecZimbraCommand("zmcontrol status", false, false)
-    if err != nil {
-        log.Error().Err(err).Msg("Failed to get zmcontrol status")
-        return nil
-    }
+	initialOutput, err := ExecZimbraCommand("zmcontrol status", false, false)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to get zmcontrol status")
+		return nil
+	}
 
-    currentServices, currentStatus := parseStatus(initialOutput)
-    restartAttempted := false
+	currentServices, currentStatus := parseStatus(initialOutput)
+	restartAttempted := false
 
-    // Attempt restarts for services that are down
-    for _, svc := range currentServices {
-        if !svc.Running {
-            log.Warn().Str("service", svc.Name).Msg("Service is not running")
-            common.WriteToFile(common.TmpDir+"/"+"zmcontrol_status_"+time.Now().Format("2006-01-02_15.04.05")+".log", initialOutput)
-            common.AlarmCheckDown("service_"+svc.Name, svc.Name+" is not running ````spoiler zmcontrol status\n"+initialOutput+"\n```", false, "", "")
-            if MailHealthConfig.Zimbra.Restart {
-                if RestartZimbraService(svc.Name) {
-                    restartAttempted = true
-                }
-            }
-        }
-    }
+	// Attempt restarts for services that are down
+	for _, svc := range currentServices {
+		if !svc.Running {
+			log.Warn().Str("service", svc.Name).Msg("Service is not running")
+			common.WriteToFile(common.TmpDir+"/"+"zmcontrol_status_"+time.Now().Format("2006-01-02_15.04.05")+".log", initialOutput)
+			common.AlarmCheckDown("service_"+svc.Name, svc.Name+" is not running ````spoiler zmcontrol status\n"+initialOutput+"\n```", false, "", "")
+			if MailHealthConfig.Zimbra.Restart {
+				if RestartZimbraService(svc.Name) {
+					restartAttempted = true
+				}
+			}
+		}
+	}
 
-    // If we attempted a restart, re-check status once to reflect success immediately
-    if restartAttempted {
-        // Small grace period for services to come up
-        time.Sleep(5 * time.Second)
-        refreshedOutput, err := ExecZimbraCommand("zmcontrol status", false, false)
-        if err == nil {
-            currentServices, currentStatus = parseStatus(refreshedOutput)
-        } else {
-            log.Warn().Err(err).Msg("Failed to refresh zmcontrol status after restart attempt")
-        }
+	// If we attempted a restart, re-check status once to reflect success immediately
+	if restartAttempted {
+		// Small grace period for services to come up
+		time.Sleep(5 * time.Second)
+		refreshedOutput, err := ExecZimbraCommand("zmcontrol status", false, false)
+		if err == nil {
+			currentServices, currentStatus = parseStatus(refreshedOutput)
+		} else {
+			log.Warn().Err(err).Msg("Failed to refresh zmcontrol status after restart attempt")
+		}
 
-        // Reset per-service counters for services that recovered successfully
-        for _, svc := range currentServices {
-            if svc.Running {
-                resetServiceRestartTracking(svc.Name)
-            }
-        }
-    }
+		// Reset per-service counters for services that recovered successfully
+		for _, svc := range currentServices {
+			if svc.Running {
+				resetServiceRestartTracking(svc.Name)
+			}
+		}
+	}
 
-    // Track state changes and print summary based on the final observed status
-    allServiceStates := processServiceStateChanges(common.TmpDir, currentStatus)
-    displayServiceSummary(allServiceStates)
-    return currentServices
+	// Track state changes and print summary based on the final observed status
+	allServiceStates := processServiceStateChanges(common.TmpDir, currentStatus)
+	displayServiceSummary(allServiceStates)
+	return currentServices
 }
 
 // --- Service State Persistence & Summary ---
@@ -1307,69 +1307,69 @@ func CheckLoginTest() LoginTestInfo {
 		CheckStatus: false, // Default to check failed
 	}
 
-    // Skip entirely if not enabled
-    if !info.Enabled {
-        info.Message = "Login test is disabled in configuration"
-        log.Debug().Str("message", info.Message).Msg("Skipping login test")
-        return info
-    }
+	// Skip entirely if not enabled
+	if !info.Enabled {
+		info.Message = "Login test is disabled in configuration"
+		log.Debug().Str("message", info.Message).Msg("Skipping login test")
+		return info
+	}
 
-    // Check if zimbraPath is available (needed for provisioning/existence checks)
-    if zimbraPath == "" {
-        info.Message = "Zimbra path not determined"
-        log.Error().Msg(info.Message)
-        return info
-    }
+	// Check if zimbraPath is available (needed for provisioning/existence checks)
+	if zimbraPath == "" {
+		info.Message = "Zimbra path not determined"
+		log.Error().Msg(info.Message)
+		return info
+	}
 
-    // Determine if credentials are manually provided via config (both username and password present)
-    manualFromConfig := MailHealthConfig.Zimbra.Login_test.Username != "" && MailHealthConfig.Zimbra.Login_test.Password != ""
+	// Determine if credentials are manually provided via config (both username and password present)
+	manualFromConfig := MailHealthConfig.Zimbra.Login_test.Username != "" && MailHealthConfig.Zimbra.Login_test.Password != ""
 
-    // Resolve credentials: prefer manual config; otherwise use DB or auto-provision
-    if !manualFromConfig {
-        // If credentials are missing in config, try to load/create them automatically
-        if uname, pwd, ok := loadLoginTestCredsFromDB(); ok {
-            info.Username = uname
-            MailHealthConfig.Zimbra.Login_test.Username = uname
-            MailHealthConfig.Zimbra.Login_test.Password = pwd
-        } else {
-            // Attempt to ensure a test account exists and store creds
-            uname, pwd, err := ensureLoginTestAccount()
-            if err != nil {
-                info.Message = "Login test credentials not configured and could not auto-provision: " + err.Error()
-                log.Debug().Str("message", info.Message).Msg("Skipping login test")
-                return info
-            }
-            info.Username = uname
-            MailHealthConfig.Zimbra.Login_test.Username = uname
-            MailHealthConfig.Zimbra.Login_test.Password = pwd
-        }
-    }
+	// Resolve credentials: prefer manual config; otherwise use DB or auto-provision
+	if !manualFromConfig {
+		// If credentials are missing in config, try to load/create them automatically
+		if uname, pwd, ok := loadLoginTestCredsFromDB(); ok {
+			info.Username = uname
+			MailHealthConfig.Zimbra.Login_test.Username = uname
+			MailHealthConfig.Zimbra.Login_test.Password = pwd
+		} else {
+			// Attempt to ensure a test account exists and store creds
+			uname, pwd, err := ensureLoginTestAccount()
+			if err != nil {
+				info.Message = "Login test credentials not configured and could not auto-provision: " + err.Error()
+				log.Debug().Str("message", info.Message).Msg("Skipping login test")
+				return info
+			}
+			info.Username = uname
+			MailHealthConfig.Zimbra.Login_test.Username = uname
+			MailHealthConfig.Zimbra.Login_test.Password = pwd
+		}
+	}
 
-    // Before attempting login, verify that the account exists
-    if !accountExists(info.Username) {
-        if manualFromConfig {
-            // Respect manual configuration: do not auto-create
-            info.Message = "Configured login test account does not exist: " + info.Username
-            log.Error().Str("username", info.Username).Msg("Login test account missing and is manually configured")
-            common.AlarmCheckDown("zimbra_login_test", "Configured login test account does not exist: "+info.Username, false, "", "")
-            return info
-        }
+	// Before attempting login, verify that the account exists
+	if !accountExists(info.Username) {
+		if manualFromConfig {
+			// Respect manual configuration: do not auto-create
+			info.Message = "Configured login test account does not exist: " + info.Username
+			log.Error().Str("username", info.Username).Msg("Login test account missing and is manually configured")
+			common.AlarmCheckDown("zimbra_login_test", "Configured login test account does not exist: "+info.Username, false, "", "")
+			return info
+		}
 
-        // Auto-managed flow: (re)provision account and overwrite DB
-        uname, pwd, err := ensureLoginTestAccountWithPreferredAddress(info.Username)
-        if err != nil {
-            info.Message = "Failed to provision login test account: " + err.Error()
-            log.Error().Err(err).Str("username", info.Username).Msg("Failed to auto-provision login test account")
-            common.AlarmCheckDown("zimbra_login_test", "Failed to auto-provision login test account: "+err.Error(), false, "", "")
-            return info
-        }
-        info.Username = uname
-        MailHealthConfig.Zimbra.Login_test.Username = uname
-        MailHealthConfig.Zimbra.Login_test.Password = pwd
-        log.Debug().Str("username", info.Username).Msg("Auto-provisioned login test account")
-    }
+		// Auto-managed flow: (re)provision account and overwrite DB
+		uname, pwd, err := ensureLoginTestAccountWithPreferredAddress(info.Username)
+		if err != nil {
+			info.Message = "Failed to provision login test account: " + err.Error()
+			log.Error().Err(err).Str("username", info.Username).Msg("Failed to auto-provision login test account")
+			common.AlarmCheckDown("zimbra_login_test", "Failed to auto-provision login test account: "+err.Error(), false, "", "")
+			return info
+		}
+		info.Username = uname
+		MailHealthConfig.Zimbra.Login_test.Username = uname
+		MailHealthConfig.Zimbra.Login_test.Password = pwd
+		log.Debug().Str("username", info.Username).Msg("Auto-provisioned login test account")
+	}
 
-    log.Debug().Str("username", info.Username).Msg("Starting Zimbra login test")
+	log.Debug().Str("username", info.Username).Msg("Starting Zimbra login test")
 
 	// For regular user accounts, use -m (mailbox) flag with -p (password)
 	// We'll use 'gms' (get mailbox size) which is a basic read operation
@@ -1637,107 +1637,107 @@ This is an automated test message - no action is required.`,
 // ensureLoginTestAccount creates or updates a monokit test account when needed.
 // Returns username and password ready for use.
 func ensureLoginTestAccount() (string, string, error) {
-    if zimbraPath == "" {
-        return "", "", fmt.Errorf("Zimbra path not determined")
-    }
+	if zimbraPath == "" {
+		return "", "", fmt.Errorf("Zimbra path not determined")
+	}
 
-    // Determine domain to use
-    domain, err := choosePreferredDomain()
-    if err != nil {
-        return "", "", err
-    }
-    if domain == "" {
-        return "", "", fmt.Errorf("no suitable domain found from zmprov gad")
-    }
+	// Determine domain to use
+	domain, err := choosePreferredDomain()
+	if err != nil {
+		return "", "", err
+	}
+	if domain == "" {
+		return "", "", fmt.Errorf("no suitable domain found from zmprov gad")
+	}
 
-    address := fmt.Sprintf("monokit@%s", domain)
-    password := generateRandomPassword(20)
+	address := fmt.Sprintf("monokit@%s", domain)
+	password := generateRandomPassword(20)
 
-    // Check if account exists
-    _, err = ExecZimbraCommand("zmprov -l ga "+address, false, false)
-    if err != nil {
-        // Create account
-        if _, err := ExecZimbraCommand("zmprov ca "+address+" "+password, false, false); err != nil {
-            return "", "", fmt.Errorf("failed to create test account %s: %w", address, err)
-        }
-    } else {
-        // Account exists -> set new password (only when provisioning creds)
-        if _, err := ExecZimbraCommand("zmprov sp "+address+" "+password, false, false); err != nil {
-            return "", "", fmt.Errorf("failed to set password for existing test account %s: %w", address, err)
-        }
-    }
+	// Check if account exists
+	_, err = ExecZimbraCommand("zmprov -l ga "+address, false, false)
+	if err != nil {
+		// Create account
+		if _, err := ExecZimbraCommand("zmprov ca "+address+" "+password, false, false); err != nil {
+			return "", "", fmt.Errorf("failed to create test account %s: %w", address, err)
+		}
+	} else {
+		// Account exists -> set new password (only when provisioning creds)
+		if _, err := ExecZimbraCommand("zmprov sp "+address+" "+password, false, false); err != nil {
+			return "", "", fmt.Errorf("failed to set password for existing test account %s: %w", address, err)
+		}
+	}
 
-    // Persist credentials
-    saveLoginTestCredsToDB(address, password)
-    return address, password, nil
+	// Persist credentials
+	saveLoginTestCredsToDB(address, password)
+	return address, password, nil
 }
 
 // accountExists checks if a Zimbra account exists using zmprov
 func accountExists(address string) bool {
-    if strings.TrimSpace(address) == "" {
-        return false
-    }
-    _, err := ExecZimbraCommand("zmprov -l ga "+address, false, false)
-    return err == nil
+	if strings.TrimSpace(address) == "" {
+		return false
+	}
+	_, err := ExecZimbraCommand("zmprov -l ga "+address, false, false)
+	return err == nil
 }
 
 // ensureLoginTestAccountWithPreferredAddress creates or updates the given address if possible.
 // If the domain of preferredAddress does not exist, it falls back to ensureLoginTestAccount().
 func ensureLoginTestAccountWithPreferredAddress(preferredAddress string) (string, string, error) {
-    if zimbraPath == "" {
-        return "", "", fmt.Errorf("Zimbra path not determined")
-    }
+	if zimbraPath == "" {
+		return "", "", fmt.Errorf("Zimbra path not determined")
+	}
 
-    preferredAddress = strings.TrimSpace(preferredAddress)
-    if preferredAddress == "" || !strings.Contains(preferredAddress, "@") {
-        // No usable preferred address; choose automatically
-        return ensureLoginTestAccount()
-    }
+	preferredAddress = strings.TrimSpace(preferredAddress)
+	if preferredAddress == "" || !strings.Contains(preferredAddress, "@") {
+		// No usable preferred address; choose automatically
+		return ensureLoginTestAccount()
+	}
 
-    // Verify domain exists; if not, fallback to automatic selection
-    parts := strings.Split(preferredAddress, "@")
-    domain := strings.TrimSpace(parts[len(parts)-1])
-    gadOut, err := ExecZimbraCommand("zmprov gad", false, false)
-    if err != nil {
-        return "", "", fmt.Errorf("failed to list domains (gad): %w", err)
-    }
-    domainExists := false
-    for _, line := range strings.Split(gadOut, "\n") {
-        if strings.TrimSpace(line) == domain {
-            domainExists = true
-            break
-        }
-    }
-    var address string
-    if domainExists {
-        address = preferredAddress
-    } else {
-        // Fall back to automatic domain choice
-        d, derr := choosePreferredDomain()
-        if derr != nil {
-            return "", "", derr
-        }
-        if d == "" {
-            return "", "", fmt.Errorf("no suitable domain found from zmprov gad")
-        }
-        address = fmt.Sprintf("monokit@%s", d)
-    }
+	// Verify domain exists; if not, fallback to automatic selection
+	parts := strings.Split(preferredAddress, "@")
+	domain := strings.TrimSpace(parts[len(parts)-1])
+	gadOut, err := ExecZimbraCommand("zmprov gad", false, false)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to list domains (gad): %w", err)
+	}
+	domainExists := false
+	for _, line := range strings.Split(gadOut, "\n") {
+		if strings.TrimSpace(line) == domain {
+			domainExists = true
+			break
+		}
+	}
+	var address string
+	if domainExists {
+		address = preferredAddress
+	} else {
+		// Fall back to automatic domain choice
+		d, derr := choosePreferredDomain()
+		if derr != nil {
+			return "", "", derr
+		}
+		if d == "" {
+			return "", "", fmt.Errorf("no suitable domain found from zmprov gad")
+		}
+		address = fmt.Sprintf("monokit@%s", d)
+	}
 
-    password := generateRandomPassword(20)
+	password := generateRandomPassword(20)
 
-    // Create or set password
-    if !accountExists(address) {
-        if _, err := ExecZimbraCommand("zmprov ca "+address+" "+password, false, false); err != nil {
-            return "", "", fmt.Errorf("failed to create test account %s: %w", address, err)
-        }
-    } else {
-        if _, err := ExecZimbraCommand("zmprov sp "+address+" "+password, false, false); err != nil {
-            return "", "", fmt.Errorf("failed to set password for existing test account %s: %w", address, err)
-        }
-    }
+	// Create or set password
+	if !accountExists(address) {
+		if _, err := ExecZimbraCommand("zmprov ca "+address+" "+password, false, false); err != nil {
+			return "", "", fmt.Errorf("failed to create test account %s: %w", address, err)
+		}
+	} else {
+		if _, err := ExecZimbraCommand("zmprov sp "+address+" "+password, false, false); err != nil {
+			return "", "", fmt.Errorf("failed to set password for existing test account %s: %w", address, err)
+		}
+	}
 
-    saveLoginTestCredsToDB(address, password)
-    return address, password, nil
+	saveLoginTestCredsToDB(address, password)
+	return address, password, nil
 }
 
 // choosePreferredDomain selects a domain from `zmprov gad` that:
@@ -1745,127 +1745,127 @@ func ensureLoginTestAccountWithPreferredAddress(preferredAddress string) (string
 // - avoids common host-style subdomains (mail., mx., smtp., etc.) when possible
 // - if possible, matches the most common domain used by existing accounts
 func choosePreferredDomain() (string, error) {
-    gadOut, err := ExecZimbraCommand("zmprov gad", false, false)
-    if err != nil {
-        return "", fmt.Errorf("failed to list domains (gad): %w", err)
-    }
+	gadOut, err := ExecZimbraCommand("zmprov gad", false, false)
+	if err != nil {
+		return "", fmt.Errorf("failed to list domains (gad): %w", err)
+	}
 
-    var domains []string
-    for _, line := range strings.Split(gadOut, "\n") {
-        d := strings.TrimSpace(line)
-        if d != "" {
-            domains = append(domains, d)
-        }
-    }
-    if len(domains) == 0 {
-        return "", nil
-    }
+	var domains []string
+	for _, line := range strings.Split(gadOut, "\n") {
+		d := strings.TrimSpace(line)
+		if d != "" {
+			domains = append(domains, d)
+		}
+	}
+	if len(domains) == 0 {
+		return "", nil
+	}
 
-    // Exclude exact hostname and common host-style subdomains
-    host, _ := os.Hostname()
-    host = strings.TrimSpace(host)
+	// Exclude exact hostname and common host-style subdomains
+	host, _ := os.Hostname()
+	host = strings.TrimSpace(host)
 
-    domainSet := make(map[string]struct{}, len(domains))
-    for _, d := range domains {
-        domainSet[d] = struct{}{}
-    }
+	domainSet := make(map[string]struct{}, len(domains))
+	for _, d := range domains {
+		domainSet[d] = struct{}{}
+	}
 
-    filtered := make([]string, 0, len(domains))
-    commonHostPrefixes := map[string]struct{}{"mail":{}, "mx":{}, "smtp":{}, "imap":{}, "pop":{}, "pop3":{}, "imap4":{}, "webmail":{}, "server":{}, "srv":{}, "mta":{}, "carbonio":{}, "zimbra":{}}
-    for _, d := range domains {
-        if d == host {
-            continue
-        }
-        labels := strings.Split(d, ".")
-        if len(labels) >= 3 {
-            if _, bad := commonHostPrefixes[strings.ToLower(labels[0])]; bad {
-                // Skip typical host-based subdomains
-                continue
-            }
-            // If parent domain exists in list, prefer parent; skip this subdomain
-            parent := strings.Join(labels[1:], ".")
-            if _, ok := domainSet[parent]; ok {
-                continue
-            }
-        }
-        filtered = append(filtered, d)
-    }
-    if len(filtered) == 0 {
-        filtered = domains
-    }
+	filtered := make([]string, 0, len(domains))
+	commonHostPrefixes := map[string]struct{}{"mail": {}, "mx": {}, "smtp": {}, "imap": {}, "pop": {}, "pop3": {}, "imap4": {}, "webmail": {}, "server": {}, "srv": {}, "mta": {}, "carbonio": {}, "zimbra": {}}
+	for _, d := range domains {
+		if d == host {
+			continue
+		}
+		labels := strings.Split(d, ".")
+		if len(labels) >= 3 {
+			if _, bad := commonHostPrefixes[strings.ToLower(labels[0])]; bad {
+				// Skip typical host-based subdomains
+				continue
+			}
+			// If parent domain exists in list, prefer parent; skip this subdomain
+			parent := strings.Join(labels[1:], ".")
+			if _, ok := domainSet[parent]; ok {
+				continue
+			}
+		}
+		filtered = append(filtered, d)
+	}
+	if len(filtered) == 0 {
+		filtered = domains
+	}
 
-    // Prefer the domain most used by existing accounts
-    var mostCommon string
-    counts := map[string]int{}
-    if gaaOut, err := ExecZimbraCommand("zmprov -l gaa", false, false); err == nil {
-        lines := strings.Split(gaaOut, "\n")
-        for _, line := range lines {
-            line = strings.TrimSpace(line)
-            if line == "" || !strings.Contains(line, "@") {
-                continue
-            }
-            parts := strings.Split(line, "@")
-            dom := strings.ToLower(strings.TrimSpace(parts[len(parts)-1]))
-            counts[dom]++
-        }
-        maxCount := -1
-        for _, d := range filtered {
-            if c := counts[strings.ToLower(d)]; c > maxCount {
-                maxCount = c
-                mostCommon = d
-            }
-        }
-    }
-    if mostCommon != "" {
-        return mostCommon, nil
-    }
-    return filtered[0], nil
+	// Prefer the domain most used by existing accounts
+	var mostCommon string
+	counts := map[string]int{}
+	if gaaOut, err := ExecZimbraCommand("zmprov -l gaa", false, false); err == nil {
+		lines := strings.Split(gaaOut, "\n")
+		for _, line := range lines {
+			line = strings.TrimSpace(line)
+			if line == "" || !strings.Contains(line, "@") {
+				continue
+			}
+			parts := strings.Split(line, "@")
+			dom := strings.ToLower(strings.TrimSpace(parts[len(parts)-1]))
+			counts[dom]++
+		}
+		maxCount := -1
+		for _, d := range filtered {
+			if c := counts[strings.ToLower(d)]; c > maxCount {
+				maxCount = c
+				mostCommon = d
+			}
+		}
+	}
+	if mostCommon != "" {
+		return mostCommon, nil
+	}
+	return filtered[0], nil
 }
 
 // generateRandomPassword creates a random password with given length.
 // To avoid shell quoting issues in zmprov, restrict to alphanumeric characters.
 func generateRandomPassword(length int) string {
-    if length <= 0 {
-        length = 16
-    }
-    const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
-    var b strings.Builder
-    b.Grow(length)
-    for i := 0; i < length; i++ {
-        nBig, _ := rand.Int(rand.Reader, big.NewInt(int64(len(charset))))
-        b.WriteByte(charset[nBig.Int64()])
-    }
-    return b.String()
+	if length <= 0 {
+		length = 16
+	}
+	const charset = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789"
+	var b strings.Builder
+	b.Grow(length)
+	for i := 0; i < length; i++ {
+		nBig, _ := rand.Int(rand.Reader, big.NewInt(int64(len(charset))))
+		b.WriteByte(charset[nBig.Int64()])
+	}
+	return b.String()
 }
 
 // loadLoginTestCredsFromDB returns stored creds if present
 func loadLoginTestCredsFromDB() (string, string, bool) {
-    jsonStr, _, _, found, err := healthdb.GetJSON("zimbraHealth", "login_test_account")
-    if err != nil || !found || jsonStr == "" {
-        return "", "", false
-    }
-    var v struct {
-        Username string `json:"username"`
-        Password string `json:"password"`
-    }
-    if json.Unmarshal([]byte(jsonStr), &v) != nil {
-        return "", "", false
-    }
-    if v.Username == "" || v.Password == "" {
-        return "", "", false
-    }
-    return v.Username, v.Password, true
+	jsonStr, _, _, found, err := healthdb.GetJSON("zimbraHealth", "login_test_account")
+	if err != nil || !found || jsonStr == "" {
+		return "", "", false
+	}
+	var v struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+	}
+	if json.Unmarshal([]byte(jsonStr), &v) != nil {
+		return "", "", false
+	}
+	if v.Username == "" || v.Password == "" {
+		return "", "", false
+	}
+	return v.Username, v.Password, true
 }
 
 // saveLoginTestCredsToDB persists creds
 func saveLoginTestCredsToDB(username, password string) {
-    payload := struct {
-        Username  string `json:"username"`
-        Password  string `json:"password"`
-        UpdatedAt string `json:"updated_at"`
-    }{Username: username, Password: password, UpdatedAt: time.Now().Format("2006-01-02 15:04:05")}
-    b, _ := json.Marshal(payload)
-    _ = healthdb.PutJSON("zimbraHealth", "login_test_account", string(b), nil, time.Now())
+	payload := struct {
+		Username  string `json:"username"`
+		Password  string `json:"password"`
+		UpdatedAt string `json:"updated_at"`
+	}{Username: username, Password: password, UpdatedAt: time.Now().Format("2006-01-02 15:04:05")}
+	b, _ := json.Marshal(payload)
+	_ = healthdb.PutJSON("zimbraHealth", "login_test_account", string(b), nil, time.Now())
 }
 
 // checkEmailReceived checks if the sent email was received in the recipient's mailbox
