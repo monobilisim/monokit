@@ -9,19 +9,18 @@ import (
 	"github.com/monobilisim/monokit/postalHealth"
 	"github.com/monobilisim/monokit/rmqHealth"
 	"github.com/monobilisim/monokit/traefikHealth"
+	"github.com/monobilisim/monokit/upCheck"
 	"github.com/monobilisim/monokit/vaultHealth"
-	"github.com/monobilisim/monokit/zimbraHealth"
 	"github.com/monobilisim/monokit/zimbraLdap"
-    "github.com/monobilisim/monokit/upCheck"
 	"github.com/spf13/cobra"
 )
 
 func ZimbraCommandAdd() {
-	var zimbraHealthCmd = &cobra.Command{
-		Use:   "zimbraHealth",
-		Short: "Zimbra Health",
-		Run:   zimbraHealth.Main,
-	}
+	// var zimbraHealthCmd = &cobra.Command{
+	// 	Use:   "zimbraHealth",
+	// 	Short: "Zimbra Health",
+	// 	Run:   zimbraHealth.Main,
+	// }
 
 	var zimbraLdapCmd = &cobra.Command{
 		Use:   "zimbraLdap",
@@ -30,7 +29,7 @@ func ZimbraCommandAdd() {
 	}
 
 	RootCmd.AddCommand(zimbraLdapCmd)
-	RootCmd.AddCommand(zimbraHealthCmd)
+	// RootCmd.AddCommand(zimbraHealthCmd)
 }
 
 func PgsqlCommandAdd() {
@@ -104,11 +103,11 @@ func VaultCommandAdd() {
 }
 
 func UpCheckCommandAdd() {
-    var upCheckCmd = &cobra.Command{
-        Use:   "upCheck",
-        Short: "Generic systemd service uptime checker",
-        Run:   upCheck.Main,
-    }
+	var upCheckCmd = &cobra.Command{
+		Use:   "upCheck",
+		Short: "Generic systemd service uptime checker",
+		Run:   upCheck.Main,
+	}
 
-    RootCmd.AddCommand(upCheckCmd)
+	RootCmd.AddCommand(upCheckCmd)
 }
