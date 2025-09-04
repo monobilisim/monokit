@@ -147,41 +147,50 @@ gen-health-plugin-proto: .FORCE
 # --- Plugin Building ---
 PLUGINS_DIR=plugins
 
-build-plugins: gen-health-plugin-proto build-plugin-k8sHealth build-plugin-redisHealth build-plugin-wppconnectHealth
+build-plugins: gen-health-plugin-proto build-plugin-k8sHealth build-plugin-redisHealth build-plugin-wppconnectHealth build-plugin-zimbraHealth
 	@echo "$(GREEN)All plugins built.$(RESET)"
 
 build-plugin-k8sHealth: gen-health-plugin-proto .FORCE
 	@echo "$(BLUE)Building k8sHealth plugin for current platform...$(RESET)"
 	@mkdir -p $(PLUGINS_DIR)
-	
+
 	# Build for current platform
 	cd k8sHealth && go build -tags=plugin -o ../$(PLUGINS_DIR)/k8sHealth ./cmd/plugin/main.go
-	
+
 	@echo "$(GREEN)k8sHealth plugin built: $(PLUGINS_DIR)/k8sHealth$(RESET)"
 
 build-plugin-redisHealth: gen-health-plugin-proto .FORCE
 	@echo "$(BLUE)Building redisHealth plugin for current platform...$(RESET)"
 	@mkdir -p $(PLUGINS_DIR)
-	
+
 	# Build for current platform
 	cd redisHealth && go build -tags=plugin -o ../$(PLUGINS_DIR)/redisHealth ./cmd/plugin/main.go
-	
+
 	@echo "$(GREEN)redisHealth plugin built: $(PLUGINS_DIR)/redisHealth$(RESET)"
 
 build-plugin-wppconnectHealth: gen-health-plugin-proto .FORCE
 	@echo "$(BLUE)Building wppconnectHealth plugin for current platform...$(RESET)"
 	@mkdir -p $(PLUGINS_DIR)
-	
+
 	# Build for current platform
 	cd wppconnectHealth && go build -tags=plugin -o ../$(PLUGINS_DIR)/wppconnectHealth ./cmd/plugin/main.go
-	
+
 	@echo "$(GREEN)wppconnectHealth plugin built: $(PLUGINS_DIR)/wppconnectHealth$(RESET)"
 
 build-plugin-pritunlHealth: gen-health-plugin-proto .FORCE
 	@echo "$(BLUE)Building pritunlHealth plugin for current platform...$(RESET)"
 	@mkdir -p $(PLUGINS_DIR)
-	
+
 	# Build for current platform
 	cd pritunlHealth && go build -tags=plugin -o ../$(PLUGINS_DIR)/pritunlHealth ./cmd/plugin/main.go
-	
+
 	@echo "$(GREEN)pritunlHealth plugin built: $(PLUGINS_DIR)/pritunlHealth$(RESET)"
+
+build-plugin-zimbraHealth: gen-health-plugin-proto .FORCE
+	@echo "$(BLUE)Building zimbraHealth plugin for current platform...$(RESET)"
+	@mkdir -p $(PLUGINS_DIR)
+
+	# Build for current platform
+	cd zimbraHealth && go build -tags=plugin -o ../$(PLUGINS_DIR)/zimbraHealth ./cmd/plugin/main.go
+
+	@echo "$(GREEN)zimbraHealth plugin built: $(PLUGINS_DIR)/zimbraHealth$(RESET)"
