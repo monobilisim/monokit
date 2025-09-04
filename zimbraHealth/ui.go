@@ -436,3 +436,10 @@ func (h *ZimbraHealthData) RenderAll() string {
 
 	return sb.String()
 }
+
+// RenderZimbraHealthCLI renders the Zimbra health information for CLI output with borders
+func RenderZimbraHealthCLI(data *ZimbraHealthData, version string) string {
+	// The version parameter is not directly used by ZimbraHealthData,
+	// but we can ensure the data is complete before rendering
+	return data.RenderAll()
+}
