@@ -87,16 +87,16 @@ func parseBytesFromString(s string) (uint64, error) {
 
 // createExceededZFSDatasetTable creates a table for datasets that exceeded the usage limit
 func createExceededZFSDatasetTable(exceededDatasets []ZFSDatasetInfo) (string, string) {
-    var rows [][]string
-    for _, d := range exceededDatasets {
-        rows = append(rows, []string{
-            strconv.FormatFloat(math.Floor(d.UsedPct), 'f', 0, 64),
-            d.Used,
-            d.Avail,
-            d.Name,
-        })
-    }
-    tableOnly := renderMarkdownTable([]string{"%", "USED", "AVAIL", "DATASET"}, rows)
+	var rows [][]string
+	for _, d := range exceededDatasets {
+		rows = append(rows, []string{
+			strconv.FormatFloat(math.Floor(d.UsedPct), 'f', 0, 64),
+			d.Used,
+			d.Avail,
+			d.Name,
+		})
+	}
+	tableOnly := renderMarkdownTable([]string{"%", "USED", "AVAIL", "DATASET"}, rows)
 	fullMsg := "ZFS dataset usage level has exceeded " + strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64) + "% for the following datasets;\n\n" + tableOnly
 
 	return fullMsg, tableOnly
@@ -167,7 +167,7 @@ func ZFSHealth() []ZFSPoolInfo {
 
 	// Get ZFS pool status
 	cmd := exec.Command("zpool", "status", "-x")
-	output, err := cmd.CombinedOutput()
+	_, err := cmd.CombinedOutput()
 
 	// Handle the case where zpool status errors out but ZFS is still installed
 	// (e.g., no pools exist, or we don't have permission to check pools)
@@ -177,7 +177,7 @@ func ZFSHealth() []ZFSPoolInfo {
 
 	// Get detailed pool information
 	cmd = exec.Command("zpool", "list", "-H", "-o", "name,health,allocated,size")
-	output, err = cmd.CombinedOutput()
+	output, err := cmd.CombinedOutput()
 	if err != nil {
 		log.Error().Err(err).Str("component", "osHealth").Str("operation", "ZFSHealth").Str("action", "zpool_list_failed").Msg("An error occurred while fetching ZFS pool list. Error: " + err.Error() + ". Output: " + strings.TrimSpace(string(output)))
 		return nil
@@ -244,90 +244,115 @@ func ZFSHealth() []ZFSPoolInfo {
 		// Create table with degraded pools (based on initial state) // This line will be removed
 		// initialTable := createZFSPoolsTable(poolsInfo) // This line will be removed
 
-		log.Info().Msg("Found degraded ZFS pools, attempting to clear them...")
-		tryToClearPools(degradedPools)
+		// Check if auto_clear is explicitly set to false
+		// If not configured (nil) or set to true, proceed with clearing
+		if OsHealthConfig.ZFS.Auto_Clear != nil && !*OsHealthConfig.ZFS.Auto_Clear {
+			log.Info().Msg("Found degraded ZFS pools, but auto_clear is disabled. Skipping zpool clear.")
+		} else {
+			log.Info().Msg("Found degraded ZFS pools, attempting to clear them...")
+			tryToClearPools(degradedPools)
+		}
 
-		// Re-fetch and re-parse pool information AFTER clearing attempt
-		cmd = exec.Command("zpool", "list", "-H", "-o", "name,health,allocated,size")
-		outputAfterClear, errAfterClear := cmd.CombinedOutput()
+		// Re-fetch and re-parse pool information AFTER clearing attempt (if auto_clear is enabled)
 		var updatedPoolsInfo [][]string
 		var updatedZfsPools []ZFSPoolInfo // This will be the final return value for UI
+		var isHealthyAfterClearing bool
+		var statusAfterClearing string
 
-		if errAfterClear != nil {
-			log.Error().Err(errAfterClear).Str("component", "osHealth").Str("operation", "ZFSHealth").Str("action", "zpool_list_after_clear_failed").Msg("An error occurred while fetching ZFS pool list after clearing. Error: " + errAfterClear.Error() + ". Output: " + strings.TrimSpace(string(outputAfterClear)))
-			// Fallback to original zfsPools if re-fetch fails, but table might be stale
-			updatedPoolsInfo = poolsInfo
-			updatedZfsPools = zfsPools
-		} else {
-			linesAfterClear := strings.Split(strings.TrimSpace(string(outputAfterClear)), "\n")
-			if !(len(linesAfterClear) == 1 && linesAfterClear[0] == "") { // Check if not empty output
-				for _, line := range linesAfterClear {
-					if line == "" {
-						continue
-					}
-					fields := strings.Fields(line)
-					if len(fields) < 4 {
-						continue
-					}
-					poolName := fields[0]
-					poolHealth := fields[1]
-					poolUsedStrAfterClear := fields[2]  // Keep as string for display
-					poolTotalStrAfterClear := fields[3] // Keep as string for display
+		if OsHealthConfig.ZFS.Auto_Clear == nil || *OsHealthConfig.ZFS.Auto_Clear {
+			cmd = exec.Command("zpool", "list", "-H", "-o", "name,health,allocated,size")
+			outputAfterClear, errAfterClear := cmd.CombinedOutput()
 
-					// Parse strings to numeric bytes for percentage calculation
-					usedNumericBytesAfterClear, errUsedAC := parseBytesFromString(poolUsedStrAfterClear)
-					if errUsedAC != nil {
-						log.Error().Err(errUsedAC).Str("component", "osHealth").Str("operation", "ZFSHealth").Str("action", "parse_bytes_from_string_failed").Str("pool_name", poolName).Str("pool_used_str_after_clear", poolUsedStrAfterClear).Msg("Error parsing used bytes after clear for pool")
-					}
-					totalNumericBytesAfterClear, errTotalAC := parseBytesFromString(poolTotalStrAfterClear)
-					if errTotalAC != nil {
-						log.Error().Err(errTotalAC).Str("component", "osHealth").Str("operation", "ZFSHealth").Str("action", "parse_bytes_from_string_failed").Str("pool_name", poolName).Str("pool_total_str_after_clear", poolTotalStrAfterClear).Msg("Error parsing total bytes after clear for pool")
-					}
-
-					usedPctAfterClear := 0.0
-					if totalNumericBytesAfterClear > 0 {
-						usedPctAfterClear = float64(usedNumericBytesAfterClear) / float64(totalNumericBytesAfterClear) * 100
-					}
-
-					updatedZfsPools = append(updatedZfsPools, ZFSPoolInfo{
-						Name:    poolName,
-						Status:  poolHealth,
-						Used:    poolUsedStrAfterClear,  // Use the original string
-						Total:   poolTotalStrAfterClear, // Use the original string
-						UsedPct: usedPctAfterClear,
-					})
-					updatedPoolsInfo = append(updatedPoolsInfo, []string{poolName, poolHealth})
-				}
-			} else {
-				// No pools after clear, or error parsing. Fallback.
-				log.Info().Msg("No ZFS pools found or error parsing after clearing attempt. Using initial pool data for table.")
+			if errAfterClear != nil {
+				log.Error().Err(errAfterClear).Str("component", "osHealth").Str("operation", "ZFSHealth").Str("action", "zpool_list_after_clear_failed").Msg("An error occurred while fetching ZFS pool list after clearing. Error: " + errAfterClear.Error() + ". Output: " + strings.TrimSpace(string(outputAfterClear)))
+				// Fallback to original zfsPools if re-fetch fails, but table might be stale
 				updatedPoolsInfo = poolsInfo
 				updatedZfsPools = zfsPools
+			} else {
+				linesAfterClear := strings.Split(strings.TrimSpace(string(outputAfterClear)), "\n")
+				if !(len(linesAfterClear) == 1 && linesAfterClear[0] == "") { // Check if not empty output
+					for _, line := range linesAfterClear {
+						if line == "" {
+							continue
+						}
+						fields := strings.Fields(line)
+						if len(fields) < 4 {
+							continue
+						}
+						poolName := fields[0]
+						poolHealth := fields[1]
+						poolUsedStrAfterClear := fields[2]  // Keep as string for display
+						poolTotalStrAfterClear := fields[3] // Keep as string for display
+
+						// Parse strings to numeric bytes for percentage calculation
+						usedNumericBytesAfterClear, errUsedAC := parseBytesFromString(poolUsedStrAfterClear)
+						if errUsedAC != nil {
+							log.Error().Err(errUsedAC).Str("component", "osHealth").Str("operation", "ZFSHealth").Str("action", "parse_bytes_from_string_failed").Str("pool_name", poolName).Str("pool_used_str_after_clear", poolUsedStrAfterClear).Msg("Error parsing used bytes after clear for pool")
+						}
+						totalNumericBytesAfterClear, errTotalAC := parseBytesFromString(poolTotalStrAfterClear)
+						if errTotalAC != nil {
+							log.Error().Err(errTotalAC).Str("component", "osHealth").Str("operation", "ZFSHealth").Str("action", "parse_bytes_from_string_failed").Str("pool_name", poolName).Str("pool_total_str_after_clear", poolTotalStrAfterClear).Msg("Error parsing total bytes after clear for pool")
+						}
+
+						usedPctAfterClear := 0.0
+						if totalNumericBytesAfterClear > 0 {
+							usedPctAfterClear = float64(usedNumericBytesAfterClear) / float64(totalNumericBytesAfterClear) * 100
+						}
+
+						updatedZfsPools = append(updatedZfsPools, ZFSPoolInfo{
+							Name:    poolName,
+							Status:  poolHealth,
+							Used:    poolUsedStrAfterClear,  // Use the original string
+							Total:   poolTotalStrAfterClear, // Use the original string
+							UsedPct: usedPctAfterClear,
+						})
+						updatedPoolsInfo = append(updatedPoolsInfo, []string{poolName, poolHealth})
+					}
+				} else {
+					// No pools after clear, or error parsing. Fallback.
+					log.Info().Msg("No ZFS pools found or error parsing after clearing attempt. Using initial pool data for table.")
+					updatedPoolsInfo = poolsInfo
+					updatedZfsPools = zfsPools
+				}
 			}
+
+			// Get status after clearing using zpool status -x for definitive health check
+			cmd = exec.Command("zpool", "status", "-x")
+			outputAfterStatus, err := cmd.CombinedOutput()
+			if err != nil {
+				log.Error().Err(err).Msg("An error occurred while fetching ZFS pool status after clearing\n")
+				// If zpool status -x fails here, we might not be able to determine actual health
+				// Consider original status or a generic error message
+			}
+
+			statusAfterClearing = strings.TrimSpace(string(outputAfterStatus))
+			isHealthyAfterClearing = statusAfterClearing == "all pools are healthy"
+		} else {
+			// If auto_clear is disabled, use original pool data
+			updatedPoolsInfo = poolsInfo
+			updatedZfsPools = zfsPools
+			isHealthyAfterClearing = false // Pools are still degraded since we didn't clear them
+			statusAfterClearing = "Pools are degraded and auto_clear is disabled"
 		}
+
 		zfsPools = updatedZfsPools                          // Update zfsPools to be returned by the function for UI
 		finalTable := createZFSPoolsTable(updatedPoolsInfo) // Table for alarm message based on updated state
-
-		// Get status after clearing using zpool status -x for definitive health check
-		cmd = exec.Command("zpool", "status", "-x")
-		output, err := cmd.CombinedOutput() // output and err are re-used from initial zpool status check
-		if err != nil {
-			log.Error().Err(err).Msg("An error occurred while fetching ZFS pool status after clearing\n")
-			// If zpool status -x fails here, we might not be able to determine actual health
-			// Consider original status or a generic error message
-		}
-
-		statusAfterClearing := strings.TrimSpace(string(output))
-		isHealthyAfterClearing := statusAfterClearing == "all pools are healthy"
 
 		if isHealthyAfterClearing {
 			message := "ZFS pools have been restored to healthy state after clearing.\n\n" + finalTable
 			common.AlarmCheckUp("zfs_health", message, false)
 			issues.CheckUp("zfs_health", common.Config.Identifier+" için ZFS pool(lar) sağlıklı duruma getirildi.\n\n"+finalTable)
 		} else {
-			message := "ZFS pools are still in degraded state after clearing attempt.\n\n" +
-				"Current status:\n" + statusAfterClearing + "\n\n" +
-				"Detailed pool information:\n" + finalTable // Use the updated table
+			var message string
+			if OsHealthConfig.ZFS.Auto_Clear == nil || *OsHealthConfig.ZFS.Auto_Clear {
+				message = "ZFS pools are still in degraded state after clearing attempt.\n\n" +
+					"Current status:\n" + statusAfterClearing + "\n\n" +
+					"Detailed pool information:\n" + finalTable // Use the updated table
+			} else {
+				message = "ZFS pools are in degraded state and auto_clear is disabled.\n\n" +
+					"Current status:\n" + statusAfterClearing + "\n\n" +
+					"Detailed pool information:\n" + finalTable
+			}
 
 			issues.CheckDown("zfs_health", common.Config.Identifier+" için ZFS pool(lar) sağlıklı değil", finalTable, false, 0)
 
@@ -358,7 +383,7 @@ func ZFSHealth() []ZFSPoolInfo {
 
 // createZFSPoolsTable creates a formatted table of ZFS pool information
 func createZFSPoolsTable(poolsInfo [][]string) string {
-    return renderMarkdownTable([]string{"Pool Name", "Health Status"}, poolsInfo)
+	return renderMarkdownTable([]string{"Pool Name", "Health Status"}, poolsInfo)
 }
 
 // tryToClearPools attempts to clear errors on degraded ZFS pools

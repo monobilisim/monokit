@@ -25,6 +25,10 @@ type OsHealth struct {
 
 	Ram_Limit float64
 
+	ZFS struct {
+		Auto_Clear *bool
+	}
+
 	Alarm struct {
 		Enabled bool
 	}
