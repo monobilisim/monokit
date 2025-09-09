@@ -5,6 +5,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/monobilisim/monokit/common"
 )
 
@@ -79,7 +80,7 @@ func (r *RmqHealthData) RenderCompact() string {
 	// Service Status section
 	sb.WriteString(common.SectionTitle("Service Status"))
 	sb.WriteString("\n")
-	sb.WriteString(common.SimpleStatusListItem(
+	sb.WriteString(simpleStatusListItem(
 		"RabbitMQ Service",
 		"active",
 		r.Service.Active))
@@ -89,12 +90,12 @@ func (r *RmqHealthData) RenderCompact() string {
 	sb.WriteString("\n")
 	sb.WriteString(common.SectionTitle("Management Status"))
 	sb.WriteString("\n")
-	sb.WriteString(common.SimpleStatusListItem(
+	sb.WriteString(simpleStatusListItem(
 		"Management Plugin",
 		"enabled",
 		r.Management.Enabled))
 	sb.WriteString("\n")
-	sb.WriteString(common.SimpleStatusListItem(
+	sb.WriteString(simpleStatusListItem(
 		"Management Service",
 		"active",
 		r.Management.Active))
@@ -104,18 +105,18 @@ func (r *RmqHealthData) RenderCompact() string {
 	sb.WriteString("\n")
 	sb.WriteString(common.SectionTitle("Port Status"))
 	sb.WriteString("\n")
-	sb.WriteString(common.SimpleStatusListItem(
+	sb.WriteString(simpleStatusListItem(
 		"AMQP Port (5672)",
 		"open",
 		r.Ports.AMQP))
 	sb.WriteString("\n")
-	sb.WriteString(common.SimpleStatusListItem(
+	sb.WriteString(simpleStatusListItem(
 		"Management Port (15672)",
 		"open",
 		r.Ports.Management))
 	sb.WriteString("\n")
 	for port, status := range r.Ports.OtherPorts {
-		sb.WriteString(common.SimpleStatusListItem(
+		sb.WriteString(simpleStatusListItem(
 			fmt.Sprintf("Port %s", port),
 			"open",
 			status))
@@ -126,12 +127,12 @@ func (r *RmqHealthData) RenderCompact() string {
 	sb.WriteString("\n")
 	sb.WriteString(common.SectionTitle("API Status"))
 	sb.WriteString("\n")
-	sb.WriteString(common.SimpleStatusListItem(
+	sb.WriteString(simpleStatusListItem(
 		"Management API",
 		"connected",
 		r.API.Connected))
 	sb.WriteString("\n")
-	sb.WriteString(common.SimpleStatusListItem(
+	sb.WriteString(simpleStatusListItem(
 		"Overview API",
 		"reachable",
 		r.API.OverviewOK))
@@ -143,7 +144,7 @@ func (r *RmqHealthData) RenderCompact() string {
 		sb.WriteString(common.SectionTitle("Cluster Status"))
 		sb.WriteString("\n")
 		for _, node := range r.Cluster.Nodes {
-			sb.WriteString(common.SimpleStatusListItem(
+			sb.WriteString(simpleStatusListItem(
 				fmt.Sprintf("Node %s", node.Name),
 				"running",
 				node.IsRunning))
@@ -154,10 +155,28 @@ func (r *RmqHealthData) RenderCompact() string {
 	return sb.String()
 }
 
-// RenderAll renders all RabbitMQ health data as a single string
 func (r *RmqHealthData) RenderAll() string {
-	// Use title and content with the common.DisplayBox function
 	title := fmt.Sprintf("monokit rmqHealth v%s - %s", r.Version, r.LastChecked)
 	content := r.RenderCompact()
 	return common.DisplayBox(title, content)
+}
+
+func simpleStatusListItem(label string, expectedState string, isSuccess bool) string {
+	statusStyle := lipgloss.NewStyle().Foreground(common.SuccessColor)
+	if !isSuccess {
+		statusStyle = lipgloss.NewStyle().Foreground(common.ErrorColor)
+		expectedState = "not " + expectedState
+	}
+
+	contentStyle := lipgloss.NewStyle().
+		Align(lipgloss.Left).
+		PaddingLeft(8)
+
+	itemStyle := lipgloss.NewStyle().
+		Foreground(common.NormalTextColor)
+	line := fmt.Sprintf("•  %-20s is %s",
+		label,
+		statusStyle.Render(expectedState))
+
+	return contentStyle.Render(itemStyle.Render(line))
 }
