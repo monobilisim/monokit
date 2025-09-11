@@ -99,7 +99,7 @@ func DockerCheck() {
 		} else if oldClient != "" && oldClient != clientVersion {
 			log.Debug().Str("old_version", oldClient).Str("new_version", clientVersion).Msg("Docker client updated")
 			addToUpdated(AppVersion{Name: "Docker Client", OldVersion: oldClient, NewVersion: clientVersion})
-			CreateNews("Docker Client", oldClient, clientVersion, false)
+			// CreateNews("Docker Client", oldClient, clientVersion, false)
 		} else {
 			log.Debug().Str("version", clientVersion).Msg("Storing initial Docker client version")
 			addToNotUpdated(AppVersion{Name: "Docker Client", OldVersion: clientVersion})
