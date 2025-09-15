@@ -345,13 +345,9 @@ func ZFSHealth() []ZFSPoolInfo {
 		} else {
 			var message string
 			if OsHealthConfig.ZFS.Auto_Clear != nil && *OsHealthConfig.ZFS.Auto_Clear {
-				message = "ZFS pools are still in degraded state after clearing attempt.\n\n" +
-					"Current status:\n" + statusAfterClearing + "\n\n" +
-					"Detailed pool information:\n" + finalTable // Use the updated table
+				message = "ZFS pools are still in degraded state after clearing attempt.\n\n" + finalTable
 			} else {
-				message = "ZFS pools are in degraded state and auto_clear is not enabled.\n\n" +
-					"Current status:\n" + statusAfterClearing + "\n\n" +
-					"Detailed pool information:\n" + finalTable
+				message = "ZFS pools are in degraded state and auto_clear is not enabled.\n\n" + finalTable
 			}
 
 			issues.CheckDown("zfs_health", common.Config.Identifier+" için ZFS pool(lar) sağlıklı değil", finalTable, false, 0)
