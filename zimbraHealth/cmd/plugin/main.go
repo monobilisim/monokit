@@ -117,6 +117,8 @@ func main() {
 	// Initialize common components for the plugin, like logger and config loading.
 	// This ensures that zimbraHealth.ZimbraHealthConfig can be populated.
 	common.ScriptName = "zimbraHealth-plugin"
+	// Plugins should not create/use the global lockfile; skip it to avoid handshake issues
+	common.IgnoreLockfile = true
 	common.Init() // Initializes logger, TmpDir etc.
 
 	// Set color profile for consistent rendering, but only if colors are enabled
@@ -131,6 +133,8 @@ func main() {
 		// common.ConfInit panics on actual error, so we don't check its return value here.
 		// It populates ZimbraHealthConfig by reference.
 		common.ConfInit("mail", &zimbraHealth.ZimbraHealthConfig)
+		// Mirror into the package-wide MailHealthConfig used by checks when running as plugin
+		zimbraHealth.MailHealthConfig = zimbraHealth.ZimbraHealthConfig
 	}
 
 	pluginMap := map[string]plugin.Plugin{

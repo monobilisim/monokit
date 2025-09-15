@@ -148,9 +148,9 @@ func (h *ZimbraHealthData) RenderAll() string {
 	sb.WriteString(common.SectionTitle("Queued Messages"))
 	sb.WriteString("\n")
 	if h.QueuedMessages.CheckStatus {
-		expectedState := fmt.Sprintf("within limit (%d)", h.QueuedMessages.Count)
+		expectedState := fmt.Sprintf("within limit (%d/%d)", h.QueuedMessages.Count, h.QueuedMessages.Limit)
 		if h.QueuedMessages.Exceeded {
-			expectedState = fmt.Sprintf("over limit (%d)", h.QueuedMessages.Count)
+			expectedState = fmt.Sprintf("over limit (%d/%d)", h.QueuedMessages.Count, h.QueuedMessages.Limit)
 		}
 		sb.WriteString(common.SimpleStatusListItem(
 			"Mail Queue",
