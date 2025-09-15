@@ -99,7 +99,23 @@ builds:
       - CGO_ENABLED=0
     tags:
       - plugin
-    dir: pritunlHealth 
+    dir: pritunlHealth
+
+  - id: zimbraHealth-plugin
+    main: ./cmd/plugin/main.go
+    binary: zimbraHealth
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -X github.com/monobilisim/monokit/common.MonokitVersion={{ .Version }}
+    env:
+      - CGO_ENABLED=0
+    tags:
+      - plugin
+    dir: zimbraHealth
 
 archives:
   # Main monokit binary for all platforms
@@ -157,4 +173,12 @@ archives:
     files:
       - README.md
       - LICENSE
-    
+
+  # zimbraHealth plugin (Linux only)
+  - id: zimbraHealth
+    ids:
+      - zimbraHealth-plugin
+    name_template: "{{ .ProjectName }}_zimbraHealth_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - LICENSE
