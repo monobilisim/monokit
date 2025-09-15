@@ -26,10 +26,9 @@ load:
 ram_limit: 91
 
 # ZFS configuration
-# auto_clear: if not specified or set to true, ZFS pools will be automatically cleared when degraded
-#            if set to false, degraded pools will be reported but not cleared
-zfs:
-  auto_clear: true # Set to false to disable automatic clearing
+# auto_clear: only if set to true, ZFS pools will be automatically cleared when degraded
+#            if omitted or set to false, degraded pools will be reported but not cleared
+zfs: # auto_clear: true  # Enable to allow automatic clearing
 
 alarm:
   enabled: true

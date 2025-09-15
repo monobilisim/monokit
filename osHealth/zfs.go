@@ -244,22 +244,22 @@ func ZFSHealth() []ZFSPoolInfo {
 		// Create table with degraded pools (based on initial state) // This line will be removed
 		// initialTable := createZFSPoolsTable(poolsInfo) // This line will be removed
 
-		// Check if auto_clear is explicitly set to false
-		// If not configured (nil) or set to true, proceed with clearing
-		if OsHealthConfig.ZFS.Auto_Clear != nil && !*OsHealthConfig.ZFS.Auto_Clear {
-			log.Info().Msg("Found degraded ZFS pools, but auto_clear is disabled. Skipping zpool clear.")
-		} else {
+		// Clear ONLY if auto_clear is explicitly set to true.
+		// Default (nil) or false -> do NOT clear.
+		if OsHealthConfig.ZFS.Auto_Clear != nil && *OsHealthConfig.ZFS.Auto_Clear {
 			log.Info().Msg("Found degraded ZFS pools, attempting to clear them...")
 			tryToClearPools(degradedPools)
+		} else {
+			log.Info().Msg("Found degraded ZFS pools, auto_clear is not enabled. Skipping zpool clear.")
 		}
 
-		// Re-fetch and re-parse pool information AFTER clearing attempt (if auto_clear is enabled)
+		// Re-fetch and re-parse pool information AFTER clearing attempt (only if auto_clear is enabled)
 		var updatedPoolsInfo [][]string
 		var updatedZfsPools []ZFSPoolInfo // This will be the final return value for UI
 		var isHealthyAfterClearing bool
 		var statusAfterClearing string
 
-		if OsHealthConfig.ZFS.Auto_Clear == nil || *OsHealthConfig.ZFS.Auto_Clear {
+		if OsHealthConfig.ZFS.Auto_Clear != nil && *OsHealthConfig.ZFS.Auto_Clear {
 			cmd = exec.Command("zpool", "list", "-H", "-o", "name,health,allocated,size")
 			outputAfterClear, errAfterClear := cmd.CombinedOutput()
 
@@ -328,11 +328,11 @@ func ZFSHealth() []ZFSPoolInfo {
 			statusAfterClearing = strings.TrimSpace(string(outputAfterStatus))
 			isHealthyAfterClearing = statusAfterClearing == "all pools are healthy"
 		} else {
-			// If auto_clear is disabled, use original pool data
+			// If auto_clear is not enabled, use original pool data
 			updatedPoolsInfo = poolsInfo
 			updatedZfsPools = zfsPools
 			isHealthyAfterClearing = false // Pools are still degraded since we didn't clear them
-			statusAfterClearing = "Pools are degraded and auto_clear is disabled"
+			statusAfterClearing = "Pools are degraded; auto_clear is not enabled"
 		}
 
 		zfsPools = updatedZfsPools                          // Update zfsPools to be returned by the function for UI
@@ -344,12 +344,12 @@ func ZFSHealth() []ZFSPoolInfo {
 			issues.CheckUp("zfs_health", common.Config.Identifier+" için ZFS pool(lar) sağlıklı duruma getirildi.\n\n"+finalTable)
 		} else {
 			var message string
-			if OsHealthConfig.ZFS.Auto_Clear == nil || *OsHealthConfig.ZFS.Auto_Clear {
+			if OsHealthConfig.ZFS.Auto_Clear != nil && *OsHealthConfig.ZFS.Auto_Clear {
 				message = "ZFS pools are still in degraded state after clearing attempt.\n\n" +
 					"Current status:\n" + statusAfterClearing + "\n\n" +
 					"Detailed pool information:\n" + finalTable // Use the updated table
 			} else {
-				message = "ZFS pools are in degraded state and auto_clear is disabled.\n\n" +
+				message = "ZFS pools are in degraded state and auto_clear is not enabled.\n\n" +
 					"Current status:\n" + statusAfterClearing + "\n\n" +
 					"Detailed pool information:\n" + finalTable
 			}
