@@ -41,11 +41,6 @@ func MySQLCheck() {
 
 	output := strings.TrimSpace(string(out))
 
-	// Extract semantic version like 8.0.37 or 10.11.6 from mixed outputs
-	versionRegex := regexp.MustCompile(`\b(\d+\.\d+(?:\.\d+)?)\b`)
-	versionMatch := versionRegex.FindString(output)
-
-	// Determine flavor for naming and storage key
 	isMaria := strings.Contains(strings.ToLower(output), "mariadb") || serverBinary == "mariadbd" || serverBinary == "mariadb"
 	serviceKey := "mysql"
 	serviceTitle := "MySQL"
@@ -54,13 +49,30 @@ func MySQLCheck() {
 		serviceTitle = "MariaDB"
 	}
 
+	var versionMatch string
+
+	if serverBinary == "mysql" || serverBinary == "mariadb" {
+		if isMaria {
+			fromRegex := regexp.MustCompile(`from\s+([^\s,\-]+)`)
+			if matches := fromRegex.FindStringSubmatch(output); len(matches) > 1 {
+				versionMatch = matches[1]
+			}
+		} else {
+			distribRegex := regexp.MustCompile(`Distrib\s+([^\s,]+)`)
+			if matches := distribRegex.FindStringSubmatch(output); len(matches) > 1 {
+				versionMatch = matches[1]
+			}
+		}
+	} else {
+		versionRegex := regexp.MustCompile(`\b(\d+\.\d+(?:\.\d+)?)\b`)
+		versionMatch = versionRegex.FindString(output)
+	}
+
 	if versionMatch == "" {
-		// As a fallback, try token after "Ver" if present
 		fields := strings.Fields(output)
 		for i := 0; i < len(fields)-1; i++ {
 			if strings.EqualFold(fields[i], "Ver") {
 				candidate := strings.Trim(fields[i+1], ",")
-				// Strip distro suffixes like -0ubuntu...
 				if idx := strings.Index(candidate, "-"); idx > 0 {
 					candidate = candidate[:idx]
 				}
@@ -68,6 +80,11 @@ func MySQLCheck() {
 				break
 			}
 		}
+	}
+
+	if versionMatch == "" {
+		versionRegex := regexp.MustCompile(`\b(\d+\.\d+(?:\.\d+)?)\b`)
+		versionMatch = versionRegex.FindString(output)
 	}
 
 	if versionMatch == "" {
