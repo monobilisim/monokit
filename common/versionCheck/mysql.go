@@ -2,6 +2,7 @@ package common
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
 	"regexp"
 	"strings"
@@ -12,7 +13,10 @@ import (
 // MySQLCheck detects the installed MySQL/MariaDB server version, compares
 // with stored value, creates news on change, and persists the current version.
 func MySQLCheck() {
-	// Prefer server binaries over client for authoritative version
+	currentPath := os.Getenv("PATH")
+	newPath := fmt.Sprintf("/usr/sbin:%s", currentPath)
+	os.Setenv("PATH", newPath)
+
 	serverBinary := ""
 	if _, err := exec.LookPath("mysqld"); err == nil {
 		serverBinary = "mysqld"
@@ -50,7 +54,6 @@ func MySQLCheck() {
 	}
 
 	var versionMatch string
-
 	if serverBinary == "mysql" || serverBinary == "mariadb" {
 		if isMaria {
 			fromRegex := regexp.MustCompile(`from\s+([^\s,\-]+)`)
@@ -66,6 +69,13 @@ func MySQLCheck() {
 	} else {
 		versionRegex := regexp.MustCompile(`\b(\d+\.\d+(?:\.\d+)?)\b`)
 		versionMatch = versionRegex.FindString(output)
+	}
+
+	if versionMatch == "" {
+		distribRegex := regexp.MustCompile(`Distrib\s+([^\s,]+)`)
+		if matches := distribRegex.FindStringSubmatch(output); len(matches) > 1 {
+			versionMatch = matches[1]
+		}
 	}
 
 	if versionMatch == "" {
@@ -93,6 +103,7 @@ func MySQLCheck() {
 		return
 	}
 
+	versionMatch = strings.TrimSuffix(versionMatch, "-MariaDB")
 	oldVersion := GatherVersion(serviceKey)
 	if oldVersion != "" && oldVersion == versionMatch {
 		log.Debug().Str("service", serviceTitle).Msg("Version unchanged")
