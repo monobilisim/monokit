@@ -22,12 +22,6 @@ func MySQLCheck() {
 		serverBinary = "mysqld"
 	} else if _, err := exec.LookPath("mariadbd"); err == nil {
 		serverBinary = "mariadbd"
-	} else if _, err := exec.LookPath("mysql"); err == nil {
-		// Fallback to client binary if server binary isn't available
-		serverBinary = "mysql"
-	} else if _, err := exec.LookPath("mariadb"); err == nil {
-		// Fallback to MariaDB client
-		serverBinary = "mariadb"
 	}
 
 	if serverBinary == "" {
