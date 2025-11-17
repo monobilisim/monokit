@@ -142,6 +142,8 @@ func VersionCheck(cmd *cobra.Command, args []string) {
 
 	JenkinsCheck()
 
+	AsteriskCheck()
+
 	PrintList()
 }
 
