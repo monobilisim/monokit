@@ -25,7 +25,7 @@ func AsteriskCheck() (string, error) {
 	version := string(out)
 
 	if version == "" {
-		errMsg := "`asterisk --version` returns empty"
+		errMsg := "`asterisk -V` returns empty"
 		log.Error().Str("output", version).Msg(errMsg)
 		addToVersionErrors(fmt.Errorf(errMsg))
 		return "", fmt.Errorf(errMsg)

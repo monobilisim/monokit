@@ -144,6 +144,8 @@ func VersionCheck(cmd *cobra.Command, args []string) {
 
 	AsteriskCheck()
 
+	PrometheusCheck()
+
 	PrintList()
 }
 
