@@ -140,6 +140,8 @@ func VersionCheck(cmd *cobra.Command, args []string) {
 	// Zabbix
 	ZabbixCheck()
 
+	JenkinsCheck()
+
 	PrintList()
 }
 
