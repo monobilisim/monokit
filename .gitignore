@@ -10,3 +10,7 @@ coverage.html
 plugins/
 common/health/pluginpb
 *.coverprofile
+# Cache dirs
+.cache/
+.gocache/
+.modcache/

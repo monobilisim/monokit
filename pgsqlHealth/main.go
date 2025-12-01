@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"os/exec"
 	"strings"
@@ -243,7 +242,8 @@ func Main(cmd *cobra.Command, args []string) {
 		}
 
 		// Get patroni role
-		patroniRole, err := http.Get("http://" + patroniApiUrl + "/patroni")
+		patroniClient := getPatroniHTTPClient()
+		patroniRole, err := patroniClient.Get(strings.TrimSuffix(patroniApiUrl, "/") + "/patroni")
 		if err != nil {
 			log.Error().Err(err).Str("component", "pgsqlHealth").Str("operation", "Main").Str("action", "get_patroni_role_failed").Msg("Error getting patroni role")
 		} else {

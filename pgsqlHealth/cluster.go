@@ -106,8 +106,8 @@ func checkPatroniService() {
 // getClusterStatus retrieves the cluster status from the Patroni API
 // and returns the current and previous cluster statuses
 func getClusterStatus(patroniApiUrl string) (*Response, *Response) { // Added parameter
-	client := &http.Client{Timeout: time.Second * 10}
-	clusterURL := "http://" + patroniApiUrl + "/cluster" // Use passed parameter
+	client := getPatroniHTTPClient()
+	clusterURL := strings.TrimSuffix(patroniApiUrl, "/") + "/cluster" // Use passed parameter
 
 	resp, err := client.Get(clusterURL)
 	if err != nil {
