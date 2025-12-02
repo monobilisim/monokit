@@ -216,7 +216,8 @@ func statsCheck24h() error {
 	// Calculate time ranges
 	now := time.Now().Unix()
 	last24hStart := now - 24*3600 // 24 hours ago
-	prev24hStart := now - 48*3600 // 48 hours ago
+	lastweek1 := now - 7*24*3600  // 7 days ago
+	lastweek2 := now - 8*24*3600  // 7 days ago
 
 	// Get mail statistics for both periods
 	lastSent, lastReceived, err := getMailStats(last24hStart, now)
@@ -229,14 +230,14 @@ func statsCheck24h() error {
 		return fmt.Errorf("failed to get last 24h statistics: %w", err)
 	}
 
-	prevSent, prevReceived, err := getMailStats(prev24hStart, last24hStart)
+	prevSent, prevReceived, err := getMailStats(lastweek2, lastweek1)
 	if err != nil {
 		log.Error().
 			Err(err).
 			Str("component", "pmgHealth").
 			Str("action", "stats_check_24h").
-			Msg("Failed to get previous 24h statistics")
-		return fmt.Errorf("failed to get previous 24h statistics: %w", err)
+			Msg("Failed to get previous 24h statistics from last week")
+		return fmt.Errorf("failed to get previous 24h statistics from last week: %w", err)
 	}
 
 	// Calculate totals
