@@ -22,6 +22,7 @@ const lastUpdateCheckFile = "/tmp/monokit_last_update_check" // User requested /
 type Daemon struct {
 	Frequency int  // Frequency to run health checks
 	Debug     bool // Debug mode
+	MonokitUpgrade bool `mapstructure:"monokit_upgrade"` // Control daily monokit update/version check
 }
 
 var DaemonConfig Daemon
@@ -48,6 +49,7 @@ func Main(cmd *cobra.Command, args []string) {
 		common.ConfInit("daemon", &DaemonConfig)
 	} else {
 		DaemonConfig.Frequency = 60
+		DaemonConfig.MonokitUpgrade = true // default: perform upgrade/version check daily
 	}
 
 	fmt.Println("Monokit daemon - v" + version + " - " + time.Now().Format("2006-01-02 15:04:05"))
@@ -118,11 +120,15 @@ func recordUpdateCheck(filePath string) {
 // RunAll executes all registered and enabled components.
 // It now accepts the lockfile flag to pass down to sudo calls.
 func RunAll() {
-	// Check and run daily update if needed
-	if shouldRunDailyUpdate(lastUpdateCheckFile) {
-		fmt.Println("Running daily monokit update check...")
-		common.Update("", false, true, []string{}, "/var/lib/monokit/plugins") // Check for monokit updates
-		recordUpdateCheck(lastUpdateCheckFile)
+	// Daily monokit update/version check controlled by config flag
+	if DaemonConfig.MonokitUpgrade {
+		if shouldRunDailyUpdate(lastUpdateCheckFile) {
+			fmt.Println("Running daily monokit update check...")
+			common.Update("", false, true, []string{}, "/var/lib/monokit/plugins") // Check for monokit updates
+			recordUpdateCheck(lastUpdateCheckFile)
+		}
+	} else {
+		fmt.Println("Daily monokit update check disabled via monokit_upgrade=false")
 	}
 
 	// --- Run versionCheck unconditionally ---

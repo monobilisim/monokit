@@ -54,6 +54,10 @@ func ConfInit(configName string, config interface{}) interface{} {
 	viper.SetConfigType("yaml")
 
 	viper.SetDefault("alarm.interval", 3)
+	// Daemon-specific defaults
+	if configName == "daemon" {
+		viper.SetDefault("monokit_upgrade", true)
+	}
 
 	err := viper.ReadInConfig()
 
