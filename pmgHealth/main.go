@@ -216,8 +216,8 @@ func statsCheck24h() error {
 	// Calculate time ranges
 	now := time.Now().Unix()
 	last24hStart := now - 24*3600 // 24 hours ago
-	lastweek1 := now - 7*24*3600  // 7 days ago
-	lastweek2 := now - 8*24*3600  // 7 days ago
+	lastweek1 := now - 7*24*3600
+	lastweek2 := now - 8*24*3600
 
 	// Get mail statistics for both periods
 	lastSent, lastReceived, err := getMailStats(last24hStart, now)
