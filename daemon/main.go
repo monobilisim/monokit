@@ -20,8 +20,8 @@ import (
 const lastUpdateCheckFile = "/tmp/monokit_last_update_check" // User requested /tmp
 
 type Daemon struct {
-	Frequency int  // Frequency to run health checks
-	Debug     bool // Debug mode
+	Frequency      int  // Frequency to run health checks
+	Debug          bool // Debug mode
 	MonokitUpgrade bool `mapstructure:"monokit_upgrade"` // Control daily monokit update/version check
 }
 
@@ -53,6 +53,11 @@ func Main(cmd *cobra.Command, args []string) {
 	}
 
 	fmt.Println("Monokit daemon - v" + version + " - " + time.Now().Format("2006-01-02 15:04:05"))
+
+	// Log monokit upgrade check status at startup
+	if !DaemonConfig.MonokitUpgrade {
+		fmt.Println("Daily monokit update check disabled via monokit_upgrade=false")
+	}
 
 	// Flags were already parsed before common.Init()
 
@@ -127,8 +132,6 @@ func RunAll() {
 			common.Update("", false, true, []string{}, "/var/lib/monokit/plugins") // Check for monokit updates
 			recordUpdateCheck(lastUpdateCheckFile)
 		}
-	} else {
-		fmt.Println("Daily monokit update check disabled via monokit_upgrade=false")
 	}
 
 	// --- Run versionCheck unconditionally ---
@@ -140,7 +143,7 @@ func RunAll() {
 	}
 	fmt.Println("Finished version checks.")
 
-    // upCheck now participates via component registry like others (auto-detected)
+	// upCheck now participates via component registry like others (auto-detected)
 
 	// --- Get the list of *other* components to run from the centralized function ---
 	componentsToRunStr := common.GetInstalledComponents() // This might need adjustment if versionCheck is included here
