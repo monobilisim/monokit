@@ -13,6 +13,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -1030,6 +1031,7 @@ func readRke2ServerFromConfig(configDir string) (string, []string, error) {
 	v := viper.New()
 	usedPaths := []string{}
 	readCount := 0
+	v.SetConfigType("yaml") // Required before MergeConfig with readers
 
 	readAndMerge := func(path string) error {
 		data, err := os.ReadFile(path)
@@ -1140,36 +1142,24 @@ func CollectKubeVipHealth() (*KubeVipHealth, error) {
 			Msg("Auto-detected kube-vip floating IPs from pods")
 	}
 
-	floatingIPs := uniqueStrings(append(K8sHealthConfig.K8s.Floating_ips, detectedFloatingIPs...))
+	// Prefer auto-detected floating IPs from kube-vip pods; fall back to config only if none found.
+	floatingIPs := detectedFloatingIPs
+	if len(floatingIPs) == 0 && len(K8sHealthConfig.K8s.Floating_ips) > 0 {
+		floatingIPs = append(floatingIPs, K8sHealthConfig.K8s.Floating_ips...)
+	}
+	floatingIPs = uniqueStrings(floatingIPs)
 
 	if health.PodsAvailable {
 		alarmCheckUp("kube_vip_pods", "Kube-VIP pods detected in kube-system.", false)
 		if len(floatingIPs) > 0 {
 			for _, floatingIp := range floatingIPs {
 				check := FloatingIPCheck{IP: floatingIp, TestType: "kube-vip"}
-				pinger, err := probing.NewPinger(floatingIp)
-				if err != nil {
-					log.Error().
-						Str("component", "k8sHealth").
-						Str("operation", "collect_kube_vip_health").
-						Str("floating_ip", floatingIp).
-						Err(err).
-						Msg("Error creating pinger for Kube-VIP IP")
-					check.IsAvailable = false
-					// Optionally add a message to the check or health.Error
+				ok, errMsg := pingFloatingIP(floatingIp)
+				check.IsAvailable = ok
+				if ok {
+					alarmCheckUp("floating_ip_kube_vip_"+floatingIp, fmt.Sprintf("Kube-VIP Floating IP %s is reachable.", floatingIp), false)
 				} else {
-					// Use unprivileged ping to avoid raw socket permission issues
-					pinger.SetPrivileged(false)
-					pinger.Count = 1
-					pinger.Timeout = 3 * time.Second // Reduced timeout for quicker checks
-					err = pinger.Run()
-					if err != nil {
-						check.IsAvailable = false
-						alarmCheckDown("floating_ip_kube_vip_"+floatingIp, fmt.Sprintf("Kube-VIP Floating IP %s is not reachable: %v", floatingIp, err), false, "", "")
-					} else {
-						check.IsAvailable = true
-						alarmCheckUp("floating_ip_kube_vip_"+floatingIp, fmt.Sprintf("Kube-VIP Floating IP %s is reachable.", floatingIp), false)
-					}
+					alarmCheckDown("floating_ip_kube_vip_"+floatingIp, fmt.Sprintf("Kube-VIP Floating IP %s is not reachable: %s", floatingIp, errMsg), false, "", "")
 				}
 				health.FloatingIPChecks = append(health.FloatingIPChecks, check)
 			}
@@ -1782,6 +1772,46 @@ func CollectRKE2Information() *RKE2Info {
 	info.IsMasterNode = isMaster
 
 	return info
+}
+
+// pingFloatingIP tries multiple strategies to avoid false negatives due to permission or firewall rules.
+// Order: privileged ICMP -> unprivileged UDP -> system ping binary.
+func pingFloatingIP(ip string) (bool, string) {
+	tryPing := func(privileged bool) (bool, string) {
+		pinger, err := probing.NewPinger(ip)
+		if err != nil {
+			return false, err.Error()
+		}
+		pinger.Count = 1
+		pinger.Timeout = 3 * time.Second
+		pinger.SetPrivileged(privileged)
+		if err := pinger.Run(); err != nil {
+			return false, err.Error()
+		}
+		if pinger.Statistics().PacketsRecv > 0 {
+			return true, ""
+		}
+		return false, "no packets received"
+	}
+
+	// 1) Try privileged raw ICMP
+	if ok, errMsg := tryPing(true); ok {
+		return true, ""
+	} else if !strings.Contains(errMsg, "ermission") { // if not a permission issue, keep error but still try fallback
+		// proceed but remember the error
+	}
+
+	// 2) Try unprivileged UDP ping
+	if ok, errMsg := tryPing(false); ok {
+		return true, ""
+	} else {
+		// 3) Fallback to system ping (setuid helper)
+		cmd := exec.Command("ping", "-c", "1", "-W", "1", ip)
+		if err := cmd.Run(); err == nil {
+			return true, ""
+		}
+		return false, errMsg
+	}
 }
 
 // isK8sAlarmEnabled returns the effective alarm toggle, defaulting to the global
