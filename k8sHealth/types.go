@@ -28,7 +28,11 @@ func (p *K8sHealthProvider) Name() string {
 func (p *K8sHealthProvider) Collect(hostname string) (interface{}, error) {
 	// Initialize config if not already done
 	if !k8sConfigLoaded {
-		log.Debug().Str("component", "k8sHealth").Str("operation", "Collect").Str("action", "config_check").Msg(fmt.Sprintf("Before config load: K8sHealthConfig.Alarm.Enabled=%v", K8sHealthConfig.Alarm.Enabled))
+		log.Debug().
+			Str("component", "k8sHealth").
+			Str("operation", "Collect").
+			Str("action", "config_check").
+			Msg(fmt.Sprintf("Before config load: K8sHealthConfig.Alarm.Enabled=%v (effective=%v)", K8sHealthConfig.Alarm.Enabled, isK8sAlarmEnabled()))
 		if common.ConfExists("k8s") {
 			log.Debug().Str("component", "k8sHealth").Str("operation", "Collect").Str("action", "config_exists").Msg("k8s config file exists, loading...")
 			// Use our clean config loader to avoid global Viper state pollution
@@ -70,7 +74,7 @@ type Config struct {
 	}
 
 	Alarm struct {
-		Enabled bool
+		Enabled *bool `mapstructure:"enabled"`
 	}
 }
 
@@ -92,6 +96,15 @@ func loadK8sConfig() error {
 
 	if err := v.ReadInConfig(); err != nil {
 		return fmt.Errorf("failed to read config: %w", err)
+	}
+
+	// Backward compatibility: honor legacy send_alarm flag if alarm.enabled is not set
+	if !v.IsSet("alarm.enabled") && v.IsSet("send_alarm") {
+		v.Set("alarm.enabled", v.GetBool("send_alarm"))
+	}
+	// Default to global alarm setting when not explicitly configured for k8sHealth
+	if !v.IsSet("alarm.enabled") {
+		v.SetDefault("alarm.enabled", common.Config.Alarm.Enabled)
 	}
 
 	if err := v.Unmarshal(&K8sHealthConfig); err != nil {

@@ -3,6 +3,7 @@
 package k8sHealth
 
 import (
+	"bytes"
 	"context"
 	"crypto/x509"
 	"encoding/json"
@@ -13,6 +14,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -1021,29 +1023,57 @@ func countMasterNodesForKubeVipCheck() (int, error) {
 	return masterCount, nil
 }
 
-// readRke2ServerFromConfig reads the server value from RKE2 config.yaml
-func readRke2ServerFromConfig(configPath string) (string, error) {
-	if !common.FileExists(configPath) {
-		return "", fmt.Errorf("RKE2 config not found at %s", configPath)
+// readRke2ServerFromConfig reads the server value from RKE2 config files.
+// It merges /etc/rancher/rke2/config.yaml with any additional fragments under
+// /etc/rancher/rke2/config.yaml.d/*.yaml, mimicking RKE2's config loading order.
+func readRke2ServerFromConfig(configDir string) (string, []string, error) {
+	v := viper.New()
+	usedPaths := []string{}
+	readCount := 0
+
+	readAndMerge := func(path string) error {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return fmt.Errorf("error reading %s: %w", path, err)
+		}
+		if err := v.MergeConfig(bytes.NewReader(data)); err != nil {
+			return fmt.Errorf("error merging %s: %w", path, err)
+		}
+		usedPaths = append(usedPaths, path)
+		readCount++
+		return nil
 	}
 
-	v := viper.New()
-	v.SetConfigFile(configPath)
-	v.SetConfigType("yaml")
-	if err := v.ReadInConfig(); err != nil {
-		return "", fmt.Errorf("error reading %s: %w", configPath, err)
+	mainCfg := filepath.Join(configDir, "config.yaml")
+	if common.FileExists(mainCfg) {
+		if err := readAndMerge(mainCfg); err != nil {
+			return "", usedPaths, err
+		}
+	}
+
+	fragmentPattern := filepath.Join(configDir, "config.yaml.d", "*.yaml")
+	fragmentFiles, _ := filepath.Glob(fragmentPattern)
+	sort.Strings(fragmentFiles)
+	for _, path := range fragmentFiles {
+		if err := readAndMerge(path); err != nil {
+			return "", usedPaths, err
+		}
+	}
+
+	if readCount == 0 {
+		return "", usedPaths, fmt.Errorf("no RKE2 config files found under %s", configDir)
 	}
 
 	if !v.IsSet("server") {
-		return "", fmt.Errorf("server is not defined in %s", configPath)
+		return "", usedPaths, fmt.Errorf("server is not defined in RKE2 config (%s)", strings.Join(usedPaths, ", "))
 	}
 
 	server := v.GetString("server")
 	if server == "" {
-		return "", fmt.Errorf("server value is empty in %s", configPath)
+		return "", usedPaths, fmt.Errorf("server value is empty in RKE2 config (%s)", strings.Join(usedPaths, ", "))
 	}
 
-	return server, nil
+	return server, usedPaths, nil
 }
 
 // endpointHostMatchesFloatingIP checks if endpoint host matches one of the provided floating IPs
@@ -1057,7 +1087,7 @@ func endpointHostMatchesFloatingIP(endpoint string, floatingIPs []string) (strin
 	return host, false
 }
 
-const rke2ConfigPath = "/etc/rancher/rke2/config.yaml"
+const rke2ConfigDir = "/etc/rancher/rke2"
 
 // CollectKubeVipHealth gathers Kube-VIP status and floating IP reachability.
 func CollectKubeVipHealth() (*KubeVipHealth, error) {
@@ -1128,6 +1158,8 @@ func CollectKubeVipHealth() (*KubeVipHealth, error) {
 					check.IsAvailable = false
 					// Optionally add a message to the check or health.Error
 				} else {
+					// Use unprivileged ping to avoid raw socket permission issues
+					pinger.SetPrivileged(false)
 					pinger.Count = 1
 					pinger.Timeout = 3 * time.Second // Reduced timeout for quicker checks
 					err = pinger.Run()
@@ -1158,7 +1190,7 @@ func CollectKubeVipHealth() (*KubeVipHealth, error) {
 	// Validate RKE2 config.yaml server endpoint when multi-master with kube-vip + floating IP
 	masterCount, masterErr := countMasterNodesForKubeVipCheck()
 	health.ConfigCheck = &KubeVipConfigCheck{
-		ConfigPath:      rke2ConfigPath,
+		ConfigPath:      rke2ConfigDir,
 		FloatingIPs:     floatingIPs,
 		MasterNodeCount: masterCount,
 	}
@@ -1179,7 +1211,10 @@ func CollectKubeVipHealth() (*KubeVipHealth, error) {
 	case len(floatingIPs) == 0:
 		health.ConfigCheck.Reason = "No kube-vip floating IP configured or auto-detected; skipping server endpoint check."
 	default:
-		serverValue, err := readRke2ServerFromConfig(rke2ConfigPath)
+		serverValue, usedPaths, err := readRke2ServerFromConfig(rke2ConfigDir)
+		if len(usedPaths) > 0 {
+			health.ConfigCheck.ConfigPath = strings.Join(usedPaths, ", ")
+		}
 		if err != nil {
 			health.ConfigCheck.Error = err.Error()
 			alarmCheckDown("kube_vip_rke2_server", err.Error(), false, "", "")
@@ -1749,6 +1784,15 @@ func CollectRKE2Information() *RKE2Info {
 	return info
 }
 
+// isK8sAlarmEnabled returns the effective alarm toggle, defaulting to the global
+// alarm setting when k8sHealth-specific config is not provided.
+func isK8sAlarmEnabled() bool {
+	if K8sHealthConfig.Alarm.Enabled != nil {
+		return *K8sHealthConfig.Alarm.Enabled
+	}
+	return common.Config.Alarm.Enabled
+}
+
 func alarmCheckUp(service, message string, noInterval bool) {
 	log.Debug().
 		Str("component", "k8sHealth").
@@ -1756,9 +1800,9 @@ func alarmCheckUp(service, message string, noInterval bool) {
 		Str("service", service).
 		Str("message", message).
 		Bool("no_interval", noInterval).
-		Bool("alarm_enabled", K8sHealthConfig.Alarm.Enabled).
+		Bool("alarm_enabled", isK8sAlarmEnabled()).
 		Msg("alarmCheckUp called")
-	if !K8sHealthConfig.Alarm.Enabled {
+	if !isK8sAlarmEnabled() {
 		return
 	}
 	common.AlarmCheckUp(service, message, noInterval)
@@ -1773,9 +1817,9 @@ func alarmCheckDown(service, message string, noInterval bool, customStream, cust
 		Bool("no_interval", noInterval).
 		Str("custom_stream", customStream).
 		Str("custom_topic", customTopic).
-		Bool("alarm_enabled", K8sHealthConfig.Alarm.Enabled).
+		Bool("alarm_enabled", isK8sAlarmEnabled()).
 		Msg("alarmCheckDown called")
-	if !K8sHealthConfig.Alarm.Enabled {
+	if !isK8sAlarmEnabled() {
 		return
 	}
 	common.AlarmCheckDown(service, message, noInterval, customStream, customTopic)
