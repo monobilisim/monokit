@@ -8,14 +8,16 @@ import (
 	"encoding/json"
 	"encoding/pem"
 	"fmt" // Added fmt for error handling
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/monobilisim/monokit/common"
-    "github.com/monobilisim/monokit/common/healthdb"
+	"github.com/monobilisim/monokit/common/healthdb"
 	probing "github.com/prometheus-community/pro-bing"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
@@ -883,6 +885,180 @@ func CollectCertManagerHealth() (*CertManagerHealth, error) {
 	return health, nil
 }
 
+// normalizeIPCandidate tries to extract a plain IP address from different representations (with scheme/port/cidr)
+func normalizeIPCandidate(value string) string {
+	candidate := strings.TrimSpace(value)
+	if candidate == "" {
+		return ""
+	}
+
+	// Try URL parsing first (covers scheme + port formats)
+	if u, err := url.Parse(candidate); err == nil {
+		if host := u.Hostname(); host != "" {
+			candidate = host
+		}
+	}
+
+	// Strip common prefixes and path/cidr parts
+	candidate = strings.TrimPrefix(candidate, "https://")
+	candidate = strings.TrimPrefix(candidate, "http://")
+	if strings.Contains(candidate, "/") {
+		candidate = strings.Split(candidate, "/")[0]
+	}
+
+	// Remove port if present (best-effort, avoid mangling IPv6)
+	if strings.Contains(candidate, "]") {
+		// Likely IPv6 in URL form, leave as-is for ParseIP
+	} else if strings.Count(candidate, ":") == 1 {
+		if host, _, err := net.SplitHostPort(candidate); err == nil {
+			candidate = host
+		}
+	} else if strings.Contains(candidate, ":") && !strings.Contains(candidate, "]") {
+		parts := strings.Split(candidate, ":")
+		if len(parts) > 0 {
+			candidate = parts[0]
+		}
+	}
+
+	if ip := net.ParseIP(candidate); ip != nil {
+		return ip.String()
+	}
+	return ""
+}
+
+// extractIPFromArg parses kube-vip style args such as --vip-address=10.0.0.10
+func extractIPFromArg(arg string) string {
+	trimmed := strings.TrimSpace(arg)
+	if trimmed == "" {
+		return ""
+	}
+
+	if strings.HasPrefix(trimmed, "--") {
+		trimmed = strings.TrimPrefix(trimmed, "--")
+	}
+
+	parts := strings.SplitN(trimmed, "=", 2)
+	if len(parts) == 2 {
+		key := strings.ToLower(parts[0])
+		if strings.Contains(key, "vip") || strings.Contains(key, "address") || strings.Contains(key, "floating") {
+			if ip := normalizeIPCandidate(parts[1]); ip != "" {
+				return ip
+			}
+		}
+	}
+
+	return normalizeIPCandidate(trimmed)
+}
+
+// uniqueStrings returns unique, non-empty strings preserving order
+func uniqueStrings(values []string) []string {
+	seen := make(map[string]struct{})
+	result := make([]string, 0, len(values))
+	for _, v := range values {
+		if v == "" {
+			continue
+		}
+		if _, ok := seen[v]; ok {
+			continue
+		}
+		seen[v] = struct{}{}
+		result = append(result, v)
+	}
+	return result
+}
+
+// detectKubeVipFloatingIPsFromPods tries to auto-discover kube-vip floating IPs from pod envs/args
+func detectKubeVipFloatingIPsFromPods(pods []v1.Pod) []string {
+	var ips []string
+	for _, pod := range pods {
+		if !strings.Contains(pod.Name, "kube-vip") {
+			continue
+		}
+		for _, container := range pod.Spec.Containers {
+			for _, env := range container.Env {
+				name := strings.ToLower(env.Name)
+				if strings.Contains(name, "vip") || strings.Contains(name, "floating") || strings.Contains(name, "address") {
+					if ip := normalizeIPCandidate(env.Value); ip != "" {
+						ips = append(ips, ip)
+					}
+				}
+			}
+			for _, arg := range container.Args {
+				if ip := extractIPFromArg(arg); ip != "" {
+					ips = append(ips, ip)
+				}
+			}
+		}
+	}
+	return uniqueStrings(ips)
+}
+
+// countMasterNodesForKubeVipCheck counts nodes with master/control-plane labels
+func countMasterNodesForKubeVipCheck() (int, error) {
+	if Clientset == nil {
+		return 0, fmt.Errorf("kubernetes clientset is not initialized")
+	}
+
+	nodes, err := Clientset.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return 0, fmt.Errorf("error listing nodes: %w", err)
+	}
+
+	masterCount := 0
+	for _, node := range nodes.Items {
+		if _, ok := node.Labels["node-role.kubernetes.io/master"]; ok {
+			masterCount++
+			continue
+		}
+		if _, ok := node.Labels["node-role.kubernetes.io/control-plane"]; ok {
+			masterCount++
+			continue
+		}
+		if val, ok := node.Labels["kubernetes.io/role"]; ok && val == "master" {
+			masterCount++
+		}
+	}
+	return masterCount, nil
+}
+
+// readRke2ServerFromConfig reads the server value from RKE2 config.yaml
+func readRke2ServerFromConfig(configPath string) (string, error) {
+	if !common.FileExists(configPath) {
+		return "", fmt.Errorf("RKE2 config not found at %s", configPath)
+	}
+
+	v := viper.New()
+	v.SetConfigFile(configPath)
+	v.SetConfigType("yaml")
+	if err := v.ReadInConfig(); err != nil {
+		return "", fmt.Errorf("error reading %s: %w", configPath, err)
+	}
+
+	if !v.IsSet("server") {
+		return "", fmt.Errorf("server is not defined in %s", configPath)
+	}
+
+	server := v.GetString("server")
+	if server == "" {
+		return "", fmt.Errorf("server value is empty in %s", configPath)
+	}
+
+	return server, nil
+}
+
+// endpointHostMatchesFloatingIP checks if endpoint host matches one of the provided floating IPs
+func endpointHostMatchesFloatingIP(endpoint string, floatingIPs []string) (string, bool) {
+	host := normalizeIPCandidate(endpoint)
+	for _, ip := range floatingIPs {
+		if host == ip {
+			return host, true
+		}
+	}
+	return host, false
+}
+
+const rke2ConfigPath = "/etc/rancher/rke2/config.yaml"
+
 // CollectKubeVipHealth gathers Kube-VIP status and floating IP reachability.
 func CollectKubeVipHealth() (*KubeVipHealth, error) {
 	log.Debug().
@@ -897,6 +1073,8 @@ func CollectKubeVipHealth() (*KubeVipHealth, error) {
 		health.Error = "kubernetes clientset is not initialized"
 		return health, fmt.Errorf(health.Error)
 	}
+
+	var pods *v1.PodList
 
 	// Check if kube-vip pods exists on kube-system namespace
 	pods, err := Clientset.CoreV1().Pods("kube-system").List(context.TODO(), metav1.ListOptions{})
@@ -918,10 +1096,26 @@ func CollectKubeVipHealth() (*KubeVipHealth, error) {
 		}
 	}
 
+	// Auto-detect floating IPs from kube-vip pods (if any)
+	detectedFloatingIPs := []string{}
+	if pods != nil {
+		detectedFloatingIPs = detectKubeVipFloatingIPsFromPods(pods.Items)
+	}
+	health.DetectedFloatingIPs = detectedFloatingIPs
+	if len(detectedFloatingIPs) > 0 {
+		log.Debug().
+			Str("component", "k8sHealth").
+			Str("operation", "collect_kube_vip_health").
+			Strs("auto_detected_floating_ips", detectedFloatingIPs).
+			Msg("Auto-detected kube-vip floating IPs from pods")
+	}
+
+	floatingIPs := uniqueStrings(append(K8sHealthConfig.K8s.Floating_ips, detectedFloatingIPs...))
+
 	if health.PodsAvailable {
 		alarmCheckUp("kube_vip_pods", "Kube-VIP pods detected in kube-system.", false)
-		if len(K8sHealthConfig.K8s.Floating_ips) > 0 {
-			for _, floatingIp := range K8sHealthConfig.K8s.Floating_ips {
+		if len(floatingIPs) > 0 {
+			for _, floatingIp := range floatingIPs {
 				check := FloatingIPCheck{IP: floatingIp, TestType: "kube-vip"}
 				pinger, err := probing.NewPinger(floatingIp)
 				if err != nil {
@@ -951,7 +1145,7 @@ func CollectKubeVipHealth() (*KubeVipHealth, error) {
 			log.Debug().
 				Str("component", "k8sHealth").
 				Str("operation", "collect_kube_vip_health").
-				Msg("No Kube-VIP Floating IPs configured to check")
+				Msg("No Kube-VIP floating IPs configured or auto-detected to check")
 		}
 	} else {
 		log.Debug().
@@ -960,6 +1154,52 @@ func CollectKubeVipHealth() (*KubeVipHealth, error) {
 			Msg("Kube-VIP pods not detected in kube-system")
 		alarmCheckDown("kube_vip_pods", "Kube-VIP pods not detected in kube-system. This might be normal if Kube-VIP is not used.", false, "", "")
 	}
+
+	// Validate RKE2 config.yaml server endpoint when multi-master with kube-vip + floating IP
+	masterCount, masterErr := countMasterNodesForKubeVipCheck()
+	health.ConfigCheck = &KubeVipConfigCheck{
+		ConfigPath:      rke2ConfigPath,
+		FloatingIPs:     floatingIPs,
+		MasterNodeCount: masterCount,
+	}
+
+	switch {
+	case masterErr != nil:
+		errMsg := fmt.Sprintf("Error counting master nodes for kube-vip check: %v", masterErr)
+		log.Error().
+			Str("component", "k8sHealth").
+			Str("operation", "collect_kube_vip_health").
+			Err(masterErr).
+			Msg("Failed to count master nodes for kube-vip config check")
+		health.ConfigCheck.Error = errMsg
+	case masterCount <= 1:
+		health.ConfigCheck.Reason = "Multiple master nodes not detected; RKE2 server endpoint check skipped."
+	case !health.PodsAvailable:
+		health.ConfigCheck.Reason = "Kube-VIP not detected; skipping RKE2 server endpoint check."
+	case len(floatingIPs) == 0:
+		health.ConfigCheck.Reason = "No kube-vip floating IP configured or auto-detected; skipping server endpoint check."
+	default:
+		serverValue, err := readRke2ServerFromConfig(rke2ConfigPath)
+		if err != nil {
+			health.ConfigCheck.Error = err.Error()
+			alarmCheckDown("kube_vip_rke2_server", err.Error(), false, "", "")
+		} else {
+			health.ConfigCheck.Executed = true
+			health.ConfigCheck.ServerValue = serverValue
+			host, matches := endpointHostMatchesFloatingIP(serverValue, floatingIPs)
+			health.ConfigCheck.UsesFloatingIP = matches
+			if matches {
+				msg := fmt.Sprintf("RKE2 config server endpoint uses kube-vip floating IP %s", host)
+				health.ConfigCheck.Reason = msg
+				alarmCheckUp("kube_vip_rke2_server", msg, false)
+			} else {
+				msg := fmt.Sprintf("RKE2 config server endpoint (%s) does not use kube-vip floating IP (%s)", serverValue, strings.Join(floatingIPs, ", "))
+				health.ConfigCheck.Reason = msg
+				alarmCheckDown("kube_vip_rke2_server", msg, false, "", "")
+			}
+		}
+	}
+
 	return health, nil // Return health, error primarily for client init or major issues
 }
 
@@ -1099,9 +1339,9 @@ func CleanupOrphanedAlarms() error {
 		return fmt.Errorf("error reading tmp directory: %w", err)
 	}
 
-    var podLogsCleaned int
-    var containerLogsCleaned int
-    var simpleContainerLogsCleaned int
+	var podLogsCleaned int
+	var containerLogsCleaned int
+	var simpleContainerLogsCleaned int
 
 	// Look for log files that match our patterns but are no longer current
 	for _, file := range files {
@@ -1188,65 +1428,65 @@ func CleanupOrphanedAlarms() error {
 		}
 	}
 
-    // Additionally, cleanup orphaned alarm keys from the SQLite health DB
-    // This removes stale entries like "<ns>-<pod>_pod_status" and container variants
-    db := healthdb.Get()
-    type keyRow struct{ K string }
-    var rows []keyRow
-    if err := db.Model(&healthdb.KVEntry{}).
-        Select("k").
-        Where("module = ?", "alarm").
-        Find(&rows).Error; err != nil {
-        log.Error().
-            Str("component", "k8sHealth").
-            Str("operation", "cleanup_orphaned_alarms").
-            Err(err).
-            Msg("Error querying alarm keys from health DB")
-    } else {
-        var dbPodKeysDeleted int
-        var dbContainerKeysDeleted int
-        for _, r := range rows {
-            key := r.K
-            // Only consider keys created by k8sHealth
-            if strings.HasSuffix(key, "_pod_status") {
-                if !existingPods[key] {
-                    if err := healthdb.Delete("alarm", key); err != nil {
-                        log.Error().
-                            Str("component", "k8sHealth").
-                            Str("operation", "cleanup_orphaned_alarms").
-                            Str("db_key", key).
-                            Err(err).
-                            Msg("Error deleting orphaned pod alarm key from DB")
-                    } else {
-                        dbPodKeysDeleted++
-                    }
-                }
-            } else if strings.HasSuffix(key, "_container_status") || strings.HasSuffix(key, "_init_container_status") {
-                if !existingContainers[key] {
-                    if err := healthdb.Delete("alarm", key); err != nil {
-                        log.Error().
-                            Str("component", "k8sHealth").
-                            Str("operation", "cleanup_orphaned_alarms").
-                            Str("db_key", key).
-                            Err(err).
-                            Msg("Error deleting orphaned container alarm key from DB")
-                    } else {
-                        dbContainerKeysDeleted++
-                    }
-                }
-            }
-        }
-        if dbPodKeysDeleted > 0 || dbContainerKeysDeleted > 0 {
-            log.Debug().
-                Str("component", "k8sHealth").
-                Str("operation", "cleanup_orphaned_alarms").
-                Int("db_pod_keys_deleted", dbPodKeysDeleted).
-                Int("db_container_keys_deleted", dbContainerKeysDeleted).
-                Msg("Removed orphaned alarm keys from DB")
-        }
-    }
+	// Additionally, cleanup orphaned alarm keys from the SQLite health DB
+	// This removes stale entries like "<ns>-<pod>_pod_status" and container variants
+	db := healthdb.Get()
+	type keyRow struct{ K string }
+	var rows []keyRow
+	if err := db.Model(&healthdb.KVEntry{}).
+		Select("k").
+		Where("module = ?", "alarm").
+		Find(&rows).Error; err != nil {
+		log.Error().
+			Str("component", "k8sHealth").
+			Str("operation", "cleanup_orphaned_alarms").
+			Err(err).
+			Msg("Error querying alarm keys from health DB")
+	} else {
+		var dbPodKeysDeleted int
+		var dbContainerKeysDeleted int
+		for _, r := range rows {
+			key := r.K
+			// Only consider keys created by k8sHealth
+			if strings.HasSuffix(key, "_pod_status") {
+				if !existingPods[key] {
+					if err := healthdb.Delete("alarm", key); err != nil {
+						log.Error().
+							Str("component", "k8sHealth").
+							Str("operation", "cleanup_orphaned_alarms").
+							Str("db_key", key).
+							Err(err).
+							Msg("Error deleting orphaned pod alarm key from DB")
+					} else {
+						dbPodKeysDeleted++
+					}
+				}
+			} else if strings.HasSuffix(key, "_container_status") || strings.HasSuffix(key, "_init_container_status") {
+				if !existingContainers[key] {
+					if err := healthdb.Delete("alarm", key); err != nil {
+						log.Error().
+							Str("component", "k8sHealth").
+							Str("operation", "cleanup_orphaned_alarms").
+							Str("db_key", key).
+							Err(err).
+							Msg("Error deleting orphaned container alarm key from DB")
+					} else {
+						dbContainerKeysDeleted++
+					}
+				}
+			}
+		}
+		if dbPodKeysDeleted > 0 || dbContainerKeysDeleted > 0 {
+			log.Debug().
+				Str("component", "k8sHealth").
+				Str("operation", "cleanup_orphaned_alarms").
+				Int("db_pod_keys_deleted", dbPodKeysDeleted).
+				Int("db_container_keys_deleted", dbContainerKeysDeleted).
+				Msg("Removed orphaned alarm keys from DB")
+		}
+	}
 
-    log.Debug().
+	log.Debug().
 		Str("component", "k8sHealth").
 		Str("operation", "cleanup_orphaned_alarms").
 		Int("pod_logs_cleaned", podLogsCleaned).

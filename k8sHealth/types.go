@@ -173,6 +173,18 @@ type FloatingIPCheck struct {
 	TestType    string // "ingress" or "kube-vip"
 }
 
+// KubeVipConfigCheck captures whether RKE2 config.yaml is using the kube-vip floating IP
+type KubeVipConfigCheck struct {
+	ConfigPath      string
+	ServerValue     string
+	UsesFloatingIP  bool
+	FloatingIPs     []string
+	MasterNodeCount int
+	Executed        bool
+	Reason          string
+	Error           string
+}
+
 // CertManagerHealth holds information about Cert-Manager
 type CertManagerHealth struct {
 	NamespaceAvailable bool
@@ -190,9 +202,11 @@ type CertificateInfo struct {
 
 // KubeVipHealth holds information about Kube-VIP
 type KubeVipHealth struct {
-	PodsAvailable    bool
-	FloatingIPChecks []FloatingIPCheck
-	Error            string
+	PodsAvailable       bool
+	FloatingIPChecks    []FloatingIPCheck
+	DetectedFloatingIPs []string
+	ConfigCheck         *KubeVipConfigCheck
+	Error               string
 }
 
 // ClusterApiCertHealth holds information about the Kube API server certificate

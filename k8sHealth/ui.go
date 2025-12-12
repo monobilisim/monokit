@@ -302,6 +302,27 @@ func (khd *K8sHealthData) RenderCompact() string {
 					sb.WriteString("\n")
 				}
 			}
+			if khd.KubeVip.ConfigCheck != nil {
+				cfg := khd.KubeVip.ConfigCheck
+				if cfg.Error != "" {
+					sb.WriteString(common.SimpleStatusListItem("RKE2 server uses kube-vip VIP", "Error", false))
+					sb.WriteString(fmt.Sprintf("\n    └─ %s\n", cfg.Error))
+				} else if !cfg.Executed {
+					if cfg.Reason != "" {
+						sb.WriteString(fmt.Sprintf("  RKE2 server endpoint check: %s\n", cfg.Reason))
+					}
+				} else {
+					sb.WriteString(common.SimpleStatusListItem(
+						"RKE2 server uses kube-vip VIP",
+						cfg.ServerValue,
+						cfg.UsesFloatingIP,
+					))
+					sb.WriteString("\n")
+					if cfg.Reason != "" {
+						sb.WriteString(fmt.Sprintf("    └─ %s\n", cfg.Reason))
+					}
+				}
+			}
 		}
 	}
 	// Note: If khd.KubeVip is nil, kube-vip checking is disabled and we skip this section
