@@ -1,5 +1,6 @@
 frequency: 60 # Frequency to run health checks in seconds
 debug: false # Enable debug logging
+monokit_upgrade: true # If false, skip daily monokit version/update check
 health_checks:
   - name: mysqlHealth
     enabled: true
