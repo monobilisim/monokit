@@ -93,9 +93,9 @@ func Main(cmd *cobra.Command, args []string) {
 	version := "4.0.0"
 	common.ScriptName = "pgsqlHealth"
 
-	// Check if user is postgres
-	if os.Getenv("USER") != "postgres" {
-		log.Error().Msg("This script must be run as the postgres user")
+	// Check if user is postgres or iasdb
+	if os.Getenv("USER") != "postgres" && os.Getenv("USER") != "iasdb" {
+		log.Error().Msg("This script must be run as the postgres or iasdb user")
 		return
 	}
 
