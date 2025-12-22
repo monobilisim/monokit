@@ -78,9 +78,17 @@ func Main(cmd *cobra.Command, args []string) {
 	healthData = NewMySQLHealthData()
 	healthData.Version = version
 
-	if DbHealthConfig.Mysql.Cluster.Enabled && (DbHealthConfig.Mysql.Cluster.Check_table_day == "" || DbHealthConfig.Mysql.Cluster.Check_table_hour == "") {
-		DbHealthConfig.Mysql.Cluster.Check_table_day = "Sun"
-		DbHealthConfig.Mysql.Cluster.Check_table_hour = "05:00"
+	// Backward compatibility: If check_table is not explicitly enabled in its own section,
+	// but check_table_day is defined under cluster, treat it as enabled and use those values.
+	if !DbHealthConfig.Mysql.Check_table.Enabled && DbHealthConfig.Mysql.Cluster.Check_table_day != "" {
+		DbHealthConfig.Mysql.Check_table.Enabled = true
+		DbHealthConfig.Mysql.Check_table.Check_table_day = DbHealthConfig.Mysql.Cluster.Check_table_day
+		DbHealthConfig.Mysql.Check_table.Check_table_hour = DbHealthConfig.Mysql.Cluster.Check_table_hour
+	}
+
+	if DbHealthConfig.Mysql.Check_table.Enabled && (DbHealthConfig.Mysql.Check_table.Check_table_day == "" || DbHealthConfig.Mysql.Check_table.Check_table_hour == "") {
+		DbHealthConfig.Mysql.Check_table.Check_table_day = "Sun"
+		DbHealthConfig.Mysql.Check_table.Check_table_hour = "05:00"
 	}
 
 	// Set cluster enabled status in health data
@@ -153,8 +161,10 @@ func Main(cmd *cobra.Command, args []string) {
 	}
 
 	// check if time matches to configured time
-	if time.Now().Weekday().String() == DbHealthConfig.Mysql.Cluster.Check_table_day && time.Now().Format("15:04") == DbHealthConfig.Mysql.Cluster.Check_table_hour {
-		CheckDB()
+	if DbHealthConfig.Mysql.Check_table.Enabled {
+		if time.Now().Weekday().String() == DbHealthConfig.Mysql.Check_table.Check_table_day && time.Now().Format("15:04") == DbHealthConfig.Mysql.Check_table.Check_table_hour {
+			CheckDB()
+		}
 	}
 
 	// Check PMM status if configured

@@ -9,6 +9,11 @@ type Mysql struct {
 		Check_table_day  string
 		Check_table_hour string
 	}
+	Check_table struct {
+		Enabled          bool
+		Check_table_day  string
+		Check_table_hour string
+	}
 	Alarm struct {
 		Enabled bool
 	}
