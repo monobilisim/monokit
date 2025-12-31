@@ -1,8 +1,6 @@
 module github.com/monobilisim/monokit
 
-go 1.24.0
-
-toolchain go1.24.3
+go 1.24.3
 
 require (
 	github.com/MicahParks/keyfunc v1.9.0
@@ -113,6 +111,7 @@ require (
 	github.com/mattn/go-localereader v0.0.1 // indirect
 	github.com/mattn/go-runewidth v0.0.16 // indirect
 	github.com/mattn/go-sqlite3 v1.14.22 // indirect
+	github.com/microsoft/wmi v0.38.3 // indirect
 	github.com/mitchellh/go-testing-interface v1.14.1 // indirect
 	github.com/mitchellh/mapstructure v1.5.0 // indirect
 	github.com/moby/docker-image-spec v1.3.1 // indirect

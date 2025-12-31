@@ -101,6 +101,14 @@ bin/monokit-with-api: .FORCE
 	fi
 	@echo "$(GREEN)Build complete: bin/monokit (with API)$(RESET)"
 
+# Build for Windows
+windows: .FORCE
+	@echo "$(BLUE)Building monokit for Windows...$(RESET)"
+	@mkdir -p bin
+	@rm -f bin/monokit.exe
+	GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build -tags "" -o bin/monokit.exe .
+	@echo "$(GREEN)Build complete: bin/monokit.exe$(RESET)"
+
 # Install minimal build
 install: bin/monokit
 	@echo "$(BLUE)Installing minimal monokit...$(RESET)"

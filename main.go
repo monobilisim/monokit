@@ -26,6 +26,7 @@ import (
 	"github.com/monobilisim/monokit/shutdownNotifier"
 	"github.com/monobilisim/monokit/sshNotifier"
 	"github.com/monobilisim/monokit/ufwApply"
+	"github.com/monobilisim/monokit/winHealth"
 )
 
 var RootCmd = &cobra.Command{
@@ -77,6 +78,12 @@ func main() {
 		Use:   "osHealth",
 		Short: "OS Health",
 		Run:   osHealth.Main,
+	}
+
+	var winHealthCmd = &cobra.Command{
+		Use:   "winHealth",
+		Short: "Windows Health",
+		Run:   winHealth.Main,
 	}
 
 	var redmineCmd = &cobra.Command{
@@ -328,6 +335,7 @@ func main() {
 
 	/// OS Health
 	RootCmd.AddCommand(osHealthCmd)
+	RootCmd.AddCommand(winHealthCmd)
 
 	/// Vault Health
 	VaultCommandAdd()

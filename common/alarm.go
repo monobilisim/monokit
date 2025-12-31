@@ -193,13 +193,20 @@ func Alarm(m string, customStream string, customTopic string, onlyFirstWebhook b
 		return
 	}
 
-	message := strings.Replace(m, "\n", `\n`, -1)
-	body := []byte(`{"text":"` + message + `"}`)
+	// Use json.Marshal to ensure all characters (newlines, quotes, backslashes) are properly escaped.
+	payload := map[string]string{
+		"text": m,
+	}
+	body, err := json.Marshal(payload)
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to marshal alarm body")
+		return
+	}
 
 	log.Debug().
 		Str("component", "alarm").
 		Str("action", "send").
-		Str("message", message).
+		Str("message", m).
 		Str("custom_stream", customStream).
 		Str("custom_topic", customTopic).
 		Bool("only_first_webhook", onlyFirstWebhook).
@@ -334,7 +341,7 @@ func Alarm(m string, customStream string, customTopic string, onlyFirstWebhook b
 	log.Debug().
 		Str("component", "alarm").
 		Str("action", "send_complete").
-		Str("message", message).
+		Str("message", m).
 		Int("success_count", successCount).
 		Int("error_count", errorCount).
 		Int("total_webhooks", len(Config.Alarm.Webhook_urls)).

@@ -1,20 +1,21 @@
 package common
 
 import (
-    "bufio"
-    "fmt"
-    "math"
-    "os"
-    "os/exec"
-    "path/filepath"
-    "strconv"
-    "strings"
-    "time"
-    "unicode"
+	"bufio"
+	"fmt"
+	"math"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strconv"
+	"strings"
+	"time"
+	"unicode"
 
-    "github.com/rs/zerolog"
-    "github.com/rs/zerolog/log"
-    lumberjack "gopkg.in/natefinch/lumberjack.v2"
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
+	lumberjack "gopkg.in/natefinch/lumberjack.v2"
 )
 
 var Config Common
@@ -129,6 +130,13 @@ func Init() {
 	}
 
 	// Create TmpDir if it doesn't exist
+	if runtime.GOOS == "windows" {
+		// If TmpDir is not pointing to a valid location, default to system temp
+		if TmpDir == "" || strings.HasPrefix(TmpDir, "/tmp") {
+			TmpDir = filepath.Join(os.TempDir(), "monokit")
+		}
+	}
+
 	if _, err := os.Stat(TmpDir); os.IsNotExist(err) {
 		err = os.MkdirAll(TmpDir, 0755)
 
@@ -243,29 +251,44 @@ func InitZerolog() {
 	zerolog.ErrorFieldName = "error"
 
 	// Determine log file path
+	// Determine log file path
 	logfilePath := "/var/log/monokit.log"
-	if userMode {
-		xdgStateHome := os.Getenv("XDG_STATE_HOME")
-		if xdgStateHome == "" {
-			xdgStateHome = os.Getenv("HOME") + "/.local/state"
-		}
 
-		// Create the directory if it doesn't exist
-		if _, err := os.Stat(xdgStateHome + "/monokit"); os.IsNotExist(err) {
-			os.MkdirAll(xdgStateHome+"/monokit", 0755)
+	if runtime.GOOS == "windows" {
+		logfilePath = "C:\\ProgramData\\mono\\monokit.log"
+		if userMode {
+			home := os.Getenv("USERPROFILE")
+			logfilePath = filepath.Join(home, "AppData", "Local", "monokit", "monokit.log")
 		}
+		// Ensure directory exists
+		logDir := filepath.Dir(logfilePath)
+		if _, err := os.Stat(logDir); os.IsNotExist(err) {
+			os.MkdirAll(logDir, 0755)
+		}
+	} else {
+		if userMode {
+			xdgStateHome := os.Getenv("XDG_STATE_HOME")
+			if xdgStateHome == "" {
+				xdgStateHome = os.Getenv("HOME") + "/.local/state"
+			}
 
-		logfilePath = xdgStateHome + "/monokit/monokit.log"
+			// Create the directory if it doesn't exist
+			if _, err := os.Stat(xdgStateHome + "/monokit"); os.IsNotExist(err) {
+				os.MkdirAll(xdgStateHome+"/monokit", 0755)
+			}
+
+			logfilePath = xdgStateHome + "/monokit/monokit.log"
+		}
 	}
 
-    // Ensure we can create/write the log file (permission check)
-    var fileUsable bool = true
-    if f, err := os.OpenFile(logfilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666); err != nil {
-        fmt.Fprintf(os.Stderr, "Failed to open log file %s: %v, using stdout only\n", logfilePath, err)
-        fileUsable = false
-    } else {
-        _ = f.Close()
-    }
+	// Ensure we can create/write the log file (permission check)
+	var fileUsable bool = true
+	if f, err := os.OpenFile(logfilePath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to open log file %s: %v, using stdout only\n", logfilePath, err)
+		fileUsable = false
+	} else {
+		_ = f.Close()
+	}
 
 	// Create console writer for pretty stdout output
 	consoleWriter := zerolog.ConsoleWriter{
@@ -277,27 +300,27 @@ func InitZerolog() {
 		},
 	}
 
-    // Configure size- and age-based rotation with lumberjack
-    maxSizeMB := getEnvInt("MONOKIT_LOG_MAX_SIZE_MB", 100)        // default 100 MB
-    maxBackups := getEnvInt("MONOKIT_LOG_MAX_BACKUPS", 7)         // default 7 files
-    retentionDays := getEnvInt("MONOKIT_LOG_RETENTION_DAYS", 20) // default 20 days
-    compress := getEnvBool("MONOKIT_LOG_COMPRESS", true)
+	// Configure size- and age-based rotation with lumberjack
+	maxSizeMB := getEnvInt("MONOKIT_LOG_MAX_SIZE_MB", 100)       // default 100 MB
+	maxBackups := getEnvInt("MONOKIT_LOG_MAX_BACKUPS", 7)        // default 7 files
+	retentionDays := getEnvInt("MONOKIT_LOG_RETENTION_DAYS", 20) // default 20 days
+	compress := getEnvBool("MONOKIT_LOG_COMPRESS", true)
 
-    var output zerolog.LevelWriter
-    if fileUsable {
-        lj := &lumberjack.Logger{
-            Filename:   logfilePath,
-            MaxSize:    maxSizeMB,
-            MaxBackups: maxBackups,
-            MaxAge:     retentionDays,
-            Compress:   compress,
-        }
-        // Write pretty to stdout and JSON to rotating file
-        output = zerolog.MultiLevelWriter(consoleWriter, lj)
-    } else {
-        // Fallback to stdout only
-        output = zerolog.MultiLevelWriter(consoleWriter)
-    }
+	var output zerolog.LevelWriter
+	if fileUsable {
+		lj := &lumberjack.Logger{
+			Filename:   logfilePath,
+			MaxSize:    maxSizeMB,
+			MaxBackups: maxBackups,
+			MaxAge:     retentionDays,
+			Compress:   compress,
+		}
+		// Write pretty to stdout and JSON to rotating file
+		output = zerolog.MultiLevelWriter(consoleWriter, lj)
+	} else {
+		// Fallback to stdout only
+		output = zerolog.MultiLevelWriter(consoleWriter)
+	}
 
 	// Create base logger with rich context
 	logger := zerolog.New(output).
@@ -340,18 +363,18 @@ func InitZerolog() {
 			Msg("API log submission hook disabled")
 	}
 
-    // Set the global logger
+	// Set the global logger
 	log.Logger = finalLogger
 
-    // Log successful initialization with comprehensive context
+	// Log successful initialization with comprehensive context
 	log.Debug().
 		Str("component", "logging").
 		Str("level", level.String()).
 		Str("log_file", logfilePath).
-        Int("max_size_mb", maxSizeMB).
-        Int("max_backups", maxBackups).
-        Int("retention_days", retentionDays).
-        Bool("compress", compress).
+		Int("max_size_mb", maxSizeMB).
+		Int("max_backups", maxBackups).
+		Int("retention_days", retentionDays).
+		Bool("compress", compress).
 		Bool("user_mode", userMode).
 		Bool("colors_enabled", !(os.Getenv("MONOKIT_NOCOLOR") == "true" || os.Getenv("MONOKIT_NOCOLOR") == "1")).
 		Bool("api_hook_enabled", apiHook.GetSubmitter().enabled).
@@ -360,31 +383,31 @@ func InitZerolog() {
 
 // getEnvInt reads an integer environment variable with a default.
 func getEnvInt(name string, def int) int {
-    v := strings.TrimSpace(os.Getenv(name))
-    if v == "" {
-        return def
-    }
-    if n, err := strconv.Atoi(v); err == nil {
-        return n
-    }
-    return def
+	v := strings.TrimSpace(os.Getenv(name))
+	if v == "" {
+		return def
+	}
+	if n, err := strconv.Atoi(v); err == nil {
+		return n
+	}
+	return def
 }
 
 // getEnvBool reads a boolean environment variable with a default.
 // Accepts: 1/0, true/false, yes/no, on/off (case-insensitive)
 func getEnvBool(name string, def bool) bool {
-    v := strings.TrimSpace(strings.ToLower(os.Getenv(name)))
-    if v == "" {
-        return def
-    }
-    switch v {
-    case "1", "true", "yes", "on":
-        return true
-    case "0", "false", "no", "off":
-        return false
-    default:
-        return def
-    }
+	v := strings.TrimSpace(strings.ToLower(os.Getenv(name)))
+	if v == "" {
+		return def
+	}
+	switch v {
+	case "1", "true", "yes", "on":
+		return true
+	case "0", "false", "no", "off":
+		return false
+	default:
+		return def
+	}
 }
 
 func WriteToFile(filename string, data string) error {
