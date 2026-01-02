@@ -28,7 +28,7 @@ type Common struct {
 		Enabled     bool
 		Project_id  string
 		Tracker_id  int
-		Status_id   int
+		Status_id   string
 		Priority_id int
 		Interval    float64
 
