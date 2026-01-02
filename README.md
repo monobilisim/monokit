@@ -205,6 +205,13 @@ A log file will be put on `/var/log/monokit.log` if you want to check the errors
 
 If you use Monokit on a place where there is no proper color support, you can disable the color output by setting the `MONOKIT_NOCOLOR`  environment variable to `true` or `1`.
 
+### Windows
+
+- Copy the Windows config templates (`config/win.yaml` and `config/global.yml`) from the release archive to `C:\\ProgramData\\mono\\` or next to `monokit.exe` inside a `config` folder.
+- Run `monokit.exe winHealth` from an elevated terminal to collect and report Windows health data.
+- Enable Windows service monitoring by setting `services.enabled: true` in `win.yaml`; use `include`, `exclude`, and `status` lists to scope which services are reported.
+- License expiry alerts use the `license.expiration_limit` value in `win.yaml` (defaults to 30 days).
+
 ---
 
 ## Kubernetes Deployment

@@ -127,6 +127,7 @@ archives:
       - README.md
       - LICENSE
       - config/*.yml
+      - config/*.yaml
     
   # Monokit with API support (Linux only)
   - id: withapi
@@ -137,6 +138,7 @@ archives:
       - README.md
       - LICENSE
       - config/*.yml
+      - config/*.yaml
 
   # k8sHealth plugin (all platforms)
   - id: k8sHealth
