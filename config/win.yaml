@@ -1,0 +1,36 @@
+filesystems:
+- NTFS
+- ReFS
+- exFAT
+- FAT32
+
+excluded_mountpoints: []
+
+system_load_and_ram: true
+
+part_use_limit: 90
+
+top_processes:
+  load_enabled: true
+  load_processes: 15
+  ram_enabled: true
+  ram_processes: 15
+
+load:
+  limit_multiplier: 1
+  issue_interval: 15
+  issue_multiplier: 1
+
+ram_limit: 90
+
+services:
+  enabled: false
+  include: []
+  exclude: []
+  status: []
+
+alarm:
+  enabled: true
+
+license:
+  expiration_limit: 30
