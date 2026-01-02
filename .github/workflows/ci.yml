@@ -10,6 +10,46 @@ on:
     branches: [ main, master ]
 
 jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@main
+
+      - uses: actions/setup-go@main
+        with:
+          go-version: stable
+
+      - name: Run Windows winHealth build test
+        run: |
+          go test ./winHealth
+        env:
+          CGO_ENABLED: 0
+        shell: bash
+
+      - name: Get version from git
+        id: version
+        run: |
+          if [ "${{ github.ref }}" == "refs/heads/main" ] || [ "${{ github.ref }}" == "refs/heads/master" ]; then
+            VERSION="dev"
+          else
+            VERSION=$(git describe --tags --always --dirty 2>/dev/null || echo "dev")
+          fi
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+        shell: bash
+
+      - name: Build Windows binary
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          go build -o monokit.exe -ldflags="-X github.com/monobilisim/monokit/common.MonokitVersion=${VERSION}" -tags="" .
+        env:
+          CGO_ENABLED: 0
+
+      - name: Upload Windows binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: monokit-windows-amd64
+          path: monokit.exe
+
   test:
     runs-on: ubuntu-latest
     steps:
