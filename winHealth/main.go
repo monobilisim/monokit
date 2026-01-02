@@ -225,7 +225,7 @@ func collectDiskInfo() []DiskInfo {
 		id := issues.Show("disk")
 
 		if id != "" {
-			fullMsg = fullMsg + "\n\n" + "Redmine Issue: " + common.Config.Redmine.Url + "/issues/" + id
+			fullMsg = fullMsg + "\n\n" + "Redmine Issue: " + common.GetRedmineDisplayUrl() + "/issues/" + id
 			common.AlarmCheckUp("disk_redmineissue", "Redmine issue exists for disk usage", false)
 		} else {
 			log.Debug().Msg("osHealth/main.go: issues.Show(\"disk\") returned empty. Proceeding without Redmine link in alarm.")

@@ -32,8 +32,9 @@ type Common struct {
 		Priority_id int
 		Interval    float64
 
-		Api_key string
-		Url     string
+		Api_key     string
+		Url         string
+		Display_url string
 	}
 }
 
@@ -111,6 +112,13 @@ func ConfInit(configName string, config interface{}) interface{} {
 	}
 
 	return config
+}
+
+func GetRedmineDisplayUrl() string {
+	if Config.Redmine.Display_url != "" {
+		return Config.Redmine.Display_url
+	}
+	return strings.Replace(Config.Redmine.Url, "://api.", "://", 1)
 }
 
 // expandEnvInMap recursively expands environment variables in nested map structures

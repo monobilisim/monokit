@@ -358,7 +358,7 @@ func ZFSHealth() []ZFSPoolInfo {
 				common.AlarmCheckDown("zfs_health", message, false, "", "")
 			} else {
 				common.AlarmCheckUp("zfs_health_redmineissue", "Redmine issue has been created for ZFS health", false)
-				message = message + "\n\n" + "Redmine Issue: " + common.Config.Redmine.Url + "/issues/" + id
+				message = message + "\n\n" + "Redmine Issue: " + common.GetRedmineDisplayUrl() + "/issues/" + id
 				common.AlarmCheckDown("zfs_health", message, false, "", "")
 			}
 		}

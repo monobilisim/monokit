@@ -147,7 +147,7 @@ func collectHealthData(version string) *HealthData {
 		issues.CheckDown("zfsdataset", subject, tableOnly, false, 0)
 		id := issues.Show("zfsdataset")
 		if id != "" {
-			fullMsg = fullMsg + "\n\n" + "Redmine Issue: " + common.Config.Redmine.Url + "/issues/" + id
+			fullMsg = fullMsg + "\n\n" + "Redmine Issue: " + common.GetRedmineDisplayUrl() + "/issues/" + id
 			common.AlarmCheckUp("zfsdataset_redmineissue", "Redmine issue exists for ZFS dataset usage", false)
 		} else {
 			log.Debug().Msg("osHealth/main.go: issues.Show(\"zfsdataset\") returned empty. Proceeding without Redmine link in alarm.")
@@ -199,7 +199,7 @@ func collectDiskInfo() []DiskInfo {
 		id := issues.Show("disk")
 
 		if id != "" {
-			fullMsg = fullMsg + "\n\n" + "Redmine Issue: " + common.Config.Redmine.Url + "/issues/" + id
+			fullMsg = fullMsg + "\n\n" + "Redmine Issue: " + common.GetRedmineDisplayUrl() + "/issues/" + id
 			common.AlarmCheckUp("disk_redmineissue", "Redmine issue exists for disk usage", false)
 		} else {
 			log.Debug().Msg("osHealth/main.go: issues.Show(\"disk\") returned empty. Proceeding without Redmine link in alarm.")
