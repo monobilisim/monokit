@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"time"
 
@@ -33,6 +34,34 @@ type KVEntry struct {
 
 // getDefaultDBPath chooses a persistent location when possible, otherwise falls back to tmp.
 func getDefaultDBPath() string {
+	if runtime.GOOS == "windows" {
+		// Windows specific logic
+		// Check environment first (similar to user mode check)
+		// We can't easily check 'root' on Windows in same way, but let's try ProgramData first
+		programData := os.Getenv("ProgramData")
+		if programData == "" {
+			programData = "C:\\ProgramData"
+		}
+		sysPath := filepath.Join(programData, "mono")
+		// Try to create/access system path
+		if err := os.MkdirAll(sysPath, 0755); err == nil {
+			return filepath.Join(sysPath, "health.db")
+		}
+
+		// Fallback to AppData (User mode)
+		appData := os.Getenv("LOCALAPPDATA")
+		if appData != "" {
+			userPath := filepath.Join(appData, "monokit")
+			_ = os.MkdirAll(userPath, 0755)
+			return filepath.Join(userPath, "health.db")
+		}
+
+		// Fallback to Temp
+		tmp := filepath.Join(os.TempDir(), "monokit")
+		_ = os.MkdirAll(tmp, 0755)
+		return filepath.Join(tmp, "health.db")
+	}
+
 	// Prefer XDG state dir for non-root users
 	if os.Geteuid() != 0 {
 		xdgState := os.Getenv("XDG_STATE_HOME")

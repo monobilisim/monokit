@@ -1,12 +1,10 @@
-go 1.24.0
-
-toolchain go1.24.3
+go 1.24.3
 
 use (
 	.
 	./k8sHealth
+	./pritunlHealth
 	./redisHealth
 	./wppconnectHealth
-	./pritunlHealth
 	./zimbraHealth
 )

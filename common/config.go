@@ -2,6 +2,8 @@ package common
 
 import (
 	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 
 	"github.com/rs/zerolog/log"
@@ -30,18 +32,33 @@ type Common struct {
 		Priority_id int
 		Interval    float64
 
-		Api_key string
-		Url     string
+		Api_key     string
+		Url         string
+		Display_url string
 	}
 }
 
 func ConfExists(configName string) bool {
 	yamlFiles := [2]string{configName + ".yaml", configName + ".yml"}
+	var configPaths []string
 
-	for _, file := range yamlFiles {
-		// Check if the file exists
-		if _, err := os.Stat("/etc/mono/" + file); err == nil {
-			return true
+	if runtime.GOOS == "windows" {
+		exePath, err := os.Executable()
+		if err == nil {
+			configPaths = append(configPaths, filepath.Dir(exePath)+"\\config")
+			configPaths = append(configPaths, filepath.Dir(exePath))
+		}
+		configPaths = append(configPaths, "C:\\ProgramData\\mono")
+	} else {
+		configPaths = append(configPaths, "/etc/mono")
+	}
+
+	for _, path := range configPaths {
+		for _, file := range yamlFiles {
+			// Check if the file exists
+			if _, err := os.Stat(filepath.Join(path, file)); err == nil {
+				return true
+			}
 		}
 	}
 
@@ -50,7 +67,19 @@ func ConfExists(configName string) bool {
 
 func ConfInit(configName string, config interface{}) interface{} {
 	viper.SetConfigName(configName)
-	viper.AddConfigPath("/etc/mono")
+
+	if runtime.GOOS == "windows" {
+		// On Windows, look in the directory of the executable, and ProgramData
+		exePath, err := os.Executable()
+		if err == nil {
+			viper.AddConfigPath(filepath.Dir(exePath) + "\\config")
+			viper.AddConfigPath(filepath.Dir(exePath))
+		}
+		viper.AddConfigPath("C:\\ProgramData\\mono")
+	} else {
+		viper.AddConfigPath("/etc/mono")
+	}
+
 	viper.SetConfigType("yaml")
 
 	viper.SetDefault("alarm.interval", 3)
@@ -83,6 +112,13 @@ func ConfInit(configName string, config interface{}) interface{} {
 	}
 
 	return config
+}
+
+func GetRedmineDisplayUrl() string {
+	if Config.Redmine.Display_url != "" {
+		return Config.Redmine.Display_url
+	}
+	return strings.Replace(Config.Redmine.Url, "://api.", "://", 1)
 }
 
 // expandEnvInMap recursively expands environment variables in nested map structures

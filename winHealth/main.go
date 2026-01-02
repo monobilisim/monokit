@@ -1,4 +1,4 @@
-package osHealth
+package winHealth
 
 import (
 	"fmt"
@@ -18,26 +18,26 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// OsHealthProvider implements the health.Provider interface
-type OsHealthProvider struct{}
+// WinHealthProvider implements the health.Provider interface
+type WinHealthProvider struct{}
 
 // Name returns the name of the provider
-func (p *OsHealthProvider) Name() string {
-	return "osHealth"
+func (p *WinHealthProvider) Name() string {
+	return "winHealth"
 }
 
 // Collect gathers OS health data.
 // The 'hostname' parameter is ignored for osHealth as it collects local data.
-func (p *OsHealthProvider) Collect(_ string) (interface{}, error) {
+func (p *WinHealthProvider) Collect(_ string) (interface{}, error) {
 	// Initialize config if not already done (e.g. if called directly, not via CLI)
 	// This is a simplified approach; a more robust solution might involve a dedicated config loader.
-	if OsHealthConfig.Load.Issue_Multiplier == 0 { // Check if config is uninitialized
-		common.ConfInit("os", &OsHealthConfig) // Load "os" config into OsHealthConfig
-		if OsHealthConfig.Load.Issue_Multiplier == 0 {
-			OsHealthConfig.Load.Issue_Multiplier = 1
+	if WinHealthConfig.Load.Issue_Multiplier == 0 { // Check if config is uninitialized
+		common.ConfInit("win", &WinHealthConfig) // Load "win" config into WinHealthConfig
+		if WinHealthConfig.Load.Issue_Multiplier == 0 {
+			WinHealthConfig.Load.Issue_Multiplier = 1
 		}
-		if OsHealthConfig.Load.Issue_Interval == 0 {
-			OsHealthConfig.Load.Issue_Interval = 15
+		if WinHealthConfig.Load.Issue_Interval == 0 {
+			WinHealthConfig.Load.Issue_Interval = 15
 		}
 	}
 	return collectHealthData("api"), nil // "api" as version, or make version dynamic
@@ -45,11 +45,11 @@ func (p *OsHealthProvider) Collect(_ string) (interface{}, error) {
 
 func init() {
 	common.RegisterComponent(common.Component{
-		Name:       "osHealth",
+		Name:       "winHealth",
 		EntryPoint: Main,
-		Platform:   "any", // Runs on multiple OS, specific features checked internally
+		Platform:   "windows", // Only runs on Windows
 	})
-	health.Register(&OsHealthProvider{})
+	health.Register(&WinHealthProvider{})
 }
 
 type ProcessInfo struct {
@@ -63,39 +63,47 @@ type ProcessInfo struct {
 var allProcesses []ProcessInfo
 
 // types.go
-var OsHealthConfig OsHealth
+var WinHealthConfig WinHealth
 
 func Main(cmd *cobra.Command, args []string) {
-	if runtime.GOOS == "windows" {
-		fmt.Println("osHealth is not supported on Windows. Use winHealth instead.")
+	if runtime.GOOS != "windows" {
+		fmt.Println("winHealth is only supported on Windows. Use osHealth for Linux/macOS.")
 		return
 	}
 
 	version := "2.3.0"
-	common.ScriptName = "osHealth"
-	common.TmpDir = common.TmpDir + "osHealth"
+	common.ScriptName = "winHealth"
+	common.TmpDir = common.TmpDir + "winHealth"
 	common.Init()
-	common.ConfInit("os", &OsHealthConfig)
+	common.ConfInit("win", &WinHealthConfig)
 
 	// Check service status with the Monokit server.
 	// This initializes common.ClientURL, common.Config.Identifier,
 	// checks if the service is enabled, and handles updates.
-	common.WrapperGetServiceStatus("osHealth")
+	common.WrapperGetServiceStatus("winHealth")
 
 	// Initialize configuration defaults
-	if OsHealthConfig.Load.Issue_Multiplier == 0 {
-		OsHealthConfig.Load.Issue_Multiplier = 1
+	if WinHealthConfig.Load.Issue_Multiplier == 0 {
+		WinHealthConfig.Load.Issue_Multiplier = 1
 	}
 
-	if OsHealthConfig.Load.Issue_Interval == 0 {
-		OsHealthConfig.Load.Issue_Interval = 15
+	if WinHealthConfig.Load.Issue_Interval == 0 {
+		WinHealthConfig.Load.Issue_Interval = 15
+	}
+
+	if WinHealthConfig.Load.Limit_Multiplier == 0 {
+		WinHealthConfig.Load.Limit_Multiplier = WinHealthConfig.Load.Issue_Multiplier
+	}
+
+	if WinHealthConfig.License.Expiration_Limit == 0 {
+		WinHealthConfig.License.Expiration_Limit = 30
 	}
 
 	// Collect health data
 	healthData := collectHealthData(version)
 
 	// Attempt to POST health data to the Monokit server
-	if err := common.PostHostHealth("osHealth", healthData); err != nil {
+	if err := common.PostHostHealth("winHealth", healthData); err != nil {
 		log.Error().Err(err).Msg("osHealth: failed to POST health data")
 		// Continue execution even if POST fails, e.g., to display UI locally
 	}
@@ -103,10 +111,6 @@ func Main(cmd *cobra.Command, args []string) {
 	// Display as a nice box UI
 	displayBoxUI(healthData)
 
-	// Process system logs in the background (Linux only)
-	if runtime.GOOS == "linux" {
-		SystemdLogs()
-	}
 }
 
 // collectHealthData gathers all the health information
@@ -127,41 +131,57 @@ func collectHealthData(version string) *HealthData {
 	// Collect memory information
 	healthData.Memory = collectMemoryInfo()
 
+	// Collect license status (Windows only via build tags)
+	healthData.License = GetWindowsLicenseStatus()
+
+	// License Alarm Check
+	log.Debug().Int("expiration_limit", WinHealthConfig.License.Expiration_Limit).Int("remaining_days", healthData.License.RemainingDays).Msg("Checking License Alarm")
+
+	if healthData.License.RemainingDays != -1 && healthData.License.RemainingDays < WinHealthConfig.License.Expiration_Limit {
+		// Alarm (Webhook) - English
+		msg := fmt.Sprintf("Windows License expires soon (%s remaining)", healthData.License.Remaining)
+
+		// Issue (Redmine) - Turkish Localization
+		statusTR := healthData.License.Status
+		if statusTR == "Licensed" {
+			statusTR = "Lisanslı"
+		} else if statusTR == "Unlicensed" {
+			statusTR = "Lisanssız"
+		} else if strings.Contains(statusTR, "Grace") {
+			statusTR = "Deneme Sürümü (Grace)"
+		} else if statusTR == "Notification" {
+			statusTR = "Bildirim Modu"
+		}
+
+		remainingTR := strings.ReplaceAll(healthData.License.Remaining, "days", "gün")
+		remainingTR = strings.ReplaceAll(remainingTR, "hours", "saat")
+
+		issueTitle := fmt.Sprintf("%s Windows Lisansı %d gün içinde bitiyor", common.Config.Identifier, healthData.License.RemainingDays)
+
+		issueMsg := fmt.Sprintf("Windows Lisans süresi dolmak üzere.\nMinimum Limit: %d gün\nDurum: %s\nKalan Süre: %s",
+			WinHealthConfig.License.Expiration_Limit,
+			statusTR,
+			remainingTR)
+
+		common.AlarmCheckDown("license", msg, false, "", "")
+		issues.CheckDown("license", issueTitle, issueMsg, false, 0)
+	} else {
+		// Clear issue if valid
+		remainingTR := strings.ReplaceAll(healthData.License.Remaining, "days", "gün")
+		remainingTR = strings.ReplaceAll(remainingTR, "hours", "saat")
+		remainingTR = strings.ReplaceAll(remainingTR, "Permanent", "Kalıcı")
+
+		common.AlarmCheckUp("license", fmt.Sprintf("Windows License is valid (%s remaining)", healthData.License.Remaining), false)
+		issues.CheckUp("license", fmt.Sprintf("Windows Lisansı geçerli (%s)", remainingTR))
+	}
+
 	// Collect system load
 	healthData.SystemLoad = collectSystemLoad()
 
-	// Collect ZFS info if available
-	healthData.ZFSPools = collectZFSInfo()
-
-	// Collect ZFS dataset info and handle alarms
-	healthData.ZFSDatasets = collectZFSDatasetInfo()
-	var exceededDatasets []ZFSDatasetInfo
-	for _, d := range healthData.ZFSDatasets {
-		if d.UsedPct > OsHealthConfig.Part_use_limit {
-			exceededDatasets = append(exceededDatasets, d)
-		}
-	}
-	if len(exceededDatasets) > 0 {
-		fullMsg, tableOnly := createExceededZFSDatasetTable(exceededDatasets)
-		subject := common.Config.Identifier + " için ZFS dataset doluluk seviyesi %" + strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64) + " üstüne çıktı"
-		issues.CheckDown("zfsdataset", subject, tableOnly, false, 0)
-		id := issues.Show("zfsdataset")
-		if id != "" {
-			fullMsg = fullMsg + "\n\n" + "Redmine Issue: " + common.GetRedmineDisplayUrl() + "/issues/" + id
-			common.AlarmCheckUp("zfsdataset_redmineissue", "Redmine issue exists for ZFS dataset usage", false)
-		} else {
-			log.Debug().Msg("osHealth/main.go: issues.Show(\"zfsdataset\") returned empty. Proceeding without Redmine link in alarm.")
-		}
-		common.AlarmCheckDown("zfsdataset", fullMsg, false, "", "")
-	} else if len(healthData.ZFSDatasets) > 0 {
-		common.AlarmCheckUp("zfsdataset", "All ZFS datasets are below "+strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64)+"% usage.", false)
-		issues.CheckUp("zfsdataset", common.Config.Identifier+" için bütün ZFS datasetleri "+strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64)+"% altına indi, kapatılıyor.")
-		common.AlarmCheckUp("zfsdataset_redmineissue", "ZFS dataset usage normal, clearing any Redmine issue creation failure alarm", false)
-	}
-
-	// Collect systemd unit information if on Linux
-	if runtime.GOOS == "linux" {
-		healthData.SystemdUnits = collectSystemdInfo()
+	// Collect Windows Services info
+	// Collect Windows Services info
+	if runtime.GOOS == "windows" && WinHealthConfig.Services.Enabled {
+		healthData.WindowsServices = collectWindowsServicesInfo()
 	}
 
 	return healthData
@@ -187,13 +207,19 @@ func collectDiskInfo() []DiskInfo {
 		return []DiskInfo{} // Return empty list on error
 	}
 
+	if len(gopsutilDiskPartitions) == 0 {
+		log.Warn().Msg("No disk partitions found via gopsutil")
+	} else {
+		log.Debug().Interface("partitions", gopsutilDiskPartitions).Msg("Found disk partitions")
+	}
+
 	// analyzeDiskPartitions now returns []DiskInfo, []DiskInfo
 	exceededDIs, allDIs := analyzeDiskPartitions(gopsutilDiskPartitions)
 
 	// Alarm and Redmine logic integrated here
 	if len(exceededDIs) > 0 {
 		fullMsg, tableOnly := createExceededTable(exceededDIs) // createExceededTable now takes []DiskInfo
-		subject := common.Config.Identifier + " için disk doluluk seviyesi %" + strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64) + " üstüne çıktı"
+		subject := common.Config.Identifier + " için disk doluluk seviyesi %" + strconv.FormatFloat(WinHealthConfig.Part_use_limit, 'f', 0, 64) + " üstüne çıktı"
 
 		issues.CheckDown("disk", subject, tableOnly, false, 0)
 		id := issues.Show("disk")
@@ -209,7 +235,7 @@ func collectDiskInfo() []DiskInfo {
 	} else {
 		fullMsg, tableOnly := createNormalTable(allDIs) // createNormalTable now takes []DiskInfo
 		common.AlarmCheckUp("disk", fullMsg, false)
-		issues.CheckUp("disk", common.Config.Identifier+" için bütün disk bölümleri "+strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64)+"% altına indi, kapatılıyor."+"\n\n"+tableOnly)
+		issues.CheckUp("disk", common.Config.Identifier+" için bütün disk bölümleri "+strconv.FormatFloat(WinHealthConfig.Part_use_limit, 'f', 0, 64)+"% altına indi, kapatılıyor."+"\n\n"+tableOnly)
 		common.AlarmCheckUp("disk_redmineissue", "Disk usage normal, clearing any Redmine issue creation failure alarm", false)
 	}
 
@@ -224,7 +250,7 @@ func collectMemoryInfo() MemoryInfo {
 	var issueMsg string
 
 	memInfo := MemoryInfo{
-		Limit: OsHealthConfig.Ram_Limit,
+		Limit: WinHealthConfig.Ram_Limit,
 	}
 
 	virtualMemory, err := GetVirtualMemory() // from osHealth/utils.go
@@ -237,20 +263,20 @@ func collectMemoryInfo() MemoryInfo {
 	memInfo.Used = common.ConvertBytes(virtualMemory.Used)
 	memInfo.Total = common.ConvertBytes(virtualMemory.Total)
 	memInfo.UsedPct = virtualMemory.UsedPercent
-	memInfo.Exceeded = virtualMemory.UsedPercent > OsHealthConfig.Ram_Limit // For UI
+	memInfo.Exceeded = virtualMemory.UsedPercent > WinHealthConfig.Ram_Limit // For UI
 
 	// Integrated Alarm and Redmine Logic from RamUsage()
-	ramLimit := OsHealthConfig.Ram_Limit // This is memInfo.Limit
+	ramLimit := WinHealthConfig.Ram_Limit // This is memInfo.Limit
 
-	if virtualMemory.UsedPercent > ramLimit && OsHealthConfig.Top_Processes.Ram_enabled {
+	if virtualMemory.UsedPercent > ramLimit && WinHealthConfig.Top_Processes.Ram_enabled {
 		if len(allProcesses) <= 0 {
 			allProcesses, err = GetTopProcesses()
 			if err != nil {
 				log.Error().Err(err).Msg("Error getting top processes")
 			}
 		}
-		if OsHealthConfig.Top_Processes.Ram_enabled {
-			topMemory = getTopProcessesBy(allProcesses, OsHealthConfig.Top_Processes.Ram_processes, func(p1, p2 *ProcessInfo) bool {
+		if WinHealthConfig.Top_Processes.Ram_enabled {
+			topMemory = getTopProcessesBy(allProcesses, WinHealthConfig.Top_Processes.Ram_processes, func(p1, p2 *ProcessInfo) bool {
 				return p1.MemoryPercent > p2.MemoryPercent
 			})
 		}
@@ -278,7 +304,7 @@ func collectMemoryInfo() MemoryInfo {
 // Helper function to collect system load information
 func collectSystemLoad() SystemLoadInfo {
 	loadInfo := SystemLoadInfo{
-		Multiplier: OsHealthConfig.Load.Issue_Multiplier,
+		Multiplier: WinHealthConfig.Load.Issue_Multiplier,
 	}
 
 	loadAvg, err := GetLoadAvg()
@@ -296,47 +322,32 @@ func collectSystemLoad() SystemLoadInfo {
 	loadInfo.Load15 = loadAvg.Load15
 	loadInfo.CPUCount = cpuCount
 
-	// Check if load exceeds the limit
-	limit := float64(cpuCount) * OsHealthConfig.Load.Issue_Multiplier
-	loadInfo.Exceeded = loadAvg.Load5 > limit
-
-	// Trigger sysload alerting via the dedicated function
-	SysLoad()
-
-	return loadInfo
-}
-
-// Helper function to collect ZFS information
-func collectZFSInfo() []ZFSPoolInfo {
-	// Call ZFSHealth to get pool information and handle alarms/issues
-	return ZFSHealth()
-}
-
-// Helper function to collect systemd information
-func collectSystemdInfo() []SystemdUnitInfo {
-	var systemdUnits []SystemdUnitInfo
-
-	// Get important systemd units
-	units, err := GetSystemdUnits()
-	if err != nil {
-		return systemdUnits
-	}
-
-	// Add important units
-	for _, unit := range units {
-		if unit.Type == "service" && (unit.State == "active" || unit.State == "failed") {
-			systemdUnit := SystemdUnitInfo{
-				Name:        unit.Name,
-				Description: unit.Description,
-				Status:      unit.SubState,
-				Active:      unit.State == "active",
-			}
-
-			systemdUnits = append(systemdUnits, systemdUnit)
+	// On Windows, LoadAvg is often 0 (Processor Queue Length).
+	// Fallback to CPU Usage % approximation: Load = (CPU% / 100) * CPUCount
+	if runtime.GOOS == "windows" && loadInfo.Load1 == 0 {
+		cpuPercent, err := GetCPUPercent()
+		if err == nil {
+			approxLoad := (cpuPercent / 100.0) * float64(cpuCount)
+			loadInfo.Load1 = approxLoad
+			loadInfo.Load5 = approxLoad
+			loadInfo.Load15 = approxLoad
+			// Update the loadAvg struct too if we pass it around (SysLoad)
+			loadAvg.Load1 = approxLoad
+			loadAvg.Load5 = approxLoad
+			loadAvg.Load15 = approxLoad
 		}
 	}
 
-	return systemdUnits
+	// Check if load exceeds the limit
+	limit := float64(cpuCount) * WinHealthConfig.Load.Issue_Multiplier
+	loadInfo.Exceeded = loadAvg.Load5 > limit
+
+	// Trigger sysload alerting via the dedicated function
+	// SysLoad re-fetches load.Avg(), so we need to update it to use the new logic or pass the value.
+	// However, SysLoad is a separate function. Let's update SysLoad in sysload.go as well.
+	SysLoad(loadAvg, cpuCount)
+
+	return loadInfo
 }
 
 func GetTopProcesses() ([]ProcessInfo, error) {
@@ -412,4 +423,52 @@ func FormatProcessesToMarkdown(processes []ProcessInfo) string {
 	}
 
 	return sb.String()
+}
+
+// collectWindowsServicesInfo collects Windows services information
+func collectWindowsServicesInfo() []WindowsServiceInfo {
+	services, err := GetWindowsServices()
+	if err != nil {
+		log.Error().Err(err).Msg("Failed to get windows services")
+		return []WindowsServiceInfo{}
+	}
+
+	var filteredServices []WindowsServiceInfo
+
+	// Default behavior: Include if Running OR Failed, unless filtering is enabled
+	for _, svc := range services {
+		// Filter by status if config is present and filtering is enabled
+		if WinHealthConfig.Services.Enabled {
+			// Check if specifically excluded
+			if common.IsInArray(svc.Name, WinHealthConfig.Services.Exclude) {
+				continue
+			}
+
+			// Check if specifically included (overrides status checks)
+			if len(WinHealthConfig.Services.Include) > 0 {
+				if common.IsInArray(svc.Name, WinHealthConfig.Services.Include) {
+					filteredServices = append(filteredServices, svc)
+					continue
+				}
+				// If specific include list exists and not in it, skip unless we want to fallthrough to status
+				// Usually whitelist means ONLY these. Let's assume whitelist overrides everything else.
+				continue
+			}
+
+			// Check status
+			if len(WinHealthConfig.Services.Status) > 0 {
+				if common.IsInArray(svc.Status, WinHealthConfig.Services.Status) {
+					filteredServices = append(filteredServices, svc)
+				}
+				continue
+			}
+		}
+
+		// Default behavior (if not enabled or no specific filters):
+		// GetWindowsServices already returns Running or Failed (Auto Start but Stopped)
+		// So we just add it.
+		filteredServices = append(filteredServices, svc)
+	}
+
+	return filteredServices
 }
