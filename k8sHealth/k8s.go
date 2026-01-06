@@ -24,6 +24,7 @@ import (
 	probing "github.com/prometheus-community/pro-bing"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/viper"
+	appsv1 "k8s.io/api/apps/v1" // Added for Deployments and StatefulSets
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/version" // Added for GetKubernetesServerVersion
@@ -320,6 +321,18 @@ func CollectK8sHealthData() *K8sHealthData {
 
 	// Collect RKE2 Information
 	healthData.RKE2Info = CollectRKE2Information() // This is from k8s.go
+
+	// Collect Namespace Compliance
+	nsData := CollectNamespaceCompliance(Clientset, K8sHealthConfig.K8s.Check_namespaces)
+
+	// Collect Master Taint Compliance
+	mtData := CollectMasterTaintCompliance(Clientset)
+
+	healthData.ComplianceChecks = nsData
+	if healthData.ComplianceChecks == nil {
+		healthData.ComplianceChecks = &ComplianceCheckResults{}
+	}
+	healthData.ComplianceChecks.MasterTaint = mtData
 
 	// Clean up orphaned alarm logs for pods and containers that no longer exist
 	// For plugin context, assume cleanup is enabled (disableCleanupOrphanedAlarms = false)
@@ -778,7 +791,7 @@ func CollectCertManagerHealth() (*CertManagerHealth, error) {
 
 	if Clientset == nil {
 		health.Error = "kubernetes clientset is not initialized"
-		return health, fmt.Errorf(health.Error)
+		return health, fmt.Errorf("%s", health.Error)
 	}
 
 	// Check cert-manager namespace
@@ -801,7 +814,7 @@ func CollectCertManagerHealth() (*CertManagerHealth, error) {
 			Msg("Error getting cert-manager namespace")
 		health.Error = errMsg
 		alarmCheckDown("cert_manager_namespace", errMsg, false, "", "")
-		return health, fmt.Errorf(errMsg) // This is a more significant k8s API error.
+		return health, fmt.Errorf("%s", errMsg) // This is a more significant k8s API error.
 	}
 	health.NamespaceAvailable = true
 	alarmCheckUp("cert_manager_namespace", "cert-manager namespace exists.", false)
@@ -839,7 +852,7 @@ func CollectCertManagerHealth() (*CertManagerHealth, error) {
 			Msg("Error parsing cert-manager Certificate JSON")
 		health.Error = errMsg
 		alarmCheckDown("cert_manager_json_parse", errMsg, false, "", "")
-		return health, fmt.Errorf(errMsg) // Parsing error is more critical
+		return health, fmt.Errorf("%s", errMsg) // Parsing error is more critical
 	}
 
 	for _, item := range certManagerCR.Items {
@@ -1103,7 +1116,7 @@ func CollectKubeVipHealth() (*KubeVipHealth, error) {
 
 	if Clientset == nil {
 		health.Error = "kubernetes clientset is not initialized"
-		return health, fmt.Errorf(health.Error)
+		return health, fmt.Errorf("%s", health.Error)
 	}
 
 	var pods *v1.PodList
@@ -1259,7 +1272,7 @@ func CollectClusterApiCertHealth() (*ClusterApiCertHealth, error) {
 			Msg("Error reading Cluster API server certificate file")
 		health.Error = errMsg
 		alarmCheckDown("kube_apiserver_cert_read", errMsg, false, "", "")
-		return health, fmt.Errorf(errMsg) // This is a file read error
+		return health, fmt.Errorf("%s", errMsg) // This is a file read error
 	}
 
 	block, _ := pem.Decode(certFileContent)
@@ -1272,7 +1285,7 @@ func CollectClusterApiCertHealth() (*ClusterApiCertHealth, error) {
 			Msg("Failed to parse PEM block from Cluster API server certificate file")
 		health.Error = errMsg
 		alarmCheckDown("kube_apiserver_cert_parse", errMsg, false, "", "")
-		return health, fmt.Errorf(errMsg)
+		return health, fmt.Errorf("%s", errMsg)
 	}
 
 	cert, err := x509.ParseCertificate(block.Bytes)
@@ -1285,7 +1298,7 @@ func CollectClusterApiCertHealth() (*ClusterApiCertHealth, error) {
 			Msg("Error parsing Cluster API server certificate")
 		health.Error = errMsg
 		alarmCheckDown("kube_apiserver_cert_parse", errMsg, false, "", "")
-		return health, fmt.Errorf(errMsg)
+		return health, fmt.Errorf("%s", errMsg)
 	}
 
 	health.NotAfter = cert.NotAfter
@@ -1853,4 +1866,256 @@ func alarmCheckDown(service, message string, noInterval bool, customStream, cust
 		return
 	}
 	common.AlarmCheckDown(service, message, noInterval, customStream, customTopic)
+}
+
+// CollectNamespaceCompliance checks for compliance rules in configured namespaces.
+func CollectNamespaceCompliance(clientset kubernetes.Interface, namespaces []string) *ComplianceCheckResults {
+	results := &ComplianceCheckResults{
+		TopologySkew: []ComplianceItem{},
+		ReplicaCount: []ComplianceItem{},
+		ImagePull:    []ComplianceItem{},
+	}
+
+	if len(namespaces) == 0 {
+		return results
+	}
+
+	log.Debug().
+		Str("component", "k8sHealth").
+		Str("operation", "collect_namespace_compliance").
+		Strs("namespaces", namespaces).
+		Msg("Starting namespace compliance checks")
+
+	if clientset == nil {
+		log.Error().
+			Str("component", "k8sHealth").
+			Str("operation", "collect_namespace_compliance").
+			Msg("Kubernetes clientset not initialized")
+		return results
+	}
+
+	// Count total worker nodes for replica compliance
+	workerCount := 0
+	nodes, err := clientset.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		log.Error().
+			Str("component", "k8sHealth").
+			Str("operation", "collect_namespace_compliance").
+			Err(err).
+			Msg("Error listing nodes for replica compliance")
+	} else {
+		for _, node := range nodes.Items {
+			if !isMaster(node) {
+				workerCount++
+			}
+		}
+	}
+
+	for _, ns := range namespaces {
+		// Check Deployments
+		deployments, err := clientset.AppsV1().Deployments(ns).List(context.TODO(), metav1.ListOptions{})
+		if err != nil {
+			log.Error().
+				Str("component", "k8sHealth").
+				Str("operation", "collect_namespace_compliance").
+				Str("namespace", ns).
+				Err(err).
+				Msg("Error listing deployments")
+			alarmCheckDown("k8s_compliance_list_deployments_"+ns, fmt.Sprintf("Error listing deployments in namespace %s: %v", ns, err), false, "", "")
+			continue
+		}
+
+		for _, deploy := range deployments.Items {
+			// Update checkTopologySpreadConstraints to return item
+			if item := checkTopologySpreadConstraints(&deploy); item != nil {
+				results.TopologySkew = append(results.TopologySkew, *item)
+			}
+			// Update checkReplicaCount to return item, passing workerCount
+			if item := checkReplicaCount(&deploy, workerCount); item != nil {
+				results.ReplicaCount = append(results.ReplicaCount, *item)
+			}
+			// Update checkImagePullPolicy to return items
+			if items := checkImagePullPolicy(&deploy.Spec.Template.Spec, "deployment", deploy.Namespace, deploy.Name); len(items) > 0 {
+				results.ImagePull = append(results.ImagePull, items...)
+			}
+		}
+	}
+	return results
+}
+
+// Helper to determine if a node is a master/control-plane
+func isMaster(node v1.Node) bool {
+	if _, ok := node.Labels["node-role.kubernetes.io/master"]; ok {
+		return true
+	}
+	if _, ok := node.Labels["node-role.kubernetes.io/control-plane"]; ok {
+		return true
+	}
+	if val, ok := node.Labels["kubernetes.io/role"]; ok && val == "master" {
+		return true
+	}
+	return false
+}
+
+// checkTopologySpreadConstraints verifies if the deployment has the correct topology spread constraints.
+func checkTopologySpreadConstraints(deploy *appsv1.Deployment) *ComplianceItem {
+	// Check for ignore label
+	if val, ok := deploy.Labels["monokit.policy/topology-skew-ignored"]; ok && val == "true" {
+		return nil // Ignored
+	}
+
+	alarmKey := fmt.Sprintf("deployment_%s_%s_topology_skew", deploy.Namespace, deploy.Name)
+	resourceName := fmt.Sprintf("%s/%s", deploy.Namespace, deploy.Name)
+
+	TopologySpreadConstraints := deploy.Spec.Template.Spec.TopologySpreadConstraints
+	hasHostnameConstraint := false
+	isCorrect := true
+	var paramErrors []string
+
+	for _, constraint := range TopologySpreadConstraints {
+		if constraint.TopologyKey == "kubernetes.io/hostname" {
+			hasHostnameConstraint = true
+			if constraint.MaxSkew != 1 {
+				isCorrect = false
+				paramErrors = append(paramErrors, fmt.Sprintf("maxSkew is %d (expected 1)", constraint.MaxSkew))
+			}
+			if constraint.WhenUnsatisfiable != v1.DoNotSchedule {
+				isCorrect = false
+				paramErrors = append(paramErrors, fmt.Sprintf("whenUnsatisfiable is %s (expected DoNotSchedule)", constraint.WhenUnsatisfiable))
+			}
+			// Check logic for LabelSelector match (simplified: just checking if it exists)
+			if constraint.LabelSelector == nil {
+				isCorrect = false
+				paramErrors = append(paramErrors, "labelSelector is missing")
+			}
+			break
+		}
+	}
+
+	if !hasHostnameConstraint {
+		alarmCheckDown(alarmKey, fmt.Sprintf("Deployment '%s' in namespace '%s' missing topologySpreadConstraints for kubernetes.io/hostname.", deploy.Name, deploy.Namespace), false, "", "")
+		return &ComplianceItem{Resource: resourceName, Status: false, Message: "Missing topologySpreadConstraints for kubernetes.io/hostname"}
+	} else if !isCorrect {
+		msg := fmt.Sprintf("Deployment '%s' in namespace '%s' has invalid topologySpreadConstraints: %s", deploy.Name, deploy.Namespace, strings.Join(paramErrors, ", "))
+		alarmCheckDown(alarmKey, msg, false, "", "")
+		return &ComplianceItem{Resource: resourceName, Status: false, Message: fmt.Sprintf("Invalid topologySpreadConstraints: %s", strings.Join(paramErrors, ", "))}
+	} else {
+		alarmCheckUp(alarmKey, fmt.Sprintf("Deployment '%s' in namespace '%s' has correct topologySpreadConstraints.", deploy.Name, deploy.Namespace), false)
+		return &ComplianceItem{Resource: resourceName, Status: true, Message: "Correct topologySpreadConstraints"}
+	}
+}
+
+// checkReplicaCount verifies if the deployment's replica count matches the total number of worker nodes.
+func checkReplicaCount(deploy *appsv1.Deployment, workerCount int) *ComplianceItem {
+	// Check for ignore label
+	if val, ok := deploy.Labels["monokit.policy/replica-count-ignored"]; ok && val == "true" {
+		return nil // Ignored
+	}
+
+	alarmKey := fmt.Sprintf("deployment_%s_%s_replica_count", deploy.Namespace, deploy.Name)
+	resourceName := fmt.Sprintf("%s/%s", deploy.Namespace, deploy.Name)
+
+	if deploy.Spec.Replicas == nil {
+		return nil // Should not happen usually
+	}
+	specReplicas := int(*deploy.Spec.Replicas)
+
+	// Policy Check: Spec Replicas must equal Total Worker Count
+	if specReplicas != workerCount {
+		msg := fmt.Sprintf("Deployment '%s' in namespace '%s' replica mismatch: spec=%d, expected=%d (Total Workers)", deploy.Name, deploy.Namespace, specReplicas, workerCount)
+		alarmCheckDown(alarmKey, msg, false, "", "")
+		return &ComplianceItem{Resource: resourceName, Status: false, Message: fmt.Sprintf("Mismatch: spec=%d, expected=%d", specReplicas, workerCount)}
+	} else {
+		alarmCheckUp(alarmKey, fmt.Sprintf("Deployment '%s' in namespace '%s' replica count matches worker count (%d).", deploy.Name, deploy.Namespace, workerCount), false)
+		return &ComplianceItem{Resource: resourceName, Status: true, Message: fmt.Sprintf("Match: %d", workerCount)}
+	}
+}
+
+// checkImagePullPolicy verifies if containers use imagePullPolicy: IfNotPresent
+func checkImagePullPolicy(podSpec *v1.PodSpec, kind, namespace, name string) []ComplianceItem {
+	var items []ComplianceItem
+	alarmKeyBase := fmt.Sprintf("%s_%s_%s_image_pull", kind, namespace, name)
+	resourceName := fmt.Sprintf("%s/%s", namespace, name)
+
+	for _, container := range podSpec.Containers {
+		containerName := container.Name
+		alarmKey := fmt.Sprintf("%s_%s", alarmKeyBase, containerName)
+
+		if container.ImagePullPolicy != v1.PullIfNotPresent {
+			msg := fmt.Sprintf("%s '%s' container '%s' ImagePullPolicy is '%s' (expected IfNotPresent).", strings.Title(kind), name, containerName, container.ImagePullPolicy)
+			alarmCheckDown(alarmKey, msg, false, "", "")
+			items = append(items, ComplianceItem{
+				Resource: fmt.Sprintf("%s [%s]", resourceName, containerName),
+				Status:   false,
+				Message:  fmt.Sprintf("Policy is %s (expected IfNotPresent)", container.ImagePullPolicy),
+			})
+		} else {
+			alarmCheckUp(alarmKey, fmt.Sprintf("%s '%s' container '%s' has correct ImagePullPolicy.", strings.Title(kind), name, containerName), false)
+			items = append(items, ComplianceItem{
+				Resource: fmt.Sprintf("%s [%s]", resourceName, containerName),
+				Status:   true,
+				Message:  "Correct ImagePullPolicy",
+			})
+		}
+	}
+	return items
+}
+
+// CollectMasterTaintCompliance checks if master nodes have the correct taints.
+func CollectMasterTaintCompliance(client kubernetes.Interface) []ComplianceItem {
+	var results []ComplianceItem
+
+	if client == nil {
+		return results
+	}
+
+	nodes, err := client.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		log.Error().Err(err).Msg("Error listing nodes for taint compliance")
+		return results
+	}
+
+	for _, node := range nodes.Items {
+		isMaster := false
+		if _, ok := node.Labels["node-role.kubernetes.io/master"]; ok {
+			isMaster = true
+		} else if _, ok := node.Labels["node-role.kubernetes.io/control-plane"]; ok {
+			isMaster = true
+		}
+
+		if !isMaster {
+			continue
+		}
+
+		alarmKey := fmt.Sprintf("node_%s_master_taint", node.Name)
+		hasTaint := false
+		for _, taint := range node.Spec.Taints {
+			if taint.Key == "node-role.kubernetes.io/master" && taint.Effect == v1.TaintEffectNoSchedule {
+				hasTaint = true
+				break
+			}
+			// Also check control-plane taint which is standard in newer k8s
+			if taint.Key == "node-role.kubernetes.io/control-plane" && taint.Effect == v1.TaintEffectNoSchedule {
+				hasTaint = true
+				break
+			}
+		}
+
+		if hasTaint {
+			alarmCheckUp(alarmKey, fmt.Sprintf("Master node '%s' has correct NoSchedule taint.", node.Name), false)
+			results = append(results, ComplianceItem{
+				Resource: node.Name,
+				Status:   true,
+				Message:  "Correct NoSchedule taint found",
+			})
+		} else {
+			alarmCheckDown(alarmKey, fmt.Sprintf("Master node '%s' missing NoSchedule taint (node-role.kubernetes.io/master:NoSchedule).", node.Name), false, "", "")
+			results = append(results, ComplianceItem{
+				Resource: node.Name,
+				Status:   false,
+				Message:  "Missing NoSchedule taint",
+			})
+		}
+	}
+	return results
 }

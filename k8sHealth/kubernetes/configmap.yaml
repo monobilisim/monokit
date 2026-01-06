@@ -5,6 +5,8 @@ metadata:
 data:
   k8s.yml: |
     k8s:
+      namespaces:
+        - YOUR_NAMESPACE_1
       floating_ips:
         - YOUR_FLOATING_IP_1
       ingress_floating_ips:
