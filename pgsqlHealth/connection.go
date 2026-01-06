@@ -131,6 +131,10 @@ func Connect() error {
 				user = parts[3]
 				password = parts[4]
 
+				if port == "*" {
+					port = "5432"
+				}
+
 				break
 			}
 		}
