@@ -353,6 +353,47 @@ func (khd *K8sHealthData) RenderCompact() string {
 		}
 	}
 
+	// --- Kubernetes Compliance Checks Section ---
+	if khd.ComplianceChecks != nil {
+		var sbCompliance strings.Builder
+
+		sbCompliance.WriteString("\n")
+		sbCompliance.WriteString(common.SectionTitle("Kubernetes Compliance Status"))
+		sbCompliance.WriteString("\n")
+
+		// Helper to render compliance list
+		renderComplianceList := func(title string, items []ComplianceItem) {
+			if len(items) == 0 {
+				return
+			}
+			failCount := 0
+			for _, item := range items {
+				if !item.Status {
+					failCount++
+				}
+			}
+			statusStr := fmt.Sprintf("%d Passed / %d Total", len(items)-failCount, len(items))
+			sbCompliance.WriteString(common.SimpleStatusListItem(title, statusStr, failCount == 0))
+			sbCompliance.WriteString("\n")
+
+			if failCount > 0 {
+				for _, item := range items {
+					if !item.Status {
+						sbCompliance.WriteString(fmt.Sprintf("    └─ %s: %s\n", item.Resource, item.Message))
+					}
+				}
+			}
+		}
+
+		renderComplianceList("Topology Spread Constraints", khd.ComplianceChecks.TopologySkew)
+		renderComplianceList("Replica Count Match", khd.ComplianceChecks.ReplicaCount)
+		renderComplianceList("Image Pull Policy", khd.ComplianceChecks.ImagePull)
+		renderComplianceList("Master Node Taints", khd.ComplianceChecks.MasterTaint)
+
+		// Only append if there's any data
+		sb.WriteString(sbCompliance.String())
+	}
+
 	// Footer (Last Checked) is usually part of the common.DisplayBox title or outer formatting,
 	// so not explicitly added here unless it's a specific style requirement.
 	// The esHealth example also commented out LastChecked from its RenderCompact.

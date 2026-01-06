@@ -69,8 +69,9 @@ type Config struct {
 	K8s struct {
 		Floating_ips         []string
 		Ingress_floating_ips []string
-		Enable_cert_manager  *bool // nil = auto-detect, true/false = force
-		Enable_kube_vip      *bool // nil = auto-detect, true/false = force
+		Enable_cert_manager  *bool    // nil = auto-detect, true/false = force
+		Enable_kube_vip      *bool    // nil = auto-detect, true/false = force
+		Check_namespaces     []string `mapstructure:"namespaces"`
 	}
 
 	Alarm struct {
@@ -134,7 +135,8 @@ type K8sHealthData struct {
 	CertManager      *CertManagerHealth
 	KubeVip          *KubeVipHealth
 	ClusterApiCert   *ClusterApiCertHealth
-	RKE2Info         *RKE2Info // Added RKE2 information
+	RKE2Info         *RKE2Info               // Added RKE2 information
+	ComplianceChecks *ComplianceCheckResults // Added Compliance Checks
 	// PodRunningLogChecks []PodLogCheckInfo // Removed as per user request
 	LastChecked string
 	Errors      []string // To store any general error messages
@@ -229,6 +231,21 @@ type ClusterApiCertHealth struct {
 	IsExpired         bool
 	NotAfter          time.Time
 	Error             string
+}
+
+// ComplianceItem holds the result of a single compliance check
+type ComplianceItem struct {
+	Resource string // e.g., "namespace/name" or "node-name"
+	Status   bool   // true = Pass, false = Fail
+	Message  string // Detailed message or error
+}
+
+// ComplianceCheckResults holds all compliance check results
+type ComplianceCheckResults struct {
+	TopologySkew []ComplianceItem
+	ReplicaCount []ComplianceItem
+	ImagePull    []ComplianceItem
+	MasterTaint  []ComplianceItem
 }
 
 // PodLogCheckInfo is removed as per user request
