@@ -5,6 +5,7 @@ metadata:
 data:
   k8s.yml: |
     k8s:
+      taint: true
       namespaces:
         - YOUR_NAMESPACE_1
       floating_ips:

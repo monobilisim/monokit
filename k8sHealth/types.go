@@ -71,6 +71,7 @@ type Config struct {
 		Ingress_floating_ips []string
 		Enable_cert_manager  *bool    // nil = auto-detect, true/false = force
 		Enable_kube_vip      *bool    // nil = auto-detect, true/false = force
+		Taint                *bool    // nil = true (default), false = skip check
 		Check_namespaces     []string `mapstructure:"namespaces"`
 	}
 

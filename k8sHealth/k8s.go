@@ -2069,6 +2069,15 @@ func CollectMasterTaintCompliance(client kubernetes.Interface) []ComplianceItem 
 		return results
 	}
 
+	// Check if taint compliance check is disabled via config
+	if K8sHealthConfig.K8s.Taint != nil && !*K8sHealthConfig.K8s.Taint {
+		log.Debug().
+			Str("component", "k8sHealth").
+			Str("operation", "collect_master_taint_compliance").
+			Msg("Master taint compliance check disabled by config")
+		return results
+	}
+
 	nodes, err := client.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
 		log.Error().Err(err).Msg("Error listing nodes for taint compliance")
