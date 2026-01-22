@@ -140,11 +140,17 @@ func VersionCheck(cmd *cobra.Command, args []string) {
 	// Zabbix
 	ZabbixCheck()
 
+	// Jenkins
 	JenkinsCheck()
 
+	// Asterisk
 	AsteriskCheck()
 
+	// Prometheus
 	PrometheusCheck()
+
+	// VersityGW
+	VersityGWCheck()
 
 	PrintList()
 }
