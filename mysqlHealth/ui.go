@@ -40,6 +40,13 @@ type CertificationWaitingInfo struct {
 	Exceeded bool
 }
 
+// ReceiveQueueInfo contains information about Galera receive queue
+type ReceiveQueueInfo struct {
+	Count    int
+	Limit    int
+	Exceeded bool
+}
+
 // ClusterInfo contains information about MySQL cluster status
 type ClusterInfo struct {
 	Enabled           bool
@@ -48,6 +55,9 @@ type ClusterInfo struct {
 	Status            string
 	Nodes             []NodeInfo
 	Synced            bool
+	ReceiveQueue      ReceiveQueueInfo
+	FlowControlPaused float64
+	FlowControlLimit  float64
 }
 
 // NodeInfo represents a MySQL cluster node
@@ -69,6 +79,10 @@ func NewMySQLHealthData() *MySQLHealthData {
 	return &MySQLHealthData{
 		ClusterInfo: ClusterInfo{
 			Nodes: []NodeInfo{},
+			ReceiveQueue: ReceiveQueueInfo{
+				Limit: 10,
+			},
+			FlowControlLimit: 0.2,
 		},
 	}
 }
@@ -162,6 +176,36 @@ func (m *MySQLHealthData) RenderCompact() string {
 			"Cluster Nodes",
 			nodesAccessStatus,
 			isInaccessibleOK))
+		sb.WriteString("\n")
+
+		// Receive Queue status
+		isQueueOK := !m.ClusterInfo.ReceiveQueue.Exceeded
+		queueStatus := "within limit"
+		if !isQueueOK {
+			queueStatus = "exceeds limit"
+		}
+
+		sb.WriteString(common.StatusListItem(
+			"Receive Queue",
+			queueStatus,
+			fmt.Sprintf("%d", m.ClusterInfo.ReceiveQueue.Limit),
+			fmt.Sprintf("%d", m.ClusterInfo.ReceiveQueue.Count),
+			isQueueOK))
+		sb.WriteString("\n")
+
+		// Flow Control status
+		isFlowOK := m.ClusterInfo.FlowControlPaused <= m.ClusterInfo.FlowControlLimit
+		flowStatus := "within limit"
+		if !isFlowOK {
+			flowStatus = "exceeds limit"
+		}
+
+		sb.WriteString(common.StatusListItem(
+			"Flow Control",
+			flowStatus,
+			fmt.Sprintf("%.2f", m.ClusterInfo.FlowControlLimit),
+			fmt.Sprintf("%.2f", m.ClusterInfo.FlowControlPaused),
+			isFlowOK))
 
 		// Add cluster size display with custom color logic
 		clusterSize := m.ClusterInfo.ClusterSize

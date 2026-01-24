@@ -4,10 +4,12 @@ type Mysql struct {
 	Process_limit int
 	Pmm_enabled   *bool `json:"pmm_enabled,omitempty"`
 	Cluster       struct {
-		Enabled          bool
-		Size             int
-		Check_table_day  string
-		Check_table_hour string
+		Enabled             bool
+		Size                int
+		Check_table_day     string
+		Check_table_hour    string
+		Recieve_queue_limit int
+		Flow_control_limit  float64
 	}
 	Alarm struct {
 		Enabled bool

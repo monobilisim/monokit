@@ -153,7 +153,9 @@ These core tools will be available in every monokit installation.
 
 - mysqlHealth
   - Checks MySQL health, including read and write operations.
+  - Supports Galera Cluster monitoring (Receive Queue and Flow Control).
   - Sends alarm notifications to a Slack webhook.
+  - Opens Redmine issues for Galera Flow Control issues.
   - Config: `/etc/mono/db.yaml`
 
 - pgsqlHealth

@@ -9,10 +9,12 @@ postgres:
 
 mysql:
   process_limit: 50
-  cluster: 
+  cluster:
     enabled: false
     size: 3
     check_table_day: "Sun"
     check_table_hour: "05:00"
+    recieve_queue_limit: 10
+    flow_control_limit: 0.20
   alarm:
     enabled: true
