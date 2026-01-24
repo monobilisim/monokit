@@ -8,7 +8,7 @@ type Mysql struct {
 		Size                int
 		Check_table_day     string
 		Check_table_hour    string
-		Recieve_queue_limit int
+		Receive_queue_limit int
 		Flow_control_limit  float64
 	}
 	Alarm struct {

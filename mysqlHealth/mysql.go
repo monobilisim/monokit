@@ -558,8 +558,8 @@ func CheckCertificationWaiting() {
 
 func CheckReceiveQueue() {
 	limit := 10
-	if DbHealthConfig.Mysql.Cluster.Recieve_queue_limit != 0 {
-		limit = DbHealthConfig.Mysql.Cluster.Recieve_queue_limit
+	if DbHealthConfig.Mysql.Cluster.Receive_queue_limit != 0 {
+		limit = DbHealthConfig.Mysql.Cluster.Receive_queue_limit
 	}
 
 	query := "SHOW GLOBAL STATUS WHERE Variable_name = 'wsrep_local_recv_queue'"
