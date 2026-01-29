@@ -150,6 +150,12 @@ func Main(cmd *cobra.Command, args []string) {
 
 		// Check if cluster is synced
 		CheckClusterSynced()
+
+		// Check Galera receive queue
+		CheckReceiveQueue()
+
+		// Check Galera flow control
+		CheckFlowControl()
 	}
 
 	// check if time matches to configured time

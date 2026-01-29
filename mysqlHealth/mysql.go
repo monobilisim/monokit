@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 
@@ -15,6 +16,7 @@ import (
 	_ "github.com/go-sql-driver/mysql"      // Keep anonymous import for side effects
 	_mysql "github.com/go-sql-driver/mysql" // Import with alias
 	"github.com/monobilisim/monokit/common"
+	issues "github.com/monobilisim/monokit/common/redmine/issues"
 	"github.com/rs/zerolog/log"
 )
 
@@ -551,6 +553,87 @@ func CheckCertificationWaiting() {
 		common.AlarmCheckDown("certification waiting", fmt.Sprintf("Certification waiting > %d: %d", limiter, count), false, "", "")
 	} else {
 		common.AlarmCheckUp("certification waiting", fmt.Sprintf("Certification waiting OK: %d/%d", count, limiter), false)
+	}
+}
+
+func CheckReceiveQueue() {
+	limit := 10
+	if DbHealthConfig.Mysql.Cluster.Receive_queue_limit != 0 {
+		limit = DbHealthConfig.Mysql.Cluster.Receive_queue_limit
+	}
+
+	query := "SHOW GLOBAL STATUS WHERE Variable_name = 'wsrep_local_recv_queue'"
+	rows, err := Connection.Query(query)
+	if err != nil {
+		log.Error().Err(err).Msg("CheckReceiveQueue query failed")
+		return
+	}
+	defer rows.Close()
+
+	var name string
+	var value string
+	if rows.Next() {
+		if err := rows.Scan(&name, &value); err != nil {
+			log.Error().Err(err).Msg("Error scanning Receive Queue count")
+			return
+		}
+	}
+
+	count, _ := strconv.Atoi(value)
+
+	// Update health data
+	healthData.ClusterInfo.ReceiveQueue.Count = count
+	healthData.ClusterInfo.ReceiveQueue.Limit = limit
+	healthData.ClusterInfo.ReceiveQueue.Exceeded = count > limit
+
+	if count > limit {
+		msg := fmt.Sprintf("Galera Receive Queue değeri %d (Limit: %d)", count, limit)
+		// Only send alarm (webhook), no Redmine issue for Receive Queue as requested
+		common.AlarmCheckDown("receive queue", msg, false, "", "")
+	} else {
+		common.AlarmCheckUp("receive queue", fmt.Sprintf("Receive Queue OK: %d/%d", count, limit), false)
+	}
+}
+
+func CheckFlowControl() {
+	threshold := 0.2
+	if DbHealthConfig.Mysql.Cluster.Flow_control_limit != 0 {
+		threshold = DbHealthConfig.Mysql.Cluster.Flow_control_limit
+	}
+
+	query := "SHOW GLOBAL STATUS WHERE Variable_name = 'wsrep_flow_control_paused'"
+	rows, err := Connection.Query(query)
+	if err != nil {
+		log.Error().Err(err).Msg("CheckFlowControl query failed")
+		return
+	}
+	defer rows.Close()
+
+	var name string
+	var value string
+	if rows.Next() {
+		if err := rows.Scan(&name, &value); err != nil {
+			log.Error().Err(err).Msg("Error scanning Flow Control Paused value")
+			return
+		}
+	}
+
+	paused, _ := strconv.ParseFloat(value, 64)
+
+	// Update health data
+	healthData.ClusterInfo.FlowControlPaused = paused
+	healthData.ClusterInfo.FlowControlLimit = threshold
+
+	if paused > threshold {
+		msg := fmt.Sprintf("Galera Flow Control duraklama oranı %.4f (Limit: %.2f)", paused, threshold)
+		subject := fmt.Sprintf("%s için Galera Flow Control duraklama oranı %.2f üstüne çıktı", common.Config.Identifier, threshold)
+
+		common.AlarmCheckDown("flow control", msg, false, "", "")
+		issues.CheckDown("flow-control", subject, msg, false, 0)
+	} else {
+		msg := fmt.Sprintf("%s için Galera Flow Control duraklama oranı %.2f altına düştü", common.Config.Identifier, threshold)
+		common.AlarmCheckUp("flow control", "Flow Control OK", false)
+		issues.CheckUp("flow-control", msg)
 	}
 }
 
