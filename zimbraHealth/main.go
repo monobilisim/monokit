@@ -680,6 +680,33 @@ func CheckZimbraServices() []ServiceInfo {
 
 	// Attempt restarts for services that are down
 	for _, svc := range currentServices {
+		service := strings.TrimSpace(svc.Name)
+		switch service {
+		case "zmswatchctl", "zmswatch":
+			output, err := ExecZimbraCommand("zmzmswatchctl stop", false, false)
+			log.Debug().Str("output", output).Msg("zmzmswatchctl stop output")
+			if err == nil {
+				output, err = ExecZimbraCommand("zmzmswatchctl start", false, false)
+				log.Debug().Str("output", output).Msg("zmzmswatchctl start output")
+			}
+			continue
+		case "zmlogswatchctl", "zmlogswatch":
+			output, err := ExecZimbraCommand("zmlogswatchctl stop", false, false)
+			log.Debug().Str("output", output).Msg("zmlogswatchctl stop output")
+			if err == nil {
+				output, err = ExecZimbraCommand("zmlogswatchctl start", false, false)
+				log.Debug().Str("output", output).Msg("zmlogswatchctl start output")
+			}
+			continue
+		case "zmstatctl", "zmstat", "stats":
+			output, err := ExecZimbraCommand("zmstatctl stop", false, false)
+			log.Debug().Str("output", output).Msg("zmstatctl stop output")
+			if err == nil {
+				output, err = ExecZimbraCommand("zmstatctl start", false, false)
+				log.Debug().Str("output", output).Msg("zmstatctl start output")
+			}
+			continue
+		}
 		if !svc.Running {
 			log.Warn().Str("service", svc.Name).Msg("Service is not running")
 			common.WriteToFile(common.TmpDir+"/"+"zmcontrol_status_"+time.Now().Format("2006-01-02_15.04.05")+".log", initialOutput)
