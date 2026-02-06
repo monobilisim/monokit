@@ -26,6 +26,7 @@ import (
 	"github.com/monobilisim/monokit/shutdownNotifier"
 	"github.com/monobilisim/monokit/sshNotifier"
 	"github.com/monobilisim/monokit/ufwApply"
+	"github.com/monobilisim/monokit/uninstall"
 	"github.com/monobilisim/monokit/winHealth"
 )
 
@@ -411,6 +412,9 @@ func main() {
 
 	sshNotifierCmd.Flags().BoolP("login", "1", false, "Login")
 	sshNotifierCmd.Flags().BoolP("logout", "0", false, "Logout")
+
+	// Uninstall
+	uninstall.Uninstall()
 
 	if err := RootCmd.Execute(); err != nil {
 		fmt.Println(err)
