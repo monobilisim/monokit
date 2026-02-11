@@ -10,6 +10,7 @@ type Mysql struct {
 		Check_table_hour    string
 		Receive_queue_limit int
 		Flow_control_limit  float64
+		Certification_limit int
 	}
 	Alarm struct {
 		Enabled bool

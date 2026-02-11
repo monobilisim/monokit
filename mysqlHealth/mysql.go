@@ -531,6 +531,9 @@ func CheckDB() {
 func CheckCertificationWaiting() {
 	// Use a hardcoded default value of 10 since we don't know the correct field name
 	var limiter int = 10
+	if DbHealthConfig.Mysql.Cluster.Certification_limit != 0 {
+		limiter = DbHealthConfig.Mysql.Cluster.Certification_limit
+	}
 
 	rows, err := Connection.Query("SELECT COUNT(*) FROM INFORMATION_SCHEMA.PROCESSLIST WHERE STATE LIKE '% for certificate%'")
 	if err != nil {
@@ -550,7 +553,8 @@ func CheckCertificationWaiting() {
 	healthData.CertWaitingInfo.Exceeded = count > limiter
 
 	if count > limiter {
-		common.AlarmCheckDown("certification waiting", fmt.Sprintf("Certification waiting > %d: %d", limiter, count), false, "", "")
+		msg := fmt.Sprintf("Certification waiting > %d: %d", limiter, count)
+		common.AlarmCheckDown("certification waiting", msg, false, "", "")
 	} else {
 		common.AlarmCheckUp("certification waiting", fmt.Sprintf("Certification waiting OK: %d/%d", count, limiter), false)
 	}
