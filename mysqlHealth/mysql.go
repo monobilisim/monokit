@@ -587,7 +587,7 @@ func CheckReceiveQueue() {
 	healthData.ClusterInfo.ReceiveQueue.Exceeded = count > limit
 
 	if count > limit {
-		msg := fmt.Sprintf("Galera Receive Queue değeri %d (Limit: %d)", count, limit)
+		msg := fmt.Sprintf("Galera Receive Queue > %d: %d", limit, count)
 		// Only send alarm (webhook), no Redmine issue for Receive Queue as requested
 		common.AlarmCheckDown("receive queue", msg, false, "", "")
 	} else {
@@ -625,15 +625,16 @@ func CheckFlowControl() {
 	healthData.ClusterInfo.FlowControlLimit = threshold
 
 	if paused > threshold {
-		msg := fmt.Sprintf("Galera Flow Control duraklama oranı %.4f (Limit: %.2f)", paused, threshold)
-		subject := fmt.Sprintf("%s için Galera Flow Control duraklama oranı %.2f üstüne çıktı", common.Config.Identifier, threshold)
+		msg := fmt.Sprintf("Galera Flow Control Pause Time > %.2f: %.2f", threshold, paused)
+		msgTr := fmt.Sprintf("Galera Flow Control Duraklama Süresi > %.2f: %.2f", threshold, paused)
+		subject := fmt.Sprintf("%s için Galera Flow Control Duraklama Süresi > %.2f", common.Config.Identifier, threshold)
 
 		common.AlarmCheckDown("flow control", msg, false, "", "")
-		issues.CheckDown("flow-control", subject, msg, false, 0)
+		issues.CheckDown("flow-control", subject, msgTr, false, 0)
 	} else {
-		msg := fmt.Sprintf("%s için Galera Flow Control duraklama oranı %.2f altına düştü", common.Config.Identifier, threshold)
+		msgTr := fmt.Sprintf("Galera Flow Control Duraklama Süresi < %.2f: %.2f", threshold, paused)
 		common.AlarmCheckUp("flow control", "Flow Control OK", false)
-		issues.CheckUp("flow-control", msg)
+		issues.CheckUp("flow-control", msgTr)
 	}
 }
 
