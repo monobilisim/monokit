@@ -541,19 +541,30 @@ func RestartZimbraService(service string) bool {
 
 	log.Warn().Str("service", service).Msg("Attempting to restart Zimbra services")
 
-	// If the affected service is 'stats', stop zmstat first
-	if strings.EqualFold(strings.TrimSpace(service), "stats") {
-		log.Warn().Msg("Detected 'stats' service; running 'zmstatctl stop' before restart")
-		if out, err := ExecZimbraCommand("zmstatctl stop", false, false); err != nil {
-			log.Warn().Err(err).Str("output", out).Msg("zmstatctl stop failed; continuing with restart")
-		}
+	var output string
+	var err error
+
+	switch service {
+	case "zmswatchctl", "zmswatch":
+		ExecZimbraCommand("zmswatchctl stop", false, false)
+		time.Sleep(3 * time.Second)
+		output, err = ExecZimbraCommand("zmswatchctl start", false, false)
+	case "zmlogswatchctl", "zmlogswatch":
+		ExecZimbraCommand("zmlogswatchctl stop", false, false)
+		time.Sleep(3 * time.Second)
+		output, err = ExecZimbraCommand("zmlogswatchctl start", false, false)
+	case "zmstatctl", "zmstat", "stats":
+		ExecZimbraCommand("zmstatctl stop", false, false)
+		time.Sleep(3 * time.Second)
+		output, err = ExecZimbraCommand("zmstatctl start", false, false)
+	default:
+		output, err = ExecZimbraCommand("zmcontrol start", false, false)
 	}
 
-	output, err := ExecZimbraCommand("zmcontrol start", false, false)
-	log.Debug().Str("output", output).Msg("zmcontrol start output")
+	log.Debug().Str("output", output).Msg("restart output")
 	if err != nil {
 		log.Error().Err(err).Str("service", service).Msg("Failed to start Zimbra services")
-		common.AlarmCheckDown("service_restart_failed_"+service, "Failed to execute zmcontrol start for "+service+": "+err.Error(), false, "", "")
+		common.AlarmCheckDown("service_restart_failed_"+service, "Failed to execute restart for "+service+": "+err.Error(), false, "", "")
 		return false
 	}
 
@@ -678,41 +689,14 @@ func CheckZimbraServices() []ServiceInfo {
 	currentServices, currentStatus := parseStatus(initialOutput)
 	restartAttempted := false
 
-	// Attempt restarts for services that are down
 	for _, svc := range currentServices {
 		service := strings.TrimSpace(svc.Name)
-		switch service {
-		case "zmswatchctl", "zmswatch":
-			output, err := ExecZimbraCommand("zmzmswatchctl stop", false, false)
-			log.Debug().Str("output", output).Msg("zmzmswatchctl stop output")
-			if err == nil {
-				output, err = ExecZimbraCommand("zmzmswatchctl start", false, false)
-				log.Debug().Str("output", output).Msg("zmzmswatchctl start output")
-			}
-			continue
-		case "zmlogswatchctl", "zmlogswatch":
-			output, err := ExecZimbraCommand("zmlogswatchctl stop", false, false)
-			log.Debug().Str("output", output).Msg("zmlogswatchctl stop output")
-			if err == nil {
-				output, err = ExecZimbraCommand("zmlogswatchctl start", false, false)
-				log.Debug().Str("output", output).Msg("zmlogswatchctl start output")
-			}
-			continue
-		case "zmstatctl", "zmstat", "stats":
-			output, err := ExecZimbraCommand("zmstatctl stop", false, false)
-			log.Debug().Str("output", output).Msg("zmstatctl stop output")
-			if err == nil {
-				output, err = ExecZimbraCommand("zmstatctl start", false, false)
-				log.Debug().Str("output", output).Msg("zmstatctl start output")
-			}
-			continue
-		}
 		if !svc.Running {
 			log.Warn().Str("service", svc.Name).Msg("Service is not running")
 			common.WriteToFile(common.TmpDir+"/"+"zmcontrol_status_"+time.Now().Format("2006-01-02_15.04.05")+".log", initialOutput)
 			common.AlarmCheckDown("service_"+svc.Name, svc.Name+" is not running ````spoiler zmcontrol status\n"+initialOutput+"\n```", false, "", "")
 			if MailHealthConfig.Zimbra.Restart {
-				if RestartZimbraService(svc.Name) {
+				if RestartZimbraService(service) {
 					restartAttempted = true
 				}
 			}
@@ -975,20 +959,21 @@ func ExecZimbraCommand(command string, fullPath bool, runAsRoot bool) (string, e
 	// Execute command
 	if fullPath {
 		log.Debug().Str("command", command).Msg("Executing Zimbra command with full path")
-		cmd = exec.Command("/bin/su", zimbraUser, "-c", zimbraPath+"/"+command)
+		cmd = exec.Command("/bin/su", "-", zimbraUser, "-c", zimbraPath+"/"+command)
 	} else {
 		log.Debug().Str("command", command).Msg("Executing Zimbra command without full path")
-		cmd = exec.Command("/bin/su", zimbraUser, "-c", zimbraPath+"/bin/"+command)
+		cmd = exec.Command("/bin/su", "-", zimbraUser, "-c", zimbraPath+"/bin/"+command)
 	}
 
 	var out bytes.Buffer
+	var stderr bytes.Buffer
 	cmd.Stdout = &out
-	cmd.Stderr = os.Stderr
+	cmd.Stderr = &stderr
 	cmd.Run()
 
-	log.Debug().Str("command", command).Str("output", out.String()).Msg("Command executed")
+	log.Debug().Str("command", command).Str("output", out.String()).Str("stderr", stderr.String()).Msg("Command executed")
 	if cmd.ProcessState.ExitCode() != 0 {
-		return out.String(), fmt.Errorf("Command failed: " + command + " with stdout: " + out.String())
+		return out.String(), fmt.Errorf("Command failed: " + command + " with stdout: " + out.String() + " stderr: " + stderr.String())
 	}
 
 	return out.String(), nil
