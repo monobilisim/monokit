@@ -61,15 +61,31 @@ var healthData *PostgreSQLHealthData
 // getPostgresVersionInfo gets PostgreSQL version information
 // and determines update status
 func getPostgresVersionInfo() (string, bool, string) {
-	// Get the version of PostgreSQL
-	out, err := exec.Command("psql", "--version").Output()
-	if err != nil {
-		return "", false, "Error getting version"
+	var version string
+
+	if Connection != nil {
+		var fullVersion string
+		err := Connection.QueryRow("SHOW server_version;").Scan(&fullVersion)
+		if err == nil {
+			version = strings.Split(fullVersion, " ")[0]
+		}
 	}
 
-	// Parse the version
-	// Example output: psql (PostgreSQL) 13.3 (Ubuntu 13.3-1.pgdg20.04+1)
-	version := strings.Split(string(out), " ")[2]
+	if version == "" {
+		out, err := exec.Command("psql", "--version").Output()
+		if err != nil {
+			return "", false, "Error getting version"
+		}
+
+		// Parse the version
+		// Example output: psql (PostgreSQL) 13.3 (Ubuntu 13.3-1.pgdg20.04+1)
+		parts := strings.Split(string(out), " ")
+		if len(parts) >= 3 {
+			version = parts[2]
+		} else {
+			return "", false, "Error parsing psql version output"
+		}
+	}
 
 	// Get the previously stored version
 	oldVersion := versionCheck.GatherVersion("postgres")
@@ -79,6 +95,8 @@ func getPostgresVersionInfo() (string, bool, string) {
 	}
 
 	if oldVersion != "" && oldVersion != version {
+		versionCheck.CreateNews("PostgreSQL", oldVersion, version, false)
+
 		// Don't use fmt.Println for any output here
 		return version, true, fmt.Sprintf("Updated from %s to %s", oldVersion, version)
 	}
