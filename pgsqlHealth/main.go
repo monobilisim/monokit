@@ -87,7 +87,6 @@ func getPostgresVersionInfo() (string, bool, string) {
 		}
 	}
 
-	// Get the previously stored version
 	oldVersion := versionCheck.GatherVersion("postgres")
 
 	if oldVersion != "" && oldVersion == version {
@@ -97,11 +96,11 @@ func getPostgresVersionInfo() (string, bool, string) {
 	if oldVersion != "" && oldVersion != version {
 		versionCheck.CreateNews("PostgreSQL", oldVersion, version, false)
 
-		// Don't use fmt.Println for any output here
+		versionCheck.StoreVersion("postgres", version)
+
 		return version, true, fmt.Sprintf("Updated from %s to %s", oldVersion, version)
 	}
 
-	// Store the current version for future checks
 	versionCheck.StoreVersion("postgres", version)
 
 	return version, false, "Up-to-date"
