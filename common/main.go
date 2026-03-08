@@ -118,7 +118,7 @@ func ConvertBytes(bytes uint64) string {
 }
 
 func RemoveLockfile() {
-	os.Remove(TmpDir + "/monokit.lock")
+	os.Remove(TmpDir + "monokit.lock")
 }
 
 func Init() {
@@ -147,15 +147,15 @@ func Init() {
 
 	}
 
-	if FileExists(TmpDir + "/monokit.lock") {
+	if FileExists(TmpDir + "monokit.lock") {
 		// Check if a process is also running
 		if !ProcGrep("monokit", true) {
 			// Remove lockfile
-			os.Remove(TmpDir + "/monokit.lock")
+			os.Remove(TmpDir + "monokit.lock")
 			log.Debug().
 				Str("component", "lockfile").
 				Str("action", "cleanup").
-				Str("file", TmpDir+"/monokit.lock").
+				Str("file", TmpDir+"monokit.lock").
 				Msg("Removed stale lockfile")
 		} else {
 			if !IgnoreLockfile { // Check the flag before exiting
@@ -173,13 +173,13 @@ func Init() {
 
 	// Create lockfile only if not ignoring
 	if !IgnoreLockfile {
-		file, err := os.Create(TmpDir + "/monokit.lock")
+		file, err := os.Create(TmpDir + "monokit.lock")
 		if err != nil {
 			log.Error().
 				Err(err).
 				Str("component", "lockfile").
 				Str("action", "create").
-				Str("file", TmpDir+"/monokit.lock").
+				Str("file", TmpDir+"monokit.lock").
 				Msg("Failed to create lockfile")
 			// Decide if we should exit here or just warn
 		} else {
@@ -187,7 +187,7 @@ func Init() {
 			log.Debug().
 				Str("component", "lockfile").
 				Str("action", "create").
-				Str("file", TmpDir+"/monokit.lock").
+				Str("file", TmpDir+"monokit.lock").
 				Msg("Created lockfile successfully")
 		}
 	}
