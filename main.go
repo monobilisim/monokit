@@ -146,7 +146,7 @@ func main() {
 		Run:   lbPolicy.PatroniCheck,
 	}
 
-	var daemon = &cobra.Command{
+	var daemonCmd = &cobra.Command{
 		Use:   "daemon",
 		Short: "Daemon",
 		Run:   daemon.Main,
@@ -329,10 +329,15 @@ func main() {
 	news.ExistsCmd.MarkFlagRequired("description")
 
 	/// Daemon
-	RootCmd.AddCommand(daemon)
+	RootCmd.AddCommand(daemonCmd)
 
-	daemon.Flags().Bool("once", false, "Run once and exit")
-	daemon.Flags().Bool("list-components", false, "List installed components")
+	daemonCmd.Flags().Bool("once", false, "Run once and exit")
+	daemonCmd.Flags().Bool("list-components", false, "List installed components")
+
+	daemonCmd.AddCommand(daemon.InstallServiceCmd)
+	daemonCmd.AddCommand(daemon.RemoveServiceCmd)
+	daemonCmd.AddCommand(daemon.StartServiceCmd)
+	daemonCmd.AddCommand(daemon.StopServiceCmd)
 
 	/// OS Health
 	RootCmd.AddCommand(osHealthCmd)

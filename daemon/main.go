@@ -70,8 +70,18 @@ func Main(cmd *cobra.Command, args []string) {
 		os.Exit(0)
 	}
 
+	// Check if running as a Windows Service
+	if isWindowsService() {
+		runWindowsService()
+		return
+	}
+
 	// Main daemon loop
-	ticker := time.NewTicker(time.Duration(DaemonConfig.Frequency) * time.Second)
+	freq := DaemonConfig.Frequency
+	if freq <= 0 {
+		freq = 60
+	}
+	ticker := time.NewTicker(time.Duration(freq) * time.Second)
 	defer ticker.Stop()
 
 	for {

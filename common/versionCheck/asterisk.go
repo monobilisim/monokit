@@ -3,6 +3,7 @@ package common
 import (
 	"fmt"
 	"os/exec"
+	"strings"
 
 	"github.com/rs/zerolog/log"
 )
@@ -34,6 +35,9 @@ func AsteriskCheck() (string, error) {
 	log.Debug().Str("version", version).Msg("Detected Asterisk version")
 
 	oldVersion := GatherVersion("asterisk")
+
+	version = strings.TrimSpace(version)
+	oldVersion = strings.TrimSpace(oldVersion)
 
 	if oldVersion != "" && oldVersion == version {
 		log.Debug().Msg("Asterisk version unchanged.")

@@ -26,24 +26,26 @@ func GetWindowsLicenseStatus() LicenseInfo {
 
 	// Query for Windows OS licenses only (ApplicationID for Windows is 55c92734-d682-4d71-983e-d6ec3f16059f)
 	// and only those that have a partial product key (filters out some auxiliary licenses)
-	query := "SELECT Name, Description, LicenseStatus, ApplicationID, PartialProductKey, GracePeriodRemaining FROM SoftwareLicensingProduct WHERE ApplicationID = '55c92734-d682-4d71-983e-d6ec3f16059f' AND PartialProductKey <> null"
+	query := "SELECT Name, Description, LicenseStatus, ApplicationID, PartialProductKey, GracePeriodRemaining FROM SoftwareLicensingProduct WHERE ApplicationID = '55c92734-d682-4d71-983e-d6ec3f16059f' AND PartialProductKey IS NOT NULL"
 
 	err := wmi.Query(query, &licenses)
 	if err != nil {
 		log.Error().Err(err).Msg("Failed to query Windows License info via WMI")
 		return LicenseInfo{
-			Status:      "Unknown",
-			Description: "Error querying WMI",
-			IsLicensed:  false,
+			Status:        "Unknown",
+			Description:   "Error querying WMI",
+			IsLicensed:    false,
+			RemainingDays: -1,
 		}
 	}
 
 	if len(licenses) == 0 {
 		// Fallback or just report unknown
 		return LicenseInfo{
-			Status:      "Unknown",
-			Description: "No active Windows license found",
-			IsLicensed:  false,
+			Status:        "Unknown",
+			Description:   "No active Windows license found",
+			IsLicensed:    false,
+			RemainingDays: -1,
 		}
 	}
 

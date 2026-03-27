@@ -65,10 +65,12 @@ func GetInstalledComponents() string {
 	if !ConfExists("daemon") {
 		// Config file doesn't exist: Default to osHealth + auto-detected components
 		log.Debug().Msg("Daemon config file not found. Using default: osHealth + auto-detected.")
-		enabled = append(enabled, "osHealth") // Always include osHealth by default
+		if runtime.GOOS != "windows" {
+			enabled = append(enabled, "osHealth") // Always include osHealth by default, except on Windows
+		}
 
 		for name, comp := range ComponentRegistry {
-			if name == "osHealth" { // Already added
+			if name == "osHealth" { // Already added (or intentionally skipped)
 				continue
 			}
 
@@ -114,8 +116,8 @@ func GetInstalledComponents() string {
 
 		log.Debug().Msg("Processing components with config file present")
 
-		// Always consider osHealth unless explicitly disabled
-		if _, isDisabled := disabledComponents["osHealth"]; !isDisabled {
+		// Always consider osHealth unless explicitly disabled or running on Windows
+		if _, isDisabled := disabledComponents["osHealth"]; !isDisabled && runtime.GOOS != "windows" {
 			if comp, exists := ComponentRegistry["osHealth"]; exists {
 				// Check platform compatibility for osHealth
 				if comp.Platform == "any" || comp.Platform == runtime.GOOS {
@@ -128,7 +130,11 @@ func GetInstalledComponents() string {
 				log.Debug().Msg("osHealth component not found in registry, but expected")
 			}
 		} else {
-			log.Debug().Msg("Skipping osHealth (explicitly disabled in config)")
+			if runtime.GOOS == "windows" {
+				log.Debug().Msg("Skipping osHealth (not supported on Windows)")
+			} else {
+				log.Debug().Msg("Skipping osHealth (explicitly disabled in config)")
+			}
 		}
 
 		// Iterate through all other registered components

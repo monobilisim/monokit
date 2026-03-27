@@ -48,6 +48,9 @@ func init() {
 		Name:       "winHealth",
 		EntryPoint: Main,
 		Platform:   "windows", // Only runs on Windows
+		AutoDetect: func() bool {
+			return runtime.GOOS == "windows"
+		},
 	})
 	health.Register(&WinHealthProvider{})
 }
