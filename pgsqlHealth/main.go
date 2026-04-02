@@ -22,10 +22,8 @@ import (
 func DetectPostgres() bool {
 	// Check if any common PostgreSQL service unit file exists
 	postgresServiceExists := common.SystemdUnitExists("postgresql.service") ||
-		common.SystemdUnitExists("postgresql@.service") || // Check for template unit
-		common.SystemdUnitExists("postgresql@13-main.service") ||
-		common.SystemdUnitExists("postgresql@14-main.service") ||
-		common.SystemdUnitExists("postgresql@15-main.service")
+		common.SystemdUnitExists("postgresql@*.service") ||
+		common.SystemdUnitExists("postgresql-*.service")
 
 	if !postgresServiceExists {
 		log.Debug().Msg("PostgreSQL detection failed: No common postgresql systemd unit file found.")
