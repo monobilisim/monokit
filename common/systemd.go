@@ -17,28 +17,24 @@ import (
 func SystemdUnitActive(unitName string) bool {
 	ctx := context.Background()
 
-	// Check if the unit is active
-	systemdConnection, err := dbus.NewSystemConnectionContext(ctx)
-
+	conn, err := dbus.NewSystemConnectionContext(ctx)
 	if err != nil {
 		log.Error().Err(err).Msg("Error connecting to systemd")
+		return false
 	}
+	defer conn.Close()
 
-	defer systemdConnection.Close()
-
-	listOfUnits, err := systemdConnection.ListUnitsContext(ctx)
-
+	props, err := conn.GetUnitPropertiesContext(ctx, unitName)
 	if err != nil {
-		log.Error().Err(err).Msg("Error listing systemd units")
+		log.Debug().Err(err).Str("unit", unitName).Msg("Could not get unit properties")
+		return false
 	}
 
-	for _, unit := range listOfUnits {
-		if unit.Name == unitName {
-			return unit.ActiveState == "active"
-		}
+	activeState, ok := props["ActiveState"]
+	if !ok {
+		return false
 	}
-
-	return false
+	return activeState.(string) == "active"
 }
 
 // SystemdUnitExists checks if a systemd unit file exists in common locations.
