@@ -173,6 +173,7 @@ These core tools will be available in every monokit installation.
   - Checks RabbitMQ health, including service status, Management API, port availability and cluster node status.
   - Monitors queue health: detects stopped queues, missing consumers, message backlog and mirror/quorum sync issues.
   - Sends alarm notifications to a Slack webhook.
+  - Opens Redmine issues for stopped or unsynced queues.
   - Config: `/etc/mono/rabbitmq.yaml` (optional)
     ```yaml
     user: guest
@@ -183,7 +184,10 @@ These core tools will be available in every monokit installation.
       consumerCheck: false         # alarm if a queue has no active consumers
       messageThreshold: 0          # alarm if message count exceeds this value (0 = disabled)
       expectedMirrorCount: 0       # expected number of mirrors/slaves (0 = cluster node count - 1)
-      ignoreQueues: []             # queue names to skip
+      ignoreQueues: []             # queue names to skip from all checks
+      redmine:
+        enabled: true              # create Redmine issues for stopped/unsynced queues
+        excludeQueues: []          # queue names to exclude from Redmine issue creation
     ```
 
 - lbPolicy

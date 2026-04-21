@@ -58,18 +58,24 @@ var Config struct {
 	User     string
 	Password string
 	Queues   struct {
-		// Enabled: true ise kuyruk sağlık kontrolleri aktif (varsayılan: false — eski config uyumluluğu)
+		// Enabled: enable queue health checks (default: false for backward compat)
 		Enabled bool
-		// MessageThreshold: mesaj sayısı bu değeri aşarsa alarm ver (0 = devre dışı)
+		// MessageThreshold: alarm if message count exceeds this value (0 = disabled)
 		MessageThreshold int
-		// ConsumerCheck: true ise consumer olmayan kuyrukları alarm ver
+		// ConsumerCheck: alarm if a queue has no active consumers
 		ConsumerCheck bool
-		// MirrorSyncCheck: true ise tüm node'lara sync olmayan kuyruklara alarm ver
+		// MirrorSyncCheck: alarm if queues are not fully synced across all nodes
 		MirrorSyncCheck bool
-		// ExpectedMirrorCount: beklenen mirror/slave sayısı (0 = cluster node sayısı - 1)
+		// ExpectedMirrorCount: expected number of mirrors/slaves (0 = cluster node count - 1)
 		ExpectedMirrorCount int
-		// IgnoreQueues: kontrol dışı bırakılacak kuyruk adları
+		// IgnoreQueues: queue names to skip from all checks
 		IgnoreQueues []string
+		// Redmine: create Redmine issues for stopped/unsynced queues
+		Redmine struct {
+			Enabled bool
+			// ExcludeQueues: queue names to exclude from Redmine issue creation
+			ExcludeQueues []string
+		}
 	}
 }
 
