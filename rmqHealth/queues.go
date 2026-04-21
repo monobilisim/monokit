@@ -14,9 +14,9 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-// queueAPIResponse, RabbitMQ HTTP API'sinden gelen kuyruk verisini temsil eder.
-// rabbithole struct'ı slave_nodes/synchronised_slave_nodes alanlarını içermediğinden
-// bu struct HTTP API'den direkt alınır.
+// queueAPIResponse represents a queue entry from the RabbitMQ HTTP API.
+// The rabbithole struct does not include slave_nodes/synchronised_slave_nodes fields,
+// so this struct is populated directly from the HTTP API response.
 type queueAPIResponse struct {
 	Name                   string `json:"name"`
 	Vhost                  string `json:"vhost"`
@@ -29,65 +29,65 @@ type queueAPIResponse struct {
 	MessagesUnacknowledged int    `json:"messages_unacknowledged"`
 	Consumers              int    `json:"consumers"`
 	Policy                 string `json:"policy"`
-	// Classic mirrored queue alanları
+	// Classic mirrored queue fields
 	SlaveNodes             []string `json:"slave_nodes"`
 	SynchronisedSlaveNodes []string `json:"synchronised_slave_nodes"`
-	// Quorum queue alanları
+	// Quorum queue fields
 	Members []string `json:"members"`
 	Online  []string `json:"online"`
 	Leader  string   `json:"leader"`
 }
 
-// fetchQueuesFromAPI, RabbitMQ HTTP API'sinden tüm kuyrukları çeker.
+// fetchQueuesFromAPI fetches all queues from the RabbitMQ HTTP API.
 func fetchQueuesFromAPI() ([]queueAPIResponse, error) {
 	url := "http://localhost:15672/api/queues"
 	req, err := http.NewRequest("GET", url, nil)
 	if err != nil {
-		return nil, fmt.Errorf("HTTP request oluşturulamadı: %w", err)
+		return nil, fmt.Errorf("failed to create HTTP request: %w", err)
 	}
 	req.SetBasicAuth(Config.User, Config.Password)
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("HTTP isteği başarısız: %w", err)
+		return nil, fmt.Errorf("HTTP request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("HTTP %d döndü", resp.StatusCode)
+		return nil, fmt.Errorf("unexpected HTTP status %d", resp.StatusCode)
 	}
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return nil, fmt.Errorf("response body okunamadı: %w", err)
+		return nil, fmt.Errorf("failed to read response body: %w", err)
 	}
 
 	var queues []queueAPIResponse
 	if err := json.Unmarshal(body, &queues); err != nil {
-		return nil, fmt.Errorf("JSON parse hatası: %w", err)
+		return nil, fmt.Errorf("failed to parse JSON: %w", err)
 	}
 
 	return queues, nil
 }
 
-// isIgnored, bir kuyruğun ignore listesinde olup olmadığını kontrol eder.
+// isIgnored reports whether a queue name is in the ignore list.
 func isIgnored(name string) bool {
 	return slices.Contains(Config.Queues.IgnoreQueues, name)
 }
 
-// checkQueues, tüm kuyrukların sağlık durumunu kontrol eder ve alarm üretir.
+// checkQueues checks the health of all queues and fires alarms as needed.
 func checkQueues() {
 	queues, err := fetchQueuesFromAPI()
 	if err != nil {
-		log.Error().Err(err).Str("component", "rmqHealth").Str("operation", "checkQueues").Msg("Kuyruk listesi alınamadı")
-		common.AlarmCheckDown("rabbitmq_queues_api", "Kuyruk listesi alınamadı: "+err.Error(), false, "", "")
+		log.Error().Err(err).Str("component", "rmqHealth").Str("operation", "checkQueues").Msg("Failed to fetch queue list")
+		common.AlarmCheckDown("rabbitmq_queues_api", "Failed to fetch queue list: "+err.Error(), false, "", "")
 		healthData.Queues.FetchOK = false
 		return
 	}
-	common.AlarmCheckUp("rabbitmq_queues_api", "Kuyruk listesi başarıyla alındı", false)
+	common.AlarmCheckUp("rabbitmq_queues_api", "RabbitMQ queue list is now reachable", false)
 	healthData.Queues.FetchOK = true
 
-	// Cluster node sayısını belirle (mirror beklentisi için) — sadece MirrorSyncCheck aktifse hesapla
+	// Determine expected mirror count — only when MirrorSyncCheck is enabled
 	expectedMirrors := 0
 	if Config.Queues.MirrorSyncCheck {
 		expectedMirrors = Config.Queues.ExpectedMirrorCount
@@ -107,7 +107,7 @@ func checkQueues() {
 
 	for _, q := range queues {
 		if isIgnored(q.Name) {
-			log.Debug().Str("queue", q.Name).Msg("Kuyruk ignore listesinde, atlanıyor")
+			log.Debug().Str("queue", q.Name).Msg("Queue is in ignore list, skipping")
 			continue
 		}
 
@@ -121,44 +121,44 @@ func checkQueues() {
 			Node:                   q.Node,
 		}
 
-		// --- 1. Stopped kuyruk kontrolü ---
+		// --- 1. Stopped queue check ---
 		if q.State != "running" {
 			stoppedCount++
 			item.Stopped = true
 			alarmKey := "rabbitmq_queue_stopped_" + sanitizeAlarmKey(q.Name)
-			msg := fmt.Sprintf("Kuyruk `%s` durumu: **%s** (node: %s)", q.Name, q.State, q.Node)
+			msg := fmt.Sprintf("Queue `%s` is in state: **%s** (node: %s)", q.Name, q.State, q.Node)
 			common.AlarmCheckDown(alarmKey, msg, false, "", "")
 		} else {
 			item.Stopped = false
 			alarmKey := "rabbitmq_queue_stopped_" + sanitizeAlarmKey(q.Name)
-			common.AlarmCheckUp(alarmKey, fmt.Sprintf("Kuyruk `%s` artık running durumunda", q.Name), false)
+			common.AlarmCheckUp(alarmKey, fmt.Sprintf("Queue `%s` is now running", q.Name), false)
 		}
 
-		// --- 2. Consumer kontrolü ---
+		// --- 2. Consumer check ---
 		if Config.Queues.ConsumerCheck && q.Consumers == 0 {
 			noConsumerCount++
 			item.NoConsumer = true
 			alarmKey := "rabbitmq_queue_no_consumer_" + sanitizeAlarmKey(q.Name)
-			msg := fmt.Sprintf("Kuyruk `%s` için aktif consumer yok (mesaj: %d)", q.Name, q.Messages)
+			msg := fmt.Sprintf("Queue `%s` has no active consumers (messages: %d)", q.Name, q.Messages)
 			common.AlarmCheckDown(alarmKey, msg, false, "", "")
 		} else if Config.Queues.ConsumerCheck {
 			item.NoConsumer = false
 			alarmKey := "rabbitmq_queue_no_consumer_" + sanitizeAlarmKey(q.Name)
-			common.AlarmCheckUp(alarmKey, fmt.Sprintf("Kuyruk `%s` için consumer mevcut (%d)", q.Name, q.Consumers), false)
+			common.AlarmCheckUp(alarmKey, fmt.Sprintf("Queue `%s` now has active consumers (%d)", q.Name, q.Consumers), false)
 		}
 
-		// --- 3. Mesaj birikimi kontrolü ---
+		// --- 3. Message backlog check ---
 		if Config.Queues.MessageThreshold > 0 && q.Messages > Config.Queues.MessageThreshold {
 			highMessageCount++
 			item.HighMessages = true
 			alarmKey := "rabbitmq_queue_high_messages_" + sanitizeAlarmKey(q.Name)
-			msg := fmt.Sprintf("Kuyruk `%s` mesaj sayısı eşiği aştı: %d > %d (unacked: %d)",
+			msg := fmt.Sprintf("Queue `%s` message count exceeded threshold: %d > %d (unacked: %d)",
 				q.Name, q.Messages, Config.Queues.MessageThreshold, q.MessagesUnacknowledged)
 			common.AlarmCheckDown(alarmKey, msg, false, "", "")
 		} else if Config.Queues.MessageThreshold > 0 {
 			item.HighMessages = false
 			alarmKey := "rabbitmq_queue_high_messages_" + sanitizeAlarmKey(q.Name)
-			common.AlarmCheckUp(alarmKey, fmt.Sprintf("Kuyruk `%s` mesaj sayısı normal: %d", q.Name, q.Messages), false)
+			common.AlarmCheckUp(alarmKey, fmt.Sprintf("Queue `%s` message count is back to normal: %d", q.Name, q.Messages), false)
 		}
 
 		// --- 4. Mirror/Sync kontrolü ---
@@ -185,35 +185,35 @@ func checkQueues() {
 		Int("no_consumer", noConsumerCount).
 		Int("high_messages", highMessageCount).
 		Int("unsynced", unsyncedCount).
-		Msg("Kuyruk kontrolü tamamlandı")
+		Msg("Queue health check completed")
 }
 
-// checkQueueMirrorSync, bir kuyruğun mirror senkronizasyonunu kontrol eder.
-// Kuyruk tiplerine göre farklı alanları kullanır:
+// checkQueueMirrorSync checks the mirror/replica sync status of a queue.
+// Uses different fields depending on queue type:
 //   - classic: slave_nodes / synchronised_slave_nodes
-//   - quorum: members / online
+//   - quorum:  members / online
 func checkQueueMirrorSync(q queueAPIResponse, expectedMirrors int, unsyncedCount *int) QueueSyncStatus {
 	status := QueueSyncStatus{}
 
 	switch q.Type {
 	case "quorum":
-		// Quorum queue: online member sayısı beklenen node sayısına eşit olmalı
+		// Quorum queue: number of online members must meet the expected count
 		totalMembers := len(q.Members)
 		onlineMembers := len(q.Online)
 		status.TotalReplicas = totalMembers
 		status.SyncedReplicas = onlineMembers
-		status.IsFullySynced = onlineMembers >= (expectedMirrors + 1) // +1 master dahil
+		status.IsFullySynced = onlineMembers >= (expectedMirrors + 1) // +1 to include the leader
 
 		if !status.IsFullySynced {
 			*unsyncedCount++
 			alarmKey := "rabbitmq_queue_sync_" + sanitizeAlarmKey(q.Name)
 			missingNodes := findMissingNodes(q.Members, q.Online)
-			msg := fmt.Sprintf("Quorum kuyruk `%s`: online üye sayısı yetersiz (%d/%d). Eksik: %s",
+			msg := fmt.Sprintf("Quorum queue `%s` has insufficient online members (%d/%d); missing: %s",
 				q.Name, onlineMembers, totalMembers, strings.Join(missingNodes, ", "))
 			common.AlarmCheckDown(alarmKey, msg, false, "", "")
 		} else {
 			alarmKey := "rabbitmq_queue_sync_" + sanitizeAlarmKey(q.Name)
-			common.AlarmCheckUp(alarmKey, fmt.Sprintf("Quorum kuyruk `%s` tüm üyeleriyle online (%d/%d)",
+			common.AlarmCheckUp(alarmKey, fmt.Sprintf("Quorum queue `%s` is online on all members (%d/%d)",
 				q.Name, onlineMembers, totalMembers), false)
 		}
 
@@ -221,7 +221,7 @@ func checkQueueMirrorSync(q queueAPIResponse, expectedMirrors int, unsyncedCount
 		// Classic mirrored queue
 		syncedCount := len(q.SynchronisedSlaveNodes)
 		slaveCount := len(q.SlaveNodes)
-		status.TotalReplicas = slaveCount + 1 // +1 master
+		status.TotalReplicas = slaveCount + 1 // +1 for master
 		status.SyncedReplicas = syncedCount
 		status.IsFullySynced = syncedCount >= expectedMirrors
 
@@ -229,12 +229,12 @@ func checkQueueMirrorSync(q queueAPIResponse, expectedMirrors int, unsyncedCount
 			*unsyncedCount++
 			alarmKey := "rabbitmq_queue_sync_" + sanitizeAlarmKey(q.Name)
 			unsyncedSlaves := findMissingNodes(q.SlaveNodes, q.SynchronisedSlaveNodes)
-			msg := fmt.Sprintf("Classic kuyruk `%s`: sync slave sayısı yetersiz (%d/%d beklenen %d). Sync olmayan: %s",
+			msg := fmt.Sprintf("Classic queue `%s` has insufficient synchronised mirrors (%d/%d, expected %d); not synced: %s",
 				q.Name, syncedCount, slaveCount, expectedMirrors, strings.Join(unsyncedSlaves, ", "))
 			common.AlarmCheckDown(alarmKey, msg, false, "", "")
 		} else {
 			alarmKey := "rabbitmq_queue_sync_" + sanitizeAlarmKey(q.Name)
-			common.AlarmCheckUp(alarmKey, fmt.Sprintf("Classic kuyruk `%s` tüm slave'lerle sync (%d/%d)",
+			common.AlarmCheckUp(alarmKey, fmt.Sprintf("Classic queue `%s` is fully synchronised across all mirrors (%d/%d)",
 				q.Name, syncedCount, expectedMirrors), false)
 		}
 	}
@@ -242,7 +242,7 @@ func checkQueueMirrorSync(q queueAPIResponse, expectedMirrors int, unsyncedCount
 	return status
 }
 
-// findMissingNodes, all listesinde olup synced listesinde olmayan node'ları bulur.
+// findMissingNodes returns nodes that are in all but not in synced.
 func findMissingNodes(all []string, synced []string) []string {
 	syncedSet := make(map[string]struct{}, len(synced))
 	for _, n := range synced {
@@ -257,7 +257,7 @@ func findMissingNodes(all []string, synced []string) []string {
 	return missing
 }
 
-// sanitizeAlarmKey, kuyruk adını alarm key'i için uygun formata getirir.
+// sanitizeAlarmKey converts a queue name into a safe alarm key string.
 func sanitizeAlarmKey(name string) string {
 	replacer := strings.NewReplacer(
 		"/", "-",
