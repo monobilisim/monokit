@@ -18,7 +18,41 @@ type RmqHealthData struct {
 	Ports       PortsInfo
 	API         ApiInfo
 	Cluster     ClusterInfo
+	Queues      QueuesInfo
 	IsHealthy   bool
+}
+
+// QueuesInfo represents the aggregate health status of all queues
+type QueuesInfo struct {
+	FetchOK          bool
+	TotalCount       int
+	StoppedCount     int
+	NoConsumerCount  int
+	HighMessageCount int
+	UnsyncedCount    int
+	Items            []QueueHealthItem
+}
+
+// QueueHealthItem represents the health status of a single queue
+type QueueHealthItem struct {
+	Name                   string
+	State                  string
+	Type                   string
+	Node                   string
+	Messages               int
+	MessagesUnacknowledged int
+	Consumers              int
+	Stopped                bool
+	NoConsumer             bool
+	HighMessages           bool
+	SyncStatus             QueueSyncStatus
+}
+
+// QueueSyncStatus represents mirror/replica sync status of a queue
+type QueueSyncStatus struct {
+	TotalReplicas  int
+	SyncedReplicas int
+	IsFullySynced  bool
 }
 
 // ServiceInfo represents RabbitMQ service status
@@ -68,6 +102,9 @@ func NewRmqHealthData() *RmqHealthData {
 		Cluster: ClusterInfo{
 			Nodes:     []NodeInfo{},
 			IsHealthy: true,
+		},
+		Queues: QueuesInfo{
+			Items: []QueueHealthItem{},
 		},
 		IsHealthy: true, // Start optimistically
 	}
@@ -148,6 +185,66 @@ func (r *RmqHealthData) RenderCompact() string {
 				fmt.Sprintf("Node %s", node.Name),
 				"running",
 				node.IsRunning))
+			sb.WriteString("\n")
+		}
+	}
+
+	// Queue Health section
+	if r.Queues.FetchOK && r.Queues.TotalCount > 0 {
+		sb.WriteString("\n")
+		sb.WriteString(common.SectionTitle("Queue Health"))
+		sb.WriteString("\n")
+
+		// Özet satırı
+		summaryOK := r.Queues.StoppedCount == 0 && r.Queues.UnsyncedCount == 0
+		summaryLabel := fmt.Sprintf("Queues (%d total)", r.Queues.TotalCount)
+		summaryState := fmt.Sprintf("all healthy")
+		if !summaryOK {
+			summaryState = fmt.Sprintf("%d stopped, %d unsynced", r.Queues.StoppedCount, r.Queues.UnsyncedCount)
+		}
+		sb.WriteString(simpleStatusListItem(summaryLabel, summaryState, summaryOK))
+		sb.WriteString("\n")
+
+		if r.Queues.NoConsumerCount > 0 {
+			sb.WriteString(simpleStatusListItem(
+				"Consumers",
+				fmt.Sprintf("%d queues without consumer", r.Queues.NoConsumerCount),
+				false))
+			sb.WriteString("\n")
+		}
+
+		if r.Queues.HighMessageCount > 0 {
+			sb.WriteString(simpleStatusListItem(
+				"Message Backlog",
+				fmt.Sprintf("%d queues above threshold", r.Queues.HighMessageCount),
+				false))
+			sb.WriteString("\n")
+		}
+
+		// Sorunlu kuyrukları listele
+		for _, q := range r.Queues.Items {
+			hasIssue := q.Stopped || q.NoConsumer || q.HighMessages || !q.SyncStatus.IsFullySynced
+			if !hasIssue {
+				continue
+			}
+
+			var issues []string
+			if q.Stopped {
+				issues = append(issues, fmt.Sprintf("state=%s", q.State))
+			}
+			if q.NoConsumer {
+				issues = append(issues, "no consumer")
+			}
+			if q.HighMessages {
+				issues = append(issues, fmt.Sprintf("messages=%d", q.Messages))
+			}
+			if !q.SyncStatus.IsFullySynced && q.SyncStatus.TotalReplicas > 0 {
+				issues = append(issues, fmt.Sprintf("sync=%d/%d", q.SyncStatus.SyncedReplicas, q.SyncStatus.TotalReplicas-1))
+			}
+
+			label := fmt.Sprintf("  %s", q.Name)
+			detail := strings.Join(issues, ", ")
+			sb.WriteString(simpleStatusListItem(label, detail, false))
 			sb.WriteString("\n")
 		}
 	}

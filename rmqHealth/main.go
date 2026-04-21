@@ -57,6 +57,20 @@ func init() {
 var Config struct {
 	User     string
 	Password string
+	Queues   struct {
+		// Enabled: true ise kuyruk sağlık kontrolleri aktif (varsayılan: false — eski config uyumluluğu)
+		Enabled bool
+		// MessageThreshold: mesaj sayısı bu değeri aşarsa alarm ver (0 = devre dışı)
+		MessageThreshold int
+		// ConsumerCheck: true ise consumer olmayan kuyrukları alarm ver
+		ConsumerCheck bool
+		// MirrorSyncCheck: true ise tüm node'lara sync olmayan kuyruklara alarm ver
+		MirrorSyncCheck bool
+		// ExpectedMirrorCount: beklenen mirror/slave sayısı (0 = cluster node sayısı - 1)
+		ExpectedMirrorCount int
+		// IgnoreQueues: kontrol dışı bırakılacak kuyruk adları
+		IgnoreQueues []string
+	}
 }
 
 var rabbitmqClient *rabbithole.Client
@@ -176,6 +190,9 @@ func Main(cmd *cobra.Command, args []string) {
 		if healthData.API.Connected {
 			checkOverview()
 			checkCluster()
+			if Config.Queues.Enabled {
+				checkQueues()
+			}
 		}
 	}
 

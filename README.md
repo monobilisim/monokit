@@ -170,9 +170,21 @@ These core tools will be available in every monokit installation.
   - Is a plugin, install it with `monokit plugin install redisHealth`.
 
 - rmqHealth
-  - Checks RabbitMQ health, including Management API and node status.
+  - Checks RabbitMQ health, including service status, Management API, port availability and cluster node status.
+  - Monitors queue health: detects stopped queues, missing consumers, message backlog and mirror/quorum sync issues.
   - Sends alarm notifications to a Slack webhook.
   - Config: `/etc/mono/rabbitmq.yaml` (optional)
+    ```yaml
+    user: guest
+    password: guest
+    queues:
+      enabled: true                # enable queue health checks (default: false)
+      mirrorSyncCheck: true        # alarm if classic/quorum queues are not fully synced across all nodes
+      consumerCheck: false         # alarm if a queue has no active consumers
+      messageThreshold: 0          # alarm if message count exceeds this value (0 = disabled)
+      expectedMirrorCount: 0       # expected number of mirrors/slaves (0 = cluster node count - 1)
+      ignoreQueues: []             # queue names to skip
+    ```
 
 - lbPolicy
     - Allows you to switch between the load balancing policies on Caddy, and list current policies.
