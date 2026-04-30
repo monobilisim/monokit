@@ -697,40 +697,6 @@ func resetServiceRestartTracking(service string) {
 
 // CheckZimbraServices refactored to return []ServiceInfo with recovery tracking
 func CheckZimbraServices() []ServiceInfo {
-	// Helper to parse zmcontrol status output
-	parseStatus := func(statusOutput string) ([]ServiceInfo, map[string]bool) {
-		var services []ServiceInfo
-		statusMap := make(map[string]bool)
-		lines := strings.Split(statusOutput, "\n")
-		for _, line := range lines {
-			line = strings.TrimSpace(line)
-			if line == "" || strings.HasPrefix(line, "Host") {
-				continue
-			}
-			svc := strings.Join(strings.Fields(line), " ")
-			var serviceName string
-			var isRunning bool
-			if strings.Contains(svc, "Running") {
-				isRunning = true
-				serviceName = strings.TrimSpace(strings.Split(svc, "Running")[0])
-			} else if strings.Contains(svc, "Stopped") {
-				isRunning = false
-				serviceName = strings.TrimSpace(strings.Split(svc, "Stopped")[0])
-			} else if strings.Contains(svc, "is not running") {
-				isRunning = false
-				serviceName = strings.TrimSpace(strings.Split(svc, "is not running")[0])
-			} else {
-				log.Warn().Str("line", line).Msg("Could not parse service status line")
-				continue
-			}
-			serviceName = strings.TrimPrefix(serviceName, "service ")
-			serviceName = strings.TrimPrefix(serviceName, "carbonio-")
-			services = append(services, ServiceInfo{Name: serviceName, Running: isRunning})
-			statusMap[serviceName] = isRunning
-		}
-		return services, statusMap
-	}
-
 	initialOutput, err := ExecZimbraCommand("zmcontrol status", false, false)
 	// `zmcontrol status` exits non-zero when at least one service is down
 	// (e.g. when LDAP is stopped it prints "Connect: Unable to determine
@@ -745,7 +711,7 @@ func CheckZimbraServices() []ServiceInfo {
 		return nil
 	}
 
-	currentServices, currentStatus := parseStatus(initialOutput)
+	currentServices, currentStatus := parseZmcontrolStatus(initialOutput)
 	if len(currentServices) == 0 {
 		log.Error().Str("output", initialOutput).Msg("zmcontrol status output could not be parsed into any services")
 		return nil
@@ -775,7 +741,7 @@ func CheckZimbraServices() []ServiceInfo {
 			log.Warn().Err(refreshErr).Msg("zmcontrol status returned non-zero after restart attempt; attempting to parse output anyway")
 		}
 		if strings.TrimSpace(refreshedOutput) != "" {
-			refreshedServices, refreshedStatus := parseStatus(refreshedOutput)
+			refreshedServices, refreshedStatus := parseZmcontrolStatus(refreshedOutput)
 			if len(refreshedServices) > 0 {
 				currentServices, currentStatus = refreshedServices, refreshedStatus
 			} else {
