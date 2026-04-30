@@ -511,6 +511,26 @@ location / {
 	return info
 }
 
+// pickLdapCtl returns the basename of the LDAP control script available under
+// zimbraPath/bin. The script name varies across Zimbra releases:
+//   - Modern Zimbra (9.x+) and Carbonio ship "ldap"
+//   - Legacy Zimbra (7.x/8.x) ships "zmldapctl"
+//
+// Some installations carry both (one as a symlink). "ldap" is preferred since
+// that's the current canonical name. Returns "" if neither is found.
+func pickLdapCtl() string {
+	if zimbraPath == "" {
+		return ""
+	}
+	if _, err := os.Stat(zimbraPath + "/bin/ldap"); err == nil {
+		return "ldap"
+	}
+	if _, err := os.Stat(zimbraPath + "/bin/zmldapctl"); err == nil {
+		return "zmldapctl"
+	}
+	return ""
+}
+
 // RestartZimbraService refactored to avoid recursion and direct call to CheckZimbraServices
 func RestartZimbraService(service string) bool {
 	// Enforce per-service restart interval and limit
@@ -557,6 +577,37 @@ func RestartZimbraService(service string) bool {
 		ExecZimbraCommand("zmstatctl stop", false, false)
 		time.Sleep(3 * time.Second)
 		output, err = ExecZimbraCommand("zmstatctl start", false, false)
+	case "ldap", "slapd":
+		// LDAP-specific path: start only the LDAP service first (faster, isolates
+		// LDAP errors from a generic zmcontrol output) and verify it actually came
+		// up. Fall back to "zmcontrol start" if anything goes wrong so behaviour
+		// is at least as good as the previous default branch.
+		//
+		// Detect the available control script (`ldap` on modern releases,
+		// `zmldapctl` on legacy ones) so this works across Zimbra versions.
+		ldapCmd := pickLdapCtl()
+		if ldapCmd == "" {
+			log.Warn().Str("zimbra_path", zimbraPath).Msg("Neither 'ldap' nor 'zmldapctl' control script found under zimbraPath/bin; falling back to zmcontrol start")
+			output, err = ExecZimbraCommand("zmcontrol start", false, false)
+			break
+		}
+		log.Info().Str("ldap_cmd", ldapCmd).Msg("Restarting LDAP using detected control script")
+
+		output, err = ExecZimbraCommand(ldapCmd+" start", false, false)
+		if err != nil {
+			log.Warn().Err(err).Str("output", output).Str("ldap_cmd", ldapCmd).Msg("LDAP control start failed, falling back to zmcontrol start")
+			output, err = ExecZimbraCommand("zmcontrol start", false, false)
+			break
+		}
+		// Grace period for slapd to bind to its port and accept connections.
+		time.Sleep(5 * time.Second)
+		statusOut, statusErr := ExecZimbraCommand(ldapCmd+" status", false, false)
+		if statusErr != nil {
+			log.Warn().Err(statusErr).Str("status_output", statusOut).Str("ldap_cmd", ldapCmd).Msg("LDAP status reports not running after start, falling back to zmcontrol start")
+			output, err = ExecZimbraCommand("zmcontrol start", false, false)
+		} else {
+			log.Info().Str("status_output", strings.TrimSpace(statusOut)).Str("ldap_cmd", ldapCmd).Msg("LDAP service started successfully")
+		}
 	default:
 		output, err = ExecZimbraCommand("zmcontrol start", false, false)
 	}
@@ -681,12 +732,24 @@ func CheckZimbraServices() []ServiceInfo {
 	}
 
 	initialOutput, err := ExecZimbraCommand("zmcontrol status", false, false)
+	// `zmcontrol status` exits non-zero when at least one service is down
+	// (e.g. when LDAP is stopped it prints "Connect: Unable to determine
+	// enabled services from ldap." and returns 1) but still emits a fully
+	// parseable status block sourced from cache. Don't drop that output —
+	// it's exactly the case we want to detect so we can attempt a restart.
 	if err != nil {
-		log.Error().Err(err).Msg("Failed to get zmcontrol status")
+		log.Warn().Err(err).Msg("zmcontrol status returned non-zero; attempting to parse output anyway (often expected when a service is down)")
+	}
+	if strings.TrimSpace(initialOutput) == "" {
+		log.Error().Err(err).Msg("zmcontrol status produced no output; cannot evaluate services")
 		return nil
 	}
 
 	currentServices, currentStatus := parseStatus(initialOutput)
+	if len(currentServices) == 0 {
+		log.Error().Str("output", initialOutput).Msg("zmcontrol status output could not be parsed into any services")
+		return nil
+	}
 	restartAttempted := false
 
 	for _, svc := range currentServices {
@@ -707,11 +770,17 @@ func CheckZimbraServices() []ServiceInfo {
 	if restartAttempted {
 		// Small grace period for services to come up
 		time.Sleep(5 * time.Second)
-		refreshedOutput, err := ExecZimbraCommand("zmcontrol status", false, false)
-		if err == nil {
-			currentServices, currentStatus = parseStatus(refreshedOutput)
-		} else {
-			log.Warn().Err(err).Msg("Failed to refresh zmcontrol status after restart attempt")
+		refreshedOutput, refreshErr := ExecZimbraCommand("zmcontrol status", false, false)
+		if refreshErr != nil {
+			log.Warn().Err(refreshErr).Msg("zmcontrol status returned non-zero after restart attempt; attempting to parse output anyway")
+		}
+		if strings.TrimSpace(refreshedOutput) != "" {
+			refreshedServices, refreshedStatus := parseStatus(refreshedOutput)
+			if len(refreshedServices) > 0 {
+				currentServices, currentStatus = refreshedServices, refreshedStatus
+			} else {
+				log.Warn().Str("output", refreshedOutput).Msg("Refreshed zmcontrol status output could not be parsed; keeping previous service list")
+			}
 		}
 
 		// Reset per-service counters for services that recovered successfully
