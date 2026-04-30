@@ -723,7 +723,16 @@ func CheckZimbraServices() []ServiceInfo {
 		if !svc.Running {
 			log.Warn().Str("service", svc.Name).Msg("Service is not running")
 			common.WriteToFile(common.TmpDir+"/"+"zmcontrol_status_"+time.Now().Format("2006-01-02_15.04.05")+".log", initialOutput)
-			common.AlarmCheckDown("service_"+svc.Name, svc.Name+" is not running ````spoiler zmcontrol status\n"+initialOutput+"\n```", false, "", "")
+			// Wrap zmcontrol output in a Zulip 4-backtick spoiler with an
+			// inner triple-backtick code fence so whitespace/alignment is
+			// preserved in the rendered message (otherwise tabs collapse
+			// and every entry runs together as one paragraph).
+			alarmMsg := fmt.Sprintf(
+				"%s is not running\n````spoiler zmcontrol status\n```\n%s\n```\n````",
+				svc.Name,
+				strings.TrimRight(initialOutput, "\n"),
+			)
+			common.AlarmCheckDown("service_"+svc.Name, alarmMsg, false, "", "")
 			if MailHealthConfig.Zimbra.Restart {
 				if RestartZimbraService(service) {
 					restartAttempted = true
@@ -835,13 +844,20 @@ func processServiceStateChanges(tmpDir string, currentStatus map[string]bool) []
 			if previousStatus == "Stopped" || previousStatus == "Unknown" {
 				state.RecoveredAt = now
 				state.RestartAttempts = 0 // Reset on recovery
-
-				// Emit recovery alarm only if down alarm file exists (avoids duplicates)
-				alarmFile := filepath.Join(tmpDir, "service_"+serviceName+".log")
-				if _, err := os.Stat(alarmFile); err == nil {
-					common.AlarmCheckUp("service_"+serviceName, serviceName+" is now running", false)
-				}
 			}
+
+			// Always poke AlarmCheckUp for running services. It self-
+			// gates against the SQLite alarm bucket and returns silently
+			// when no prior locked down record exists — so the cost is
+			// one SQLite read per tick and the benefit is that any
+			// lingering locked DOWN state (for example from a previous
+			// monokit version where the recovery guard never fired) gets
+			// cleared with a [:check:] notification the moment the
+			// service is observed running again. Driving recovery only
+			// off the in-process state-file transition was unreliable
+			// because state files could be written as Running without
+			// the corresponding alarm ever being released.
+			common.AlarmCheckUp("service_"+serviceName, serviceName+" is now running", false)
 		} else {
 			state.Status = "Stopped"
 			// Check for new failure (was running, now stopped)
@@ -869,11 +885,11 @@ func processServiceStateChanges(tmpDir string, currentStatus map[string]bool) []
 			state.Status = "Disappeared"
 			state.RecoveredAt = now
 
-			// Emit recovery alarm for disappeared services (they're no longer failing)
-			alarmFile := filepath.Join(tmpDir, "service_"+serviceName+".log")
-			if _, err := os.Stat(alarmFile); err == nil {
-				common.AlarmCheckUp("service_"+serviceName, serviceName+" is no longer reported by zmcontrol status", false)
-			}
+			// Same rationale as the recovery branch above: AlarmCheckUp
+			// self-gates on SQLite state, so we always call it. This
+			// also cleans up any stale alarms left over from previous
+			// parser bugs (e.g. phantom "mysql.server" entries).
+			common.AlarmCheckUp("service_"+serviceName, serviceName+" is no longer reported by zmcontrol status", false)
 
 			saveServiceState(tmpDir, state)
 		}
