@@ -697,40 +697,6 @@ func resetServiceRestartTracking(service string) {
 
 // CheckZimbraServices refactored to return []ServiceInfo with recovery tracking
 func CheckZimbraServices() []ServiceInfo {
-	// Helper to parse zmcontrol status output
-	parseStatus := func(statusOutput string) ([]ServiceInfo, map[string]bool) {
-		var services []ServiceInfo
-		statusMap := make(map[string]bool)
-		lines := strings.Split(statusOutput, "\n")
-		for _, line := range lines {
-			line = strings.TrimSpace(line)
-			if line == "" || strings.HasPrefix(line, "Host") {
-				continue
-			}
-			svc := strings.Join(strings.Fields(line), " ")
-			var serviceName string
-			var isRunning bool
-			if strings.Contains(svc, "Running") {
-				isRunning = true
-				serviceName = strings.TrimSpace(strings.Split(svc, "Running")[0])
-			} else if strings.Contains(svc, "Stopped") {
-				isRunning = false
-				serviceName = strings.TrimSpace(strings.Split(svc, "Stopped")[0])
-			} else if strings.Contains(svc, "is not running") {
-				isRunning = false
-				serviceName = strings.TrimSpace(strings.Split(svc, "is not running")[0])
-			} else {
-				log.Warn().Str("line", line).Msg("Could not parse service status line")
-				continue
-			}
-			serviceName = strings.TrimPrefix(serviceName, "service ")
-			serviceName = strings.TrimPrefix(serviceName, "carbonio-")
-			services = append(services, ServiceInfo{Name: serviceName, Running: isRunning})
-			statusMap[serviceName] = isRunning
-		}
-		return services, statusMap
-	}
-
 	initialOutput, err := ExecZimbraCommand("zmcontrol status", false, false)
 	// `zmcontrol status` exits non-zero when at least one service is down
 	// (e.g. when LDAP is stopped it prints "Connect: Unable to determine
@@ -745,7 +711,7 @@ func CheckZimbraServices() []ServiceInfo {
 		return nil
 	}
 
-	currentServices, currentStatus := parseStatus(initialOutput)
+	currentServices, currentStatus := parseZmcontrolStatus(initialOutput)
 	if len(currentServices) == 0 {
 		log.Error().Str("output", initialOutput).Msg("zmcontrol status output could not be parsed into any services")
 		return nil
@@ -757,7 +723,16 @@ func CheckZimbraServices() []ServiceInfo {
 		if !svc.Running {
 			log.Warn().Str("service", svc.Name).Msg("Service is not running")
 			common.WriteToFile(common.TmpDir+"/"+"zmcontrol_status_"+time.Now().Format("2006-01-02_15.04.05")+".log", initialOutput)
-			common.AlarmCheckDown("service_"+svc.Name, svc.Name+" is not running ````spoiler zmcontrol status\n"+initialOutput+"\n```", false, "", "")
+			// Wrap zmcontrol output in a Zulip 4-backtick spoiler with an
+			// inner triple-backtick code fence so whitespace/alignment is
+			// preserved in the rendered message (otherwise tabs collapse
+			// and every entry runs together as one paragraph).
+			alarmMsg := fmt.Sprintf(
+				"%s is not running\n````spoiler zmcontrol status\n```\n%s\n```\n````",
+				svc.Name,
+				strings.TrimRight(initialOutput, "\n"),
+			)
+			common.AlarmCheckDown("service_"+svc.Name, alarmMsg, false, "", "")
 			if MailHealthConfig.Zimbra.Restart {
 				if RestartZimbraService(service) {
 					restartAttempted = true
@@ -775,7 +750,7 @@ func CheckZimbraServices() []ServiceInfo {
 			log.Warn().Err(refreshErr).Msg("zmcontrol status returned non-zero after restart attempt; attempting to parse output anyway")
 		}
 		if strings.TrimSpace(refreshedOutput) != "" {
-			refreshedServices, refreshedStatus := parseStatus(refreshedOutput)
+			refreshedServices, refreshedStatus := parseZmcontrolStatus(refreshedOutput)
 			if len(refreshedServices) > 0 {
 				currentServices, currentStatus = refreshedServices, refreshedStatus
 			} else {
@@ -869,13 +844,20 @@ func processServiceStateChanges(tmpDir string, currentStatus map[string]bool) []
 			if previousStatus == "Stopped" || previousStatus == "Unknown" {
 				state.RecoveredAt = now
 				state.RestartAttempts = 0 // Reset on recovery
-
-				// Emit recovery alarm only if down alarm file exists (avoids duplicates)
-				alarmFile := filepath.Join(tmpDir, "service_"+serviceName+".log")
-				if _, err := os.Stat(alarmFile); err == nil {
-					common.AlarmCheckUp("service_"+serviceName, serviceName+" is now running", false)
-				}
 			}
+
+			// Always poke AlarmCheckUp for running services. It self-
+			// gates against the SQLite alarm bucket and returns silently
+			// when no prior locked down record exists — so the cost is
+			// one SQLite read per tick and the benefit is that any
+			// lingering locked DOWN state (for example from a previous
+			// monokit version where the recovery guard never fired) gets
+			// cleared with a [:check:] notification the moment the
+			// service is observed running again. Driving recovery only
+			// off the in-process state-file transition was unreliable
+			// because state files could be written as Running without
+			// the corresponding alarm ever being released.
+			common.AlarmCheckUp("service_"+serviceName, serviceName+" is now running", false)
 		} else {
 			state.Status = "Stopped"
 			// Check for new failure (was running, now stopped)
@@ -903,11 +885,11 @@ func processServiceStateChanges(tmpDir string, currentStatus map[string]bool) []
 			state.Status = "Disappeared"
 			state.RecoveredAt = now
 
-			// Emit recovery alarm for disappeared services (they're no longer failing)
-			alarmFile := filepath.Join(tmpDir, "service_"+serviceName+".log")
-			if _, err := os.Stat(alarmFile); err == nil {
-				common.AlarmCheckUp("service_"+serviceName, serviceName+" is no longer reported by zmcontrol status", false)
-			}
+			// Same rationale as the recovery branch above: AlarmCheckUp
+			// self-gates on SQLite state, so we always call it. This
+			// also cleans up any stale alarms left over from previous
+			// parser bugs (e.g. phantom "mysql.server" entries).
+			common.AlarmCheckUp("service_"+serviceName, serviceName+" is no longer reported by zmcontrol status", false)
 
 			saveServiceState(tmpDir, state)
 		}
