@@ -159,7 +159,7 @@ func CheckLatestVersions(apps []AppVersion) {
 				latest := matchedCycle.Latest
 
 				if state.NotifiedVersion != latest {
-					msg := fmt.Sprintf("Update required: %s version %s is out (you have %s)", app.Name, latest, currentVersion)
+					msg := fmt.Sprintf("[versionCheck - %s] [:warning:] Update required: %s version %s is out (you have %s)", monocommon.Config.Identifier, app.Name, latest, currentVersion)
 					log.Info().Str("app", app.Name).Str("latest", latest).Str("current", currentVersion).Msg("New stable LTS release found, sending alarm")
 
 					monocommon.Alarm(msg, "", "", false)
