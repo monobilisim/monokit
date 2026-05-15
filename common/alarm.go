@@ -54,6 +54,7 @@ var AlarmSendCmd = &cobra.Command{
 	Run: func(cmd *cobra.Command, args []string) {
 		Init()
 		message, _ := cmd.Flags().GetString("message")
+
 		customStream, _ := cmd.Flags().GetString("stream")
 		customTopic, _ := cmd.Flags().GetString("topic")
 		Alarm(message, customStream, customTopic, false)
@@ -283,47 +284,63 @@ func Alarm(m string, customStream string, customTopic string, onlyFirstWebhook b
 			continue
 		}
 
-		var data ResponseData
-		err = json.Unmarshal(responseBody, &data)
+		if res.StatusCode >= 200 && res.StatusCode <= 299 {
+			isSuccess := true
 
-		if err != nil {
-			log.Error().
-				Err(err).
-				Str("component", "alarm").
-				Str("action", "parse_response").
-				Str("webhook_url", webhook_url).
-				Int("webhook_index", i).
-				Str("response_body", string(responseBody)).
-				Msg("Error parsing alarm response JSON")
-			res.Body.Close()
-			errorCount++
-			continue
-		}
+			// Attempt to parse it just in case it's an error returned with a 2xx status code
+			var data ResponseData
+			if err := json.Unmarshal(responseBody, &data); err == nil {
+				if data.Result == "error" {
+					isSuccess = false
+					log.Error().
+						Str("component", "alarm").
+						Str("action", "webhook_error").
+						Str("webhook_url", webhook_url).
+						Int("webhook_index", i).
+						Str("result", data.Result).
+						Str("error_code", data.Code).
+						Str("error_message", data.Msg).
+						Str("request_json", string(body)).
+						Int("status_code", res.StatusCode).
+						Dur("request_duration", time.Since(webhookStartTime)).
+						Msg("Webhook returned error for alarm despite 2xx status")
+					errorCount++
+				}
+			}
 
-		if data.Result != "success" {
+			if isSuccess {
+				log.Debug().
+					Str("component", "alarm").
+					Str("action", "webhook_success").
+					Str("webhook_url", webhook_url).
+					Int("webhook_index", i).
+					Int("status_code", res.StatusCode).
+					Dur("request_duration", time.Since(webhookStartTime)).
+					Msg("Alarm sent successfully to webhook")
+				successCount++
+			}
+		} else {
+			var data ResponseData
+			errorMsg := string(responseBody)
+
+			// Try to parse the error message if it's JSON
+			if err := json.Unmarshal(responseBody, &data); err == nil && data.Msg != "" {
+				errorMsg = data.Msg
+			} else if err == nil && data.Result != "" {
+				errorMsg = data.Result
+			}
+
 			log.Error().
 				Str("component", "alarm").
 				Str("action", "webhook_error").
 				Str("webhook_url", webhook_url).
 				Int("webhook_index", i).
-				Str("result", data.Result).
-				Str("error_code", data.Code).
-				Str("error_message", data.Msg).
+				Str("error_message", errorMsg).
 				Str("request_json", string(body)).
 				Int("status_code", res.StatusCode).
 				Dur("request_duration", time.Since(webhookStartTime)).
 				Msg("Webhook returned error for alarm")
 			errorCount++
-		} else {
-			log.Debug().
-				Str("component", "alarm").
-				Str("action", "webhook_success").
-				Str("webhook_url", webhook_url).
-				Int("webhook_index", i).
-				Int("status_code", res.StatusCode).
-				Dur("request_duration", time.Since(webhookStartTime)).
-				Msg("Alarm sent successfully to webhook")
-			successCount++
 		}
 
 		res.Body.Close()
