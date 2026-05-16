@@ -152,6 +152,9 @@ func VersionCheck(cmd *cobra.Command, args []string) {
 	// VersityGW
 	VersityGWCheck()
 
+	// Garage
+	GarageCheck()
+
 	allApps := append([]AppVersion{}, notUpdated...)
 	allApps = append(allApps, updated...)
 	CheckLatestVersions(allApps)
