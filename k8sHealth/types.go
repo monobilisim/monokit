@@ -78,6 +78,14 @@ type Config struct {
 	Alarm struct {
 		Enabled *bool `mapstructure:"enabled"`
 	}
+
+	// EOL controls the Kubernetes End-of-Life check that queries
+	// https://endoflife.date/api/kubernetes.json and compares the
+	// running server version against the upstream cycle.
+	EOL struct {
+		Enabled  *bool `mapstructure:"enabled"`   // nil = true (default)
+		WarnDays *int  `mapstructure:"warn_days"` // nil = 180 days warning before EOL
+	} `mapstructure:"eol"`
 }
 
 // K8sHealthConfig is the global instance of the k8sHealth configuration.
@@ -109,6 +117,13 @@ func loadK8sConfig() error {
 		v.SetDefault("alarm.enabled", common.Config.Alarm.Enabled)
 	}
 
+	if !v.IsSet("eol.enabled") {
+		v.SetDefault("eol.enabled", true)
+	}
+	if !v.IsSet("eol.warn_days") {
+		v.SetDefault("eol.warn_days", 180)
+	}
+
 	if err := v.Unmarshal(&K8sHealthConfig); err != nil {
 		return fmt.Errorf("failed to unmarshal config: %w", err)
 	}
@@ -137,6 +152,7 @@ type K8sHealthData struct {
 	KubeVip          *KubeVipHealth
 	ClusterApiCert   *ClusterApiCertHealth
 	RKE2Info         *RKE2Info               // Added RKE2 information
+	KubernetesEOL    *KubernetesEOLInfo
 	ComplianceChecks *ComplianceCheckResults // Added Compliance Checks
 	// PodRunningLogChecks []PodLogCheckInfo // Removed as per user request
 	LastChecked string
@@ -232,6 +248,25 @@ type ClusterApiCertHealth struct {
 	IsExpired         bool
 	NotAfter          time.Time
 	Error             string
+}
+
+// KubernetesEOLInfo holds the result of the Kubernetes End-of-Life check
+// against https://endoflife.date/api/kubernetes.json.
+type KubernetesEOLInfo struct {
+	Checked       bool      `json:"checked"`
+	Skipped       bool      `json:"skipped"`
+	SkipReason    string    `json:"skipReason,omitempty"`
+	RawVersion    string    `json:"rawVersion"`
+	CurrentVersion string   `json:"currentVersion"`
+	Cycle         string    `json:"cycle"`
+	LatestInCycle string    `json:"latestInCycle"`
+	EOLDate       time.Time `json:"eolDate"`
+	SupportDate   time.Time `json:"supportDate,omitempty"`
+	DaysUntilEOL  int       `json:"daysUntilEol"`
+	IsEOL         bool      `json:"isEol"`
+	IsNearEOL     bool      `json:"isNearEol"`
+	WarnDays      int       `json:"warnDays"`
+	Error         string    `json:"error,omitempty"`
 }
 
 // ComplianceItem holds the result of a single compliance check

@@ -147,6 +147,7 @@ These core tools will be available in every monokit installation.
 
 - k8sHealth
     - Checks Kubernetes health, including node status and certificate expiration.
+    - Tracks the running Kubernetes server version against [endoflife.date](https://endoflife.date/api/kubernetes.json) and alarms when the cycle is near or past End-of-Life (configurable `eol.warn_days`, default 180).
     - Sends alarm notifications to a Slack webhook.
     - Config: `/etc/mono/k8s.yaml`
     - Is a plugin, install it with `monokit plugin install k8sHealth`.

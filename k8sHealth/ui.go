@@ -22,6 +22,7 @@ func NewK8sHealthData() *K8sHealthData {
 		CertManager:      &CertManagerHealth{},
 		KubeVip:          &KubeVipHealth{},
 		ClusterApiCert:   &ClusterApiCertHealth{},
+		KubernetesEOL:    &KubernetesEOLInfo{},
 		// PodRunningLogChecks: make([]PodLogCheckInfo, 0), // Removed as per user request
 		Errors: make([]string, 0),
 	}
@@ -349,6 +350,64 @@ func (khd *K8sHealthData) RenderCompact() string {
 					!khd.ClusterApiCert.IsExpired,
 				))
 				sb.WriteString("\n")
+			}
+		}
+	}
+
+	// --- Kubernetes EOL Section ---
+	if khd.KubernetesEOL != nil {
+		eol := khd.KubernetesEOL
+		showSection := eol.Checked || eol.Error != "" || (eol.Skipped && eol.SkipReason != "")
+		if showSection {
+			sb.WriteString("\n")
+			sb.WriteString(common.SectionTitle("Kubernetes EOL Status"))
+			sb.WriteString("\n")
+
+			switch {
+			case eol.Skipped:
+				sb.WriteString(common.SimpleStatusListItem("Kubernetes EOL", "Skipped", true))
+				sb.WriteString("\n")
+				if eol.SkipReason != "" {
+					sb.WriteString(fmt.Sprintf("    └─ %s\n", eol.SkipReason))
+				}
+			case eol.Error != "":
+				sb.WriteString(common.SimpleStatusListItem("Kubernetes EOL", "Error", false))
+				sb.WriteString(fmt.Sprintf("\n    └─ Error: %s\n", eol.Error))
+				if eol.CurrentVersion != "" {
+					sb.WriteString(fmt.Sprintf("    └─ Current Version: %s\n", eol.CurrentVersion))
+				}
+			default:
+				versionDisplay := eol.CurrentVersion
+				if eol.RawVersion != "" && eol.RawVersion != eol.CurrentVersion {
+					versionDisplay = fmt.Sprintf("%s (%s)", eol.CurrentVersion, eol.RawVersion)
+				}
+				sb.WriteString(common.SimpleStatusListItem(
+					fmt.Sprintf("Kubernetes %s", eol.Cycle),
+					versionDisplay,
+					!eol.IsEOL,
+				))
+				sb.WriteString("\n")
+
+				var statusValue string
+				switch {
+				case eol.IsEOL:
+					statusValue = fmt.Sprintf("Past EOL by %d day(s) (%s)", -eol.DaysUntilEOL, eol.EOLDate.Format("2006-01-02"))
+				case eol.IsNearEOL:
+					statusValue = fmt.Sprintf("EOL in %d day(s) (%s)", eol.DaysUntilEOL, eol.EOLDate.Format("2006-01-02"))
+				default:
+					statusValue = fmt.Sprintf("Supported, EOL %s (%d day(s))", eol.EOLDate.Format("2006-01-02"), eol.DaysUntilEOL)
+				}
+				sb.WriteString(common.SimpleStatusListItem("EOL Status", statusValue, !eol.IsEOL && !eol.IsNearEOL))
+				sb.WriteString("\n")
+
+				if eol.LatestInCycle != "" && eol.LatestInCycle != eol.CurrentVersion {
+					sb.WriteString(common.SimpleStatusListItem(
+						"Latest Patch in Cycle",
+						eol.LatestInCycle,
+						false,
+					))
+					sb.WriteString("\n")
+				}
 			}
 		}
 	}

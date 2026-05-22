@@ -322,6 +322,9 @@ func CollectK8sHealthData() *K8sHealthData {
 	// Collect RKE2 Information
 	healthData.RKE2Info = CollectRKE2Information() // This is from k8s.go
 
+	// Collect Kubernetes End-of-Life information
+	healthData.KubernetesEOL = CollectKubernetesEOL()
+
 	// Collect Namespace Compliance
 	nsData := CollectNamespaceCompliance(Clientset, K8sHealthConfig.K8s.Check_namespaces)
 

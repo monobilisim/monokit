@@ -10,6 +10,11 @@ k8s:
   # enable_cert_manager: true   # true=force enable, false=force disable, omit=auto-detect
   # enable_kube_vip: true       # true=force enable, false=force disable, omit=auto-detect
 
+# Kubernetes End-of-Life check (queries https://endoflife.date/api/kubernetes.json)
+# eol:
+#   enabled: true        # default: true
+#   warn_days: 180       # alarm threshold in days before EOL (default: 180)
+
 aws:
   endpoint_url: https://s3.test.com
   bucket: test-bucket
