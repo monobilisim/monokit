@@ -22,6 +22,18 @@ type Common struct {
 		Enabled      bool
 		Interval     float64
 		Webhook_urls []string
+		SMTP         struct {
+			Enabled    bool
+			Host       string
+			Port       int
+			StartTLS   bool   `mapstructure:"starttls"`
+			SkipVerify bool   `mapstructure:"skip_verify"`
+			Username   string
+			Password   string
+			From       string
+			To         []string
+			Subject    string
+		}
 	}
 
 	Redmine struct {
@@ -83,6 +95,10 @@ func ConfInit(configName string, config interface{}) interface{} {
 	viper.SetConfigType("yaml")
 
 	viper.SetDefault("alarm.interval", 3)
+	viper.SetDefault("alarm.smtp.port", 25)
+	viper.SetDefault("alarm.smtp.starttls", true)
+	viper.SetDefault("alarm.smtp.skip_verify", false)
+	viper.SetDefault("alarm.smtp.subject", "Monokit Alarm")
 	// Daemon-specific defaults
 	if configName == "daemon" {
 		viper.SetDefault("monokit_upgrade", true)

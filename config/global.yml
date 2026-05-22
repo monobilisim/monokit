@@ -7,6 +7,19 @@ alarm:
     - example.com
     - example2.com
 
+  smtp:
+    enabled: false
+    host: smtp.example.com
+    port: 25
+    starttls: true
+    skip_verify: false
+    username: mono/example
+    password: ${MONOKIT_SMTP_PASSWORD}
+    from: monokit@example.com
+    to:
+      - ops@example.com
+    subject: Monokit Alarm
+
   bot:
     enabled: true
     alarm_url: https://example.com

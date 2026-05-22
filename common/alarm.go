@@ -2,9 +2,14 @@ package common
 
 import (
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
+	"fmt"
 	"io"
+	"mime/quotedprintable"
 	"net/http"
+	"net/mail"
+	"net/smtp"
 	"regexp"
 	"strings"
 	"time"
@@ -180,6 +185,112 @@ type ResponseData struct {
 	Result string `json:"result"`
 	Msg    string `json:"msg"`
 	Code   string `json:"code"`
+}
+
+func sendAlarmEmail(message string) error {
+	smtpConfig := Config.Alarm.SMTP
+	if !smtpConfig.Enabled {
+		return nil
+	}
+	if smtpConfig.Host == "" {
+		return fmt.Errorf("alarm.smtp.host is required")
+	}
+	if len(smtpConfig.To) == 0 {
+		return fmt.Errorf("alarm.smtp.to must contain at least one recipient")
+	}
+	if smtpConfig.From == "" {
+		return fmt.Errorf("alarm.smtp.from is required")
+	}
+
+	fromAddress, err := mail.ParseAddress(smtpConfig.From)
+	if err != nil {
+		return fmt.Errorf("invalid alarm.smtp.from: %w", err)
+	}
+
+	recipients := make([]string, 0, len(smtpConfig.To))
+	for _, recipient := range smtpConfig.To {
+		address, err := mail.ParseAddress(recipient)
+		if err != nil {
+			return fmt.Errorf("invalid alarm.smtp.to recipient %q: %w", recipient, err)
+		}
+		recipients = append(recipients, address.Address)
+	}
+
+	subject := smtpConfig.Subject
+	if subject == "" {
+		subject = "Monokit Alarm"
+	}
+
+	var emailBody bytes.Buffer
+	writer := quotedprintable.NewWriter(&emailBody)
+	if _, err := writer.Write([]byte(message)); err != nil {
+		return fmt.Errorf("failed to encode email body: %w", err)
+	}
+	if err := writer.Close(); err != nil {
+		return fmt.Errorf("failed to finalize email body: %w", err)
+	}
+
+	messageData := strings.Join([]string{
+		fmt.Sprintf("From: %s", fromAddress.String()),
+		fmt.Sprintf("To: %s", strings.Join(recipients, ", ")),
+		fmt.Sprintf("Subject: %s", subject),
+		"MIME-Version: 1.0",
+		"Content-Type: text/plain; charset=UTF-8",
+		"Content-Transfer-Encoding: quoted-printable",
+		"",
+		emailBody.String(),
+	}, "\r\n")
+
+	serverAddr := fmt.Sprintf("%s:%d", smtpConfig.Host, smtpConfig.Port)
+	client, err := smtp.Dial(serverAddr)
+	if err != nil {
+		return fmt.Errorf("failed to connect to SMTP server: %w", err)
+	}
+	defer client.Close()
+
+	if smtpConfig.StartTLS {
+		if ok, _ := client.Extension("STARTTLS"); !ok {
+			return fmt.Errorf("SMTP server does not support STARTTLS")
+		}
+		tlsConfig := &tls.Config{ServerName: smtpConfig.Host, InsecureSkipVerify: smtpConfig.SkipVerify}
+		if err := client.StartTLS(tlsConfig); err != nil {
+			return fmt.Errorf("failed to start TLS: %w", err)
+		}
+	}
+
+	if smtpConfig.Username != "" || smtpConfig.Password != "" {
+		auth := smtp.PlainAuth("", smtpConfig.Username, smtpConfig.Password, smtpConfig.Host)
+		if err := client.Auth(auth); err != nil {
+			return fmt.Errorf("SMTP auth failed: %w", err)
+		}
+	}
+
+	if err := client.Mail(fromAddress.Address); err != nil {
+		return fmt.Errorf("SMTP MAIL FROM failed: %w", err)
+	}
+	for _, recipient := range recipients {
+		if err := client.Rcpt(recipient); err != nil {
+			return fmt.Errorf("SMTP RCPT TO failed for %s: %w", recipient, err)
+		}
+	}
+
+	dataWriter, err := client.Data()
+	if err != nil {
+		return fmt.Errorf("SMTP DATA command failed: %w", err)
+	}
+	if _, err := dataWriter.Write([]byte(messageData)); err != nil {
+		_ = dataWriter.Close()
+		return fmt.Errorf("failed to write SMTP message: %w", err)
+	}
+	if err := dataWriter.Close(); err != nil {
+		return fmt.Errorf("failed to finalize SMTP message: %w", err)
+	}
+
+	if err := client.Quit(); err != nil {
+		return fmt.Errorf("SMTP QUIT failed: %w", err)
+	}
+
+	return nil
 }
 
 func Alarm(m string, customStream string, customTopic string, onlyFirstWebhook bool) {
@@ -364,4 +475,23 @@ func Alarm(m string, customStream string, customTopic string, onlyFirstWebhook b
 		Int("total_webhooks", len(Config.Alarm.Webhook_urls)).
 		Dur("total_duration", time.Since(startTime)).
 		Msg("Alarm notification process completed")
+
+	if Config.Alarm.SMTP.Enabled {
+		emailStartTime := time.Now()
+		if err := sendAlarmEmail(m); err != nil {
+			log.Error().
+				Err(err).
+				Str("component", "alarm").
+				Str("action", "smtp_error").
+				Dur("request_duration", time.Since(emailStartTime)).
+				Msg("Failed to send alarm email")
+		} else {
+			log.Debug().
+				Str("component", "alarm").
+				Str("action", "smtp_success").
+				Int("recipient_count", len(Config.Alarm.SMTP.To)).
+				Dur("request_duration", time.Since(emailStartTime)).
+				Msg("Alarm email sent successfully")
+		}
+	}
 }
