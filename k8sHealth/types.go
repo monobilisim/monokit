@@ -86,6 +86,13 @@ type Config struct {
 		Enabled  *bool `mapstructure:"enabled"`   // nil = true (default)
 		WarnDays *int  `mapstructure:"warn_days"` // nil = 180 days warning before EOL
 	} `mapstructure:"eol"`
+
+	// EtcdBackup controls the etcd backup consistency check for RKE2 environments.
+	// It verifies that RKE2's automatic etcd snapshots exist and are valid.
+	EtcdBackup struct {
+		Enabled     *bool `mapstructure:"enabled"`       // nil = true on RKE2 master nodes
+		MaxAgeHours *int  `mapstructure:"max_age_hours"` // nil = 25 hours (RKE2 default interval is 12h)
+	} `mapstructure:"etcd_backup"`
 }
 
 // K8sHealthConfig is the global instance of the k8sHealth configuration.
@@ -123,6 +130,9 @@ func loadK8sConfig() error {
 	if !v.IsSet("eol.warn_days") {
 		v.SetDefault("eol.warn_days", 180)
 	}
+	if !v.IsSet("etcd_backup.max_age_hours") {
+		v.SetDefault("etcd_backup.max_age_hours", 25)
+	}
 
 	if err := v.Unmarshal(&K8sHealthConfig); err != nil {
 		return fmt.Errorf("failed to unmarshal config: %w", err)
@@ -143,6 +153,61 @@ type RKE2Info struct {
 
 // --- UI Data Structures ---
 
+type EtcdSnapshotInfo struct {
+	Filename string    `json:"filename"`
+	Path     string    `json:"path"`
+	Size     int64     `json:"size"`
+	ModTime  time.Time `json:"modTime"`
+	IsValid  bool      `json:"isValid"`
+	Error    string    `json:"error,omitempty"`
+	Hash     string    `json:"hash,omitempty"`
+	Revision int64     `json:"revision,omitempty"`
+	TotalKey int64     `json:"totalKey,omitempty"`
+}
+
+type EtcdMemberInfo struct {
+	ID         string   `json:"id"`
+	Name       string   `json:"name"`
+	IsLeader   bool     `json:"isLeader"`
+	PeerURLs   []string `json:"peerURLs"`
+	ClientURLs []string `json:"clientURLs"`
+}
+
+type EtcdClusterStatus struct {
+	Healthy     bool             `json:"healthy"`
+	Checked     bool             `json:"checked"`
+	Skipped     bool             `json:"skipped"`
+	SkipReason  string           `json:"skipReason,omitempty"`
+	Version     string           `json:"version,omitempty"`
+	DbSize      int64            `json:"dbSize"`
+	DbSizeInUse int64            `json:"dbSizeInUse"`
+	Revision    int64            `json:"revision"`
+	RaftTerm    uint64           `json:"raftTerm"`
+	RaftIndex   uint64           `json:"raftIndex"`
+	LeaderName  string           `json:"leaderName,omitempty"`
+	LeaderID    uint64           `json:"leaderID"`
+	MemberCount int              `json:"memberCount"`
+	Members     []EtcdMemberInfo `json:"members,omitempty"`
+	HealthTook  string           `json:"healthTook,omitempty"`
+	Error       string           `json:"error,omitempty"`
+}
+
+type EtcdBackupHealth struct {
+	Checked          bool               `json:"checked"`
+	Skipped          bool               `json:"skipped"`
+	SkipReason       string             `json:"skipReason,omitempty"`
+	SnapshotDir      string             `json:"snapshotDir"`
+	TotalSnapshots   int                `json:"totalSnapshots"`
+	ValidSnapshots   int                `json:"validSnapshots"`
+	InvalidSnapshots int                `json:"invalidSnapshots"`
+	LatestSnapshot   *EtcdSnapshotInfo  `json:"latestSnapshot,omitempty"`
+	OldestSnapshot   *EtcdSnapshotInfo  `json:"oldestSnapshot,omitempty"`
+	Snapshots        []EtcdSnapshotInfo `json:"snapshots,omitempty"`
+	MaxAgeHours      int                `json:"maxAgeHours"`
+	IsLatestTooOld   bool               `json:"isLatestTooOld"`
+	Error            string             `json:"error,omitempty"`
+}
+
 // K8sHealthData holds all collected Kubernetes health information for UI rendering
 type K8sHealthData struct {
 	Nodes            []NodeHealthInfo
@@ -151,12 +216,13 @@ type K8sHealthData struct {
 	CertManager      *CertManagerHealth
 	KubeVip          *KubeVipHealth
 	ClusterApiCert   *ClusterApiCertHealth
-	RKE2Info         *RKE2Info               // Added RKE2 information
+	RKE2Info         *RKE2Info
 	KubernetesEOL    *KubernetesEOLInfo
-	ComplianceChecks *ComplianceCheckResults // Added Compliance Checks
-	// PodRunningLogChecks []PodLogCheckInfo // Removed as per user request
-	LastChecked string
-	Errors      []string // To store any general error messages
+	EtcdCluster      *EtcdClusterStatus
+	EtcdBackup       *EtcdBackupHealth
+	ComplianceChecks *ComplianceCheckResults
+	LastChecked      string
+	Errors           []string
 }
 
 // NodeHealthInfo holds information about a Kubernetes node
@@ -253,20 +319,20 @@ type ClusterApiCertHealth struct {
 // KubernetesEOLInfo holds the result of the Kubernetes End-of-Life check
 // against https://endoflife.date/api/kubernetes.json.
 type KubernetesEOLInfo struct {
-	Checked       bool      `json:"checked"`
-	Skipped       bool      `json:"skipped"`
-	SkipReason    string    `json:"skipReason,omitempty"`
-	RawVersion    string    `json:"rawVersion"`
-	CurrentVersion string   `json:"currentVersion"`
-	Cycle         string    `json:"cycle"`
-	LatestInCycle string    `json:"latestInCycle"`
-	EOLDate       time.Time `json:"eolDate"`
-	SupportDate   time.Time `json:"supportDate,omitempty"`
-	DaysUntilEOL  int       `json:"daysUntilEol"`
-	IsEOL         bool      `json:"isEol"`
-	IsNearEOL     bool      `json:"isNearEol"`
-	WarnDays      int       `json:"warnDays"`
-	Error         string    `json:"error,omitempty"`
+	Checked        bool      `json:"checked"`
+	Skipped        bool      `json:"skipped"`
+	SkipReason     string    `json:"skipReason,omitempty"`
+	RawVersion     string    `json:"rawVersion"`
+	CurrentVersion string    `json:"currentVersion"`
+	Cycle          string    `json:"cycle"`
+	LatestInCycle  string    `json:"latestInCycle"`
+	EOLDate        time.Time `json:"eolDate"`
+	SupportDate    time.Time `json:"supportDate,omitempty"`
+	DaysUntilEOL   int       `json:"daysUntilEol"`
+	IsEOL          bool      `json:"isEol"`
+	IsNearEOL      bool      `json:"isNearEol"`
+	WarnDays       int       `json:"warnDays"`
+	Error          string    `json:"error,omitempty"`
 }
 
 // ComplianceItem holds the result of a single compliance check
