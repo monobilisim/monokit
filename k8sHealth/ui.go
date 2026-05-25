@@ -412,6 +412,138 @@ func (khd *K8sHealthData) RenderCompact() string {
 		}
 	}
 
+	// --- etcd Cluster Status Section ---
+	if khd.EtcdCluster != nil {
+		ec := khd.EtcdCluster
+		showEtcdCluster := ec.Checked || ec.Error != "" || (ec.Skipped && ec.SkipReason != "")
+		if showEtcdCluster {
+			sb.WriteString("\n")
+			sb.WriteString(common.SectionTitle("etcd Cluster Status"))
+			sb.WriteString("\n")
+
+			switch {
+			case ec.Skipped:
+				sb.WriteString(common.SimpleStatusListItem("etcd Cluster", "Skipped", true))
+				sb.WriteString("\n")
+				if ec.SkipReason != "" {
+					sb.WriteString(fmt.Sprintf("    └─ %s\n", ec.SkipReason))
+				}
+			case ec.Error != "" && !ec.Healthy:
+				sb.WriteString(common.SimpleStatusListItem("etcd Health", "Unhealthy", false))
+				sb.WriteString(fmt.Sprintf("\n    └─ %s\n", ec.Error))
+			default:
+				healthStr := "Unhealthy"
+				if ec.Healthy {
+					healthStr = "Healthy"
+				}
+				if ec.HealthTook != "" {
+					healthStr = fmt.Sprintf("%s (%s)", healthStr, ec.HealthTook)
+				}
+				sb.WriteString(common.SimpleStatusListItem("etcd Health", healthStr, ec.Healthy))
+				sb.WriteString("\n")
+
+				if ec.Version != "" {
+					sb.WriteString(common.SimpleStatusListItem("etcd Version", ec.Version, true))
+					sb.WriteString("\n")
+				}
+
+				if ec.DbSize > 0 {
+					dbUsagePercent := float64(0)
+					if ec.DbSize > 0 {
+						dbUsagePercent = float64(ec.DbSizeInUse) / float64(ec.DbSize) * 100
+					}
+					sb.WriteString(common.SimpleStatusListItem("DB Size",
+						fmt.Sprintf("%s (in-use: %s, %.0f%%)", formatBytes(ec.DbSize), formatBytes(ec.DbSizeInUse), dbUsagePercent),
+						true))
+					sb.WriteString("\n")
+				}
+
+				if ec.LeaderName != "" {
+					sb.WriteString(common.SimpleStatusListItem("Leader", ec.LeaderName, true))
+					sb.WriteString("\n")
+				}
+
+				if ec.MemberCount > 0 {
+					sb.WriteString(common.SimpleStatusListItem("Members",
+						fmt.Sprintf("%d", ec.MemberCount), ec.MemberCount > 0))
+					sb.WriteString("\n")
+					for _, m := range ec.Members {
+						leaderMark := ""
+						if m.IsLeader {
+							leaderMark = " (leader)"
+						}
+						sb.WriteString(fmt.Sprintf("    └─ %s%s\n", m.Name, leaderMark))
+					}
+				}
+
+				if ec.Revision > 0 {
+					sb.WriteString(fmt.Sprintf("    └─ Raft: term=%d, index=%d, revision=%d\n",
+						ec.RaftTerm, ec.RaftIndex, ec.Revision))
+				}
+			}
+		}
+	}
+
+	// --- etcd Backup Status Section ---
+	if khd.EtcdBackup != nil {
+		etcd := khd.EtcdBackup
+		showEtcdSection := etcd.Checked || etcd.Error != "" || (etcd.Skipped && etcd.SkipReason != "")
+		if showEtcdSection {
+			sb.WriteString("\n")
+			sb.WriteString(common.SectionTitle("etcd Backup Status"))
+			sb.WriteString("\n")
+
+			switch {
+			case etcd.Skipped:
+				sb.WriteString(common.SimpleStatusListItem("etcd Backup", "Skipped", true))
+				sb.WriteString("\n")
+				if etcd.SkipReason != "" {
+					sb.WriteString(fmt.Sprintf("    └─ %s\n", etcd.SkipReason))
+				}
+			case etcd.Error != "" && etcd.TotalSnapshots == 0:
+				sb.WriteString(common.SimpleStatusListItem("etcd Backup", "Error", false))
+				sb.WriteString(fmt.Sprintf("\n    └─ %s\n", etcd.Error))
+			default:
+				isHealthy := etcd.ValidSnapshots > 0 && !etcd.IsLatestTooOld
+				statusStr := fmt.Sprintf("%d Valid / %d Total", etcd.ValidSnapshots, etcd.TotalSnapshots)
+				sb.WriteString(common.SimpleStatusListItem("Snapshots", statusStr, isHealthy))
+				sb.WriteString("\n")
+
+				if etcd.LatestSnapshot != nil {
+					age := time.Since(etcd.LatestSnapshot.ModTime)
+					ageStr := fmt.Sprintf("%.1f hours ago", age.Hours())
+					sb.WriteString(common.SimpleStatusListItem(
+						"Latest Snapshot",
+						fmt.Sprintf("%s (%s)", etcd.LatestSnapshot.Filename, ageStr),
+						!etcd.IsLatestTooOld,
+					))
+					sb.WriteString("\n")
+
+					if etcd.LatestSnapshot.Hash != "" {
+						sb.WriteString(fmt.Sprintf("    └─ Hash: %s, Revision: %d, Keys: %d\n",
+							etcd.LatestSnapshot.Hash, etcd.LatestSnapshot.Revision, etcd.LatestSnapshot.TotalKey))
+					}
+
+					sizeStr := formatBytes(etcd.LatestSnapshot.Size)
+					sb.WriteString(fmt.Sprintf("    └─ Size: %s\n", sizeStr))
+				}
+
+				if etcd.IsLatestTooOld {
+					sb.WriteString(fmt.Sprintf("    └─ WARNING: Latest snapshot exceeds max age of %d hours\n", etcd.MaxAgeHours))
+				}
+
+				if etcd.InvalidSnapshots > 0 {
+					sb.WriteString(fmt.Sprintf("    └─ %d invalid snapshot(s) detected\n", etcd.InvalidSnapshots))
+					for _, snap := range etcd.Snapshots {
+						if !snap.IsValid {
+							sb.WriteString(fmt.Sprintf("       └─ %s: %s\n", snap.Filename, snap.Error))
+						}
+					}
+				}
+			}
+		}
+	}
+
 	// --- Kubernetes Compliance Checks Section ---
 	if khd.ComplianceChecks != nil {
 		var sbCompliance strings.Builder
@@ -458,6 +590,19 @@ func (khd *K8sHealthData) RenderCompact() string {
 	// The esHealth example also commented out LastChecked from its RenderCompact.
 
 	return sb.String()
+}
+
+func formatBytes(b int64) string {
+	const unit = 1024
+	if b < unit {
+		return fmt.Sprintf("%d B", b)
+	}
+	div, exp := int64(unit), 0
+	for n := b / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(b)/float64(div), "KMGTPE"[exp])
 }
 
 // RenderK8sHealthCLI formats the K8sHealthData for command-line display using common.DisplayBox.

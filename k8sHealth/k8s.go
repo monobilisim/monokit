@@ -325,6 +325,11 @@ func CollectK8sHealthData() *K8sHealthData {
 	// Collect Kubernetes End-of-Life information
 	healthData.KubernetesEOL = CollectKubernetesEOL()
 
+	if shouldCollectEtcdBackup() {
+		healthData.EtcdCluster = CollectEtcdClusterStatus()
+		healthData.EtcdBackup = CollectEtcdBackupHealth()
+	}
+
 	// Collect Namespace Compliance
 	nsData := CollectNamespaceCompliance(Clientset, K8sHealthConfig.K8s.Check_namespaces)
 
