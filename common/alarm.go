@@ -22,6 +22,14 @@ import (
 var TmpDir = "/tmp/mono/"
 var ScriptName string
 
+var alarmEmailEmojiReplacer = strings.NewReplacer(
+	":check:", "✅",
+	":green_circle:", "🟢",
+	":info:", "ℹ️",
+	":red_circle:", "🔴",
+	":warning:", "⚠️",
+)
+
 var AlarmCmd = &cobra.Command{
 	Use:   "alarm",
 	Short: "Alarm utilities",
@@ -187,6 +195,10 @@ type ResponseData struct {
 	Code   string `json:"code"`
 }
 
+func formatAlarmEmailMessage(message string) string {
+	return alarmEmailEmojiReplacer.Replace(message)
+}
+
 func sendAlarmEmail(message string) error {
 	smtpConfig := Config.Alarm.SMTP
 	if !smtpConfig.Enabled {
@@ -223,7 +235,8 @@ func sendAlarmEmail(message string) error {
 
 	var emailBody bytes.Buffer
 	writer := quotedprintable.NewWriter(&emailBody)
-	if _, err := writer.Write([]byte(message)); err != nil {
+	formattedMessage := formatAlarmEmailMessage(message)
+	if _, err := writer.Write([]byte(formattedMessage)); err != nil {
 		return fmt.Errorf("failed to encode email body: %w", err)
 	}
 	if err := writer.Close(); err != nil {
