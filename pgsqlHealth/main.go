@@ -198,6 +198,12 @@ func Main(cmd *cobra.Command, args []string) {
 		healthData.QueriesInfo.LongRunning = 0
 		healthData.QueriesInfo.QueryLimit = DbHealthConfig.Postgres.Limits.Query
 
+		longQueryThreshold := 300.0 // Default 300 seconds
+		if DbHealthConfig.Postgres.Limits.Long_query_time > 0 {
+			longQueryThreshold = float64(DbHealthConfig.Postgres.Limits.Long_query_time)
+		}
+
+		var longQueriesStr string
 		for i, q := range queriesData {
 			healthData.QueriesInfo.RunningQueries[i] = QueryInfo{
 				PID:      q.PID,
@@ -208,10 +214,24 @@ func Main(cmd *cobra.Command, args []string) {
 				Query:    q.Query,
 			}
 
-			// Count long running queries (over 5 minutes)
-			// This is just an example threshold - adjust as needed
-			if q.DurationSeconds > 300 {
+			if q.DurationSeconds > longQueryThreshold {
 				healthData.QueriesInfo.LongRunning++
+				if DbHealthConfig.Postgres.Alarm.Long_query {
+					queryStr := q.Query
+					if len(queryStr) > 150 {
+						queryStr = queryStr[:147] + "..."
+					}
+					longQueriesStr += fmt.Sprintf("- [%s] PID: %d, DB: %s, User: %s\n  Query: %s\n", q.Duration, q.PID, q.Database, q.Username, queryStr)
+				}
+			}
+		}
+
+		if DbHealthConfig.Postgres.Alarm.Long_query {
+			if healthData.QueriesInfo.LongRunning > 0 {
+				msg := fmt.Sprintf("Found %d long running queries:\n\n%s", healthData.QueriesInfo.LongRunning, longQueriesStr)
+				common.AlarmCheckDown("postgres_long_running_queries", msg, false, "", "")
+			} else {
+				common.AlarmCheckUp("postgres_long_running_queries", "No long running queries found", false)
 			}
 		}
 	}

@@ -153,11 +153,20 @@ func activeConnections(dbConfig db.DbHealth) (*ConnectionsData, error) {
 // runningQueries checks the current number of running queries
 // and compares it to the maximum allowed queries
 func runningQueries(dbConfig db.DbHealth) ([]QueryData, error) {
+	// Filter queries for standby nodes/replication and other background processes
+	whereClause := `WHERE state = 'active' AND query != '<IDLE>' AND usename != 'postgres' AND query NOT LIKE 'START_REPLICATION%'`
+
 	// First get total count for the pretty print output
-	countQuery := `SELECT COUNT(*) AS active_queries_count FROM pg_stat_activity WHERE state = 'active';`
+	countQuery := fmt.Sprintf(`SELECT COUNT(*) AS active_queries_count FROM pg_stat_activity %s AND backend_type = 'client backend';`, whereClause)
 
 	var activeQueriesCount int
 	err := Connection.QueryRow(countQuery).Scan(&activeQueriesCount)
+	if err != nil && strings.Contains(err.Error(), "column \"backend_type\" does not exist") {
+		// Fallback for older PostgreSQL versions
+		countQuery = fmt.Sprintf(`SELECT COUNT(*) AS active_queries_count FROM pg_stat_activity %s;`, whereClause)
+		err = Connection.QueryRow(countQuery).Scan(&activeQueriesCount)
+	}
+
 	if err != nil {
 		log.Error().Err(err).Str("component", "pgsqlHealth").Str("operation", "runningQueries").Str("action", "query_execution_failed").Str("query", countQuery).Msg("Error executing query")
 		// Already commented out console output
@@ -168,17 +177,30 @@ func runningQueries(dbConfig db.DbHealth) ([]QueryData, error) {
 	}
 
 	// Now get detailed information about running queries
-	detailQuery := `
+	detailQuery := fmt.Sprintf(`
 		SELECT pid, usename, datname, 
 		       extract(epoch from (now() - query_start)) as duration_seconds,
 		       to_char(now() - query_start, 'HH24:MI:SS') as duration, 
 		       state, query, client_addr
 		FROM pg_stat_activity 
-		WHERE state = 'active' AND query != '<IDLE>' AND usename != 'postgres'
+		%s AND backend_type = 'client backend'
 		ORDER BY duration_seconds DESC;
-	`
+	`, whereClause)
 
 	rows, err := Connection.Query(detailQuery)
+	if err != nil && strings.Contains(err.Error(), "column \"backend_type\" does not exist") {
+		detailQuery = fmt.Sprintf(`
+			SELECT pid, usename, datname, 
+				   extract(epoch from (now() - query_start)) as duration_seconds,
+				   to_char(now() - query_start, 'HH24:MI:SS') as duration, 
+				   state, query, client_addr
+			FROM pg_stat_activity 
+			%s
+			ORDER BY duration_seconds DESC;
+		`, whereClause)
+		rows, err = Connection.Query(detailQuery)
+	}
+
 	if err != nil {
 		log.Error().Err(err).Str("component", "pgsqlHealth").Str("operation", "runningQueries").Str("action", "query_execution_failed").Str("query", detailQuery).Msg("Error executing query")
 		return nil, err
@@ -221,10 +243,26 @@ func runningQueries(dbConfig db.DbHealth) ([]QueryData, error) {
 		queries = append(queries, q)
 	}
 
-	// Neither of these blocks should be printing to the console anymore
-	// We already commented these out, but let's make extra sure there's no output
+	// Build the top queries string for the alarm payload
+	var topQueriesStr string
+	if len(queries) > 0 {
+		topQueriesStr = "\n\nTop Longest Running Queries:\n"
+		for i, q := range queries {
+			if i >= 5 {
+				break
+			}
+			queryStr := q.Query
+			if len(queryStr) > 150 {
+				queryStr = queryStr[:147] + "..."
+			}
+			topQueriesStr += fmt.Sprintf("- [%s] PID: %d, DB: %s, User: %s\n  Query: %s\n", q.Duration, q.PID, q.Database, q.Username, queryStr)
+		}
+	}
+
+	// Check against the limit and send alarm
 	if activeQueriesCount > dbConfig.Postgres.Limits.Query {
-		common.AlarmCheckDown("postgres_num_running_queries", fmt.Sprintf("Number of running queries: %d/%d", activeQueriesCount, dbConfig.Postgres.Limits.Query), false, "", "")
+		msg := fmt.Sprintf("Number of running queries: %d/%d%s", activeQueriesCount, dbConfig.Postgres.Limits.Query, topQueriesStr)
+		common.AlarmCheckDown("postgres_num_running_queries", msg, false, "", "")
 	} else {
 		common.AlarmCheckUp("postgres_num_running_queries", fmt.Sprintf("Number of running queries is now: %d/%d", activeQueriesCount, dbConfig.Postgres.Limits.Query), false)
 	}

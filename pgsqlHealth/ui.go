@@ -238,6 +238,29 @@ func (p *PostgreSQLHealthData) RenderCompact() string {
 			"Long Running Queries",
 			longRunningStatus,
 			isLongRunningOK))
+            
+		if len(p.QueriesInfo.RunningQueries) > 0 {
+			sb.WriteString("\n")
+			contentStyle := lipgloss.NewStyle().Align(lipgloss.Left).PaddingLeft(8)
+			itemStyle := lipgloss.NewStyle().Foreground(common.NormalTextColor)
+			sb.WriteString(contentStyle.Render(itemStyle.Render("Top 5 Slowest Queries:")))
+			sb.WriteString("\n")
+			
+			for i, q := range p.QueriesInfo.RunningQueries {
+				if i >= 5 {
+					break
+				}
+				queryStr := strings.ReplaceAll(strings.ReplaceAll(q.Query, "\n", " "), "\r", "")
+				if len(queryStr) > 60 {
+					queryStr = queryStr[:57] + "..."
+				}
+				line := fmt.Sprintf("  • [%s] PID: %d (%s@%s) - %s", q.Duration, q.PID, q.Username, q.Database, queryStr)
+				sb.WriteString(contentStyle.Render(itemStyle.Render(line)))
+				if i < len(p.QueriesInfo.RunningQueries)-1 && i < 4 {
+					sb.WriteString("\n")
+				}
+			}
+		}
 	}
 
 	// ====== Consul Status Section (if enabled) ======

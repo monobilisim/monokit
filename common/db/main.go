@@ -19,12 +19,14 @@ type Mysql struct {
 
 type Postgres struct {
 	Limits struct {
-		Process      int
-		Query        int
-		Conn_percent int
+		Process         int
+		Query           int
+		Conn_percent    int
+		Long_query_time int
 	}
 	Alarm struct {
-		Enabled bool
+		Enabled    bool
+		Long_query bool
 	}
 
 	Wal_g_verify_hour string
