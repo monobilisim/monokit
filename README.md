@@ -8,7 +8,7 @@
 
 <div align="center"> 
 <a href="https://mono.net.tr/">
-  <img src="https://monobilisim.com.tr/images/mono-bilisim.svg" width="340"/>
+  <img src="https://r2.mono.tr/logo/Mono-Logo.svg" width="340"/>
 </a>
 
 <h2 align="center">monokit</h2>
