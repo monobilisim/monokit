@@ -79,11 +79,44 @@ func CreateNews(service string, oldVersion string, newVersion string, compactTit
 	news.Create(identifier+" sunucusunun "+service+" sürümü güncellendi", common.Config.Identifier+" sunucusunda "+service+", "+oldVersion+" sürümünden "+newVersion+" sürümüne yükseltildi.", true)
 }
 
+func ensureSbinInPath() {
+	current := os.Getenv("PATH")
+	existing := make(map[string]bool)
+	for _, p := range strings.Split(current, ":") {
+		if p != "" {
+			existing[p] = true
+		}
+	}
+
+	parts := []string{}
+	if current != "" {
+		parts = append(parts, current)
+	}
+	for _, dir := range []string{"/usr/local/sbin", "/usr/sbin", "/sbin"} {
+		if !existing[dir] {
+			parts = append(parts, dir)
+			existing[dir] = true
+		}
+	}
+
+	if joined := strings.Join(parts, ":"); joined != current {
+		_ = os.Setenv("PATH", joined)
+	}
+}
+
 func VersionCheck(cmd *cobra.Command, args []string) {
 	version := "0.1.0"
 	common.ScriptName = "versionCheck"
 	common.TmpDir = "/var/cache/mono/" + common.ScriptName
 	common.Init()
+
+	// Ensure system binary dirs are on PATH. When monokit runs from cron or a
+	// minimal systemd unit the PATH is often just "/usr/bin:/bin", which omits
+	// /usr/sbin and /sbin. Tools like proxmox-backup-manager, pveversion and
+	// pmgversion live in /usr/sbin, so exec.LookPath would fail and the check
+	// would be silently skipped (no update news). Augment PATH so detection
+	// behaves the same under cron as it does in an interactive shell.
+	ensureSbinInPath()
 
 	fmt.Println("versionCheck - v" + version + " - " + time.Now().Format("2006-01-02 15:04:05"))
 
