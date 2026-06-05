@@ -14,3 +14,6 @@ common/health/pluginpb
 .cache/
 .gocache/
 .modcache/
+.mcp.json
+.serena/
+local_cache/

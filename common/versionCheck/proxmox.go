@@ -88,7 +88,25 @@ func ProxmoxBSCheck() {
 	// Parse the version
 	// Eg. output
 	// proxmox-backup-server 3.3.2-1 running version: 3.3.2
-	version := strings.Split(string(out), " ")[1]
+	// Prefer the clean upstream version after "running version:" so it matches
+	// the PVE/PMG format (no package revision suffix like "-1") and the
+	// endoflife.date cycle lookup.
+	outStr := string(out)
+	var version string
+	if idx := strings.Index(outStr, "running version:"); idx != -1 {
+		rest := strings.TrimSpace(outStr[idx+len("running version:"):])
+		version = strings.Fields(rest)[0]
+	} else {
+		fields := strings.Fields(outStr)
+		if len(fields) > 1 {
+			version = fields[1]
+		}
+	}
+
+	if version == "" {
+		addToVersionErrors(fmt.Errorf("Error parsing Proxmox Backup Server version from output: %q", outStr))
+		return
+	}
 
 	oldVersion := GatherVersion("pbs")
 
