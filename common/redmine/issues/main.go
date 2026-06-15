@@ -785,6 +785,21 @@ func Update(service string, message string, checkNote bool) {
 	}
 
 	defer resp.Body.Close()
+
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		preview := message
+		if len(preview) > 200 {
+			preview = preview[:200] + "…"
+		}
+		log.Info().
+			Str("component", "redmine").
+			Str("operation", "update_issue").
+			Int("issue_id", issueId).
+			Str("service", service).
+			Int("note_length", len(message)).
+			Str("note_preview", preview).
+			Msg("Successfully updated Redmine issue")
+	}
 }
 
 func getAssignedToId(id string) string {
@@ -1011,5 +1026,80 @@ func Exists(subject string, date string, search bool) string {
 		} else {
 			return strconv.Itoa(int(data["issues"].([]interface{})[0].(map[string]interface{})["id"].(float64)))
 		}
+	}
+}
+
+// redminePercentKey: her service+partition için son yüzdeyi saklayan healthdb anahtarı
+func redminePercentKey(service, partition string) string {
+	// hem service hem partition içersin; "/", " " karakterlerini güvenli hale getir
+	s := strings.NewReplacer("/", "-", " ", "_").Replace(service)
+	p := strings.NewReplacer("/", "-", " ", "_").Replace(partition)
+	return s + ":redmine:pct:" + p
+}
+
+func getLastPercent(service, partition string) (float64, bool) {
+	s, _, _, found, err := healthdb.GetJSON("redmine", redminePercentKey(service, partition))
+	if err != nil || !found || s == "" {
+		return 0, false
+	}
+	v, err := strconv.ParseFloat(s, 64)
+	if err != nil {
+		return 0, false
+	}
+	return v, true
+}
+
+// LastReportedPercent, bir service+partition için en son kaydedilmiş yüzdeyi döner.
+// Tüketiciler (örn. osHealth) mesaj zenginleştirmesi için kullanabilir.
+func LastReportedPercent(service, partition string) (float64, bool) {
+	return getLastPercent(service, partition)
+}
+
+func setLastPercent(service, partition string, pct float64) {
+	_ = healthdb.PutJSON("redmine", redminePercentKey(service, partition), strconv.FormatFloat(pct, 'f', 2, 64), nil, time.Now())
+}
+
+func clearLastPercent(service, partition string) {
+	_ = healthdb.Delete("redmine", redminePercentKey(service, partition))
+}
+
+// ClearAllPercentTracking, bir service için tutulan tüm yüzde tracking kayıtlarını siler.
+// CheckUp içinden veya service normale döndüğünde çağrılabilir.
+func ClearAllPercentTracking(service string) {
+	// TODO: healthdb şu an tüm key'leri listeleyen bir API sunmuyor; service normale dönünce
+	// CheckDownOnIncrease içindeki yeni çağrılar getLastPercent okur ve üzerine yazar, bu yüzden
+	// stale kayıtlar bir sonraki artışta doğal olarak ezilir. Eğer istenirse healthdb'ye
+	// PrefixList/PrefixDelete eklenip burada çağrılabilir.
+	_ = service
+}
+
+// CheckDownOnIncrease, eşiği aşan (veya aşmış olan) bir durum için:
+//   - issue yoksa: Create + son yüzdeyi kaydet
+//   - issue varsa VE currentPct > kaydedilmişPct (yani yüzde tırmandıysa): Update + yeni yüzdeyi kaydet
+//   - yoksa (düştüyse veya sabitse): hiçbir şey yapma
+//
+// Davranış CheckDown'daki zaman aralığı throttle'undan bağımsızdır; amaç kritik artışları kaçırmamaktır.
+//
+// partition: örn. "/var", "/". Boş olmamalı; mountpoint tanımlayıcı.
+func CheckDownOnIncrease(service, subject, message, partition string, currentPct float64) {
+	if partition == "" {
+		return
+	}
+	if !redmineCheckIssueLog(service) {
+		// issue yok → aç, yüzdeyi kaydet
+		Create(service, subject, message)
+		setLastPercent(service, partition, currentPct)
+		return
+	}
+	last, ok := getLastPercent(service, partition)
+	if !ok {
+		// issue var ama yüzde kaydı yok (eski davranıştan kalan bir issue olabilir) → notu at, kaydet
+		Update(service, message, false)
+		setLastPercent(service, partition, currentPct)
+		return
+	}
+	if currentPct > last {
+		Update(service, message, false)
+		setLastPercent(service, partition, currentPct)
 	}
 }
