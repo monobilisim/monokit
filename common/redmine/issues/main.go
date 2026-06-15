@@ -469,10 +469,6 @@ func Create(service string, subject string, message string) {
 			Str("issue_id", existingIssueId).
 			Msg("User assignment details for issue reopening")
 
-		if assignedToId == currentUserId {
-			assignedToId = ""
-		}
-
 		existingIssueIdAtoi, err := strconv.Atoi(existingIssueId)
 		if err != nil {
 			log.Error().Err(err).Str("component", "redmine").Str("operation", "create_issue").Str("input", existingIssueId).Msg("Failed to convert existing issue ID to integer")
@@ -480,12 +476,18 @@ func Create(service string, subject string, message string) {
 		}
 
 		// Reopen the issue (status ID 8 = "In Progress")
-		body := RedmineIssue{Issue: Issue{
-			Id:           existingIssueIdAtoi,
-			Notes:        "Sorun devam ettiğinden iş yeniden açıldı.\n" + message,
-			StatusId:     8,
-			AssignedToId: assignedToId,
-		}}
+		// Mevcut atamayı koruyarak body'ye geri yaz; böylece Redmine'ın varsayılan
+		// "atanmamış" davranışı manuel atamayı ezmesin. Okuma başarısız olursa
+		// alanı hiç gönderme.
+		issue := Issue{
+			Id:       existingIssueIdAtoi,
+			Notes:    "Sorun devam ettiğinden iş yeniden açıldı.\n" + message,
+			StatusId: 8,
+		}
+		if assignedToId != "" {
+			issue.AssignedToId = assignedToId
+		}
+		body := RedmineIssue{Issue: issue}
 
 		jsonBody, err := json.Marshal(body)
 		if err != nil {
@@ -756,7 +758,14 @@ func Update(service string, message string, checkNote bool) {
 	}
 
 	// update issue
-	body := RedmineIssue{Issue: Issue{Id: issueId, Notes: message}}
+	// Mevcut atamayı koruyarak body'ye geri yaz; bazı Redmine ayarları
+	// (workflow rules, plugin'ler) PUT'ta belirtilmeyen alanı "atanmamış"a
+	// çevirebiliyor. Okuma başarısız olursa alanı hiç gönderme.
+	issue := Issue{Id: issueId, Notes: message}
+	if existingAssigned := getAssignedToId(idStr); existingAssigned != "" {
+		issue.AssignedToId = existingAssigned
+	}
+	body := RedmineIssue{Issue: issue}
 
 	jsonBody, err := json.Marshal(body)
 
@@ -828,6 +837,13 @@ func getAssignedToId(id string) string {
 
 	defer resp.Body.Close()
 
+	log.Debug().
+		Str("component", "redmine").
+		Str("operation", "get_assigned_to_id").
+		Str("issue_id", id).
+		Int("status_code", resp.StatusCode).
+		Msg("Read issue to preserve current assignee")
+
 	// read response and get assigned_to_id
 	var data map[string]interface{}
 
@@ -852,11 +868,16 @@ func getAssignedToId(id string) string {
 
 	// Check if id exists
 
-	if data["issue"].(map[string]interface{})["assigned_to"] == nil {
+	assignedTo, ok := data["issue"].(map[string]interface{})["assigned_to"]
+	if !ok || assignedTo == nil {
 		return ""
 	}
 
-	return strconv.Itoa(int(data["issue"].(map[string]interface{})["assigned_to"].(map[string]interface{})["id"].(float64)))
+	idFloat, idOk := assignedTo.(map[string]interface{})["id"].(float64)
+	if !idOk {
+		return ""
+	}
+	return strconv.Itoa(int(idFloat))
 }
 
 func Close(service string, message string) {
@@ -886,14 +907,13 @@ func Close(service string, message string) {
 		return
 	}
 
-	assignedToId := getAssignedToId(idStr)
-
-	if assignedToId == "" {
-		assignedToId = "me"
-	}
-
 	// update issue
-	body := RedmineIssue{Issue: Issue{Id: issueId, Notes: message, StatusId: 5, AssignedToId: assignedToId}}
+	// Mevcut atamayı koruyarak body'ye geri yaz (Update ile aynı sebep).
+	issue := Issue{Id: issueId, Notes: message, StatusId: 5}
+	if existingAssigned := getAssignedToId(idStr); existingAssigned != "" {
+		issue.AssignedToId = existingAssigned
+	}
+	body := RedmineIssue{Issue: issue}
 	jsonBody, err := json.Marshal(body)
 
 	if err != nil {
@@ -1089,6 +1109,7 @@ func CheckDownOnIncrease(service, subject, message, partition string, currentPct
 		// issue yok → aç, yüzdeyi kaydet
 		Create(service, subject, message)
 		setLastPercent(service, partition, currentPct)
+		touchStat(service)
 		return
 	}
 	last, ok := getLastPercent(service, partition)
@@ -1096,10 +1117,21 @@ func CheckDownOnIncrease(service, subject, message, partition string, currentPct
 		// issue var ama yüzde kaydı yok (eski davranıştan kalan bir issue olabilir) → notu at, kaydet
 		Update(service, message, false)
 		setLastPercent(service, partition, currentPct)
+		touchStat(service)
 		return
 	}
 	if currentPct > last {
 		Update(service, message, false)
 		setLastPercent(service, partition, currentPct)
+		touchStat(service)
 	}
+}
+
+// touchStat, :redmine:stat namespace'ine şu anki zamanı yazar; böylece CheckUp
+// eşik altına düşüldüğünde issue'yu kapatabilsin. CheckDown'un throttle kaydıyla
+// aynı şekildedir.
+func touchStat(service string) {
+	currentDate := time.Now().Format("2006-01-02 15:04:05 -0700")
+	data, _ := json.Marshal(&common.ServiceFile{Date: currentDate, Locked: true})
+	_ = healthdb.PutJSON("redmine", redmineStatKey(service), string(data), nil, time.Now())
 }
