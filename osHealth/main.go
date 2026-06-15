@@ -180,6 +180,21 @@ func displayBoxUI(healthData *HealthData) {
 }
 
 // Helper function to collect disk information and handle alarms/issues
+// formatPercentDelta, bir mountpoint için en son raporlanan yüzdeden artış olup olmadığını
+// kontrol eder. Artış varsa Redmine mesajının başına eklenecek başlık satırını (sonunda
+// newline olmadan) ve ok=true döner. Önceki kayıt yoksa veya currentPct <= previousPct ise
+// ok=false döner.
+func formatPercentDelta(mountpoint string, currentPct float64) (deltaStr string, ok bool) {
+	previousPct, found := issues.LastReportedPercent("disk", mountpoint)
+	if !found || currentPct <= previousPct {
+		return "", false
+	}
+	line := "**" + mountpoint + " dizini için doluluk yükseldi: %" +
+		strconv.FormatFloat(previousPct, 'f', 0, 64) + " → %" +
+		strconv.FormatFloat(currentPct, 'f', 0, 64) + "**"
+	return line, true
+}
+
 func collectDiskInfo() []DiskInfo {
 	gopsutilDiskPartitions, err := disk.Partitions(false) // Using gopsutil/disk directly
 	if err != nil {
@@ -195,7 +210,14 @@ func collectDiskInfo() []DiskInfo {
 		fullMsg, tableOnly := createExceededTable(exceededDIs) // createExceededTable now takes []DiskInfo
 		subject := common.Config.Identifier + " için disk doluluk seviyesi %" + strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64) + " üstüne çıktı"
 
-		issues.CheckDown("disk", subject, tableOnly, false, 0)
+		// Her eşiği aşan partition için yüzde artışı tabanlı Redmine güncellemesi
+		for _, p := range exceededDIs {
+			message := tableOnly
+			if deltaStr, ok := formatPercentDelta(p.Mountpoint, p.UsedPct); ok {
+				message = deltaStr + "\n" + tableOnly
+			}
+			issues.CheckDownOnIncrease("disk", subject, message, p.Mountpoint, p.UsedPct)
+		}
 		id := issues.Show("disk")
 
 		if id != "" {
@@ -210,6 +232,7 @@ func collectDiskInfo() []DiskInfo {
 		fullMsg, tableOnly := createNormalTable(allDIs) // createNormalTable now takes []DiskInfo
 		common.AlarmCheckUp("disk", fullMsg, false)
 		issues.CheckUp("disk", common.Config.Identifier+" için bütün disk bölümleri "+strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64)+"% altına indi, kapatılıyor."+"\n\n"+tableOnly)
+		issues.ClearAllPercentTracking("disk")
 		common.AlarmCheckUp("disk_redmineissue", "Disk usage normal, clearing any Redmine issue creation failure alarm", false)
 	}
 
