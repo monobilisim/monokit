@@ -628,12 +628,17 @@ func Create(service string, subject string, message string) {
 	// persist issue id in SQLite
 	_ = setIssueID(service, strconv.Itoa(data.Issue.Id))
 
+	descPreview := message
+	if len(descPreview) > 200 {
+		descPreview = descPreview[:200] + "…"
+	}
 	log.Info().
 		Str("component", "redmine").
 		Str("operation", "create_issue").
 		Int("issue_id", data.Issue.Id).
 		Str("service", service).
 		Str("subject", subject).
+		Str("desc_preview", descPreview).
 		Msg("Successfully created new Redmine issue")
 }
 
@@ -1179,13 +1184,17 @@ func ClearAllPercentTracking(service string) {
 // Davranış CheckDown'daki zaman aralığı throttle'undan bağımsızdır; amaç kritik artışları kaçırmamaktır.
 //
 // partition: örn. "/var", "/". Boş olmamalı; mountpoint tanımlayıcı.
-func CheckDownOnIncrease(service, subject, message, partition string, currentPct float64) {
+//
+// createMessage yeni issue açılırken Description olarak; updateMessage ise mevcut
+// issue'ya not (journal) düşerken kullanılır. Böylece "yükseldi" başlığı yalnızca
+// not'ta görünür, yeni açılan issue'nun Description'ında görünmez.
+func CheckDownOnIncrease(service, subject, createMessage, updateMessage, partition string, currentPct float64) {
 	if partition == "" {
 		return
 	}
 	if !redmineCheckIssueLog(service) {
 		// issue yok → aç, yüzdeyi kaydet
-		Create(service, subject, message)
+		Create(service, subject, createMessage)
 		setLastPercent(service, partition, currentPct)
 		touchStat(service)
 		return
@@ -1193,7 +1202,7 @@ func CheckDownOnIncrease(service, subject, message, partition string, currentPct
 	last, ok := getLastPercent(service, partition)
 	if !ok {
 		// issue var ama yüzde kaydı yok (eski davranıştan kalan bir issue olabilir) → notu at, kaydet
-		Update(service, message, false)
+		Update(service, updateMessage, false)
 		setLastPercent(service, partition, currentPct)
 		touchStat(service)
 		return
@@ -1201,7 +1210,7 @@ func CheckDownOnIncrease(service, subject, message, partition string, currentPct
 	currentRounded := math.Round(currentPct)
 	lastRounded := math.Round(last)
 	if currentRounded > lastRounded {
-		Update(service, message, false)
+		Update(service, updateMessage, false)
 		setLastPercent(service, partition, currentPct)
 		touchStat(service)
 	}

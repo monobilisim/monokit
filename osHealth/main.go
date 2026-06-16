@@ -218,11 +218,12 @@ func collectDiskInfo() []DiskInfo {
 				continue // aynı fiziksel disk için tek not yeter
 			}
 			seenDevices[p.Device] = true
-			message := tableOnly
+			createMessage := tableOnly
+			updateMessage := tableOnly
 			if deltaStr, ok := formatPercentDelta(p.Mountpoint, p.UsedPct); ok {
-				message = deltaStr + "\n" + tableOnly
+				updateMessage = deltaStr + "\n" + tableOnly
 			}
-			issues.CheckDownOnIncrease("disk", subject, message, p.Mountpoint, p.UsedPct)
+			issues.CheckDownOnIncrease("disk", subject, createMessage, updateMessage, p.Mountpoint, p.UsedPct)
 		}
 		id := issues.Show("disk")
 
