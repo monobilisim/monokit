@@ -2,6 +2,7 @@ package osHealth
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"runtime"
 	"sort"
@@ -186,7 +187,7 @@ func displayBoxUI(healthData *HealthData) {
 // ok=false döner.
 func formatPercentDelta(mountpoint string, currentPct float64) (deltaStr string, ok bool) {
 	previousPct, found := issues.LastReportedPercent("disk", mountpoint)
-	if !found || currentPct <= previousPct {
+	if !found || math.Round(currentPct) <= math.Round(previousPct) {
 		return "", false
 	}
 	line := "**" + mountpoint + " dizini için doluluk yükseldi: %" +

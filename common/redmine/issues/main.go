@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -1120,7 +1121,9 @@ func CheckDownOnIncrease(service, subject, message, partition string, currentPct
 		touchStat(service)
 		return
 	}
-	if currentPct > last {
+	currentRounded := math.Round(currentPct)
+	lastRounded := math.Round(last)
+	if currentRounded > lastRounded {
 		Update(service, message, false)
 		setLastPercent(service, partition, currentPct)
 		touchStat(service)
