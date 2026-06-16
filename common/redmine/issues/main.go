@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -627,12 +628,17 @@ func Create(service string, subject string, message string) {
 	// persist issue id in SQLite
 	_ = setIssueID(service, strconv.Itoa(data.Issue.Id))
 
+	descPreview := message
+	if len(descPreview) > 200 {
+		descPreview = descPreview[:200] + "…"
+	}
 	log.Info().
 		Str("component", "redmine").
 		Str("operation", "create_issue").
 		Int("issue_id", data.Issue.Id).
 		Str("service", service).
 		Str("subject", subject).
+		Str("desc_preview", descPreview).
 		Msg("Successfully created new Redmine issue")
 }
 
@@ -753,6 +759,19 @@ func Update(service string, message string, checkNote bool) {
 		return
 	}
 	if issueId == 0 {
+		deleteIssueID(service)
+		return
+	}
+
+	// Issue Redmine'da kapatılmış/silinmişse not düşme; sadece durumu KESİN biliyorsak
+	// (known) işlem yap. Bilinmiyorsa (network/parse hatası) state'e dokunma (fail-safe).
+	if closed, known := issueIsClosed(idStr); known && closed {
+		log.Info().
+			Str("component", "redmine").
+			Str("operation", "update_issue").
+			Int("issue_id", issueId).
+			Str("service", service).
+			Msg("Issue Redmine'da kapalı/erişilemez; monokit not düşmüyor ve yerel kaydı temizliyor")
 		deleteIssueID(service)
 		return
 	}
@@ -878,6 +897,70 @@ func getAssignedToId(id string) string {
 		return ""
 	}
 	return strconv.Itoa(int(idFloat))
+}
+
+// issueIsClosed, bir issue'nun Redmine'da kapalı/silinmiş olup olmadığını sorgular.
+//   - closed=true,  known=true: issue kapalı (status.is_closed veya status.id>=5) ya da 404 (silinmiş).
+//   - closed=false, known=true: issue açık.
+//   - known=false: durum kesin bilinemedi (network/timeout/5xx/403/parse hatası);
+//     çağıran taraf state'e dokunmamalı (fail-safe).
+func issueIsClosed(id string) (closed bool, known bool) {
+	redmineUrlFinal := common.Config.Redmine.Url + "/issues/" + id + ".json"
+
+	req, err := http.NewRequest("GET", redmineUrlFinal, nil)
+	if err != nil {
+		log.Error().Err(err).Str("component", "redmine").Str("operation", "issue_is_closed").Str("url", redmineUrlFinal).Str("issue_id", id).Msg("Failed to create request for issue status")
+		return false, false
+	}
+	common.AddUserAgent(req)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Redmine-API-Key", common.Config.Redmine.Api_key)
+
+	client := &http.Client{
+		Timeout: time.Second * 10,
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		log.Error().Err(err).Str("component", "redmine").Str("operation", "issue_is_closed").Str("url", redmineUrlFinal).Str("issue_id", id).Msg("Failed to send request for issue status")
+		return false, false
+	}
+	defer resp.Body.Close()
+
+	// 404 → issue silinmiş; artık geçerli değil, kapalı muamelesi yap
+	if resp.StatusCode == 404 {
+		return true, true
+	}
+
+	// 200 dışında her şey (5xx, 403, vb.) → durum bilinemez
+	if resp.StatusCode != 200 {
+		return false, false
+	}
+
+	var data map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		log.Error().Err(err).Str("component", "redmine").Str("operation", "issue_is_closed").Str("issue_id", id).Msg("Failed to decode issue status response")
+		return false, false
+	}
+
+	issueObj, ok := data["issue"].(map[string]interface{})
+	if !ok {
+		return false, false
+	}
+	status, ok := issueObj["status"].(map[string]interface{})
+	if !ok {
+		return false, false
+	}
+
+	// Tercihen is_closed boolean'ı; yoksa status.id>=5 fallback (5=Closed)
+	if isClosed, ok := status["is_closed"].(bool); ok {
+		return isClosed, true
+	}
+	if statusId, ok := status["id"].(float64); ok {
+		return statusId >= 5, true
+	}
+
+	return false, false
 }
 
 func Close(service string, message string) {
@@ -1101,13 +1184,17 @@ func ClearAllPercentTracking(service string) {
 // Davranış CheckDown'daki zaman aralığı throttle'undan bağımsızdır; amaç kritik artışları kaçırmamaktır.
 //
 // partition: örn. "/var", "/". Boş olmamalı; mountpoint tanımlayıcı.
-func CheckDownOnIncrease(service, subject, message, partition string, currentPct float64) {
+//
+// createMessage yeni issue açılırken Description olarak; updateMessage ise mevcut
+// issue'ya not (journal) düşerken kullanılır. Böylece "yükseldi" başlığı yalnızca
+// not'ta görünür, yeni açılan issue'nun Description'ında görünmez.
+func CheckDownOnIncrease(service, subject, createMessage, updateMessage, partition string, currentPct float64) {
 	if partition == "" {
 		return
 	}
 	if !redmineCheckIssueLog(service) {
 		// issue yok → aç, yüzdeyi kaydet
-		Create(service, subject, message)
+		Create(service, subject, createMessage)
 		setLastPercent(service, partition, currentPct)
 		touchStat(service)
 		return
@@ -1115,13 +1202,15 @@ func CheckDownOnIncrease(service, subject, message, partition string, currentPct
 	last, ok := getLastPercent(service, partition)
 	if !ok {
 		// issue var ama yüzde kaydı yok (eski davranıştan kalan bir issue olabilir) → notu at, kaydet
-		Update(service, message, false)
+		Update(service, updateMessage, false)
 		setLastPercent(service, partition, currentPct)
 		touchStat(service)
 		return
 	}
-	if currentPct > last {
-		Update(service, message, false)
+	currentRounded := math.Round(currentPct)
+	lastRounded := math.Round(last)
+	if currentRounded > lastRounded {
+		Update(service, updateMessage, false)
 		setLastPercent(service, partition, currentPct)
 		touchStat(service)
 	}

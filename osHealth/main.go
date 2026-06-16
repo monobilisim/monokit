@@ -2,6 +2,7 @@ package osHealth
 
 import (
 	"fmt"
+	"math"
 	"os"
 	"runtime"
 	"sort"
@@ -186,7 +187,7 @@ func displayBoxUI(healthData *HealthData) {
 // ok=false döner.
 func formatPercentDelta(mountpoint string, currentPct float64) (deltaStr string, ok bool) {
 	previousPct, found := issues.LastReportedPercent("disk", mountpoint)
-	if !found || currentPct <= previousPct {
+	if !found || math.Round(currentPct) <= math.Round(previousPct) {
 		return "", false
 	}
 	line := "**" + mountpoint + " dizini için doluluk yükseldi: %" +
@@ -211,12 +212,18 @@ func collectDiskInfo() []DiskInfo {
 		subject := common.Config.Identifier + " için disk doluluk seviyesi %" + strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64) + " üstüne çıktı"
 
 		// Her eşiği aşan partition için yüzde artışı tabanlı Redmine güncellemesi
+		seenDevices := make(map[string]bool)
 		for _, p := range exceededDIs {
-			message := tableOnly
-			if deltaStr, ok := formatPercentDelta(p.Mountpoint, p.UsedPct); ok {
-				message = deltaStr + "\n" + tableOnly
+			if seenDevices[p.Device] {
+				continue // aynı fiziksel disk için tek not yeter
 			}
-			issues.CheckDownOnIncrease("disk", subject, message, p.Mountpoint, p.UsedPct)
+			seenDevices[p.Device] = true
+			createMessage := tableOnly
+			updateMessage := tableOnly
+			if deltaStr, ok := formatPercentDelta(p.Mountpoint, p.UsedPct); ok {
+				updateMessage = deltaStr + "\n" + tableOnly
+			}
+			issues.CheckDownOnIncrease("disk", subject, createMessage, updateMessage, p.Mountpoint, p.UsedPct)
 		}
 		id := issues.Show("disk")
 
