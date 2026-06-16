@@ -212,7 +212,12 @@ func collectDiskInfo() []DiskInfo {
 		subject := common.Config.Identifier + " için disk doluluk seviyesi %" + strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64) + " üstüne çıktı"
 
 		// Her eşiği aşan partition için yüzde artışı tabanlı Redmine güncellemesi
+		seenDevices := make(map[string]bool)
 		for _, p := range exceededDIs {
+			if seenDevices[p.Device] {
+				continue // aynı fiziksel disk için tek not yeter
+			}
+			seenDevices[p.Device] = true
 			message := tableOnly
 			if deltaStr, ok := formatPercentDelta(p.Mountpoint, p.UsedPct); ok {
 				message = deltaStr + "\n" + tableOnly
