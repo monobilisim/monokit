@@ -58,7 +58,7 @@ func getBotUserID() string {
 				Str("component", "redmine").
 				Str("operation", "get_bot_user_id").
 				Str("bot_user_id", uid).
-				Msg("Bot kullanıcı ID'si /users/current.json'dan alındı ve cache'lendi")
+				Msg("Bot user ID resolved and cached from /users/current.json")
 			return
 		}
 		// Lookup failed — leave botUserID empty. The Close path will skip
@@ -67,7 +67,7 @@ func getBotUserID() string {
 			Str("component", "redmine").
 			Str("operation", "get_bot_user_id").
 			Err(err).
-			Msg("Bot kullanıcı ID'si /users/current.json'dan alınamadı; atama bot'a devredilmeyecek (mevcut atama korunacak)")
+			Msg("Could not resolve bot user ID from /users/current.json; assignee will not be overridden (existing assignee preserved)")
 	})
 	return botUserID
 }
@@ -1030,23 +1030,24 @@ func Close(service string, message string) {
 		return
 	}
 
-	// Eğer issue Redmine'da zaten bir insan tarafından kapatılmışsa, monokit
-	// yalnızca not düşmez; atamayı da bot'a çevirmez. idempotent kapatma.
+	// If the issue is already closed in Redmine (by a human), monokit neither
+	// posts a note nor reassigns to the bot. Idempotent close.
 	if closed, known := issueIsClosed(idStr); known && closed {
 		log.Info().
 			Str("component", "redmine").
 			Str("operation", "close_issue").
 			Int("issue_id", issueId).
 			Str("service", service).
-			Msg("Issue Redmine'da zaten kapalı; monokit kapatma ve atama adımını atlıyor")
+			Msg("Issue already closed in Redmine; skipping close and assignee handoff")
 		deleteIssueID(service)
 		return
 	}
 
-	// Otomatik kapanış: atamayı Redmine Bot (Mono)'ya devret; mevcut (insan)
-	// atamasını koruma. Bot ID'si ilk çağrıda /users/current.json'dan çözülür
-	// ve süreç boyunca cache'lenir; çözümleme başarısız olursa atama bot'a
-	// devredilmez ve mevcut atama korunur.
+	// Auto-close: hand off the assignee to "Redmine Bot (Mono)" instead of
+	// preserving the previous (human) one. The bot ID is resolved on the first
+	// call from /users/current.json and cached for the lifetime of the process;
+	// if the lookup fails, the assignee override is skipped and the existing
+	// assignee is preserved.
 	issue := Issue{
 		Id:       issueId,
 		Notes:    message,
