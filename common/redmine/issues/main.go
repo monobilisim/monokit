@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/monobilisim/monokit/common"
@@ -30,6 +31,45 @@ type Issue struct {
 
 type RedmineIssue struct {
 	Issue Issue `json:"issue"`
+}
+
+// RedmineBotUserID is no longer a build-time constant. The bot user ID is
+// resolved dynamically from the API key owner via /users/current.json (see
+// getBotUserID). If the lookup fails, the close path logs the error and skips
+// the reassignment — preserving the existing (human) assignee rather than
+// guessing.
+
+var (
+	botUserOnce sync.Once
+	botUserID   string
+)
+
+// getBotUserID resolves the Redmine user ID of the API key owner ("Redmine
+// Bot (Mono)" in the standard monokit deployment). On the first call it
+// queries /users/current.json and caches the result for the lifetime of the
+// process. If the lookup fails, it returns an empty string and logs an error;
+// the caller is expected to skip the assignee override in that case.
+func getBotUserID() string {
+	botUserOnce.Do(func() {
+		uid, err := getCurrentUserId()
+		if err == nil && uid != "" {
+			botUserID = uid
+			log.Info().
+				Str("component", "redmine").
+				Str("operation", "get_bot_user_id").
+				Str("bot_user_id", uid).
+				Msg("Bot user ID resolved and cached from /users/current.json")
+			return
+		}
+		// Lookup failed — leave botUserID empty. The Close path will skip
+		// the AssignedToId override, preserving the existing assignee.
+		log.Error().
+			Str("component", "redmine").
+			Str("operation", "get_bot_user_id").
+			Err(err).
+			Msg("Could not resolve bot user ID from /users/current.json; assignee will not be overridden (existing assignee preserved)")
+	})
+	return botUserID
 }
 
 func redmineIssueKey(service string) string {
@@ -990,11 +1030,31 @@ func Close(service string, message string) {
 		return
 	}
 
-	// update issue
-	// Mevcut atamayı koruyarak body'ye geri yaz (Update ile aynı sebep).
-	issue := Issue{Id: issueId, Notes: message, StatusId: 5}
-	if existingAssigned := getAssignedToId(idStr); existingAssigned != "" {
-		issue.AssignedToId = existingAssigned
+	// If the issue is already closed in Redmine (by a human), monokit neither
+	// posts a note nor reassigns to the bot. Idempotent close.
+	if closed, known := issueIsClosed(idStr); known && closed {
+		log.Info().
+			Str("component", "redmine").
+			Str("operation", "close_issue").
+			Int("issue_id", issueId).
+			Str("service", service).
+			Msg("Issue already closed in Redmine; skipping close and assignee handoff")
+		deleteIssueID(service)
+		return
+	}
+
+	// Auto-close: hand off the assignee to "Redmine Bot (Mono)" instead of
+	// preserving the previous (human) one. The bot ID is resolved on the first
+	// call from /users/current.json and cached for the lifetime of the process;
+	// if the lookup fails, the assignee override is skipped and the existing
+	// assignee is preserved.
+	issue := Issue{
+		Id:       issueId,
+		Notes:    message,
+		StatusId: 5,
+	}
+	if botID := getBotUserID(); botID != "" {
+		issue.AssignedToId = botID
 	}
 	body := RedmineIssue{Issue: issue}
 	jsonBody, err := json.Marshal(body)
