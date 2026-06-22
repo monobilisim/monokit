@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/monobilisim/monokit/common"
@@ -30,6 +31,43 @@ type Issue struct {
 
 type RedmineIssue struct {
 	Issue Issue `json:"issue"`
+}
+
+// RedmineBotUserID is the Redmine user ID of the "Redmine Bot (Mono)" service
+// account. Build-time fallback; runtime'da API key sahibi /users/current.json
+// üzerinden dinamik çözülür. API key bot hesabına aitse bu sabite düşülmez.
+const RedmineBotUserID = "1333"
+
+var (
+	botUserOnce sync.Once
+	botUserID   string
+)
+
+// getBotUserID, monokit API key'inin sahibi olan bot hesabının ID'sini döner.
+// İlk çağrıda /users/current.json'a sorar, sonucu süreç boyunca cache'ler.
+// Hata durumunda RedmineBotUserID sabitine düşer.
+func getBotUserID() string {
+	botUserOnce.Do(func() {
+		uid, err := getCurrentUserId()
+		switch {
+		case err == nil && uid != "":
+			botUserID = uid
+			log.Info().
+				Str("component", "redmine").
+				Str("operation", "get_bot_user_id").
+				Str("bot_user_id", uid).
+				Msg("Bot kullanıcı ID'si /users/current.json'dan alındı ve cache'lendi")
+		default:
+			botUserID = RedmineBotUserID
+			log.Warn().
+				Str("component", "redmine").
+				Str("operation", "get_bot_user_id").
+				Err(err).
+				Str("fallback_bot_user_id", RedmineBotUserID).
+				Msg("Bot kullanıcı ID'si /users/current.json'dan alınamadı; sabit fallback kullanılıyor")
+		}
+	})
+	return botUserID
 }
 
 func redmineIssueKey(service string) string {
@@ -990,11 +1028,28 @@ func Close(service string, message string) {
 		return
 	}
 
-	// update issue
-	// Mevcut atamayı koruyarak body'ye geri yaz (Update ile aynı sebep).
-	issue := Issue{Id: issueId, Notes: message, StatusId: 5}
-	if existingAssigned := getAssignedToId(idStr); existingAssigned != "" {
-		issue.AssignedToId = existingAssigned
+	// Eğer issue Redmine'da zaten bir insan tarafından kapatılmışsa, monokit
+	// yalnızca not düşmez; atamayı da bot'a çevirmez. idempotent kapatma.
+	if closed, known := issueIsClosed(idStr); known && closed {
+		log.Info().
+			Str("component", "redmine").
+			Str("operation", "close_issue").
+			Int("issue_id", issueId).
+			Str("service", service).
+			Msg("Issue Redmine'da zaten kapalı; monokit kapatma ve atama adımını atlıyor")
+		deleteIssueID(service)
+		return
+	}
+
+	// Otomatik kapanış: atamayı Redmine Bot (Mono)'ya devret; mevcut (insan)
+	// atamasını koruma. Bot ID'si ilk çağrıda /users/current.json'dan çözülür
+	// ve süreç boyunca cache'lenir; başarısız olursa RedmineBotUserID sabiti
+	// fallback olarak kullanılır.
+	issue := Issue{
+		Id:           issueId,
+		Notes:        message,
+		StatusId:     5,
+		AssignedToId: getBotUserID(),
 	}
 	body := RedmineIssue{Issue: issue}
 	jsonBody, err := json.Marshal(body)
