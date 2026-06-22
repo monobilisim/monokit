@@ -33,39 +33,41 @@ type RedmineIssue struct {
 	Issue Issue `json:"issue"`
 }
 
-// RedmineBotUserID is the Redmine user ID of the "Redmine Bot (Mono)" service
-// account. Build-time fallback; runtime'da API key sahibi /users/current.json
-// üzerinden dinamik çözülür. API key bot hesabına aitse bu sabite düşülmez.
-const RedmineBotUserID = "1333"
+// RedmineBotUserID is no longer a build-time constant. The bot user ID is
+// resolved dynamically from the API key owner via /users/current.json (see
+// getBotUserID). If the lookup fails, the close path logs the error and skips
+// the reassignment — preserving the existing (human) assignee rather than
+// guessing.
 
 var (
 	botUserOnce sync.Once
 	botUserID   string
 )
 
-// getBotUserID, monokit API key'inin sahibi olan bot hesabının ID'sini döner.
-// İlk çağrıda /users/current.json'a sorar, sonucu süreç boyunca cache'ler.
-// Hata durumunda RedmineBotUserID sabitine düşer.
+// getBotUserID resolves the Redmine user ID of the API key owner ("Redmine
+// Bot (Mono)" in the standard monokit deployment). On the first call it
+// queries /users/current.json and caches the result for the lifetime of the
+// process. If the lookup fails, it returns an empty string and logs an error;
+// the caller is expected to skip the assignee override in that case.
 func getBotUserID() string {
 	botUserOnce.Do(func() {
 		uid, err := getCurrentUserId()
-		switch {
-		case err == nil && uid != "":
+		if err == nil && uid != "" {
 			botUserID = uid
 			log.Info().
 				Str("component", "redmine").
 				Str("operation", "get_bot_user_id").
 				Str("bot_user_id", uid).
 				Msg("Bot kullanıcı ID'si /users/current.json'dan alındı ve cache'lendi")
-		default:
-			botUserID = RedmineBotUserID
-			log.Warn().
-				Str("component", "redmine").
-				Str("operation", "get_bot_user_id").
-				Err(err).
-				Str("fallback_bot_user_id", RedmineBotUserID).
-				Msg("Bot kullanıcı ID'si /users/current.json'dan alınamadı; sabit fallback kullanılıyor")
+			return
 		}
+		// Lookup failed — leave botUserID empty. The Close path will skip
+		// the AssignedToId override, preserving the existing assignee.
+		log.Error().
+			Str("component", "redmine").
+			Str("operation", "get_bot_user_id").
+			Err(err).
+			Msg("Bot kullanıcı ID'si /users/current.json'dan alınamadı; atama bot'a devredilmeyecek (mevcut atama korunacak)")
 	})
 	return botUserID
 }
@@ -1043,13 +1045,15 @@ func Close(service string, message string) {
 
 	// Otomatik kapanış: atamayı Redmine Bot (Mono)'ya devret; mevcut (insan)
 	// atamasını koruma. Bot ID'si ilk çağrıda /users/current.json'dan çözülür
-	// ve süreç boyunca cache'lenir; başarısız olursa RedmineBotUserID sabiti
-	// fallback olarak kullanılır.
+	// ve süreç boyunca cache'lenir; çözümleme başarısız olursa atama bot'a
+	// devredilmez ve mevcut atama korunur.
 	issue := Issue{
-		Id:           issueId,
-		Notes:        message,
-		StatusId:     5,
-		AssignedToId: getBotUserID(),
+		Id:       issueId,
+		Notes:    message,
+		StatusId: 5,
+	}
+	if botID := getBotUserID(); botID != "" {
+		issue.AssignedToId = botID
 	}
 	body := RedmineIssue{Issue: issue}
 	jsonBody, err := json.Marshal(body)
