@@ -493,7 +493,7 @@ func Create(service string, subject string, message string) {
 			Msg("Found existing issue, attempting to reopen instead of creating new one")
 
 		// Get the assigned user
-		assignedToId := getAssignedToId(existingIssueId)
+		assignedToId, _ := getAssignedToId(existingIssueId) // ok=true only if API succeeded AND assigned
 
 		// Get current user
 		currentUserId, err := getCurrentUserId()
@@ -526,6 +526,8 @@ func Create(service string, subject string, message string) {
 			StatusId: 8,
 		}
 		if assignedToId != "" {
+			// (existing behavior: only set if we successfully read a positive
+			// ID; fail-safe for API errors / unassigned, matches previous code.)
 			issue.AssignedToId = assignedToId
 		}
 		body := RedmineIssue{Issue: issue}
@@ -821,7 +823,7 @@ func Update(service string, message string, checkNote bool) {
 	// (workflow rules, plugin'ler) PUT'ta belirtilmeyen alanı "atanmamış"a
 	// çevirebiliyor. Okuma başarısız olursa alanı hiç gönderme.
 	issue := Issue{Id: issueId, Notes: message}
-	if existingAssigned := getAssignedToId(idStr); existingAssigned != "" {
+	if existingAssigned, known := getAssignedToId(idStr); known && existingAssigned != "" {
 		issue.AssignedToId = existingAssigned
 	}
 	body := RedmineIssue{Issue: issue}
@@ -870,7 +872,15 @@ func Update(service string, message string, checkNote bool) {
 	}
 }
 
-func getAssignedToId(id string) string {
+// getAssignedToId fetches the current assignee of a Redmine issue.
+//
+// Return values:
+//   - assignedID != "", ok=true:  issue is assigned to the user with this ID
+//   - assignedID == "", ok=true:  issue is unassigned (API succeeded, no assignee)
+//   - assignedID == "", ok=false: API lookup failed (network, non-200, parse);
+//     caller must treat as "unknown" and apply fail-safe behavior
+//     (do not override the assignee).
+func getAssignedToId(id string) (assignedID string, ok bool) {
 
 	// Make request to Redmine API to get the assigned_to_id
 	redmineUrlFinal := common.Config.Redmine.Url + "/issues/" + id + ".json"
@@ -878,6 +888,7 @@ func getAssignedToId(id string) string {
 	req, err := http.NewRequest("GET", redmineUrlFinal, nil)
 	if err != nil {
 		log.Error().Err(err).Str("component", "redmine").Str("operation", "get_assigned_to_id").Str("url", redmineUrlFinal).Str("issue_id", id).Msg("Failed to create request for issue assignment info")
+		return "", false
 	}
 	common.AddUserAgent(req)
 	req.Header.Set("Content-Type", "application/json")
@@ -891,7 +902,7 @@ func getAssignedToId(id string) string {
 
 	if err != nil {
 		log.Error().Err(err).Str("component", "redmine").Str("operation", "get_assigned_to_id").Str("url", redmineUrlFinal).Str("issue_id", id).Msg("Failed to send request for issue assignment info")
-		return ""
+		return "", false
 	}
 
 	defer resp.Body.Close()
@@ -910,6 +921,7 @@ func getAssignedToId(id string) string {
 
 	if err != nil {
 		log.Error().Err(err).Str("component", "redmine").Str("operation", "get_assigned_to_id").Str("issue_id", id).Msg("Failed to decode issue assignment response")
+		return "", false
 	}
 
 	// If not 200, log error
@@ -922,21 +934,28 @@ func getAssignedToId(id string) string {
 			Str("url", redmineUrlFinal).
 			Str("issue_id", id).
 			Msg("Redmine API returned non-200 status for issue assignment info")
-		return ""
+		return "", false
 	}
 
 	// Check if id exists
 
-	assignedTo, ok := data["issue"].(map[string]interface{})["assigned_to"]
+	issueObj, ok := data["issue"].(map[string]interface{})
+	if !ok {
+		return "", false
+	}
+	assignedTo, ok := issueObj["assigned_to"]
 	if !ok || assignedTo == nil {
-		return ""
+		return "", true
 	}
-
-	idFloat, idOk := assignedTo.(map[string]interface{})["id"].(float64)
+	assignedMap, ok := assignedTo.(map[string]interface{})
+	if !ok {
+		return "", true
+	}
+	idFloat, idOk := assignedMap["id"].(float64)
 	if !idOk {
-		return ""
+		return "", true
 	}
-	return strconv.Itoa(int(idFloat))
+	return strconv.Itoa(int(idFloat)), true
 }
 
 // issueIsClosed, bir issue'nun Redmine'da kapalı/silinmiş olup olmadığını sorgular.
@@ -1043,18 +1062,42 @@ func Close(service string, message string) {
 		return
 	}
 
-	// Auto-close: hand off the assignee to "Redmine Bot (Mono)" instead of
-	// preserving the previous (human) one. The bot ID is resolved on the first
-	// call from /users/current.json and cached for the lifetime of the process;
-	// if the lookup fails, the assignee override is skipped and the existing
-	// assignee is preserved.
+	// Auto-close reassign policy (per ops requirement):
+	//   - UNASSIGNED issue               → Redmine Bot (Mono) takes ownership.
+	//   - Assigned to the SAME BOT       → idempotent, keep bot assignee.
+	//   - Assigned to a HUMAN / other    → close but DO NOT touch the
+	//                                     assignee. Never steal an open
+	//                                     ticket from a human operator.
+	//   - Redmine API lookup failed      → fail-safe: leave AssignedToId
+	//                                     unset so Redmine keeps whatever
+	//                                     assignee it already has.
 	issue := Issue{
 		Id:       issueId,
 		Notes:    message,
 		StatusId: 5,
 	}
-	if botID := getBotUserID(); botID != "" {
-		issue.AssignedToId = botID
+	botID := getBotUserID()
+	if botID != "" {
+		if currentAssignee, known := getAssignedToId(idStr); known {
+			if currentAssignee == "" || currentAssignee == botID {
+				issue.AssignedToId = botID
+			} else {
+				log.Info().
+					Str("component", "redmine").
+					Str("operation", "close_issue").
+					Int("issue_id", issueId).
+					Str("service", service).
+					Str("current_assignee_id", currentAssignee).
+					Msg("Issue is assigned to a non-bot user; preserving existing assignee on auto-close (no reassign to bot)")
+			}
+		} else {
+			log.Warn().
+				Str("component", "redmine").
+				Str("operation", "close_issue").
+				Int("issue_id", issueId).
+				Str("service", service).
+				Msg("Could not read current assignee; preserving existing assignee on auto-close (fail-safe)")
+		}
 	}
 	body := RedmineIssue{Issue: issue}
 	jsonBody, err := json.Marshal(body)
