@@ -74,7 +74,10 @@ func analyzeDiskPartitions(diskPartitions []disk.PartitionStat) ([]DiskInfo, []D
 		}
 		allDIs = append(allDIs, currentDiskInfo)
 
-		if usage.UsedPercent > OsHealthConfig.Part_use_limit {
+		// Use >= so a partition at exactly the configured limit (e.g. 90.0%)
+		// is treated as "exceeded" instead of silently falling into the
+		// "all partitions below limit, close Redmine issue" branch.
+		if usage.UsedPercent >= OsHealthConfig.Part_use_limit {
 			exceededDIs = append(exceededDIs, currentDiskInfo)
 		}
 	}

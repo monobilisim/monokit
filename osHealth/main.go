@@ -235,7 +235,13 @@ func collectDiskInfo() []DiskInfo {
 		}
 		common.AlarmCheckDown("disk", fullMsg, false, "", "")
 
-	} else {
+	// Guard the close branch so it only fires when we actually have
+		// partitions to evaluate. A bare `else` here would auto-close any
+		// pre-existing Redmine issue with the misleading
+		// "all partitions dropped below X%" comment whenever the partition
+		// set is empty (e.g. everything excluded by config or zero disks
+		// returned by gopsutil). Mirrors the ZFS pattern at line ~157.
+	} else if len(allDIs) > 0 {
 		fullMsg, tableOnly := createNormalTable(allDIs) // createNormalTable now takes []DiskInfo
 		common.AlarmCheckUp("disk", fullMsg, false)
 		issues.CheckUp("disk", common.Config.Identifier+" için bütün disk bölümleri "+strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64)+"% altına indi, kapatılıyor."+"\n\n"+tableOnly)

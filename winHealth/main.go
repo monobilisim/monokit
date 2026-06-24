@@ -235,7 +235,10 @@ func collectDiskInfo() []DiskInfo {
 		}
 		common.AlarmCheckDown("disk", fullMsg, false, "", "")
 
-	} else {
+	// Guard the close branch so it only fires when we actually have
+		// partitions to evaluate. Mirrors the osHealth/main.go fix and the
+		// ZFS pattern at line ~157 of osHealth/main.go.
+	} else if len(allDIs) > 0 {
 		fullMsg, tableOnly := createNormalTable(allDIs) // createNormalTable now takes []DiskInfo
 		common.AlarmCheckUp("disk", fullMsg, false)
 		issues.CheckUp("disk", common.Config.Identifier+" için bütün disk bölümleri "+strconv.FormatFloat(WinHealthConfig.Part_use_limit, 'f', 0, 64)+"% altına indi, kapatılıyor."+"\n\n"+tableOnly)

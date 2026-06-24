@@ -75,7 +75,10 @@ func analyzeDiskPartitions(diskPartitions []disk.PartitionStat) ([]DiskInfo, []D
 		}
 		allDIs = append(allDIs, currentDiskInfo)
 
-		if usage.UsedPercent > WinHealthConfig.Part_use_limit {
+		// Mirror of osHealth/disk.go: use >= so a partition at exactly the
+		// configured limit counts as "exceeded" instead of triggering the
+		// bare-else close branch with a misleading "below limit" message.
+		if usage.UsedPercent >= WinHealthConfig.Part_use_limit {
 			exceededDIs = append(exceededDIs, currentDiskInfo)
 		}
 	}

@@ -105,7 +105,10 @@ func (h *HealthData) RenderCompact() string {
 
 		// Disk usage details
 		for _, disk := range h.Disk {
-			isSuccess := disk.UsedPct <= OsHealthConfig.Part_use_limit
+			// Use strict `<` so UI "OK" matches the threshold check:
+			// a partition at exactly the limit is "exceeded" in
+			// osHealth/disk.go, so it must not also be "success" in the UI.
+			isSuccess := disk.UsedPct < OsHealthConfig.Part_use_limit
 
 			limits := fmt.Sprintf("%.0f%%", OsHealthConfig.Part_use_limit)
 			current := fmt.Sprintf("%.0f%%", disk.UsedPct)
