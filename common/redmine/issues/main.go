@@ -26,7 +26,7 @@ type Issue struct {
 	Subject      string `json:"subject,omitempty"`
 	PriorityId   int    `json:"priority_id,omitempty"`
 	StatusId     int    `json:"status_id,omitempty"`
-	AssignedToId string `json:"assigned_to_id"`
+	AssignedToId string `json:"assigned_to_id,omitempty"`
 }
 
 type RedmineIssue struct {
