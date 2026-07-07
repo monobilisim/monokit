@@ -206,186 +206,128 @@ func findRecentIssue(subject string, hoursBack int) string {
 		return ""
 	}
 
-	// Calculate time range
-	now := time.Now()
+	// Calculate time range.
+	//
+	// Redmine, tarih filtrelerini istek yapan kullanıcının hesap zaman dilimine göre
+	// yorumlar (bkz. Redmine Defect #19033), dönen değerleri ise her zaman UTC verir.
+	// API kullanıcımızın hesabı Europe/Istanbul olduğundan, filtre sınırını da
+	// İstanbul saatinde göndermeliyiz (UTC'ye çevirmek pencereyi kaydırır).
+	loc, err := time.LoadLocation("Europe/Istanbul")
+	if err != nil {
+		log.Warn().Err(err).Msg("Failed to load Europe/Istanbul, falling back to local time")
+		loc = time.Local
+	}
+	now := time.Now().In(loc)
 	hoursAgo := now.Add(-time.Duration(hoursBack) * time.Hour)
 
-	// Try different date formats for Redmine API
-	dateFormats := []string{
-		hoursAgo.Format("2006-01-02"),                 // Just the date
-		">=" + hoursAgo.Format("2006-01-02"),          // Date with >=
-		hoursAgo.Format("2006-01-02T15:04:05"),        // ISO without timezone
-		">=" + hoursAgo.Format("2006-01-02T15:04:05"), // ISO with >= without timezone
-		hoursAgo.Format(time.RFC3339),                 // Full RFC3339
-		">=" + hoursAgo.Format(time.RFC3339),          // Full RFC3339 with >=
-	}
+	// Redmine'in dokümante ettiği tek doğru "bu tarihten sonra" formu ">=" önekidir
+	// (bkz. https://www.redmine.org/projects/redmine/wiki/Rest_Issues).
+	createdOnFilter := ">=" + hoursAgo.Format("2006-01-02T15:04:05")
 
 	log.Debug().
 		Str("component", "redmine").
 		Str("current_time", now.Format(time.RFC3339)).
 		Str("search_from", hoursAgo.Format(time.RFC3339)).
+		Str("created_on_filter", createdOnFilter).
 		Msg("Time range for recent issue search")
 
-	// Try each date format
-	for _, dateFormat := range dateFormats {
-		log.Debug().
-			Str("component", "redmine").
-			Str("date_format", dateFormat).
-			Msg("Attempting date format for issue search")
+	baseUrl := common.Config.Redmine.Url + "/issues.json"
+	client := &http.Client{Timeout: time.Second * 10}
 
-		// Build URL, let http.NewRequest handle URL encoding
-		baseUrl := common.Config.Redmine.Url + "/issues.json"
+	// queryIssues, verilen subject filtresiyle tek bir istek atar ve dönen issue
+	// dizisini verir. total_count 0 ise nil döner.
+	queryIssues := func(subjectFilter string) []interface{} {
 		req, err := http.NewRequest("GET", baseUrl, nil)
 		if err != nil {
 			log.Error().Err(err).Str("base_url", baseUrl).Msg("Failed to create HTTP request")
-			continue
+			return nil
 		}
 
-		// Add query params
 		q := req.URL.Query()
 		q.Add("project_id", projectId)
-		q.Add("subject", subject) // Try exact match first
-		q.Add("created_on", dateFormat)
-		q.Add("status_id", "*") // All statuses
+		q.Add("subject", subjectFilter)
+		q.Add("created_on", createdOnFilter)
+		q.Add("status_id", "*")          // tüm statüler
+		q.Add("sort", "created_on:desc") // en yeni önce
 		req.URL.RawQuery = q.Encode()
+
+		common.AddUserAgent(req)
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Redmine-API-Key", common.Config.Redmine.Api_key)
 
 		log.Debug().
 			Str("component", "redmine").
 			Str("request_url", req.URL.String()).
 			Msg("Sending request to find recent issues")
 
-		// Set headers
-		common.AddUserAgent(req)
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("X-Redmine-API-Key", common.Config.Redmine.Api_key)
-
-		// Make request
-		client := &http.Client{Timeout: time.Second * 10}
 		resp, err := client.Do(req)
 		if err != nil {
 			log.Error().Err(err).Str("url", req.URL.String()).Msg("Failed to send HTTP request")
-			continue
+			return nil
 		}
-
-		// Process response
 		defer resp.Body.Close()
-		log.Debug().
-			Str("component", "redmine").
-			Int("status_code", resp.StatusCode).
-			Msg("Received response from Redmine API")
 
-		// Read full response for debugging
 		body, err := io.ReadAll(resp.Body)
 		if err != nil {
 			log.Error().Err(err).Msg("Failed to read response body")
-			continue
+			return nil
 		}
 
-		log.Debug().
-			Str("component", "redmine").
-			Int("response_size", len(body)).
-			Msg("Read response body from Redmine API")
-
-		// Parse JSON
 		var data map[string]interface{}
 		if err := json.Unmarshal(body, &data); err != nil {
 			log.Error().Err(err).Msg("Failed to parse JSON response")
-			continue
+			return nil
 		}
 
-		// Check if we have results
-		totalCount, ok := data["total_count"].(float64)
-		if !ok || totalCount == 0 {
-			log.Debug().
-				Str("component", "redmine").
-				Msg("No issues found with exact subject match, trying partial match")
-
-			// Try with partial match if exact match failed
-			q.Set("subject", "~"+subject)
-			req.URL.RawQuery = q.Encode()
-
-			log.Debug().
-				Str("component", "redmine").
-				Str("partial_match_url", req.URL.String()).
-				Msg("Trying partial subject match")
-
-			resp2, err := client.Do(req)
-			if err != nil {
-				log.Error().Err(err).Str("url", req.URL.String()).Msg("Failed to send partial match request")
-				continue
-			}
-
-			defer resp2.Body.Close()
-			body2, err := io.ReadAll(resp2.Body)
-			if err != nil {
-				log.Error().Err(err).Msg("Failed to read partial match response")
-				continue
-			}
-
-			log.Debug().
-				Str("component", "redmine").
-				Int("response_size", len(body2)).
-				Msg("Read partial match response body")
-
-			if err := json.Unmarshal(body2, &data); err != nil {
-				log.Error().Err(err).Msg("Failed to parse partial match JSON response")
-				continue
-			}
-
-			totalCount, ok = data["total_count"].(float64)
-			if !ok || totalCount == 0 {
-				log.Debug().
-					Str("component", "redmine").
-					Msg("No issues found with partial subject match either")
-				continue
-			}
+		if totalCount, ok := data["total_count"].(float64); !ok || totalCount == 0 {
+			return nil
 		}
-
-		// We have results - find the most recent relevant issue
-		log.Debug().
-			Str("component", "redmine").
-			Int("total_count", int(totalCount)).
-			Msg("Found matching issues")
 
 		issues, ok := data["issues"].([]interface{})
-		if !ok || len(issues) == 0 {
-			log.Debug().
-				Str("component", "redmine").
-				Msg("Issues array is empty or invalid")
+		if !ok {
+			return nil
+		}
+		return issues
+	}
+
+	// Yalnızca tam eşleşme ara. Kısmi ("~") eşleşme, Redmine 6'da kelime bazlı
+	// AND araması yaptığından alakasız bir issue'yu döndürüp yanlış ticket'ın
+	// yeniden açılmasına yol açabilirdi; bu yüzden fallback kaldırıldı.
+	issues := queryIssues(subject)
+
+	// sort=created_on:desc sayesinde ilk issue en yenidir.
+	for _, issue := range issues {
+		issueMap, ok := issue.(map[string]interface{})
+		if !ok {
 			continue
 		}
 
-		// Check each issue
-		for _, issue := range issues {
-			issueMap, ok := issue.(map[string]interface{})
-			if !ok {
-				continue
+		idFloat, ok := issueMap["id"].(float64)
+		if !ok {
+			continue
+		}
+		issueId := int(idFloat)
+
+		if status, ok := issueMap["status"].(map[string]interface{}); ok {
+			statusName, _ := status["name"].(string)
+			statusId := 0
+			if idf, ok := status["id"].(float64); ok {
+				statusId = int(idf)
 			}
-
-			issueId := int(issueMap["id"].(float64))
-			status, ok := issueMap["status"].(map[string]interface{})
-			if !ok {
-				continue
-			}
-
-			statusId := int(status["id"].(float64))
-			statusName := status["name"].(string)
-
 			log.Debug().
 				Str("component", "redmine").
 				Int("issue_id", issueId).
 				Str("status_name", statusName).
 				Int("status_id", statusId).
 				Msg("Found matching issue")
-
-			// Return the first issue that matches (they should be sorted by creation date, newest first)
-			return strconv.Itoa(issueId)
 		}
+
+		return strconv.Itoa(issueId)
 	}
 
 	log.Debug().
 		Str("component", "redmine").
-		Msg("No recent issues found after trying all date formats")
+		Msg("No recent issues found")
 	return ""
 }
 
