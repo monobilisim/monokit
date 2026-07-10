@@ -22,6 +22,7 @@ import (
 	"github.com/monobilisim/monokit/esHealth"
 	"github.com/monobilisim/monokit/lbPolicy"
 	"github.com/monobilisim/monokit/logs"
+	"github.com/monobilisim/monokit/opnsenseHealth"
 	"github.com/monobilisim/monokit/osHealth"
 	"github.com/monobilisim/monokit/shutdownNotifier"
 	"github.com/monobilisim/monokit/sshNotifier"
@@ -79,6 +80,12 @@ func main() {
 		Use:   "osHealth",
 		Short: "OS Health",
 		Run:   osHealth.Main,
+	}
+
+	var opnsenseHealthCmd = &cobra.Command{
+		Use:   "opnsenseHealth",
+		Short: "OPNsense Health",
+		Run:   opnsenseHealth.Main,
 	}
 
 	var winHealthCmd = &cobra.Command{
@@ -342,6 +349,7 @@ func main() {
 	/// OS Health
 	RootCmd.AddCommand(osHealthCmd)
 	RootCmd.AddCommand(winHealthCmd)
+	RootCmd.AddCommand(opnsenseHealthCmd)
 
 	/// Vault Health
 	VaultCommandAdd()
