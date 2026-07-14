@@ -24,6 +24,26 @@ func SystemdUnitActive(unitName string) bool {
 	}
 	defer conn.Close()
 
+	if unitActiveState(ctx, conn, unitName) {
+		return true
+	}
+
+	// Socket-activated services (e.g. ssh.service on Ubuntu 24.04+) report
+	// ActiveState=inactive whenever no connection has triggered them yet,
+	// even though the port is fully reachable via the companion .socket unit.
+	// ponytail: only covers the common "<name>.service" -> "<name>.socket"
+	// naming convention; add Sockets= property lookup if a unit uses a
+	// differently-named socket.
+	if base, ok := strings.CutSuffix(unitName, ".service"); ok {
+		if unitActiveState(ctx, conn, base+".socket") {
+			return true
+		}
+	}
+
+	return false
+}
+
+func unitActiveState(ctx context.Context, conn *dbus.Conn, unitName string) bool {
 	props, err := conn.GetUnitPropertiesContext(ctx, unitName)
 	if err != nil {
 		log.Debug().Err(err).Str("unit", unitName).Msg("Could not get unit properties")
