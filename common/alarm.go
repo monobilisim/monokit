@@ -306,6 +306,36 @@ func sendAlarmEmail(message string) error {
 	return nil
 }
 
+func isTeamsWebhookURL(u string) bool {
+	return strings.Contains(u, "webhook.office.com") ||
+		strings.Contains(u, "logic.azure.com")
+}
+
+func buildTeamsPayload(m string) ([]byte, error) {
+	text := alarmEmailEmojiReplacer.Replace(m)
+	payload := map[string]interface{}{
+		"type": "message",
+		"attachments": []map[string]interface{}{
+			{
+				"contentType": "application/vnd.microsoft.card.adaptive",
+				"content": map[string]interface{}{
+					"$schema": "http://adaptivecards.io/schemas/adaptive-card.json",
+					"type":    "AdaptiveCard",
+					"version": "1.2",
+					"body": []map[string]interface{}{
+						{
+							"type": "TextBlock",
+							"text": text,
+							"wrap": true,
+						},
+					},
+				},
+			},
+		},
+	}
+	return json.Marshal(payload)
+}
+
 func Alarm(m string, customStream string, customTopic string, onlyFirstWebhook bool) {
 	startTime := time.Now()
 
@@ -315,16 +345,6 @@ func Alarm(m string, customStream string, customTopic string, onlyFirstWebhook b
 			Str("action", "send").
 			Bool("enabled", Config.Alarm.Enabled).
 			Msg("Alarm system disabled, skipping notification")
-		return
-	}
-
-	// Use json.Marshal to ensure all characters (newlines, quotes, backslashes) are properly escaped.
-	payload := map[string]string{
-		"text": m,
-	}
-	body, err := json.Marshal(payload)
-	if err != nil {
-		log.Error().Err(err).Msg("Failed to marshal alarm body")
 		return
 	}
 
@@ -360,6 +380,25 @@ func Alarm(m string, customStream string, customTopic string, onlyFirstWebhook b
 			} else {
 				webhook_url = webhook_url + "&topic=" + customTopic
 			}
+		}
+
+		var body []byte
+		var err error
+		if isTeamsWebhookURL(webhook_url) {
+			body, err = buildTeamsPayload(m)
+		} else {
+			body, err = json.Marshal(map[string]string{"text": m})
+		}
+		if err != nil {
+			log.Error().
+				Err(err).
+				Str("component", "alarm").
+				Str("action", "marshal_payload").
+				Str("webhook_url", webhook_url).
+				Int("webhook_index", i).
+				Msg("Failed to marshal alarm body")
+			errorCount++
+			continue
 		}
 
 		r, err := http.NewRequest("POST", webhook_url, bytes.NewBuffer(body))
