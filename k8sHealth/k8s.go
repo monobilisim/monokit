@@ -182,38 +182,37 @@ func GetKubeconfigPath(flagValue string) string {
 		return envVar
 	}
 
+	var pathsToCheck []string
 	homeDir, err := os.UserHomeDir()
-	var defaultPath string
 	if err == nil {
-		defaultPath = homeDir + "/.kube/config"
-	} else {
-		defaultPath = "/root/.kube/config" // Fallback for root or if home directory cannot be determined
-		//common.LogWarn("Could not determine home directory to find default kubeconfig. Error: " + err.Error())
+		pathsToCheck = append(pathsToCheck, filepath.Join(homeDir, ".kube", "config"))
 	}
+	// Add common fallback paths
+	pathsToCheck = append(pathsToCheck,
+		"/root/.kube/config",
+		"/etc/kubernetes/admin.conf",   // kubeadm master
+		"/etc/kubernetes/kubelet.conf", // kubeadm worker
+		"/etc/rancher/rke2/rke2.yaml",  // RKE2 default
+		"/etc/rancher/k3s/k3s.yaml",    // K3s default
+	)
 
-	// Check if the default file actually exists before returning it
-	if _, err := os.Stat(defaultPath); err == nil {
-		log.Debug().
-			Str("component", "k8sHealth").
-			Str("operation", "get_kubeconfig_path").
-			Str("source", "default").
-			Str("path", defaultPath).
-			Msg("Using default kubeconfig path")
-		return defaultPath
-	} else if !os.IsNotExist(err) {
-		// Log error if Stat failed for reasons other than file not existing
-		log.Warn().
-			Str("component", "k8sHealth").
-			Str("operation", "get_kubeconfig_path").
-			Str("path", defaultPath).
-			Err(err).
-			Msg("Error checking default kubeconfig path")
-	} else {
-		log.Debug().
-			Str("component", "k8sHealth").
-			Str("operation", "get_kubeconfig_path").
-			Str("path", defaultPath).
-			Msg("Default kubeconfig not found")
+	for _, path := range pathsToCheck {
+		if _, err := os.Stat(path); err == nil {
+			log.Debug().
+				Str("component", "k8sHealth").
+				Str("operation", "get_kubeconfig_path").
+				Str("source", "fallback").
+				Str("path", path).
+				Msg("Using discovered kubeconfig path")
+			return path
+		} else if !os.IsNotExist(err) {
+			log.Warn().
+				Str("component", "k8sHealth").
+				Str("operation", "get_kubeconfig_path").
+				Str("path", path).
+				Err(err).
+				Msg("Error checking kubeconfig path")
+		}
 	}
 
 	log.Debug().
@@ -267,16 +266,21 @@ func CollectK8sHealthData() *K8sHealthData {
 			Msg("Error collecting pod health")
 	}
 
-	// Collect RKE2 Ingress Nginx Health
-	healthData.Rke2IngressNginx, err = CollectRke2IngressNginxHealth() // This is from k8s.go
-	if err != nil {
-		errMsg := fmt.Sprintf("Error collecting RKE2 Ingress Nginx health: %v", err)
-		healthData.AddError(errMsg)
-		log.Error().
-			Str("component", "k8sHealth").
-			Str("operation", "collect_rke2_ingress_nginx_health").
-			Err(err).
-			Msg("Error collecting RKE2 Ingress Nginx health")
+	// Collect RKE2 Ingress Nginx Health — skip on kubeadm to avoid "Not Found" noise
+	// when RKE2 manifest paths simply don't exist on the host.
+	if isRKE2Environment() && !hasKubeadmEtcdTLSCerts() {
+		healthData.Rke2IngressNginx, err = CollectRke2IngressNginxHealth()
+		if err != nil {
+			errMsg := fmt.Sprintf("Error collecting RKE2 Ingress Nginx health: %v", err)
+			healthData.AddError(errMsg)
+			log.Error().
+				Str("component", "k8sHealth").
+				Str("operation", "collect_rke2_ingress_nginx_health").
+				Err(err).
+				Msg("Error collecting RKE2 Ingress Nginx health")
+		}
+	} else {
+		healthData.Rke2IngressNginx = nil
 	}
 
 	// Collect Cert-Manager Health
@@ -293,9 +297,10 @@ func CollectK8sHealthData() *K8sHealthData {
 		}
 	}
 
-	// Collect Kube-VIP Health
+	// Collect Kube-VIP Health — nil out the section when not collecting so the
+	// UI doesn't show an empty "Not Detected" entry for clusters without kube-vip.
 	if shouldCollectKubeVip() {
-		healthData.KubeVip, err = CollectKubeVipHealth() // This is from k8s.go
+		healthData.KubeVip, err = CollectKubeVipHealth()
 		if err != nil {
 			errMsg := fmt.Sprintf("Error collecting Kube-VIP health: %v", err)
 			healthData.AddError(errMsg)
@@ -305,6 +310,8 @@ func CollectK8sHealthData() *K8sHealthData {
 				Err(err).
 				Msg("Error collecting Kube-VIP health")
 		}
+	} else {
+		healthData.KubeVip = nil
 	}
 
 	// Collect Cluster API Cert Health
@@ -325,8 +332,13 @@ func CollectK8sHealthData() *K8sHealthData {
 	// Collect Kubernetes End-of-Life information
 	healthData.KubernetesEOL = CollectKubernetesEOL()
 
-	if shouldCollectEtcdBackup() {
+	// Etcd cluster status runs for both RKE2 and kubeadm environments.
+	// Etcd backup is RKE2-specific (or explicitly enabled); CollectEtcdBackupHealth
+	// will skip automatically when kubeadm certs are detected.
+	if shouldCollectEtcdBackup() || hasKubeadmEtcdTLSCerts() {
 		healthData.EtcdCluster = CollectEtcdClusterStatus()
+	}
+	if shouldCollectEtcdBackup() {
 		healthData.EtcdBackup = CollectEtcdBackupHealth()
 	}
 
@@ -1253,10 +1265,16 @@ func CollectKubeVipHealth() (*KubeVipHealth, error) {
 func CollectClusterApiCertHealth() (*ClusterApiCertHealth, error) {
 	health := &ClusterApiCertHealth{}
 	crtFile := "/var/lib/rancher/rke2/server/tls/serving-kube-apiserver.crt"
+	if !common.FileExists(crtFile) {
+		kubeadmCert := "/etc/kubernetes/pki/apiserver.crt"
+		if common.FileExists(kubeadmCert) {
+			crtFile = kubeadmCert
+		}
+	}
 	health.CertFilePath = crtFile
 
 	if !common.FileExists(crtFile) {
-		errMsg := fmt.Sprintf("Cluster API server certificate file not found: %s", crtFile)
+		errMsg := fmt.Sprintf("Cluster API server certificate file not found: %s (and /etc/kubernetes/pki/apiserver.crt not found)", crtFile)
 		log.Warn().
 			Str("component", "k8sHealth").
 			Str("operation", "collect_cluster_api_cert_health").

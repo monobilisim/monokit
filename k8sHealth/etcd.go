@@ -105,6 +105,18 @@ func validateBoltDBHeader(path string) (bool, error) {
 }
 
 func findEtcdctlBinary() string {
+	// On kubeadm clusters, use the system-installed binary directly to avoid
+	// picking up stale RKE2 binaries from containerd overlayfs.
+	if hasKubeadmEtcdTLSCerts() {
+		if path, err := exec.LookPath("etcdutl"); err == nil {
+			return path
+		}
+		if path, err := exec.LookPath("etcdctl"); err == nil {
+			return path
+		}
+		return ""
+	}
+
 	if _, err := os.Stat(rke2EtcdctlPath); err == nil {
 		return rke2EtcdctlPath
 	}
@@ -158,6 +170,14 @@ func CollectEtcdBackupHealth() *EtcdBackupHealth {
 	health := &EtcdBackupHealth{
 		SnapshotDir: rke2EtcdSnapshotDir,
 		MaxAgeHours: getEtcdBackupMaxAgeHours(),
+	}
+
+	// kubeadm clusters don't use RKE2's snapshot mechanism; skip even if RKE2
+	// paths exist as installation artifacts on the same host.
+	if hasKubeadmEtcdTLSCerts() {
+		health.Skipped = true
+		health.SkipReason = "kubeadm environment: etcd snapshots not managed by RKE2"
+		return health
 	}
 
 	if !isRKE2Environment() {
@@ -331,6 +351,10 @@ const (
 	rke2EtcdClientCert = "/var/lib/rancher/rke2/server/tls/etcd/server-client.crt"
 	rke2EtcdClientKey  = "/var/lib/rancher/rke2/server/tls/etcd/server-client.key"
 	rke2EtcdEndpoint   = "https://127.0.0.1:2379"
+
+	kubeadmEtcdCACert     = "/etc/kubernetes/pki/etcd/ca.crt"
+	kubeadmEtcdClientCert = "/etc/kubernetes/pki/etcd/healthcheck-client.crt"
+	kubeadmEtcdClientKey  = "/etc/kubernetes/pki/etcd/healthcheck-client.key"
 )
 
 type etcdctlEndpointHealth struct {
@@ -373,6 +397,15 @@ type etcdctlMemberList struct {
 }
 
 func etcdctlTLSArgs() []string {
+	// Prefer kubeadm certs if present — even if RKE2 paths exist as artifacts
+	if hasKubeadmEtcdTLSCerts() {
+		return []string{
+			"--endpoints=" + rke2EtcdEndpoint,
+			"--cacert=" + kubeadmEtcdCACert,
+			"--cert=" + kubeadmEtcdClientCert,
+			"--key=" + kubeadmEtcdClientKey,
+		}
+	}
 	return []string{
 		"--endpoints=" + rke2EtcdEndpoint,
 		"--cacert=" + rke2EtcdCACert,
@@ -383,6 +416,15 @@ func etcdctlTLSArgs() []string {
 
 func hasEtcdTLSCerts() bool {
 	for _, path := range []string{rke2EtcdCACert, rke2EtcdClientCert, rke2EtcdClientKey} {
+		if _, err := os.Stat(path); err != nil {
+			return false
+		}
+	}
+	return true
+}
+
+func hasKubeadmEtcdTLSCerts() bool {
+	for _, path := range []string{kubeadmEtcdCACert, kubeadmEtcdClientCert, kubeadmEtcdClientKey} {
 		if _, err := os.Stat(path); err != nil {
 			return false
 		}
@@ -426,13 +468,16 @@ func extractJSON(output []byte) string {
 func CollectEtcdClusterStatus() *EtcdClusterStatus {
 	status := &EtcdClusterStatus{}
 
-	if !isRKE2Environment() {
+	isRKE2 := isRKE2Environment()
+	isKubeadm := hasKubeadmEtcdTLSCerts()
+
+	if !isRKE2 && !isKubeadm {
 		status.Skipped = true
-		status.SkipReason = "Not an RKE2 environment"
+		status.SkipReason = "Neither RKE2 nor kubeadm etcd environment detected"
 		return status
 	}
 
-	if !hasEtcdTLSCerts() {
+	if !hasEtcdTLSCerts() && !isKubeadm {
 		status.Skipped = true
 		status.SkipReason = "etcd TLS certificates not found (not a master node)"
 		return status
@@ -441,8 +486,13 @@ func CollectEtcdClusterStatus() *EtcdClusterStatus {
 	etcdctlBin := findEtcdctlBinary()
 	if etcdctlBin == "" {
 		status.Checked = true
-		status.Error = "etcdctl binary not found"
-		alarmCheckDown("etcd_cluster_health", "etcdctl binary not found, cannot check etcd cluster health", false, "", "")
+		if isKubeadm {
+			status.Error = "etcdctl binary not found (install etcd-client package for kubeadm)"
+			alarmCheckDown("etcd_cluster_health", "etcdctl binary not found, cannot check etcd cluster health. Consider installing etcd-client on kubeadm nodes.", false, "", "")
+		} else {
+			status.Error = "etcdctl binary not found"
+			alarmCheckDown("etcd_cluster_health", "etcdctl binary not found, cannot check etcd cluster health", false, "", "")
+		}
 		return status
 	}
 

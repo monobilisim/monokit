@@ -80,19 +80,15 @@ func (khd *K8sHealthData) RenderCompact() string {
 				}
 			}
 		}
-		sb.WriteString(common.StatusListItem(
+		sb.WriteString(common.SimpleStatusListItem(
 			"Master Nodes Ready",
-			"",                              // Unit
-			fmt.Sprintf("%d", masterNodes),  // Limit (Total)
-			fmt.Sprintf("%d", readyMasters), // Actual (Ready)
+			fmt.Sprintf("%d / %d", readyMasters, masterNodes),
 			readyMasters == masterNodes && masterNodes > 0,
 		))
 		sb.WriteString("\n")
-		sb.WriteString(common.StatusListItem(
+		sb.WriteString(common.SimpleStatusListItem(
 			"Worker Nodes Ready",
-			"",                              // Unit
-			fmt.Sprintf("%d", workerNodes),  // Limit (Total)
-			fmt.Sprintf("%d", readyWorkers), // Actual (Ready)
+			fmt.Sprintf("%d / %d", readyWorkers, workerNodes),
 			readyWorkers == workerNodes && workerNodes > 0,
 		))
 		sb.WriteString("\n")
