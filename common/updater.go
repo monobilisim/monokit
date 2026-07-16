@@ -191,7 +191,9 @@ func DownloadAndExtractPlugin(plugin PluginInfo, pluginDir string) error {
 		}
 
 		if hdr.Name == plugin.Name {
-			tempPath := filepath.Join(TmpDir, plugin.Name+".tmp")
+			// Stage in the same directory as the destination so os.Rename
+			// is an atomic same-filesystem move and never crosses device boundaries.
+			tempPath := filepath.Join(pluginDir, plugin.Name+".tmp")
 			finalPath := filepath.Join(pluginDir, plugin.Name)
 			backupPath := finalPath + ".bak"
 
