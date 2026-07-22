@@ -50,7 +50,13 @@ func collectRedisHealthData() (*RedisHealthData, error) {
 	InitRedis()
 
 	// Check service status
-	healthData.Service.Active = common.SystemdUnitActive("redis.service") || common.SystemdUnitActive("redis-server.service") || common.SystemdUnitActive("valkey.service") || common.SystemdUnitActive("valkey-server.service")
+	healthData.Service.Active = common.SystemdUnitActive("redis.service") || 
+		common.SystemdUnitActive("redis-server.service") || 
+		common.SystemdUnitActive("valkey.service") || 
+		common.SystemdUnitActive("valkey-server.service") ||
+		common.SystemdUnitActive(fmt.Sprintf("redis-server@%s.service", RedisHealthConfig.Port)) ||
+		common.SystemdUnitActive(fmt.Sprintf("valkey-server@%s.service", RedisHealthConfig.Port))
+		
 	if !healthData.Service.Active {
 		common.AlarmCheckDown("redis_server_svc", "Service redis-server/valkey-server is not active", false, "", "")
 	} else {

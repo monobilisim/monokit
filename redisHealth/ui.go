@@ -17,7 +17,7 @@ func (data *RedisHealthData) RenderCompact() string {
 	sb.WriteString("\n")
 	sb.WriteString(common.SimpleStatusListItem(
 		"Redis Service",
-		"active",
+		getStatusText(data.Service.Active, "active"),
 		data.Service.Active))
 	sb.WriteString("\n")
 
@@ -27,17 +27,17 @@ func (data *RedisHealthData) RenderCompact() string {
 	sb.WriteString("\n")
 	sb.WriteString(common.SimpleStatusListItem(
 		"Redis Connection",
-		"connected",
+		getStatusText(data.Connection.Pingable, "connected"),
 		data.Connection.Pingable))
 	sb.WriteString("\n")
 	sb.WriteString(common.SimpleStatusListItem(
 		"Redis Writeable",
-		"writeable",
+		getStatusText(data.Connection.Writeable, "writeable"),
 		data.Connection.Writeable))
 	sb.WriteString("\n")
 	sb.WriteString(common.SimpleStatusListItem(
 		"Redis Readable",
-		"readable",
+		getStatusText(data.Connection.Readable, "readable"),
 		data.Connection.Readable))
 	sb.WriteString("\n")
 
@@ -65,7 +65,7 @@ func (data *RedisHealthData) RenderCompact() string {
 		sb.WriteString("\n")
 		sb.WriteString(common.SimpleStatusListItem(
 			"Sentinel Service",
-			"active",
+			getStatusText(data.Sentinel.Active, "active"),
 			data.Sentinel.Active))
 		sb.WriteString("\n")
 
@@ -111,4 +111,12 @@ func RenderRedisHealthCLI(data *RedisHealthData, version string) string {
 	}
 
 	return data.RenderAll()
+}
+
+// getStatusText helper to format state properly
+func getStatusText(isOk bool, stateType string) string {
+	if isOk {
+		return stateType
+	}
+	return "not " + stateType
 }
