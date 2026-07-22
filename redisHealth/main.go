@@ -29,7 +29,7 @@ func init() {
 
 // collectRedisHealthData collects all Redis health information and returns it
 func collectRedisHealthData() (*RedisHealthData, error) {
-	version := "0.2.0"
+	version := "0.3.0"
 
 	// Initialize config if not already done
 	if common.ConfExists("redis") {
@@ -50,13 +50,13 @@ func collectRedisHealthData() (*RedisHealthData, error) {
 	InitRedis()
 
 	// Check service status
-	healthData.Service.Active = common.SystemdUnitActive("redis.service") || 
-		common.SystemdUnitActive("redis-server.service") || 
-		common.SystemdUnitActive("valkey.service") || 
+	healthData.Service.Active = common.SystemdUnitActive("redis.service") ||
+		common.SystemdUnitActive("redis-server.service") ||
+		common.SystemdUnitActive("valkey.service") ||
 		common.SystemdUnitActive("valkey-server.service") ||
 		common.SystemdUnitActive(fmt.Sprintf("redis-server@%s.service", RedisHealthConfig.Port)) ||
 		common.SystemdUnitActive(fmt.Sprintf("valkey-server@%s.service", RedisHealthConfig.Port))
-		
+
 	if !healthData.Service.Active {
 		common.AlarmCheckDown("redis_server_svc", "Service redis-server/valkey-server is not active", false, "", "")
 	} else {
