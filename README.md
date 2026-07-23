@@ -274,6 +274,12 @@ To build monokit:
 make
 ```
 
+To build plugins:
+
+```
+make build-plugins
+```
+
 You can also build the documentation by running:
 
 ```
