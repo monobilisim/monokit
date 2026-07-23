@@ -308,7 +308,9 @@ func sendAlarmEmail(message string) error {
 
 func isTeamsWebhookURL(u string) bool {
 	return strings.Contains(u, "webhook.office.com") ||
-		strings.Contains(u, "logic.azure.com")
+		strings.Contains(u, "logic.azure.com") ||
+		strings.Contains(u, "powerplatform.com") ||
+		strings.Contains(u, "powerautomate.com")
 }
 
 func buildTeamsPayload(m string) ([]byte, error) {
