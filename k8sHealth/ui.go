@@ -22,6 +22,7 @@ func NewK8sHealthData() *K8sHealthData {
 		CertManager:      &CertManagerHealth{},
 		KubeVip:          &KubeVipHealth{},
 		ClusterApiCert:   &ClusterApiCertHealth{},
+		KubeconfigCert:   &KubeconfigCertHealth{},
 		KubernetesEOL:    &KubernetesEOLInfo{},
 		// PodRunningLogChecks: make([]PodLogCheckInfo, 0), // Removed as per user request
 		Errors: make([]string, 0),
@@ -346,6 +347,43 @@ func (khd *K8sHealthData) RenderCompact() string {
 					!khd.ClusterApiCert.IsExpired,
 				))
 				sb.WriteString("\n")
+			}
+		}
+	}
+
+	// --- Kubeconfig Client Certificate Section ---
+	if khd.KubeconfigCert != nil {
+		kc := khd.KubeconfigCert
+		showKubeconfigCert := kc.Checked || kc.Error != "" || (kc.Skipped && kc.SkipReason != "")
+		if showKubeconfigCert {
+			sb.WriteString("\n")
+			sb.WriteString(common.SectionTitle("Kubeconfig Client Certificate Status"))
+			sb.WriteString("\n")
+
+			switch {
+			case kc.Skipped:
+				sb.WriteString(common.SimpleStatusListItem("Kubeconfig Client Cert", "Skipped", true))
+				sb.WriteString("\n")
+				if kc.SkipReason != "" {
+					sb.WriteString(fmt.Sprintf("    └─ %s\n", kc.SkipReason))
+				}
+			case kc.Error != "":
+				sb.WriteString(common.SimpleStatusListItem("Kubeconfig Client Cert", "Error", false))
+				sb.WriteString(fmt.Sprintf("\n    └─ Error: %s\n", kc.Error))
+			case len(kc.Entries) == 0:
+				sb.WriteString(common.SimpleStatusListItem("Kubeconfig Client Cert", "No client certificates found", true))
+				sb.WriteString("\n")
+			default:
+				for _, entry := range kc.Entries {
+					if entry.Error != "" {
+						sb.WriteString(common.SimpleStatusListItem(fmt.Sprintf("User: %s", entry.UserName), "Error", false))
+						sb.WriteString(fmt.Sprintf("\n    └─ Error: %s\n", entry.Error))
+						continue
+					}
+					statusValue := fmt.Sprintf("Expires: %s (%d day(s))", entry.NotAfter.Format("2006-01-02"), entry.DaysUntilExpiry)
+					sb.WriteString(common.SimpleStatusListItem(fmt.Sprintf("User: %s", entry.UserName), statusValue, !entry.IsExpired && !entry.IsExpiringSoon))
+					sb.WriteString("\n")
+				}
 			}
 		}
 	}

@@ -326,6 +326,9 @@ func CollectK8sHealthData() *K8sHealthData {
 			Msg("Error collecting Cluster API Cert health")
 	}
 
+	// Collect Kubeconfig Client Certificate Health
+	healthData.KubeconfigCert = CollectKubeconfigCertHealth()
+
 	// Collect RKE2 Information
 	healthData.RKE2Info = CollectRKE2Information() // This is from k8s.go
 
@@ -1874,6 +1877,10 @@ func alarmCheckUp(service, message string, noInterval bool) {
 	if !isK8sAlarmEnabled() {
 		return
 	}
+	if K8sHealthConfig.Alarm.UpInterval != nil {
+		common.AlarmCheckUpWithInterval(service, message, noInterval, *K8sHealthConfig.Alarm.UpInterval)
+		return
+	}
 	common.AlarmCheckUp(service, message, noInterval)
 }
 
@@ -1889,6 +1896,10 @@ func alarmCheckDown(service, message string, noInterval bool, customStream, cust
 		Bool("alarm_enabled", isK8sAlarmEnabled()).
 		Msg("alarmCheckDown called")
 	if !isK8sAlarmEnabled() {
+		return
+	}
+	if K8sHealthConfig.Alarm.Interval != nil {
+		common.AlarmCheckDownWithInterval(service, message, noInterval, customStream, customTopic, *K8sHealthConfig.Alarm.Interval)
 		return
 	}
 	common.AlarmCheckDown(service, message, noInterval, customStream, customTopic)

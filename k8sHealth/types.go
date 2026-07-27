@@ -76,7 +76,9 @@ type Config struct {
 	}
 
 	Alarm struct {
-		Enabled *bool `mapstructure:"enabled"`
+		Enabled    *bool    `mapstructure:"enabled"`
+		Interval   *float64 `mapstructure:"interval"`
+		UpInterval *float64 `mapstructure:"up_interval"`
 	}
 
 	// EOL controls the Kubernetes End-of-Life check that queries
@@ -93,6 +95,17 @@ type Config struct {
 		Enabled     *bool `mapstructure:"enabled"`       // nil = true on RKE2 master nodes
 		MaxAgeHours *int  `mapstructure:"max_age_hours"` // nil = 25 hours (RKE2 default interval is 12h)
 	} `mapstructure:"etcd_backup"`
+
+	// KubeconfigCert controls the check that inspects the expiry of the
+	// client certificate(s) embedded in (or referenced by) the local
+	// kubeconfig file. These are the certs monokit auto-renews and
+	// redistributes to other masters, but static integrations (Uptime Kuma,
+	// GitLab, ...) that were configured with a copy of them need manual
+	// updates before they expire.
+	KubeconfigCert struct {
+		Enabled  *bool `mapstructure:"enabled"`   // nil = true (default)
+		WarnDays *int  `mapstructure:"warn_days"` // nil = 30 days warning before expiry
+	} `mapstructure:"kubeconfig_cert"`
 }
 
 // K8sHealthConfig is the global instance of the k8sHealth configuration.
@@ -132,6 +145,13 @@ func loadK8sConfig() error {
 	}
 	if !v.IsSet("etcd_backup.max_age_hours") {
 		v.SetDefault("etcd_backup.max_age_hours", 25)
+	}
+
+	if !v.IsSet("kubeconfig_cert.enabled") {
+		v.SetDefault("kubeconfig_cert.enabled", true)
+	}
+	if !v.IsSet("kubeconfig_cert.warn_days") {
+		v.SetDefault("kubeconfig_cert.warn_days", 30)
 	}
 
 	if err := v.Unmarshal(&K8sHealthConfig); err != nil {
@@ -216,6 +236,7 @@ type K8sHealthData struct {
 	CertManager      *CertManagerHealth
 	KubeVip          *KubeVipHealth
 	ClusterApiCert   *ClusterApiCertHealth
+	KubeconfigCert   *KubeconfigCertHealth
 	RKE2Info         *RKE2Info
 	KubernetesEOL    *KubernetesEOLInfo
 	EtcdCluster      *EtcdClusterStatus
@@ -314,6 +335,33 @@ type ClusterApiCertHealth struct {
 	IsExpired         bool
 	NotAfter          time.Time
 	Error             string
+}
+
+// KubeconfigCertEntry holds expiry information for a single client
+// certificate found in the kubeconfig file (one per "user" entry).
+type KubeconfigCertEntry struct {
+	UserName        string    `json:"userName"`
+	NotAfter        time.Time `json:"notAfter"`
+	DaysUntilExpiry int       `json:"daysUntilExpiry"`
+	IsExpired       bool      `json:"isExpired"`
+	IsExpiringSoon  bool      `json:"isExpiringSoon"`
+	Error           string    `json:"error,omitempty"`
+}
+
+// KubeconfigCertHealth holds the result of checking the expiry of the
+// client certificate(s) embedded in (or referenced by) the local kubeconfig
+// file used to talk to the cluster — as opposed to the API server's own
+// serving certificate (see ClusterApiCertHealth). These client certs are
+// typically invisible to external static integrations (Uptime Kuma,
+// GitLab, ...), so operators need advance warning to update them manually.
+type KubeconfigCertHealth struct {
+	Checked        bool                  `json:"checked"`
+	Skipped        bool                  `json:"skipped"`
+	SkipReason     string                `json:"skipReason,omitempty"`
+	KubeconfigPath string                `json:"kubeconfigPath,omitempty"`
+	WarnDays       int                   `json:"warnDays"`
+	Entries        []KubeconfigCertEntry `json:"entries,omitempty"`
+	Error          string                `json:"error,omitempty"`
 }
 
 // KubernetesEOLInfo holds the result of the Kubernetes End-of-Life check

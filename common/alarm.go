@@ -79,8 +79,12 @@ func alarmKey(service string) string {
 }
 
 func AlarmCheckUp(service string, message string, noInterval bool) {
+	AlarmCheckUpWithInterval(service, message, noInterval, 0)
+}
+
+func AlarmCheckUpWithInterval(service string, message string, noInterval bool, upInterval float64) {
 	startTime := time.Now()
-	log.Debug().Str("component", "alarm").Str("action", "check_up").Str("service", service).Str("message", message).Bool("noInterval", noInterval).Msg("Starting alarm check up process")
+	log.Debug().Str("component", "alarm").Str("action", "check_up").Str("service", service).Str("message", message).Bool("noInterval", noInterval).Float64("upInterval", upInterval).Msg("Starting alarm check up process")
 
 	key := alarmKey(service)
 	messageFinal := "[" + ScriptName + " - " + Config.Identifier + "] [:check:] " + message
@@ -97,25 +101,54 @@ func AlarmCheckUp(service string, message string, noInterval bool) {
 		return
 	}
 
+	// Already in recovery window: check if interval has passed
+	if j.RecoveryDate != "" && !noInterval {
+		recoveryParsed, err := time.Parse("2006-01-02 15:04:05 -0700", j.RecoveryDate)
+		if err != nil {
+			log.Error().Err(err).Str("component", "alarm").Str("action", "recovery_date_parse").Str("date_string", j.RecoveryDate).Msg("Error parsing recovery date")
+		} else if time.Since(recoveryParsed).Minutes() >= upInterval {
+			log.Debug().Str("component", "alarm").Str("action", "send_up_alarm").Str("service", service).Msg("Recovery interval reached, sending recovery alarm")
+			_ = healthdb.Delete("alarm", key)
+			Alarm(messageFinal, "", "", false)
+		} else {
+			log.Debug().Str("component", "alarm").Str("action", "recovery_wait").Str("service", service).Float64("upInterval", upInterval).Msg("Service up but recovery interval not yet reached")
+		}
+		return
+	}
+
 	if !j.Locked && !noInterval {
 		log.Debug().Str("component", "alarm").Str("action", "cleanup").Str("service", service).Bool("was_locked", j.Locked).Msg("Service state not locked, clearing state")
 		_ = healthdb.Delete("alarm", key)
 		return
 	}
 
-	log.Debug().Str("component", "alarm").Str("action", "send_up_alarm").Str("service", service).Str("message", messageFinal).Bool("was_locked", j.Locked).Bool("no_interval", noInterval).Dur("processing_time", time.Since(startTime)).Msg("Sending service recovery alarm")
-	_ = healthdb.Delete("alarm", key)
-	Alarm(messageFinal, "", "", false)
+	if upInterval == 0 || noInterval {
+		log.Debug().Str("component", "alarm").Str("action", "send_up_alarm").Str("service", service).Str("message", messageFinal).Bool("was_locked", j.Locked).Bool("no_interval", noInterval).Dur("processing_time", time.Since(startTime)).Msg("Sending service recovery alarm")
+		_ = healthdb.Delete("alarm", key)
+		Alarm(messageFinal, "", "", false)
+		return
+	}
+
+	// Start recovery timer
+	j.RecoveryDate = time.Now().Format("2006-01-02 15:04:05 -0700")
+	data, _ := json.Marshal(j)
+	_ = healthdb.PutJSON("alarm", key, string(data), nil, time.Now())
+	log.Debug().Str("component", "alarm").Str("action", "recovery_timer_start").Str("service", service).Float64("upInterval", upInterval).Dur("processing_time", time.Since(startTime)).Msg("Recovery timer started, deferring recovery alarm")
 }
 
 type ServiceFile struct {
-	Date   string `json:"date"`
-	Locked bool   `json:"locked"`
+	Date         string `json:"date"`
+	Locked       bool   `json:"locked"`
+	RecoveryDate string `json:"recovery_date,omitempty"`
 }
 
 func AlarmCheckDown(service string, message string, noInterval bool, customStream string, customTopic string) {
+	AlarmCheckDownWithInterval(service, message, noInterval, customStream, customTopic, Config.Alarm.Interval)
+}
+
+func AlarmCheckDownWithInterval(service string, message string, noInterval bool, customStream string, customTopic string, interval float64) {
 	startTime := time.Now()
-	log.Debug().Str("component", "alarm").Str("action", "check_down").Str("service", service).Str("message", message).Bool("noInterval", noInterval).Str("customStream", customStream).Str("customTopic", customTopic).Msg("Starting alarm check down process")
+	log.Debug().Str("component", "alarm").Str("action", "check_down").Str("service", service).Str("message", message).Bool("noInterval", noInterval).Str("customStream", customStream).Str("customTopic", customTopic).Float64("interval", interval).Msg("Starting alarm check down process")
 
 	key := alarmKey(service)
 	currentDate := time.Now().Format("2006-01-02 15:04:05 -0700")
@@ -130,9 +163,16 @@ func AlarmCheckDown(service string, message string, noInterval bool, customStrea
 			return
 		}
 
-		// Already locked => do nothing
+		// Already locked => do nothing, but cancel any pending recovery timer
 		if j.Locked {
-			log.Debug().Str("component", "alarm").Str("action", "check_down").Str("service", service).Bool("is_locked", j.Locked).Str("lock_date", j.Date).Msg("Service already locked, skipping alarm")
+			if j.RecoveryDate != "" {
+				j.RecoveryDate = ""
+				data, _ := json.Marshal(j)
+				_ = healthdb.PutJSON("alarm", key, string(data), nil, time.Now())
+				log.Debug().Str("component", "alarm").Str("action", "check_down").Str("service", service).Msg("Service relapsed during recovery window, recovery alarm cancelled")
+			} else {
+				log.Debug().Str("component", "alarm").Str("action", "check_down").Str("service", service).Bool("is_locked", j.Locked).Str("lock_date", j.Date).Msg("Service already locked, skipping alarm")
+			}
 			return
 		}
 
@@ -143,7 +183,7 @@ func AlarmCheckDown(service string, message string, noInterval bool, customStrea
 
 		finJSON := &ServiceFile{Date: currentDate, Locked: true}
 
-		if Config.Alarm.Interval == 0 {
+		if interval == 0 {
 			if oldDateParsed.Format("2006-01-02") != time.Now().Format("2006-01-02") {
 				log.Debug().Str("component", "alarm").Str("action", "daily_alarm").Str("service", service).Str("old_date", oldDateParsed.Format("2006-01-02")).Str("current_date", time.Now().Format("2006-01-02")).Msg("Sending daily alarm for service down")
 				data, _ := json.Marshal(&ServiceFile{Date: currentDate, Locked: true})
@@ -161,13 +201,13 @@ func AlarmCheckDown(service string, message string, noInterval bool, customStrea
 			Alarm(messageFinal, customStream, customTopic, false)
 		} else if !j.Locked {
 			timeDiff := time.Since(oldDateParsed)
-			if timeDiff.Minutes() >= Config.Alarm.Interval {
-				log.Debug().Str("component", "alarm").Str("action", "interval_alarm").Str("service", service).Float64("minutes_since", timeDiff.Minutes()).Float64("interval_minutes", Config.Alarm.Interval).Msg("Sending interval-based alarm for service down")
+			if timeDiff.Minutes() >= interval {
+				log.Debug().Str("component", "alarm").Str("action", "interval_alarm").Str("service", service).Float64("minutes_since", timeDiff.Minutes()).Float64("interval_minutes", interval).Msg("Sending interval-based alarm for service down")
 				data, _ := json.Marshal(finJSON)
 				_ = healthdb.PutJSON("alarm", key, string(data), nil, time.Now())
 				Alarm(messageFinal, customStream, customTopic, false)
 			} else {
-				log.Debug().Str("component", "alarm").Str("action", "interval_check").Str("service", service).Float64("minutes_since", timeDiff.Minutes()).Float64("interval_minutes", Config.Alarm.Interval).Msg("Service down but interval not reached yet")
+				log.Debug().Str("component", "alarm").Str("action", "interval_check").Str("service", service).Float64("minutes_since", timeDiff.Minutes()).Float64("interval_minutes", interval).Msg("Service down but interval not reached yet")
 			}
 		}
 		return
@@ -177,15 +217,15 @@ func AlarmCheckDown(service string, message string, noInterval bool, customStrea
 	data, _ := json.Marshal(&ServiceFile{Date: currentDate, Locked: false})
 	_ = healthdb.PutJSON("alarm", key, string(data), nil, time.Now())
 
-	if Config.Alarm.Interval == 0 || noInterval {
-		log.Debug().Str("component", "alarm").Str("action", "immediate_alarm").Str("service", service).Float64("interval", Config.Alarm.Interval).Bool("no_interval", noInterval).Dur("processing_time", time.Since(startTime)).Msg("Sending immediate alarm for service down")
+	if interval == 0 || noInterval {
+		log.Debug().Str("component", "alarm").Str("action", "immediate_alarm").Str("service", service).Float64("interval", interval).Bool("no_interval", noInterval).Dur("processing_time", time.Since(startTime)).Msg("Sending immediate alarm for service down")
 		// As we are going to send the alarm immediately, we can set the state to locked
 		finJSON := &ServiceFile{Date: currentDate, Locked: true}
 		data, _ := json.Marshal(finJSON)
 		_ = healthdb.PutJSON("alarm", key, string(data), nil, time.Now())
 		Alarm(messageFinal, customStream, customTopic, false)
 	} else {
-		log.Debug().Str("component", "alarm").Str("action", "defer_alarm").Str("service", service).Float64("interval_minutes", Config.Alarm.Interval).Msg("Service down alarm deferred due to interval setting")
+		log.Debug().Str("component", "alarm").Str("action", "defer_alarm").Str("service", service).Float64("interval_minutes", interval).Msg("Service down alarm deferred due to interval setting")
 	}
 }
 

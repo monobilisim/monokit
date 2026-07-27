@@ -15,6 +15,14 @@ k8s:
 #   enabled: true        # default: true
 #   warn_days: 180       # alarm threshold in days before EOL (default: 180)
 
+# Kubeconfig client certificate expiry check. Warns (alarm + Redmine issue)
+# before the client certificate(s) in this host's kubeconfig expire, so
+# statically-configured integrations (Uptime Kuma, GitLab, ...) can be
+# updated ahead of time.
+# kubeconfig_cert:
+#   enabled: true        # default: true
+#   warn_days: 30        # alarm threshold in days before expiry (default: 30)
+
 aws:
   endpoint_url: https://s3.test.com
   bucket: test-bucket
