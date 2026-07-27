@@ -429,23 +429,31 @@ func Update(specificVersion string, force bool, updatePlugins bool, specificPlug
 		resp, err := http.Get(url)
 		if err != nil {
 			log.Error().Err(err).Msg("Couldn't get latest release")
-		}
-		defer resp.Body.Close()
+			url = ""
+		} else {
+			defer resp.Body.Close()
 
-		var release map[string]interface{}
-		err = json.NewDecoder(resp.Body).Decode(&release)
-		if err != nil {
-			log.Error().Err(err).Msg("Couldn't decode latest release")
-		}
-
-		assets := release["assets"].([]interface{})
-		for _, asset := range assets {
-			assetMap := asset.(map[string]interface{})
-			if strings.Contains(assetMap["name"].(string), osName) && strings.Contains(assetMap["name"].(string), arch) {
-				url = assetMap["browser_download_url"].(string)
-				version = release["tag_name"].(string)
-				version = strings.TrimPrefix(version, "v")
-				break
+			var release map[string]interface{}
+			err = json.NewDecoder(resp.Body).Decode(&release)
+			if err != nil {
+				log.Error().Err(err).Msg("Couldn't decode latest release")
+				url = ""
+			} else {
+				url = ""
+				assets, _ := release["assets"].([]interface{})
+				for _, asset := range assets {
+					assetMap, ok := asset.(map[string]interface{})
+					if !ok {
+						continue
+					}
+					name, _ := assetMap["name"].(string)
+					if strings.Contains(name, osName) && strings.Contains(name, arch) {
+						url, _ = assetMap["browser_download_url"].(string)
+						version, _ = release["tag_name"].(string)
+						version = strings.TrimPrefix(version, "v")
+						break
+					}
+				}
 			}
 		}
 	}
