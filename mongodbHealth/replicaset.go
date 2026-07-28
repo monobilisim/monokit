@@ -68,19 +68,35 @@ func CheckReplicaSet(ctx context.Context, client *mongo.Client) {
 
 // buildMembers converts raw replSetMember entries into MemberInfo, and
 // returns the primary member's name (empty if none).
+//
+// Lag is computed as (primary optimeDate - member optimeDate), NOT as
+// time.Since(member.OptimeDate). The latter only measures how long ago the
+// member's last op was applied in wall-clock terms - on an idle replica set
+// (no writes for N seconds) every member reports the same "age", which looks
+// like growing lag even though all members are perfectly in sync. Comparing
+// against the primary's own optimeDate gives the actual replication delta.
 func buildMembers(raw []replSetMember) (string, []MemberInfo) {
 	var primary string
-	members := make([]MemberInfo, 0, len(raw))
+	var primaryOptime time.Time
 
 	for _, m := range raw {
-		isPrimary := m.StateStr == "PRIMARY"
-		if isPrimary {
+		if m.StateStr == "PRIMARY" {
 			primary = m.Name
+			primaryOptime = m.OptimeDate
+			break
 		}
+	}
 
-		lagSeconds := time.Since(m.OptimeDate).Seconds()
-		if isPrimary || lagSeconds < 0 {
-			lagSeconds = 0
+	members := make([]MemberInfo, 0, len(raw))
+	for _, m := range raw {
+		isPrimary := m.StateStr == "PRIMARY"
+
+		var lagSeconds float64
+		if !isPrimary && !primaryOptime.IsZero() {
+			lagSeconds = primaryOptime.Sub(m.OptimeDate).Seconds()
+			if lagSeconds < 0 {
+				lagSeconds = 0
+			}
 		}
 
 		members = append(members, MemberInfo{
