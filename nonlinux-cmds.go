@@ -6,6 +6,10 @@ func MysqlCommandAdd() {
 	// mysqlHealth is not supported on anything other than Linux
 }
 
+func MongodbCommandAdd() {
+	// mongodbHealth is not supported on anything other than Linux
+}
+
 func PgsqlCommandAdd() {
 	// pgsqlHealth is not supported on anything other than Linux
 }

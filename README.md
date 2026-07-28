@@ -164,6 +164,13 @@ These core tools will be available in every monokit installation.
   - Sends alarm notifications to a Slack webhook.
   - Config: `/etc/mono/db.yaml`
 
+- mongodbHealth
+  - Checks MongoDB health, standalone and replica set.
+  - Monitors connections/cache/WiredTiger ticket usage, primary election, secondary quorum, replication lag and oplog window.
+  - Sends alarm notifications to a Slack webhook.
+  - Opens Redmine issues for connection loss, ticket exhaustion, primary absence, secondary quorum loss, critical replication lag and critical oplog window.
+  - Config: `/etc/mono/db.yaml`
+
 - redisHealth
   - Checks Redis health, including read and write operations.
   - Sends alarm notifications to a Slack webhook.

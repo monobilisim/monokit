@@ -42,7 +42,28 @@ type Postgres struct {
 	}
 }
 
+type Mongodb struct {
+	Uri                     string
+	Connect_timeout_seconds int
+	Alarm                   struct {
+		Enabled bool
+	}
+	Limits struct {
+		Connections_percent int
+		Cache_percent       int
+	}
+	Replicaset struct {
+		Min_secondaries                int
+		Lag_warn_seconds               int
+		Lag_critical_seconds           int
+		Oplog_window_warn_hours        float64
+		Oplog_window_critical_hours    float64
+		Primary_election_grace_seconds int
+	}
+}
+
 type DbHealth struct {
 	Mysql    Mysql
 	Postgres Postgres
+	Mongodb  Mongodb
 }

@@ -362,6 +362,8 @@ func main() {
 
 	MysqlCommandAdd()
 
+	MongodbCommandAdd()
+
 	RmqCommandAdd()
 
 	/// Shutdown Notifier

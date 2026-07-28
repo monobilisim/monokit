@@ -3,6 +3,7 @@
 package main
 
 import (
+	"github.com/monobilisim/monokit/mongodbHealth"
 	"github.com/monobilisim/monokit/mysqlHealth"
 	"github.com/monobilisim/monokit/pgsqlHealth"
 	"github.com/monobilisim/monokit/pmgHealth"
@@ -50,6 +51,16 @@ func MysqlCommandAdd() {
 	}
 
 	RootCmd.AddCommand(mysqlHealthCmd)
+}
+
+func MongodbCommandAdd() {
+	var mongodbHealthCmd = &cobra.Command{
+		Use:   "mongodbHealth",
+		Short: "MongoDB Health",
+		Run:   mongodbHealth.Main,
+	}
+
+	RootCmd.AddCommand(mongodbHealthCmd)
 }
 
 func RmqCommandAdd() {

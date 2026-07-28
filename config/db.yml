@@ -18,3 +18,19 @@ mysql:
     flow_control_limit: 0.20
   alarm:
     enabled: true
+
+mongodb:
+  uri: "mongodb://user:pass@localhost:27017/?replicaSet=rs0"
+  connect_timeout_seconds: 5
+  alarm:
+    enabled: true
+  limits:
+    connections_percent: 80
+    cache_percent: 95
+  replicaset:
+    min_secondaries: 1
+    lag_warn_seconds: 10
+    lag_critical_seconds: 60
+    oplog_window_warn_hours: 24
+    oplog_window_critical_hours: 1
+    primary_election_grace_seconds: 30

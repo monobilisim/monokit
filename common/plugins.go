@@ -5,6 +5,7 @@ var KnownPlugins = []string{
 	"k8sHealth", "mysqlHealth", "pgsqlHealth", "redisHealth",
 	"zimbraHealth", "traefikHealth", "rmqHealth", "pritunlHealth",
 	"wppconnectHealth", "pmgHealth", "esHealth", "postalHealth",
+	"mongodbHealth",
 }
 
 // DefaultPluginDir is the default directory for plugins
