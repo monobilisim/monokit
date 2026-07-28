@@ -24,15 +24,36 @@ type serverStatusResult struct {
 			BytesInCache       int64 `bson:"bytes currently in the cache"`
 			MaxBytesConfigured int64 `bson:"maximum bytes configured"`
 		} `bson:"cache"`
+		// ConcurrentTransactions is the legacy (pre-7.x) ticket location. On
+		// MongoDB 7.0+/8.0 with the "Execution Control" rework, this section
+		// is absent from serverStatus and Queues (below) must be used
+		// instead. TotalTickets is captured so we can detect which source is
+		// actually populated for this server version.
 		ConcurrentTransactions struct {
 			Write struct {
-				Available int32 `bson:"available"`
+				Available    int32 `bson:"available"`
+				TotalTickets int32 `bson:"totalTickets"`
 			} `bson:"write"`
 			Read struct {
-				Available int32 `bson:"available"`
+				Available    int32 `bson:"available"`
+				TotalTickets int32 `bson:"totalTickets"`
 			} `bson:"read"`
 		} `bson:"concurrentTransactions"`
 	} `bson:"wiredTiger"`
+	// Queues is the MongoDB 7.0+/8.0 "Execution Control" replacement for
+	// wiredTiger.concurrentTransactions.
+	Queues struct {
+		Execution struct {
+			Write struct {
+				Available    int32 `bson:"available"`
+				TotalTickets int32 `bson:"totalTickets"`
+			} `bson:"write"`
+			Read struct {
+				Available    int32 `bson:"available"`
+				TotalTickets int32 `bson:"totalTickets"`
+			} `bson:"read"`
+		} `bson:"execution"`
+	} `bson:"queues"`
 }
 
 // CheckStandalone runs serverStatus and evaluates connection usage, WiredTiger
@@ -121,8 +142,16 @@ func checkCacheUsage(status serverStatusResult) {
 }
 
 func checkTicketExhaustion(status serverStatusResult) {
+	// MongoDB 7.0+/8.0 replaced wiredTiger.concurrentTransactions with
+	// queues.execution. Prefer the legacy path only if it actually reports
+	// tickets (totalTickets > 0); otherwise fall back to the new location.
 	readAvail := int(status.WiredTiger.ConcurrentTransactions.Read.Available)
 	writeAvail := int(status.WiredTiger.ConcurrentTransactions.Write.Available)
+	if status.WiredTiger.ConcurrentTransactions.Read.TotalTickets == 0 &&
+		status.WiredTiger.ConcurrentTransactions.Write.TotalTickets == 0 {
+		readAvail = int(status.Queues.Execution.Read.Available)
+		writeAvail = int(status.Queues.Execution.Write.Available)
+	}
 
 	healthData.Standalone.TicketsAvailableRead = readAvail
 	healthData.Standalone.TicketsAvailableWrite = writeAvail
@@ -132,8 +161,15 @@ func checkTicketExhaustion(status serverStatusResult) {
 
 	if exhausted {
 		msg := fmt.Sprintf("MongoDB WiredTiger tickets exhausted: read available=%d write available=%d", readAvail, writeAvail)
-		msgTr := fmt.Sprintf("MongoDB WiredTiger bilet tükenmesi: okuma müsait=%d yazma müsait=%d", readAvail, writeAvail)
-		subject := fmt.Sprintf("%s için MongoDB WiredTiger bilet tükenmesi", common.Config.Identifier)
+		msgTr := fmt.Sprintf(
+			"MongoDB WiredTiger eşzamanlı işlem (ticket) limiti aşıldı.\n\n"+
+				"| Parametre                  | Değer |\n"+
+				"| -------------------------- | ----- |\n"+
+				"| Okuma için müsait ticket   | %d |\n"+
+				"| Yazma için müsait ticket   | %d |",
+			readAvail, writeAvail,
+		)
+		subject := fmt.Sprintf("%s için MongoDB WiredTiger eşzamanlı işlem limiti aşıldı", common.Config.Identifier)
 		// Zulip+Redmine: ticket exhaustion blocks reads/writes -> app-impacting.
 		common.AlarmCheckDown("mongodb-ticket-exhaustion", msg, false, "", "")
 		issues.CheckDown("mongodb-ticket-exhaustion", subject, msgTr, false, 0)

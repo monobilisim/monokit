@@ -159,6 +159,30 @@ These core tools will be available in every monokit installation.
   - Opens Redmine issues for Galera Flow Control issues.
   - Config: `/etc/mono/db.yaml`
 
+- mongodbHealth
+  - Checks standalone and replica set MongoDB health.
+  - Monitors connections/cache/WiredTiger ticket usage, primary election, secondary quorum, replication lag and oplog window.
+  - Sends alarm notifications to a Slack webhook.
+  - Opens Redmine issues for connection loss, primary absence, secondary quorum loss, critical replication lag and critical oplog window.
+  - Config: `/etc/mono/db.yaml`
+  - By default connects to `mongodb://127.0.0.1:27017/admin` with no credentials, which works out of the box on MongoDB instances without auth enabled.
+  - If the target MongoDB has auth enabled, `serverStatus`/`replSetGetStatus` require a real user - mongodbHealth detects this and raises a `mongodb-metrics-permission` / `mongodb-replicaset-mismatch` alarm instead of silently misreporting. To fix, create a minimal-privilege monitoring user and put its credentials in the `uri`:
+    ```javascript
+    // in mongosh, connected as an admin user:
+    use admin
+    db.createUser({
+      user: "monokit_monitor",
+      pwd: "CHANGE_ME",
+      roles: [ { role: "clusterMonitor", db: "admin" } ]
+    })
+    ```
+    ```yaml
+    # /etc/mono/db.yaml
+    mongodb:
+      uri: "mongodb://monokit_monitor:CHANGE_ME@127.0.0.1:27017/admin?authSource=admin"
+    ```
+    `clusterMonitor` is read-only and sufficient for all checks mongodbHealth performs (no write/admin access needed).
+
 - pgsqlHealth
   - Checks PostgreSQL health, including read and write operations.
   - Sends alarm notifications to a Slack webhook.

@@ -94,16 +94,16 @@ func (m *MongoHealthData) RenderCompact() string {
 		}
 		b.WriteString("\n")
 		b.WriteString(common.StatusListItem(
-			"Replication lag",
-			"< ",
+			fmt.Sprintf("Replication lag [%s]", strings.ToUpper(m.ReplicaSet.LagState)),
+			"current < warn ",
 			fmt.Sprintf("%.2fs", m.ReplicaSet.LagWarnSeconds),
 			fmt.Sprintf("%.2fs", m.ReplicaSet.MaxLagSeconds),
 			m.ReplicaSet.LagState == "ok",
 		))
 		b.WriteString("\n")
 		b.WriteString(common.StatusListItem(
-			"Oplog window",
-			"> ",
+			fmt.Sprintf("Oplog window [%s]", strings.ToUpper(m.ReplicaSet.OplogState)),
+			"current > warn ",
 			fmt.Sprintf("%.2fh", m.ReplicaSet.OplogWarnHours),
 			fmt.Sprintf("%.2fh", m.ReplicaSet.OplogWindowHours),
 			m.ReplicaSet.OplogState == "ok",
