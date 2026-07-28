@@ -50,11 +50,9 @@ func CheckStandalone(ctx context.Context, client *mongo.Client) {
 			// whether this node is meant to be standalone or a replica set
 			// member.
 			msg := fmt.Sprintf("Could not run serverStatus: insufficient permissions (%s)", err.Error())
-			subject := fmt.Sprintf("%s için MongoDB metrikleri okunamıyor", common.Config.Identifier)
-			msgTr := fmt.Sprintf("MongoDB serverStatus komutu yetki hatasından dolayı çalıştırılamadı: %s", err.Error())
 			appendPermissionWarning(msg)
+			// Zulip only - no Redmine issue for metrics-permission per user request.
 			common.AlarmCheckDown("mongodb-metrics-permission", msg, false, "", "")
-			issues.CheckDown("mongodb-metrics-permission", subject, msgTr, false, 0)
 			common.AlarmCheckUp("mongodb-connection", "MongoDB connection is up (metrics unavailable)", false)
 			return
 		}
@@ -65,7 +63,6 @@ func CheckStandalone(ctx context.Context, client *mongo.Client) {
 	}
 	common.AlarmCheckUp("mongodb-connection", "serverStatus OK", false)
 	common.AlarmCheckUp("mongodb-metrics-permission", "serverStatus permissions OK", false)
-	issues.CheckUp("mongodb-metrics-permission", "MongoDB metrikleri tekrar okunabiliyor")
 
 	checkConnections(status)
 	checkCacheUsage(status)
