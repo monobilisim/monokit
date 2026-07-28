@@ -20,7 +20,11 @@ func (m *MongoHealthData) RenderCompact() string {
 
 	b.WriteString(common.SectionTitle("Connection"))
 	b.WriteString("\n")
-	b.WriteString(common.SimpleStatusListItem("Connected", "true", m.ConnectionInfo.Connected))
+	connectedText := "false"
+	if m.ConnectionInfo.Connected {
+		connectedText = "true"
+	}
+	b.WriteString(common.SimpleStatusListItem("Connected", connectedText, m.ConnectionInfo.Connected))
 	if m.ConnectionInfo.Error != "" {
 		b.WriteString("\n")
 		b.WriteString(common.SimpleStatusListItem("Error", m.ConnectionInfo.Error, false))
@@ -54,6 +58,11 @@ func (m *MongoHealthData) RenderCompact() string {
 		fmt.Sprintf("read=%d write=%d", m.Standalone.TicketsAvailableRead, m.Standalone.TicketsAvailableWrite),
 		!m.Standalone.TicketsExhausted,
 	))
+
+	if m.PermissionWarning != "" {
+		b.WriteString("\n\n")
+		b.WriteString(common.SimpleStatusListItem("Warning", m.PermissionWarning, false))
+	}
 
 	if m.IsReplicaSet {
 		b.WriteString("\n\n")

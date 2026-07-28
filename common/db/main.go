@@ -53,6 +53,12 @@ type Mongodb struct {
 		Cache_percent       int
 	}
 	Replicaset struct {
+		// Enabled indicates this node is expected to be part of a replica
+		// set. If true and monokit cannot confirm replica set membership
+		// (either because replSetGetStatus fails, e.g. due to insufficient
+		// permissions, or because the node genuinely reports as standalone),
+		// that mismatch is treated as an error condition.
+		Enabled                        bool
 		Min_secondaries                int
 		Lag_warn_seconds               int
 		Lag_critical_seconds           int

@@ -4,6 +4,8 @@ package mongodbHealth
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"time"
 
 	"go.mongodb.org/mongo-driver/v2/mongo"
@@ -33,6 +35,31 @@ func connectMongo(uri string, timeoutSeconds int) (*mongo.Client, error) {
 	}
 
 	return client, nil
+}
+
+// isAuthError reports whether err indicates the current connection lacks
+// sufficient privileges to run a command (e.g. serverStatus,
+// replSetGetStatus), as opposed to a network/connectivity failure.
+func isAuthError(err error) bool {
+	if err == nil {
+		return false
+	}
+	var cmdErr mongo.CommandError
+	if errors.As(err, &cmdErr) {
+		return cmdErr.Code == 13 // Unauthorized
+	}
+	return strings.Contains(err.Error(), "Unauthorized")
+}
+
+// appendPermissionWarning adds msg to healthData.PermissionWarning, appending
+// to any existing warning instead of overwriting it (standalone and replica
+// set checks can each independently hit a permission error in the same run).
+func appendPermissionWarning(msg string) {
+	if healthData.PermissionWarning == "" {
+		healthData.PermissionWarning = msg
+		return
+	}
+	healthData.PermissionWarning = healthData.PermissionWarning + "; " + msg
 }
 
 // disconnectMongo closes the connection, ignoring nil clients.

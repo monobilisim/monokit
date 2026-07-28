@@ -42,12 +42,30 @@ func CheckStandalone(ctx context.Context, client *mongo.Client) {
 	var status serverStatusResult
 	err := client.Database("admin").RunCommand(ctx, bson.D{{Key: "serverStatus", Value: 1}}).Decode(&status)
 	if err != nil {
+		if isAuthError(err) {
+			// Connection itself is fine (we got a real server response), but
+			// we lack permission to read serverStatus, so health cannot be
+			// assessed at all. This must not be silently reported as
+			// "everything is zero/ok" -> alarm clearly, regardless of
+			// whether this node is meant to be standalone or a replica set
+			// member.
+			msg := fmt.Sprintf("Could not run serverStatus: insufficient permissions (%s)", err.Error())
+			subject := fmt.Sprintf("%s için MongoDB metrikleri okunamıyor", common.Config.Identifier)
+			msgTr := fmt.Sprintf("MongoDB serverStatus komutu yetki hatasından dolayı çalıştırılamadı: %s", err.Error())
+			appendPermissionWarning(msg)
+			common.AlarmCheckDown("mongodb-metrics-permission", msg, false, "", "")
+			issues.CheckDown("mongodb-metrics-permission", subject, msgTr, false, 0)
+			common.AlarmCheckUp("mongodb-connection", "MongoDB connection is up (metrics unavailable)", false)
+			return
+		}
 		msg := fmt.Sprintf("Couldn't run serverStatus: %s", err.Error())
 		common.AlarmCheckDown("mongodb-connection", msg, false, "", "")
 		healthData.Standalone.ConnectionsExceeded = false
 		return
 	}
 	common.AlarmCheckUp("mongodb-connection", "serverStatus OK", false)
+	common.AlarmCheckUp("mongodb-metrics-permission", "serverStatus permissions OK", false)
+	issues.CheckUp("mongodb-metrics-permission", "MongoDB metrikleri tekrar okunabiliyor")
 
 	checkConnections(status)
 	checkCacheUsage(status)

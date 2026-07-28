@@ -28,6 +28,7 @@ mongodb:
     connections_percent: 80
     cache_percent: 95
   replicaset:
+    enabled: true
     min_secondaries: 1
     lag_warn_seconds: 10
     lag_critical_seconds: 60

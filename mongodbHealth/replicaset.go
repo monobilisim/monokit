@@ -31,11 +31,13 @@ type replSetStatusResult struct {
 }
 
 // IsReplicaSet returns true if the server responds to replSetGetStatus
-// (i.e. is part of a replica set rather than a standalone).
-func IsReplicaSet(ctx context.Context, client *mongo.Client) bool {
+// (i.e. is part of a replica set rather than a standalone). The returned
+// error is non-nil whenever the check itself failed (network, auth, etc.)
+// so the caller can distinguish "genuinely standalone" from "couldn't tell".
+func IsReplicaSet(ctx context.Context, client *mongo.Client) (bool, error) {
 	var result bson.M
 	err := client.Database("admin").RunCommand(ctx, bson.D{{Key: "replSetGetStatus", Value: 1}}).Decode(&result)
-	return err == nil
+	return err == nil, err
 }
 
 // CheckReplicaSet evaluates primary presence/change, secondary quorum,

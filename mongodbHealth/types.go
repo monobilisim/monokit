@@ -9,6 +9,10 @@ type MongoHealthData struct {
 	ConnectionInfo ConnectionInfo
 	Standalone     StandaloneInfo
 	ReplicaSet     ReplicaSetInfo
+	// PermissionWarning is set when a status-determining command (e.g.
+	// replSetGetStatus) fails due to insufficient privileges rather than
+	// a genuine standalone/connectivity condition.
+	PermissionWarning string
 }
 
 // ConnectionInfo describes the outcome of the initial connect+ping.

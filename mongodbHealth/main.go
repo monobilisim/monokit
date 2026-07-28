@@ -10,6 +10,7 @@ import (
 	"github.com/monobilisim/monokit/common"
 	"github.com/monobilisim/monokit/common/api/client"
 	db "github.com/monobilisim/monokit/common/db"
+	issues "github.com/monobilisim/monokit/common/redmine/issues"
 	"github.com/spf13/cobra"
 )
 
@@ -80,9 +81,32 @@ func Main(cmd *cobra.Command, args []string) {
 
 	CheckStandalone(ctx, mongoClient)
 
-	if IsReplicaSet(ctx, mongoClient) {
+	isRS, rsErr := IsReplicaSet(ctx, mongoClient)
+	rsEnabled := DbHealthConfig.Mongodb.Replicaset.Enabled
+	if isRS {
 		healthData.IsReplicaSet = true
 		CheckReplicaSet(ctx, mongoClient)
+		if rsEnabled {
+			common.AlarmCheckUp("mongodb-replicaset-mismatch", "Node confirmed as replica set member as expected", false)
+			issues.CheckUp("mongodb-replicaset-mismatch", "MongoDB replica set durumu doğrulandı")
+		}
+	} else if rsEnabled {
+		// Expected replica set membership (replicaset.enabled=true) but
+		// couldn't confirm it - either genuinely standalone or an
+		// auth/permission error prevented the check. Either way this is a
+		// mismatch and must always alarm.
+		var msg string
+		if isAuthError(rsErr) {
+			msg = fmt.Sprintf("mongodb.replicaset.enabled=true but replSetGetStatus failed due to insufficient permissions: %v", rsErr)
+			appendPermissionWarning(fmt.Sprintf("Could not determine replica set status: insufficient permissions (%v)", rsErr))
+		} else {
+			msg = "mongodb.replicaset.enabled=true but node reports as standalone (not part of a replica set)"
+		}
+		subject := fmt.Sprintf("%s için MongoDB replica set durumu doğrulanamıyor", common.Config.Identifier)
+		common.AlarmCheckDown("mongodb-replicaset-mismatch", msg, false, "", "")
+		issues.CheckDown("mongodb-replicaset-mismatch", subject, msg, false, 0)
+	} else if isAuthError(rsErr) {
+		appendPermissionWarning(fmt.Sprintf("Could not determine replica set status: insufficient permissions (%v)", rsErr))
 	}
 
 	fmt.Println(healthData.RenderAll())
