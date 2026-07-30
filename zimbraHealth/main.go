@@ -35,6 +35,12 @@ import (
 
 // DetectZimbra checks for the presence of Zimbra installation directories.
 func DetectZimbra() bool {
+	// Require mail.yaml so deleting the config disables the check
+	if !common.ConfExists("mail") {
+		log.Debug().Msg("zimbraHealth auto-detection failed: mail.yaml config not found.")
+		return false
+	}
+
 	// Check for standard Zimbra path
 	if _, err := os.Stat("/opt/zimbra"); !os.IsNotExist(err) {
 		log.Debug().Msg("Zimbra detected at /opt/zimbra.")

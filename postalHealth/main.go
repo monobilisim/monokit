@@ -27,6 +27,12 @@ import (
 // It first checks if the postal.service systemd unit is active,
 // then checks for the config file and running postal containers via Docker.
 func DetectPostal() bool {
+	// Require mail.yaml so deleting the config disables the check
+	if !common.ConfExists("mail") {
+		log.Debug().Msg("postalHealth auto-detection failed: mail.yaml config not found.")
+		return false
+	}
+
 	// 1. Check if postal.service exists
 	if !common.SystemdUnitExists("postal.service") {
 		log.Debug().Msg("postalHealth auto-detection failed: postal.service unit file not found.")

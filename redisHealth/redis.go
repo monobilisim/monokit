@@ -21,6 +21,11 @@ var redisMaster bool
 
 // DetectRedis detects if Redis service is available and running
 func DetectRedis() bool {
+	// Require redis.yaml so deleting the config disables the check
+	if !common.ConfExists("redis") {
+		return false
+	}
+
 	// Check if Redis (or Valkey) service is running
 	if !common.SystemdUnitActive("redis.service") && !common.SystemdUnitActive("redis-server.service") && !common.SystemdUnitActive("valkey.service") && !common.SystemdUnitActive("valkey-server.service") {
 		return false

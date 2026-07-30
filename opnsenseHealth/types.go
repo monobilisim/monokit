@@ -44,6 +44,10 @@ func init() {
 		EntryPoint: Main,
 		Platform:   "any",
 		AutoDetect: func() bool {
+			// Require opnsense.yaml so deleting the config disables the check
+			if !common.ConfExists("opnsense") {
+				return false
+			}
 			if _, err := os.Stat("/usr/local/opnsense"); err == nil {
 				return true
 			}

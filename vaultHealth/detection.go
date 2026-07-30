@@ -11,6 +11,12 @@ import (
 
 // DetectVault checks if Vault is installed and available
 func DetectVault() bool {
+	// Require vault.yaml so deleting the config disables the check
+	if !common.ConfExists("vault") {
+		log.Debug().Msg("Vault detection failed: vault.yaml config not found")
+		return false
+	}
+
 	// Check if vault binary exists in PATH
 	_, err := exec.LookPath("vault")
 	if err != nil {

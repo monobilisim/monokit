@@ -24,6 +24,12 @@ import (
 // DetectPmg checks if Proxmox Mail Gateway seems to be installed.
 // It looks for the pmgversion command and the pmgproxy service.
 func DetectPmg() bool {
+	// Require mail.yaml so deleting the config disables the check
+	if !common.ConfExists("mail") {
+		log.Debug().Msg("pmgHealth auto-detection failed: mail.yaml config not found.")
+		return false
+	}
+
 	// 1. Check for pmgversion command
 	if _, err := exec.LookPath("pmgversion"); err != nil {
 		log.Debug().Msg("pmgHealth auto-detection failed: 'pmgversion' command not found in PATH.")

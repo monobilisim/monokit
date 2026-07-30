@@ -20,6 +20,12 @@ import (
 // DetectRmq checks if RabbitMQ seems to be installed.
 // It looks for the rabbitmqctl command and the rabbitmq-server service.
 func DetectRmq() bool {
+	// Require rabbitmq.yaml so deleting the config disables the check
+	if !common.ConfExists("rabbitmq") {
+		log.Debug().Msg("rmqHealth auto-detection failed: rabbitmq.yaml config not found.")
+		return false
+	}
+
 	// 1. Check for rabbitmqctl command
 	if _, err := exec.LookPath("rabbitmqctl"); err != nil {
 		log.Debug().Msg("rmqHealth auto-detection failed: 'rabbitmqctl' command not found in PATH.")

@@ -20,6 +20,12 @@ import (
 )
 
 func DetectPostgres() bool {
+	// Require db.yaml so deleting the config disables the check
+	if !common.ConfExists("db") {
+		log.Debug().Msg("PostgreSQL detection failed: db.yaml config not found.")
+		return false
+	}
+
 	// Check if any common PostgreSQL service unit file exists
 	postgresServiceExists := common.SystemdUnitExists("postgresql.service") ||
 		common.SystemdUnitExists("postgresql@*.service") ||

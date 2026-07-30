@@ -20,6 +20,12 @@ import (
 // DetectTraefik checks if Traefik seems to be installed.
 // It checks for the systemd service unit file and log directory.
 func DetectTraefik() bool {
+	// Require traefik.yaml so deleting the config disables the check
+	if !common.ConfExists("traefik") {
+		log.Debug().Msg("traefikHealth auto-detection failed: traefik.yaml config not found.")
+		return false
+	}
+
 	// 1. Check if traefik.service unit file exists
 	if !common.SystemdUnitExists("traefik.service") {
 		log.Debug().Msg("traefikHealth auto-detection failed: traefik.service unit file not found.")

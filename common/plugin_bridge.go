@@ -4,11 +4,29 @@ import (
 	"fmt"
 	"os"
 	"reflect"
+	"strings"
 
 	"github.com/monobilisim/monokit/common/health"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 )
+
+// pluginConfigNameOverrides maps a plugin's component name to its monokit
+// config name (as used by ConfExists) for the cases where it doesn't follow
+// the "strip Health suffix, lowercase" convention (e.g. shared config files).
+var pluginConfigNameOverrides = map[string]string{
+	"zimbraHealth": "mail",
+}
+
+// pluginConfigName resolves the monokit config name a given plugin should be
+// gated on, so that deleting /etc/mono/<name>.yaml disables the plugin even
+// though it's loaded from an out-of-process binary.
+func pluginConfigName(pluginName string) string {
+	if name, ok := pluginConfigNameOverrides[pluginName]; ok {
+		return name
+	}
+	return strings.ToLower(strings.TrimSuffix(pluginName, "Health"))
+}
 
 // isActualPlugin checks if a provider is a ProviderProxy (actual plugin binary)
 // vs a built-in component like osHealth that's compiled into the main binary
@@ -83,9 +101,22 @@ func RegisterPluginCLICommands(rootCmd *cobra.Command) {
 func createPluginDetector(pluginName string) func() bool {
 	return func() bool {
 		provider := health.Get(pluginName)
-		detected := provider != nil
-		log.Debug().Str("pluginName", pluginName).Bool("detected", detected).Msg("Plugin AutoDetect check")
-		return detected
+		if provider == nil {
+			log.Debug().Str("pluginName", pluginName).Bool("detected", false).Msg("Plugin AutoDetect check")
+			return false
+		}
+
+		// The plugin binary being loaded isn't enough on its own — require its
+		// monokit config file to exist too, so deleting it disables the check
+		// even though the plugin process itself keeps running.
+		configName := pluginConfigName(pluginName)
+		if !ConfExists(configName) {
+			log.Debug().Str("pluginName", pluginName).Str("configName", configName).Bool("detected", false).Msg("Plugin AutoDetect check: config file not found")
+			return false
+		}
+
+		log.Debug().Str("pluginName", pluginName).Bool("detected", true).Msg("Plugin AutoDetect check")
+		return true
 	}
 }
 
