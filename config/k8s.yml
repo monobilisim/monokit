@@ -23,6 +23,10 @@ k8s:
 #   enabled: true        # default: true
 #   warn_days: 30        # alarm threshold in days before expiry (default: 30)
 
+alarm:
+  interval: 2      # minutes between repeat down alarms (default: global common.alarm interval)
+  up_interval: 1   # minutes to wait in the recovery window before sending the up alarm
+
 aws:
   endpoint_url: https://s3.test.com
   bucket: test-bucket

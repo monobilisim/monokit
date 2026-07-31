@@ -473,6 +473,13 @@ func CollectNodeHealth() ([]NodeHealthInfo, error) {
 			Reason:  reason,
 			IsReady: isReady,
 		})
+
+		alarmKey := "node_ready_" + node.Name
+		if isReady {
+			alarmCheckUp(alarmKey, fmt.Sprintf("Node '%s' (%s) is Ready.", node.Name, role), false)
+		} else {
+			alarmCheckDown(alarmKey, fmt.Sprintf("Node '%s' (%s) is NOT Ready. Status: %s, Reason: %s", node.Name, role, status, reason), false, "", "")
+		}
 	}
 	return nodeHealthInfos, nil
 }
