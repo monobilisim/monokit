@@ -20,6 +20,7 @@ type HealthData struct {
 	ZFSPools     []ZFSPoolInfo
 	ZFSDatasets  []ZFSDatasetInfo
 	SystemdUnits []SystemdUnitInfo
+	FstabMounts  []FstabMountInfo
 }
 
 // SystemInfo represents basic system information
@@ -77,6 +78,14 @@ type ZFSDatasetInfo struct {
 	UsedPct float64
 }
 
+// FstabMountInfo represents an fstab entry that is expected to be mounted
+type FstabMountInfo struct {
+	Device     string
+	Mountpoint string
+	Fstype     string
+	Mounted    bool
+}
+
 // SystemdUnitInfo represents systemd unit information
 type SystemdUnitInfo struct {
 	Name        string
@@ -123,10 +132,32 @@ func (h *HealthData) RenderCompact() string {
 		}
 	}
 
+	var unmountedFstab []FstabMountInfo
+	for _, m := range h.FstabMounts {
+		if !m.Mounted {
+			unmountedFstab = append(unmountedFstab, m)
+		}
+	}
+	if len(unmountedFstab) > 0 {
+		if len(h.Disk) > 0 {
+			sb.WriteString("\n")
+		}
+		sb.WriteString(common.SectionTitle("Unmounted fstab Entries"))
+		sb.WriteString("\n")
+
+		for _, m := range unmountedFstab {
+			sb.WriteString(common.SimpleStatusListItem(
+				m.Mountpoint,
+				fmt.Sprintf("not mounted (%s, %s)", m.Device, m.Fstype),
+				false))
+			sb.WriteString("\n")
+		}
+	}
+
 	// ZFS Pools section if any exist
 	if len(h.ZFSPools) > 0 {
 		// Add spacing only if we had a previous section
-		if len(h.Disk) > 0 {
+		if len(h.Disk) > 0 || len(unmountedFstab) > 0 {
 			sb.WriteString("\n")
 		}
 		sb.WriteString(common.SectionTitle("ZFS Pools"))
@@ -157,7 +188,7 @@ func (h *HealthData) RenderCompact() string {
 
 	// System Load and RAM section
 	// Add spacing only if we had a previous section (either Disk or ZFS Pools)
-	if len(h.Disk) > 0 || len(h.ZFSPools) > 0 {
+	if len(h.Disk) > 0 || len(h.ZFSPools) > 0 || len(unmountedFstab) > 0 {
 		sb.WriteString("\n")
 	}
 	sb.WriteString(common.SectionTitle("System Load and RAM"))

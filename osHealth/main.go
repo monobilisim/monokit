@@ -163,6 +163,8 @@ func collectHealthData(version string) *HealthData {
 	// Collect systemd unit information if on Linux
 	if runtime.GOOS == "linux" {
 		healthData.SystemdUnits = collectSystemdInfo()
+
+		healthData.FstabMounts = FstabHealth()
 	}
 
 	return healthData
@@ -235,7 +237,7 @@ func collectDiskInfo() []DiskInfo {
 		}
 		common.AlarmCheckDown("disk", fullMsg, false, "", "")
 
-	// Guard the close branch so it only fires when we actually have
+		// Guard the close branch so it only fires when we actually have
 		// partitions to evaluate. A bare `else` here would auto-close any
 		// pre-existing Redmine issue with the misleading
 		// "all partitions dropped below X%" comment whenever the partition

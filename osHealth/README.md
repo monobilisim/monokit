@@ -16,6 +16,12 @@ The package provides two types of alerts:
   - Creates alerts when partition usage exceeds defined limits
   - Generates detailed usage tables
 
+- **fstab Mount Monitoring** (Linux only)
+  - Alarms when a filesystem listed in `/etc/fstab` is not currently mounted
+  - Opens/closes a Redmine issue alongside the alarm
+  - Skips swap, pseudo filesystems (tmpfs, proc, sysfs, cgroup, …) and `noauto` entries
+  - Honors `excluded_mountpoints`
+
 - **System Load Monitoring**
   - Tracks system load average
   - Configurable load limits based on CPU count
