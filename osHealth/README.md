@@ -18,7 +18,6 @@ The package provides two types of alerts:
 
 - **fstab Mount Monitoring** (Linux only)
   - Alarms when a filesystem listed in `/etc/fstab` is not currently mounted
-  - Opens/closes a Redmine issue alongside the alarm
   - Skips swap, pseudo filesystems (tmpfs, proc, sysfs, cgroup, …) and `noauto` entries
   - Honors `excluded_mountpoints`
 
