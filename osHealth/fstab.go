@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/monobilisim/monokit/common"
+	issues "github.com/monobilisim/monokit/common/redmine/issues"
 	"github.com/rs/zerolog/log"
 	"github.com/shirou/gopsutil/v4/disk"
 )
@@ -205,9 +206,20 @@ func FstabHealth() []FstabMountInfo {
 	if len(unmounted) > 0 {
 		table := createUnmountedTable(unmounted)
 		fullMsg := "The following partitions are listed in " + fstabPath + " but are not mounted;\n\n" + table
+		subject := common.Config.Identifier + " için fstab'da tanımlı bazı diskler mount edilmemiş"
+
+		issues.CheckDown("fstab_mount", subject, table, false, 0)
+		if id := issues.Show("fstab_mount"); id != "" {
+			fullMsg = fullMsg + "\n\n" + "Redmine Issue: " + common.GetRedmineDisplayUrl() + "/issues/" + id
+			common.AlarmCheckUp("fstab_mount_redmineissue", "Redmine issue exists for unmounted fstab entries", false)
+		} else {
+			log.Debug().Msg("osHealth/fstab.go: issues.Show(\"fstab_mount\") returned empty. Proceeding without Redmine link in alarm.")
+		}
 		common.AlarmCheckDown("fstab_mount", fullMsg, false, "", "")
 	} else {
 		common.AlarmCheckUp("fstab_mount", "All partitions listed in "+fstabPath+" are mounted.", false)
+		issues.CheckUp("fstab_mount", common.Config.Identifier+" için fstab'da tanımlı bütün diskler mount edilmiş durumda, kapatılıyor.")
+		common.AlarmCheckUp("fstab_mount_redmineissue", "fstab mounts are normal, clearing any Redmine issue creation failure alarm", false)
 	}
 
 	return mounts
