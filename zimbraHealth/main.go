@@ -5,6 +5,7 @@ package zimbraHealth
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/rand"
 	"crypto/tls"
 	"encoding/json"
@@ -537,7 +538,185 @@ func pickLdapCtl() string {
 	return ""
 }
 
-// RestartZimbraService refactored to avoid recursion and direct call to CheckZimbraServices
+// zimbraServiceCtlMap maps zmcontrol status service names to their dedicated
+// control scripts under zimbraPath/bin. Each service has its own ctl script
+// that can stop/start/restart just that service — using these instead of
+// "zmcontrol start" (which starts ALL services) avoids:
+//   - restart failing because an unrelated service is down
+//   - stale pid locks / port conflicts (stop kills the old process first)
+//   - restart counter incrementing for the wrong reason
+var zimbraServiceCtlMap = map[string]string{
+	"amavis":            "zmamavisdctl",
+	"antispam":          "zmantispamctl",
+	"antivirus":         "zmantivirusctl",
+	"cbpolicyd":         "zmcbpolicydctl",
+	"dnscache":          "zmdnscachectl",
+	"logger":            "zmloggerctl",
+	"mailbox":           "zmmailboxdctl",
+	"memcached":         "zmmemcachedctl",
+	"milter server":     "zmmilterctl",
+	"mta":               "zmmtactl",
+	"opendkim":          "zmopendkimctl",
+	"proxy":             "zmproxyctl",
+	"saslauthd":         "zmsaslauthdctl",
+	"service webapp":    "zmmailboxdctl",
+	"spell":             "zmspellctl",
+	"stats":             "zmstatctl",
+	"zimbra webapp":     "zmmailboxdctl",
+	"zimbraAdmin webapp": "zmmailboxdctl",
+	"zimlet webapp":     "zmmailboxdctl",
+	"zmconfigd":         "zmconfigdctl",
+	"zmlogswatch":       "zmlogswatchctl",
+	"zmswatch":          "zmswatchctl",
+	// snmp: no dedicated ctl script on most installs (managed via
+	// amavis-services snmp-responder); falls back to zmcontrol start.
+}
+
+// getServiceCtlScript returns the basename of the dedicated control script
+// for the given service, or "" if no script exists on this installation.
+func getServiceCtlScript(service string) string {
+	ctlName, ok := zimbraServiceCtlMap[service]
+	if !ok {
+		return ""
+	}
+	if zimbraPath == "" {
+		return ""
+	}
+	if _, err := os.Stat(zimbraPath + "/bin/" + ctlName); err != nil {
+		return ""
+	}
+	return ctlName
+}
+
+// isServiceRunning runs zmcontrol status and checks whether the named service
+// is reported as Running. Used to verify a restart actually brought the
+// service up before counting it as a success.
+func isServiceRunning(service string) bool {
+	statusOut, _ := ExecZimbraCommand("zmcontrol status", false, false)
+	if strings.TrimSpace(statusOut) == "" {
+		return false
+	}
+	services, _ := parseZmcontrolStatus(statusOut)
+	for _, svc := range services {
+		if svc.Name == service {
+			return svc.Running
+		}
+	}
+	return false
+}
+
+// zimbraProcessPatterns maps service names to process patterns for orphan
+// cleanup. When a service crashes, child processes may survive and hold ports
+// or lock files, preventing restart. Keyed by the zmcontrol status service name.
+// Patterns sourced from Zimbra zm-core-utils control script source code.
+var zimbraProcessPatterns = map[string]string{
+	"amavis":            "amavisd",
+	"antispam":          "amavisd",
+	"antivirus":         "clamd|freshclam",
+	"cbpolicyd":         "cbpolicyd",
+	"dnscache":          "unbound",
+	"logger":            "swatchdog|zmrrdfetch",
+	"mailbox":           "zmmailboxdmgr|java.*zimbra",
+	"memcached":         "memcached",
+	"milter server":     "com.zimbra.cs.milter.MilterServer",
+	"mta":               "postfix|saslauthd",
+	"opendkim":          "opendkim",
+	"proxy":             "nginx",
+	"saslauthd":         "saslauthd",
+	"spell":             "httpd|aspell",
+	"stats":             "zmstat",
+	"zmconfigd":         "zmconfigd",
+}
+
+// zimbraPidFiles maps service names to PID file paths AND stale socket/lock
+// files. Stale PID files prevent clean startup (e.g. saslauthd pid.lock,
+// nginx.pid). Stale Unix sockets (e.g. saslauthd mux) prevent the new process
+// from binding. All are removed after stop to ensure start gets a clean slate.
+// Paths sourced from Zimbra zm-core-utils control script source code.
+var zimbraPidFiles = map[string][]string{
+	"amavis": {
+		"/opt/zimbra/log/amavisd.pid",
+		"/opt/zimbra/log/amavis-mc.pid",
+	},
+	"antivirus": {
+		"/opt/zimbra/log/clamd.pid",
+		"/opt/zimbra/log/freshclam.pid",
+	},
+	"cbpolicyd": {"/opt/zimbra/log/cbpolicyd.pid"},
+	"dnscache":  {"/opt/zimbra/log/unbound.pid"},
+	"logger": {
+		"/opt/zimbra/log/logswatch.pid",
+		"/opt/zimbra/log/zmrrdfetch-server.pid",
+	},
+	"mailbox": {
+		"/opt/zimbra/log/zmmailboxd_manager.pid",
+		"/opt/zimbra/log/zmmailboxd_java.pid",
+		"/opt/zimbra/log/zmmailboxd.pid",
+	},
+	"memcached": {"/opt/zimbra/log/memcached.pid"},
+	"mta": {
+		"/opt/zimbra/data/postfix/spool/pid/master.pid",
+		"/opt/zimbra/data/postfix/data/master.lock",
+	},
+	"opendkim": {"/opt/zimbra/log/opendkim.pid"},
+	"proxy":    {"/opt/zimbra/log/nginx.pid"},
+	"saslauthd": {
+		"/opt/zimbra/data/sasl2/state/saslauthd.pid",
+		"/opt/zimbra/data/sasl2/state/saslauthd.pid.lock",
+		"/opt/zimbra/data/sasl2/state/mux",
+	},
+	"spell":    {"/opt/zimbra/log/httpd.pid"},
+	"stats":    {"/opt/zimbra/zmstat/pid"}, // dir: glob *.pid inside
+	"zmconfigd": {"/opt/zimbra/log/zmconfigd.pid"},
+}
+
+// cleanupOrphanProcesses kills any remaining processes for the given service
+// after stop, then removes stale PID files, lock files, and Unix sockets.
+// This handles the case where a service crashes but leaves orphan child
+// processes holding ports or locks (e.g. nginx workers surviving master
+// crash, saslauthd pid.lock + mux socket stuck).
+func cleanupOrphanProcesses(service string) {
+	pattern, ok := zimbraProcessPatterns[service]
+	if !ok {
+		return
+	}
+
+	// Find and kill orphan processes matching the pattern, owned by zimbra.
+	// Use pkill with -u zimbra to avoid killing system processes.
+	killCmd := exec.Command("pkill", "-9", "-u", "zimbra", "-f", pattern)
+	if err := killCmd.Run(); err != nil {
+		log.Debug().Str("service", service).Str("pattern", pattern).Err(err).Msg("pkill for orphan cleanup (may be no orphans)")
+	}
+
+	// Remove stale PID files, lock files, and Unix sockets.
+	for _, pidFile := range zimbraPidFiles[service] {
+		// Handle directory globs (e.g. zmstat pid dir contains multiple .pid files).
+		if info, err := os.Stat(pidFile); err == nil && info.IsDir() {
+			matches, _ := filepath.Glob(filepath.Join(pidFile, "*.pid"))
+			for _, m := range matches {
+				if err := os.Remove(m); err != nil {
+					log.Warn().Str("pid_file", m).Err(err).Msg("Failed to remove stale PID file")
+				} else {
+					log.Info().Str("service", service).Str("pid_file", m).Msg("Removed stale PID file")
+				}
+			}
+			continue
+		}
+		if _, err := os.Stat(pidFile); err == nil {
+			if err := os.Remove(pidFile); err != nil {
+				log.Warn().Str("pid_file", pidFile).Err(err).Msg("Failed to remove stale PID/lock/socket file")
+			} else {
+				log.Info().Str("service", service).Str("file", pidFile).Msg("Removed stale PID/lock/socket file")
+			}
+		}
+	}
+}
+
+// RestartZimbraService attempts to restart a single Zimbra service using its
+// dedicated control script (stop + start). Falls back to "zmcontrol start"
+// only when no dedicated script exists. After restart, verifies the service
+// actually came up — the restart counter is incremented only when the service
+// is still down, and reset when it recovers.
 func RestartZimbraService(service string) bool {
 	// Enforce per-service restart interval and limit
 	restartInterval := MailHealthConfig.Zimbra.Restart_Interval
@@ -565,71 +744,98 @@ func RestartZimbraService(service string) bool {
 	// Clear restart limit alarm since we're within limits
 	common.AlarmCheckUp("service_restart_limit_"+service, "Restart limit not exceeded for "+service+" ("+strconv.Itoa(attempts)+"/"+strconv.Itoa(MailHealthConfig.Zimbra.Restart_Limit)+")", false)
 
-	log.Warn().Str("service", service).Msg("Attempting to restart Zimbra services")
+	log.Warn().Str("service", service).Msg("Attempting to restart Zimbra service")
 
 	var output string
 	var err error
 
-	switch service {
-	case "zmswatchctl", "zmswatch":
-		ExecZimbraCommand("zmswatchctl stop", false, false)
-		time.Sleep(3 * time.Second)
-		output, err = ExecZimbraCommand("zmswatchctl start", false, false)
-	case "zmlogswatchctl", "zmlogswatch":
-		ExecZimbraCommand("zmlogswatchctl stop", false, false)
-		time.Sleep(3 * time.Second)
-		output, err = ExecZimbraCommand("zmlogswatchctl start", false, false)
-	case "zmstatctl", "zmstat", "stats":
-		ExecZimbraCommand("zmstatctl stop", false, false)
-		time.Sleep(3 * time.Second)
-		output, err = ExecZimbraCommand("zmstatctl start", false, false)
-	case "ldap", "slapd":
-		// LDAP-specific path: start only the LDAP service first (faster, isolates
-		// LDAP errors from a generic zmcontrol output) and verify it actually came
-		// up. Fall back to "zmcontrol start" if anything goes wrong so behaviour
-		// is at least as good as the previous default branch.
-		//
-		// Detect the available control script (`ldap` on modern releases,
-		// `zmldapctl` on legacy ones) so this works across Zimbra versions.
+	// LDAP has a special path: version-dependent script name + status
+	// verification + zmcontrol fallback.
+	if service == "ldap" || service == "slapd" {
 		ldapCmd := pickLdapCtl()
 		if ldapCmd == "" {
 			log.Warn().Str("zimbra_path", zimbraPath).Msg("Neither 'ldap' nor 'zmldapctl' control script found under zimbraPath/bin; falling back to zmcontrol start")
 			output, err = ExecZimbraCommand("zmcontrol start", false, false)
-			break
-		}
-		log.Info().Str("ldap_cmd", ldapCmd).Msg("Restarting LDAP using detected control script")
-
-		output, err = ExecZimbraCommand(ldapCmd+" start", false, false)
-		if err != nil {
-			log.Warn().Err(err).Str("output", output).Str("ldap_cmd", ldapCmd).Msg("LDAP control start failed, falling back to zmcontrol start")
-			output, err = ExecZimbraCommand("zmcontrol start", false, false)
-			break
-		}
-		// Grace period for slapd to bind to its port and accept connections.
-		time.Sleep(5 * time.Second)
-		statusOut, statusErr := ExecZimbraCommand(ldapCmd+" status", false, false)
-		if statusErr != nil {
-			log.Warn().Err(statusErr).Str("status_output", statusOut).Str("ldap_cmd", ldapCmd).Msg("LDAP status reports not running after start, falling back to zmcontrol start")
-			output, err = ExecZimbraCommand("zmcontrol start", false, false)
 		} else {
-			log.Info().Str("status_output", strings.TrimSpace(statusOut)).Str("ldap_cmd", ldapCmd).Msg("LDAP service started successfully")
+			log.Info().Str("ldap_cmd", ldapCmd).Msg("Restarting LDAP using detected control script")
+			ExecZimbraCommand(ldapCmd+" stop", false, false)
+			time.Sleep(3 * time.Second)
+			output, err = ExecZimbraCommand(ldapCmd+" start", false, false)
+			if err != nil {
+				log.Warn().Err(err).Str("output", output).Str("ldap_cmd", ldapCmd).Msg("LDAP control start failed, falling back to zmcontrol start")
+				output, err = ExecZimbraCommand("zmcontrol start", false, false)
+			} else {
+				// Grace period for slapd to bind to its port.
+				time.Sleep(5 * time.Second)
+				statusOut, statusErr := ExecZimbraCommand(ldapCmd+" status", false, false)
+				if statusErr != nil {
+					log.Warn().Err(statusErr).Str("status_output", statusOut).Str("ldap_cmd", ldapCmd).Msg("LDAP status reports not running after start, falling back to zmcontrol start")
+					output, err = ExecZimbraCommand("zmcontrol start", false, false)
+				} else {
+					log.Info().Str("status_output", strings.TrimSpace(statusOut)).Str("ldap_cmd", ldapCmd).Msg("LDAP service started successfully")
+				}
+			}
 		}
-	default:
+	} else if ctl := getServiceCtlScript(service); ctl != "" {
+		// Dedicated control script: stop first (kills stale processes, frees
+		// ports, clears pid locks), then start.
+		log.Info().Str("service", service).Str("ctl", ctl).Msg("Restarting service with dedicated control script")
+		ExecZimbraCommand(ctl+" stop", false, false)
+		time.Sleep(3 * time.Second)
+		// Kill orphan child processes and remove stale PID files left behind
+		// by crashed services (e.g. nginx workers holding ports, saslauthd
+		// pid.lock preventing restart).
+		cleanupOrphanProcesses(service)
+		time.Sleep(1 * time.Second)
+		output, err = ExecZimbraCommand(ctl+" start", false, false)
+	} else {
+		// No dedicated script — fall back to zmcontrol start.
+		log.Warn().Str("service", service).Msg("No dedicated control script found; falling back to zmcontrol start")
 		output, err = ExecZimbraCommand("zmcontrol start", false, false)
 	}
 
 	log.Debug().Str("output", output).Msg("restart output")
+
+	// Always record when we attempted the restart.
+	setServiceLastRestartAt(service, time.Now())
+
 	if err != nil {
-		log.Error().Err(err).Str("service", service).Msg("Failed to start Zimbra services")
+		log.Error().Err(err).Str("service", service).Msg("Failed to start Zimbra service")
+		// If start failed, try one more cleanup + restart cycle — orphan
+		// processes or stale PID files that survived the first cleanup may
+		// be the cause.
+		if ctl := getServiceCtlScript(service); ctl != "" {
+			log.Warn().Str("service", service).Msg("Start failed, attempting aggressive cleanup + retry")
+			cleanupOrphanProcesses(service)
+			time.Sleep(2 * time.Second)
+			output, err = ExecZimbraCommand(ctl+" start", false, false)
+		}
+	}
+
+	if err != nil {
+		log.Error().Err(err).Str("service", service).Msg("Failed to start Zimbra service after retry")
 		common.AlarmCheckDown("service_restart_failed_"+service, "Failed to execute restart for "+service+": "+err.Error(), false, "", "")
+		setServiceRestartCount(service, attempts+1)
 		return false
 	}
 
-	// Update per-service tracking after executing restart command
+	// Verify the service actually came up. The control script may return
+	// exit 0 even when the service didn't start (e.g. stale config, port
+	// conflict resolved too slowly). Only count the attempt against the
+	// limit when the service is genuinely still down.
+	time.Sleep(3 * time.Second)
+	if isServiceRunning(service) {
+		log.Info().Str("service", service).Msg("Service is running after restart")
+		resetServiceRestartTracking(service)
+		common.AlarmCheckUp("service_restart_failed_"+service, "Zimbra restart command executed successfully for "+service, false)
+		return true
+	}
+
+	// Service still down after restart — count this attempt.
+	log.Warn().Str("service", service).Msg("Service is still not running after restart")
 	setServiceRestartCount(service, attempts+1)
-	setServiceLastRestartAt(service, time.Now())
-	common.AlarmCheckUp("service_restart_failed_"+service, "Zimbra restart command executed successfully for "+service, false)
-	return true
+	common.AlarmCheckDown("service_restart_failed_"+service, "Service "+service+" did not come up after restart (attempt "+strconv.Itoa(attempts+1)+"/"+strconv.Itoa(MailHealthConfig.Zimbra.Restart_Limit)+")", false, "", "")
+	return false
 }
 
 // --- Per-service restart attempt tracking ---
@@ -1013,23 +1219,34 @@ func ExecZimbraCommand(command string, fullPath bool, runAsRoot bool) (string, e
 
 	cmd = nil
 
+	// Timeout: some ctl scripts (e.g. zmamavisdctl stop) hang waiting for
+	// child processes that don't terminate cleanly. Without a timeout the
+	// entire health check blocks indefinitely.
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+
 	// Execute command
 	if fullPath {
 		log.Debug().Str("command", command).Msg("Executing Zimbra command with full path")
-		cmd = exec.Command("/bin/su", "-", zimbraUser, "-c", "export PATH=$PATH:"+zimbraPath+"/bin; "+zimbraPath+"/"+command)
+		cmd = exec.CommandContext(ctx, "/bin/su", "-", zimbraUser, "-c", "export PATH=$PATH:"+zimbraPath+"/bin; "+zimbraPath+"/"+command)
 	} else {
 		log.Debug().Str("command", command).Msg("Executing Zimbra command without full path")
-		cmd = exec.Command("/bin/su", "-", zimbraUser, "-c", "export PATH=$PATH:"+zimbraPath+"/bin; "+zimbraPath+"/bin/"+command)
+		cmd = exec.CommandContext(ctx, "/bin/su", "-", zimbraUser, "-c", "export PATH=$PATH:"+zimbraPath+"/bin; "+zimbraPath+"/bin/"+command)
 	}
 
 	var out bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &stderr
-	cmd.Run()
+	err := cmd.Run()
 
 	log.Debug().Str("command", command).Str("output", out.String()).Str("stderr", stderr.String()).Msg("Command executed")
-	if cmd.ProcessState.ExitCode() != 0 {
+
+	if ctx.Err() == context.DeadlineExceeded {
+		return out.String(), fmt.Errorf("command timed out after 60s: " + command)
+	}
+
+	if err != nil {
 		return out.String(), fmt.Errorf("Command failed: " + command + " with stdout: " + out.String() + " stderr: " + stderr.String())
 	}
 
