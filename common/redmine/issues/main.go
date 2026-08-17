@@ -18,15 +18,15 @@ import (
 )
 
 type Issue struct {
-	Id           int    `json:"id,omitempty"`
-	Notes        string `json:"notes,omitempty"`
-	ProjectId    string `json:"project_id,omitempty"`
-	TrackerId    int    `json:"tracker_id,omitempty"`
-	Description  string `json:"description,omitempty"`
-	Subject      string `json:"subject,omitempty"`
-	PriorityId   int    `json:"priority_id,omitempty"`
-	StatusId     int    `json:"status_id,omitempty"`
-	AssignedToId string `json:"assigned_to_id,omitempty"`
+	Id           int         `json:"id,omitempty"`
+	Notes        string      `json:"notes,omitempty"`
+	ProjectId    string      `json:"project_id,omitempty"`
+	TrackerId    int         `json:"tracker_id,omitempty"`
+	Description  string      `json:"description,omitempty"`
+	Subject      string      `json:"subject,omitempty"`
+	PriorityId   int         `json:"priority_id,omitempty"`
+	StatusId     int         `json:"status_id,omitempty"`
+	AssignedToId interface{} `json:"assigned_to_id,omitempty"`
 }
 
 type RedmineIssue struct {
@@ -435,7 +435,7 @@ func Create(service string, subject string, message string) {
 			Msg("Found existing issue, attempting to reopen instead of creating new one")
 
 		// Get the assigned user
-		assignedToId, _ := getAssignedToId(existingIssueId) // ok=true only if API succeeded AND assigned
+		assignedToId, known := getAssignedToId(existingIssueId) // ok=true only if API succeeded AND assigned
 
 		// Get current user
 		currentUserId, err := getCurrentUserId()
@@ -448,7 +448,7 @@ func Create(service string, subject string, message string) {
 			Str("component", "redmine").
 			Str("operation", "create_issue").
 			Str("current_user_id", currentUserId).
-			Str("assigned_to_id", assignedToId).
+			Interface("assigned_to_id", assignedToId).
 			Str("issue_id", existingIssueId).
 			Msg("User assignment details for issue reopening")
 
@@ -467,7 +467,7 @@ func Create(service string, subject string, message string) {
 			Notes:    "Sorun devam ettiğinden iş yeniden açıldı.\n" + message,
 			StatusId: 8,
 		}
-		if assignedToId != "" {
+		if known {
 			// (existing behavior: only set if we successfully read a positive
 			// ID; fail-safe for API errors / unassigned, matches previous code.)
 			issue.AssignedToId = assignedToId
@@ -564,13 +564,13 @@ func Create(service string, subject string, message string) {
 		projectId = common.Config.Redmine.Project_id
 	}
 
-    // Determine tracker (job type). Default stays 7; upCheck uses 3
-    trackerId := 7
-    if strings.HasPrefix(service, "upcheck/") {
-        trackerId = 3
-    }
+	// Determine tracker (job type). Default stays 7; upCheck uses 3
+	trackerId := 7
+	if strings.HasPrefix(service, "upcheck/") {
+		trackerId = 3
+	}
 
-    body := RedmineIssue{Issue: Issue{ProjectId: projectId, TrackerId: trackerId, Description: message, Subject: subject, PriorityId: priorityId}}
+	body := RedmineIssue{Issue: Issue{ProjectId: projectId, TrackerId: trackerId, Description: message, Subject: subject, PriorityId: priorityId}}
 
 	jsonBody, err := json.Marshal(body)
 
@@ -765,7 +765,7 @@ func Update(service string, message string, checkNote bool) {
 	// (workflow rules, plugin'ler) PUT'ta belirtilmeyen alanı "atanmamış"a
 	// çevirebiliyor. Okuma başarısız olursa alanı hiç gönderme.
 	issue := Issue{Id: issueId, Notes: message}
-	if existingAssigned, known := getAssignedToId(idStr); known && existingAssigned != "" {
+	if existingAssigned, known := getAssignedToId(idStr); known {
 		issue.AssignedToId = existingAssigned
 	}
 	body := RedmineIssue{Issue: issue}
@@ -822,7 +822,7 @@ func Update(service string, message string, checkNote bool) {
 //   - assignedID == "", ok=false: API lookup failed (network, non-200, parse);
 //     caller must treat as "unknown" and apply fail-safe behavior
 //     (do not override the assignee).
-func getAssignedToId(id string) (assignedID string, ok bool) {
+func getAssignedToId(id string) (assignedID interface{}, ok bool) {
 
 	// Make request to Redmine API to get the assigned_to_id
 	redmineUrlFinal := common.Config.Redmine.Url + "/issues/" + id + ".json"
@@ -897,7 +897,7 @@ func getAssignedToId(id string) (assignedID string, ok bool) {
 	if !idOk {
 		return "", true
 	}
-	return strconv.Itoa(int(idFloat)), true
+	return int(idFloat), true
 }
 
 // issueIsClosed, bir issue'nun Redmine'da kapalı/silinmiş olup olmadığını sorgular.
@@ -1021,15 +1021,17 @@ func Close(service string, message string) {
 	botID := getBotUserID()
 	if botID != "" {
 		if currentAssignee, known := getAssignedToId(idStr); known {
-			if currentAssignee == "" || currentAssignee == botID {
-				issue.AssignedToId = botID
+			botIDInt, _ := strconv.Atoi(botID)
+			if currentAssignee == "" || currentAssignee == botIDInt {
+				issue.AssignedToId = botIDInt
 			} else {
+				issue.AssignedToId = currentAssignee
 				log.Info().
 					Str("component", "redmine").
 					Str("operation", "close_issue").
 					Int("issue_id", issueId).
 					Str("service", service).
-					Str("current_assignee_id", currentAssignee).
+					Interface("current_assignee_id", currentAssignee).
 					Msg("Issue is assigned to a non-bot user; preserving existing assignee on auto-close (no reassign to bot)")
 			}
 		} else {
