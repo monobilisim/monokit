@@ -26,7 +26,11 @@ type Issue struct {
 	Subject      string      `json:"subject,omitempty"`
 	PriorityId   int         `json:"priority_id,omitempty"`
 	StatusId     int         `json:"status_id,omitempty"`
-	AssignedToId interface{} `json:"assigned_to_id,omitempty"`
+	// AssignedToId MUST stay a pointer. encoding/json's omitempty only drops a
+	// nil pointer/interface — a non-nil interface holding "" or 0 is still
+	// serialised, and Redmine reads `"assigned_to_id": ""` as "clear the
+	// assignee" (see fix 7113d70). nil = do not touch the assignee.
+	AssignedToId *int `json:"assigned_to_id,omitempty"`
 }
 
 type RedmineIssue struct {
@@ -41,27 +45,32 @@ type RedmineIssue struct {
 
 var (
 	botUserOnce sync.Once
-	botUserID   string
+	botUserID   int
+	botUserOK   bool
 )
 
 // getBotUserID resolves the Redmine user ID of the API key owner ("Redmine
 // Bot (Mono)" in the standard monokit deployment). On the first call it
 // queries /users/current.json and caches the result for the lifetime of the
-// process. If the lookup fails, it returns an empty string and logs an error;
-// the caller is expected to skip the assignee override in that case.
-func getBotUserID() string {
+// process. If the lookup fails, ok is false and the caller is expected to skip
+// the assignee override.
+func getBotUserID() (id int, ok bool) {
 	botUserOnce.Do(func() {
 		uid, err := getCurrentUserId()
 		if err == nil && uid != "" {
-			botUserID = uid
-			log.Info().
-				Str("component", "redmine").
-				Str("operation", "get_bot_user_id").
-				Str("bot_user_id", uid).
-				Msg("Bot user ID resolved and cached from /users/current.json")
-			return
+			parsed, convErr := strconv.Atoi(uid)
+			if convErr == nil && parsed > 0 {
+				botUserID, botUserOK = parsed, true
+				log.Info().
+					Str("component", "redmine").
+					Str("operation", "get_bot_user_id").
+					Int("bot_user_id", parsed).
+					Msg("Bot user ID resolved and cached from /users/current.json")
+				return
+			}
+			err = convErr
 		}
-		// Lookup failed — leave botUserID empty. The Close path will skip
+		// Lookup failed — leave botUserOK false. The Close path will skip
 		// the AssignedToId override, preserving the existing assignee.
 		log.Error().
 			Str("component", "redmine").
@@ -69,7 +78,7 @@ func getBotUserID() string {
 			Err(err).
 			Msg("Could not resolve bot user ID from /users/current.json; assignee will not be overridden (existing assignee preserved)")
 	})
-	return botUserID
+	return botUserID, botUserOK
 }
 
 func redmineIssueKey(service string) string {
@@ -362,13 +371,12 @@ func getCurrentUserId() (string, error) {
 
 	// Check response status
 	if resp.StatusCode != 200 {
-		errMsg := fmt.Sprintf("Redmine API returned status code %d instead of 200", resp.StatusCode)
 		log.Error().
 			Str("component", "redmine").
 			Int("status_code", resp.StatusCode).
 			Str("url", redmineUrl).
 			Msg("Failed to get current user from Redmine API")
-		return "", fmt.Errorf(errMsg)
+		return "", fmt.Errorf("Redmine API returned status code %d instead of 200", resp.StatusCode)
 	}
 
 	// Parse response
@@ -467,9 +475,10 @@ func Create(service string, subject string, message string) {
 			Notes:    "Sorun devam ettiğinden iş yeniden açıldı.\n" + message,
 			StatusId: 8,
 		}
-		if known {
-			// (existing behavior: only set if we successfully read a positive
-			// ID; fail-safe for API errors / unassigned, matches previous code.)
+		if known && assignedToId != nil {
+			// Only send the field when we read a real assignee. On API error
+			// (known=false) or an unassigned issue (nil) we omit it entirely —
+			// sending an empty value would clear the assignee.
 			issue.AssignedToId = assignedToId
 		}
 		body := RedmineIssue{Issue: issue}
@@ -765,7 +774,7 @@ func Update(service string, message string, checkNote bool) {
 	// (workflow rules, plugin'ler) PUT'ta belirtilmeyen alanı "atanmamış"a
 	// çevirebiliyor. Okuma başarısız olursa alanı hiç gönderme.
 	issue := Issue{Id: issueId, Notes: message}
-	if existingAssigned, known := getAssignedToId(idStr); known {
+	if existingAssigned, known := getAssignedToId(idStr); known && existingAssigned != nil {
 		issue.AssignedToId = existingAssigned
 	}
 	body := RedmineIssue{Issue: issue}
@@ -817,12 +826,12 @@ func Update(service string, message string, checkNote bool) {
 // getAssignedToId fetches the current assignee of a Redmine issue.
 //
 // Return values:
-//   - assignedID != "", ok=true:  issue is assigned to the user with this ID
-//   - assignedID == "", ok=true:  issue is unassigned (API succeeded, no assignee)
-//   - assignedID == "", ok=false: API lookup failed (network, non-200, parse);
+//   - assignedID != nil, ok=true:  issue is assigned to the user/group with this ID
+//   - assignedID == nil, ok=true:  issue is unassigned (API succeeded, no assignee)
+//   - assignedID == nil, ok=false: API lookup failed (network, non-200, parse);
 //     caller must treat as "unknown" and apply fail-safe behavior
 //     (do not override the assignee).
-func getAssignedToId(id string) (assignedID interface{}, ok bool) {
+func getAssignedToId(id string) (assignedID *int, ok bool) {
 
 	// Make request to Redmine API to get the assigned_to_id
 	redmineUrlFinal := common.Config.Redmine.Url + "/issues/" + id + ".json"
@@ -830,7 +839,7 @@ func getAssignedToId(id string) (assignedID interface{}, ok bool) {
 	req, err := http.NewRequest("GET", redmineUrlFinal, nil)
 	if err != nil {
 		log.Error().Err(err).Str("component", "redmine").Str("operation", "get_assigned_to_id").Str("url", redmineUrlFinal).Str("issue_id", id).Msg("Failed to create request for issue assignment info")
-		return "", false
+		return nil, false
 	}
 	common.AddUserAgent(req)
 	req.Header.Set("Content-Type", "application/json")
@@ -844,7 +853,7 @@ func getAssignedToId(id string) (assignedID interface{}, ok bool) {
 
 	if err != nil {
 		log.Error().Err(err).Str("component", "redmine").Str("operation", "get_assigned_to_id").Str("url", redmineUrlFinal).Str("issue_id", id).Msg("Failed to send request for issue assignment info")
-		return "", false
+		return nil, false
 	}
 
 	defer resp.Body.Close()
@@ -863,7 +872,7 @@ func getAssignedToId(id string) (assignedID interface{}, ok bool) {
 
 	if err != nil {
 		log.Error().Err(err).Str("component", "redmine").Str("operation", "get_assigned_to_id").Str("issue_id", id).Msg("Failed to decode issue assignment response")
-		return "", false
+		return nil, false
 	}
 
 	// If not 200, log error
@@ -876,28 +885,29 @@ func getAssignedToId(id string) (assignedID interface{}, ok bool) {
 			Str("url", redmineUrlFinal).
 			Str("issue_id", id).
 			Msg("Redmine API returned non-200 status for issue assignment info")
-		return "", false
+		return nil, false
 	}
 
 	// Check if id exists
 
 	issueObj, ok := data["issue"].(map[string]interface{})
 	if !ok {
-		return "", false
+		return nil, false
 	}
 	assignedTo, ok := issueObj["assigned_to"]
 	if !ok || assignedTo == nil {
-		return "", true
+		return nil, true
 	}
 	assignedMap, ok := assignedTo.(map[string]interface{})
 	if !ok {
-		return "", true
+		return nil, true
 	}
 	idFloat, idOk := assignedMap["id"].(float64)
 	if !idOk {
-		return "", true
+		return nil, true
 	}
-	return int(idFloat), true
+	assigned := int(idFloat)
+	return &assigned, true
 }
 
 // issueIsClosed, bir issue'nun Redmine'da kapalı/silinmiş olup olmadığını sorgular.
@@ -1018,20 +1028,26 @@ func Close(service string, message string) {
 		Notes:    message,
 		StatusId: 5,
 	}
-	botID := getBotUserID()
-	if botID != "" {
+	if botID, botKnown := getBotUserID(); botKnown {
 		if currentAssignee, known := getAssignedToId(idStr); known {
-			botIDInt, _ := strconv.Atoi(botID)
-			if currentAssignee == "" || currentAssignee == botIDInt {
-				issue.AssignedToId = botIDInt
-			} else {
+			switch {
+			case currentAssignee == nil:
+				// Unassigned → bot takes ownership of the auto-closed ticket.
+				issue.AssignedToId = &botID
+			case *currentAssignee == botID:
+				// Already the bot → idempotent, keep it.
+				issue.AssignedToId = currentAssignee
+			default:
+				// Human (or another user/group) owns it. Write the same ID back
+				// explicitly so a workflow rule cannot silently clear it, but
+				// never hand the ticket to the bot.
 				issue.AssignedToId = currentAssignee
 				log.Info().
 					Str("component", "redmine").
 					Str("operation", "close_issue").
 					Int("issue_id", issueId).
 					Str("service", service).
-					Interface("current_assignee_id", currentAssignee).
+					Int("current_assignee_id", *currentAssignee).
 					Msg("Issue is assigned to a non-bot user; preserving existing assignee on auto-close (no reassign to bot)")
 			}
 		} else {
