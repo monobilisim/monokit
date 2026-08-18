@@ -2,9 +2,7 @@ package opnsenseHealth
 
 import (
 	"crypto/tls"
-	"encoding/xml"
 	"fmt"
-	"io"
 	"net"
 	"os"
 	"strconv"
@@ -16,25 +14,14 @@ import (
 	"github.com/spf13/cobra"
 )
 
-type opnsenseXMLConfig struct {
-	XMLName xml.Name `xml:"opnsense"`
-	System  struct {
-		Hostname string `xml:"hostname"`
-		Domain   string `xml:"domain"`
-	} `xml:"system"`
-}
-
 func Main(cmd *cobra.Command, args []string) {
 	common.ScriptName = "opnsenseHealth"
 	common.TmpDir = common.TmpDir + "opnsenseHealth"
 	common.Init()
 	common.ConfInit("opnsense", &OpnsenseHealthConfig)
+	applyConfigDefaults()
 
 	common.WrapperGetServiceStatus("opnsenseHealth")
-
-	if OpnsenseHealthConfig.ExpireDays == 0 {
-		OpnsenseHealthConfig.ExpireDays = 7
-	}
 
 	healthData := collectOpnsenseHealthData()
 
@@ -45,40 +32,34 @@ func Main(cmd *cobra.Command, args []string) {
 	displayBoxUI(healthData)
 }
 
-func getOpnsenseDomain() string {
-	xmlFile, err := os.Open("/conf/config.xml")
-	if err != nil {
-		log.Warn().Err(err).Msg("Could not open /conf/config.xml, using empty ServerName for SNI")
-		return ""
-	}
-	defer xmlFile.Close()
-
-	byteValue, err := io.ReadAll(xmlFile)
-	if err != nil {
-		log.Warn().Err(err).Msg("Could not read /conf/config.xml")
-		return ""
-	}
-
-	var config opnsenseXMLConfig
-	if err := xml.Unmarshal(byteValue, &config); err != nil {
-		log.Warn().Err(err).Msg("Could not parse /conf/config.xml")
-		return ""
-	}
-
-	if config.System.Hostname != "" && config.System.Domain != "" {
-		return config.System.Hostname + "." + config.System.Domain
-	} else if config.System.Hostname != "" {
-		return config.System.Hostname
-	}
-	return ""
-}
-
 func collectOpnsenseHealthData() *OpnsenseHealthData {
 	data := &OpnsenseHealthData{
 		Status: "Checking",
 	}
 
-	domainName := getOpnsenseDomain()
+	// Parsed once and shared: it supplies the SNI hostname as well as the
+	// WireGuard peer and IPSec connection names.
+	names := loadOpnsenseConfig()
+
+	collectSSLHealth(data, names.Domain)
+
+	if enabled(OpnsenseHealthConfig.Wireguard.Enabled) {
+		data.WireGuard = collectWireGuardHealth(names)
+	}
+	if enabled(OpnsenseHealthConfig.Ipsec.Enabled) {
+		data.IPSec = collectIPSecHealth(names)
+	}
+	if enabled(OpnsenseHealthConfig.Gateway.Enabled) {
+		data.Gateways = collectGatewayHealth()
+	}
+	if enabled(OpnsenseHealthConfig.Dns.Enabled) {
+		data.DNS = collectDNSHealth(names)
+	}
+
+	return data
+}
+
+func collectSSLHealth(data *OpnsenseHealthData, domainName string) {
 	targetHost, err := os.Hostname()
 	if err != nil || targetHost == "" {
 		targetHost = "127.0.0.1"
@@ -118,7 +99,7 @@ func collectOpnsenseHealthData() *OpnsenseHealthData {
 
 		common.AlarmCheckDown("opnsense_ssl", msg, false, "", "")
 		issues.CheckDown("opnsense_ssl", common.Config.Identifier+" için OPNsense SSL bağlantı hatası", msg, false, 0)
-		return data
+		return
 	}
 	defer conn.Close()
 
@@ -128,7 +109,7 @@ func collectOpnsenseHealthData() *OpnsenseHealthData {
 		msg := "No SSL certificate found on " + address
 		common.AlarmCheckDown("opnsense_ssl", msg, false, "", "")
 		issues.CheckDown("opnsense_ssl", common.Config.Identifier+" için OPNsense SSL sertifikası bulunamadı", msg, false, 0)
-		return data
+		return
 	}
 
 	cert := certs[0]
@@ -180,8 +161,6 @@ func collectOpnsenseHealthData() *OpnsenseHealthData {
 		issues.CheckUp("opnsense_ssl", common.Config.Identifier+" için OPNsense SSL sertifikası geçerli.")
 		common.AlarmCheckUp("opnsense_ssl_redmineissue", "SSL Certificate is valid, clearing any Redmine issue creation failure alarm", false)
 	}
-
-	return data
 }
 
 func displayBoxUI(data *OpnsenseHealthData) {

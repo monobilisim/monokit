@@ -1,0 +1,66 @@
+# OPNsense health checks.
+#
+# The presence of this file is what enables opnsenseHealth at all — deleting it
+# disables the component. Every check below is enabled by default and skips
+# itself automatically when the corresponding feature is not present on the box,
+# so the sections only need to be touched to change a threshold or opt out.
+
+# Web GUI port for the SSL certificate check. Defaults to trying 9443 then 443.
+port: 9443
+
+# Alarm this many days before the GUI certificate expires.
+expire_days: 7
+
+# WireGuard: alarms once per interface, covering the link state and its peers.
+# Skipped when the wg binary is absent or the service is off in config.xml.
+#
+# Only peers this firewall is supposed to hold a tunnel with are judged, meaning
+# those with persistent-keepalive set or a configured endpoint. Dial-in
+# (road-warrior) peers are reported as idle but never alarmed: an offline laptop
+# looks identical to a broken tunnel, and wg resets latest-handshake to 0 on
+# every reboot and config apply, so alarming on them would peg the interface
+# alarm down permanently and destroy its signal.
+wireguard:
+  enabled: true
+  # A judged peer is considered down when its last handshake is older than this
+  # many seconds.
+  handshake_timeout: 300
+  # Silence individual peers by name or public key.
+  excluded_peers: []
+    # - branch-office-backup
+    # - Abc123SomePublicKey=
+
+# IPSec: alarms per connection on Phase 1 only. Child SAs are deliberately not
+# checked — a down Phase 1 is the signal, anything finer is noise. Skipped when
+# list_status.py is absent, and also when it fails while no tunnel is configured
+# (the script ships with core and fails against a stopped charon, so it must not
+# alarm on boxes that simply do not use IPsec).
+ipsec:
+  enabled: true
+  # Silence connections by description or UUID. Useful for responder-only
+  # tunnels that legitimately sit with no SA until a peer dials in.
+  excluded_connections: []
+    # - dc-to-branch-backup
+
+# Gateways: alarms per gateway on packet loss and offline state. High latency
+# alone is not treated as a fault. A gateway set to "force down" has its alarm
+# released; a gateway reporting "Pending" (dpinger has no samples yet, which also
+# happens for seconds after any interface change) is left exactly as it is, so a
+# restart cannot emit a false recovery for a gateway that is still down.
+gateway:
+  enabled: true
+  # Packet loss percentage at or above which a gateway is considered down.
+  loss_limit: 20
+
+# DNS: probes the local resolver with a real query, which is the only way to tell
+# Unbound is answering rather than merely running. Skipped when config.xml says
+# Unbound is explicitly disabled.
+#
+# Leave server unset to probe 127.0.0.1 on Unbound's configured port (falling
+# back to 53). Set it explicitly if Unbound's listen interfaces are restricted so
+# it does not answer on loopback, or if another resolver fronts it — otherwise a
+# healthy box would look like a dead resolver.
+dns:
+  enabled: true
+  # server: 127.0.0.1:53
+  query: opnsense.org
