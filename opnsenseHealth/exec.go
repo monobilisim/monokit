@@ -3,9 +3,12 @@ package opnsenseHealth
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/exec"
+	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -58,6 +61,95 @@ func trimToJSON(out []byte) []byte {
 		}
 	}
 	return nil
+}
+
+// jsonEntry is one object from a status payload, paired with the key it should
+// be reported under.
+type jsonEntry struct {
+	key string
+	raw json.RawMessage
+}
+
+// decodeJSONEntries accepts every shape the OPNsense status scripts have emitted
+// across releases: an object keyed by identifier, a bare list of objects, and
+// the API-style {"items": [...]} envelope. Insisting on one of them turns an
+// OPNsense upgrade into a fleet-wide false alarm.
+//
+// idFields names the per-entry fields to take a list entry's key from, in order
+// of preference; keyPrefix builds the "<prefix>3" fallback for an entry that
+// carries none of them. Object keys are sorted so output is stable between runs,
+// while list order is left as the script gave it.
+func decodeJSONEntries(payload []byte, idFields []string, keyPrefix string) ([]jsonEntry, error) {
+	trimmed := bytes.TrimSpace(payload)
+	if len(trimmed) > 0 && trimmed[0] == '[' {
+		var list []json.RawMessage
+		if err := json.Unmarshal(trimmed, &list); err != nil {
+			return nil, err
+		}
+		return jsonEntriesFromList(list, idFields, keyPrefix), nil
+	}
+
+	var byKey map[string]json.RawMessage
+	if err := json.Unmarshal(trimmed, &byKey); err != nil {
+		return nil, err
+	}
+
+	// Only an "items" holding a list is an envelope; an entry legitimately named
+	// "items" holds an object and falls through to the keyed path below.
+	if items, ok := byKey["items"]; ok {
+		var list []json.RawMessage
+		if err := json.Unmarshal(items, &list); err == nil {
+			return jsonEntriesFromList(list, idFields, keyPrefix), nil
+		}
+	}
+
+	keys := make([]string, 0, len(byKey))
+	for k := range byKey {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+
+	entries := make([]jsonEntry, 0, len(keys))
+	for _, k := range keys {
+		entries = append(entries, jsonEntry{key: k, raw: byKey[k]})
+	}
+	return entries, nil
+}
+
+func jsonEntriesFromList(list []json.RawMessage, idFields []string, keyPrefix string) []jsonEntry {
+	entries := make([]jsonEntry, 0, len(list))
+	for i, raw := range list {
+		key := entryKey(raw, idFields)
+		if key == "" {
+			key = keyPrefix + strconv.Itoa(i+1)
+		}
+		entries = append(entries, jsonEntry{key: key, raw: raw})
+	}
+	return entries
+}
+
+// entryKey returns the first non-empty idFields value in raw, or "" when the
+// entry identifies itself by none of them.
+func entryKey(raw json.RawMessage, idFields []string) string {
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		return ""
+	}
+	for _, name := range idFields {
+		value, ok := fields[name]
+		if !ok {
+			continue
+		}
+		// flexString so a numeric or list-valued identifier still yields a key.
+		var s flexString
+		if err := json.Unmarshal(value, &s); err != nil {
+			continue
+		}
+		if key := strings.TrimSpace(string(s)); key != "" {
+			return key
+		}
+	}
+	return ""
 }
 
 // renderTable renders a Markdown-style table for use in alarm messages.

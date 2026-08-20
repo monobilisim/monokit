@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"sort"
 	"strconv"
 	"strings"
 
@@ -55,29 +54,23 @@ func collectGatewayHealth() *GatewayStatus {
 		return status
 	}
 
-	var rawGateways map[string]json.RawMessage
-	if err := json.Unmarshal(payload, &rawGateways); err != nil {
+	entries, err := decodeJSONEntries(payload, []string{"name"}, "gateway_")
+	if err != nil {
 		status.Error = err.Error()
 		common.AlarmCheckDown("opnsense_gateway", "Could not parse gateway status output: "+err.Error(), false, "", "")
 		return status
 	}
 	common.AlarmCheckUp("opnsense_gateway", "Gateway status is readable again.", false)
 
-	keys := make([]string, 0, len(rawGateways))
-	for k := range rawGateways {
-		keys = append(keys, k)
-	}
-	sort.Strings(keys)
-
-	for _, key := range keys {
+	for _, entry := range entries {
 		var raw gatewayRaw
-		if err := json.Unmarshal(rawGateways[key], &raw); err != nil {
-			log.Warn().Err(err).Str("gateway", key).Msg("Could not parse gateway entry, skipping")
+		if err := json.Unmarshal(entry.raw, &raw); err != nil {
+			log.Warn().Err(err).Str("gateway", entry.key).Msg("Could not parse gateway entry, skipping")
 			continue
 		}
 
 		gw := GatewayInfo{
-			Name:       key,
+			Name:       entry.key,
 			Address:    string(raw.Address),
 			Monitor:    string(raw.Monitor),
 			Status:     strings.ToLower(strings.TrimSpace(string(raw.Status))),

@@ -145,24 +145,24 @@ func collectIPSecHealth(names *opnsenseNames) *IPSecStatus {
 	}
 
 	// Decode per connection so a single unexpected field does not discard the
-	// status of every other tunnel.
-	var rawConns map[string]json.RawMessage
-	if err := json.Unmarshal(payload, &rawConns); err != nil {
+	// status of every other tunnel. The connection ID doubles as the alarm key
+	// and the GUI-name lookup, so a list payload has to identify its entries by
+	// a self-declared field: a positional fallback would re-key every alarm as
+	// soon as one tunnel appears or disappears.
+	entries, err := decodeJSONEntries(payload, []string{"id", "name", "connection"}, "ipsec_")
+	if err != nil {
 		status.Error = err.Error()
 		common.AlarmCheckDown("opnsense_ipsec", "Could not parse IPSec status output: "+err.Error(), false, "", "")
 		return status
 	}
-	ids := make([]string, 0, len(rawConns))
-	for id := range rawConns {
-		ids = append(ids, id)
-	}
-	sort.Strings(ids)
 
 	var undecodable []string
 
-	for _, id := range ids {
+	for _, entry := range entries {
+		id := entry.key
+
 		var raw ipsecRawConn
-		if err := json.Unmarshal(rawConns[id], &raw); err != nil {
+		if err := json.Unmarshal(entry.raw, &raw); err != nil {
 			// Skipping silently would leave a dead tunnel unmonitored while the
 			// UI claimed there was nothing to report, so this is surfaced.
 			log.Warn().Err(err).Str("connection", id).Msg("Could not parse IPSec connection, skipping")
