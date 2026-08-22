@@ -392,10 +392,11 @@ type ComplianceItem struct {
 
 // ComplianceCheckResults holds all compliance check results
 type ComplianceCheckResults struct {
-	TopologySkew []ComplianceItem
-	ReplicaCount []ComplianceItem
-	ImagePull    []ComplianceItem
-	MasterTaint  []ComplianceItem
+	TopologySkew      []ComplianceItem
+	ReplicaCount      []ComplianceItem
+	ImagePull         []ComplianceItem
+	MasterTaint       []ComplianceItem
+	LegacyMasterTaint []ComplianceItem
 }
 
 // PodLogCheckInfo is removed as per user request

@@ -350,12 +350,14 @@ func CollectK8sHealthData() *K8sHealthData {
 
 	// Collect Master Taint Compliance
 	mtData := CollectMasterTaintCompliance(Clientset)
+	lmtData := CollectLegacyMasterTaintCompliance(Clientset)
 
 	healthData.ComplianceChecks = nsData
 	if healthData.ComplianceChecks == nil {
 		healthData.ComplianceChecks = &ComplianceCheckResults{}
 	}
 	healthData.ComplianceChecks.MasterTaint = mtData
+	healthData.ComplianceChecks.LegacyMasterTaint = lmtData
 
 	// Clean up orphaned alarm logs for pods and containers that no longer exist
 	// For plugin context, assume cleanup is enabled (disableCleanupOrphanedAlarms = false)
@@ -2167,6 +2169,62 @@ func CollectMasterTaintCompliance(client kubernetes.Interface) []ComplianceItem 
 				Resource: node.Name,
 				Status:   false,
 				Message:  "Missing NoSchedule taint",
+			})
+		}
+	}
+	return results
+}
+
+// CollectLegacyMasterTaintCompliance flags nodes that still carry the
+// deprecated node-role.kubernetes.io/master:NoSchedule taint. Deprecated in
+// Kubernetes 1.20 in favor of node-role.kubernetes.io/control-plane, it can
+// block jobs whose tolerations only cover the control-plane taint (e.g.
+// RKE2 helm-install jobs). Shares the same config gate as the master taint check.
+func CollectLegacyMasterTaintCompliance(client kubernetes.Interface) []ComplianceItem {
+	var results []ComplianceItem
+
+	if client == nil {
+		return results
+	}
+
+	// Check if taint compliance check is disabled via config
+	if K8sHealthConfig.K8s.Taint != nil && !*K8sHealthConfig.K8s.Taint {
+		log.Debug().
+			Str("component", "k8sHealth").
+			Str("operation", "collect_legacy_master_taint_compliance").
+			Msg("Legacy master taint compliance check disabled by config")
+		return results
+	}
+
+	nodes, err := client.CoreV1().Nodes().List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		log.Error().Err(err).Msg("Error listing nodes for legacy taint compliance")
+		return results
+	}
+
+	for _, node := range nodes.Items {
+		alarmKey := fmt.Sprintf("node_%s_legacy_master_taint", node.Name)
+		hasLegacyTaint := false
+		for _, taint := range node.Spec.Taints {
+			if taint.Key == "node-role.kubernetes.io/master" && taint.Effect == v1.TaintEffectNoSchedule {
+				hasLegacyTaint = true
+				break
+			}
+		}
+
+		if hasLegacyTaint {
+			alarmCheckDown(alarmKey, fmt.Sprintf("Node '%s' still has the deprecated NoSchedule taint (node-role.kubernetes.io/master:NoSchedule).", node.Name), false, "", "")
+			results = append(results, ComplianceItem{
+				Resource: node.Name,
+				Status:   false,
+				Message:  "Deprecated master taint present",
+			})
+		} else {
+			alarmCheckUp(alarmKey, fmt.Sprintf("Node '%s' does not have the deprecated master taint.", node.Name), false)
+			results = append(results, ComplianceItem{
+				Resource: node.Name,
+				Status:   true,
+				Message:  "No deprecated master taint",
 			})
 		}
 	}
