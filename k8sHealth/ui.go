@@ -614,6 +614,7 @@ func (khd *K8sHealthData) RenderCompact() string {
 		renderComplianceList("Replica Count Match", khd.ComplianceChecks.ReplicaCount)
 		renderComplianceList("Image Pull Policy", khd.ComplianceChecks.ImagePull)
 		renderComplianceList("Master Node Taints", khd.ComplianceChecks.MasterTaint)
+		renderComplianceList("Deprecated Master Taints", khd.ComplianceChecks.LegacyMasterTaint)
 
 		// Only append if there's any data
 		sb.WriteString(sbCompliance.String())
