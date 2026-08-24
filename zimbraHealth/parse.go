@@ -56,3 +56,9 @@ func parseZmcontrolStatus(statusOutput string) ([]ServiceInfo, map[string]bool) 
 
 	return services, statusMap
 }
+
+// isMysqlServerDown reports whether zmcontrol status output marks the bundled
+// MariaDB down via its indented "mysql.server is not running." sub-line.
+func isMysqlServerDown(statusOutput string) bool {
+	return strings.Contains(statusOutput, "mysql.server is not running")
+}

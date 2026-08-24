@@ -558,6 +558,8 @@ var zimbraServiceCtlMap = map[string]string{
 	"mta":               "zmmtactl",
 	"opendkim":          "zmopendkimctl",
 	"proxy":             "zmproxyctl",
+	// mysql.server = Zimbra's bundled MariaDB; dependency root of mailbox/mta/webapps.
+	"mysql.server":      "mysql.server",
 	"saslauthd":         "zmsaslauthdctl",
 	"service webapp":    "zmmailboxdctl",
 	"spell":             "zmspellctl",
@@ -592,6 +594,13 @@ func getServiceCtlScript(service string) string {
 // is reported as Running. Used to verify a restart actually brought the
 // service up before counting it as a success.
 func isServiceRunning(service string) bool {
+	if service == "mysql.server" {
+		// mysql.server never appears as a top-level zmcontrol status entry
+		// (parser intentionally skips the indented sub-component line), so
+		// verify via its own status command: exit 0 means mysqld is up.
+		out, err := ExecZimbraCommand("mysql.server status", false, false)
+		return err == nil && !strings.Contains(out, "not running")
+	}
 	statusOut, _ := ExecZimbraCommand("zmcontrol status", false, false)
 	if strings.TrimSpace(statusOut) == "" {
 		return false
@@ -626,6 +635,15 @@ var zimbraProcessPatterns = map[string]string{
 	"spell":             "httpd|aspell",
 	"stats":             "zmstat",
 	"zmconfigd":         "zmconfigd",
+	"mysql.server":      "mysqld_safe|mysqld",
+}
+
+// Patterns for root-owned daemons; pkill -u zimbra cannot reap them, so a
+// stray second postfix master or nginx master survives cleanup and keeps the
+// port busy, making every ctl restart fail.
+var zimbraRootProcessPatterns = map[string]string{
+	"mta":   "common/libexec/master",
+	"proxy": "common/sbin/nginx",
 }
 
 // zimbraPidFiles maps service names to PID file paths AND stale socket/lock
@@ -668,6 +686,10 @@ var zimbraPidFiles = map[string][]string{
 	"spell":    {"/opt/zimbra/log/httpd.pid"},
 	"stats":    {"/opt/zimbra/zmstat/pid"}, // dir: glob *.pid inside
 	"zmconfigd": {"/opt/zimbra/log/zmconfigd.pid"},
+	"mysql.server": {
+		"/opt/zimbra/log/mysql.pid",
+		"/opt/zimbra/data/tmp/mysql/mysql.sock",
+	},
 }
 
 // cleanupOrphanProcesses kills any remaining processes for the given service
@@ -686,6 +708,15 @@ func cleanupOrphanProcesses(service string) {
 	killCmd := exec.Command("pkill", "-9", "-u", "zimbra", "-f", pattern)
 	if err := killCmd.Run(); err != nil {
 		log.Debug().Str("service", service).Str("pattern", pattern).Err(err).Msg("pkill for orphan cleanup (may be no orphans)")
+	}
+
+	// Root-owned daemons get a user-less pkill; patterns are zimbraPath-
+	// relative binary paths so only this Zimbra install can match.
+	if rootPattern, ok := zimbraRootProcessPatterns[service]; ok && zimbraPath != "" {
+		rootKill := exec.Command("pkill", "-9", "-f", zimbraPath+"/"+rootPattern)
+		if err := rootKill.Run(); err != nil {
+			log.Debug().Str("service", service).Str("pattern", rootPattern).Err(err).Msg("root-owned orphan cleanup (may be no orphans)")
+		}
 	}
 
 	// Remove stale PID files, lock files, and Unix sockets.
@@ -929,6 +960,25 @@ func CheckZimbraServices() []ServiceInfo {
 		return nil
 	}
 	restartAttempted := false
+
+	// mysql down first: restarting mailbox/mta/webapps while MariaDB is dead
+	// can only fail and would burn their restart_limit with zombie attempts.
+	if isMysqlServerDown(initialOutput) {
+		common.AlarmCheckDown("zimbra_mysql", "Zimbra MariaDB (mysql.server) is not running", false, "", "")
+		if MailHealthConfig.Zimbra.Restart && RestartZimbraService("mysql.server") {
+			restartAttempted = true
+			if out, err := ExecZimbraCommand("zmcontrol status", false, false); strings.TrimSpace(out) != "" {
+				if err != nil {
+					log.Warn().Err(err).Msg("zmcontrol status returned non-zero after mysql start; parsing anyway")
+				}
+				if svcs, st := parseZmcontrolStatus(out); len(svcs) > 0 {
+					currentServices, currentStatus = svcs, st
+				}
+			}
+		}
+	} else {
+		common.AlarmCheckUp("zimbra_mysql", "Zimbra MariaDB (mysql.server) is running", false)
+	}
 
 	for _, svc := range currentServices {
 		service := strings.TrimSpace(svc.Name)
