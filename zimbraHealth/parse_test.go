@@ -151,6 +151,22 @@ func TestParseZmcontrolStatus_UnknownStatusSkipped(t *testing.T) {
 	}
 }
 
+func TestIsMysqlServerDown(t *testing.T) {
+	withSubLines := "\tmailbox                 Stopped\n" +
+		"\t\tmysql.server is not running.\n" +
+		"\tzmconfigd               Running\n"
+	if !isMysqlServerDown(withSubLines) {
+		t.Error("mysql sub-line under Stopped service must be detected")
+	}
+	allRunning := "\tmailbox                 Running\n\tzmconfigd               Running\n"
+	if isMysqlServerDown(allRunning) {
+		t.Error("healthy status output must not report mysql down")
+	}
+	if isMysqlServerDown("") {
+		t.Error("empty output must not report mysql down")
+	}
+}
+
 func TestParseZmcontrolStatus_EmptyOutput(t *testing.T) {
 	services, statusMap := parseZmcontrolStatus("")
 	if len(services) != 0 || len(statusMap) != 0 {
