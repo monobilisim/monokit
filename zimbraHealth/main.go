@@ -19,6 +19,7 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/emersion/go-imap"
@@ -110,8 +111,9 @@ func Main(cmd *cobra.Command, args []string) {
 				log.Error().Err(saveErr).Msg("Failed to save fallback data to cache")
 			}
 		} else {
-			// Even when using cached data, always perform a live service check
-			// and attempt restarts if needed, then overlay into the cached view.
+			// Even when using cached data, perform a throttled live service
+			// check and attempt restarts if needed, then overlay into the
+			// cached view.
 			if zimbraPath == "" {
 				if _, derr := os.Stat("/opt/zimbra"); !os.IsNotExist(derr) {
 					zimbraPath = "/opt/zimbra"
@@ -121,14 +123,20 @@ func Main(cmd *cobra.Command, args []string) {
 			}
 
 			if zimbraPath != "" {
-				currentServices := CheckZimbraServices()
-				if len(currentServices) > 0 {
-					healthData.Services = currentServices
-					// Optionally refresh basic system fields for UI clarity
-					if healthData.System.ProductPath == "" {
-						healthData.System.ProductPath = zimbraPath
+				// Throttle live service checks to once every service_check_interval
+				// minutes (default 5). Without this, zmcontrol status runs every
+				// minute from the cache path, spawning ProvUtil JVMs that can get
+				// stuck at 100% CPU when Zimbra services are degraded.
+				if shouldRunLiveServiceCheck() {
+					recordLiveServiceCheck()
+					currentServices := CheckZimbraServices()
+					if len(currentServices) > 0 {
+						healthData.Services = currentServices
+						if healthData.System.ProductPath == "" {
+							healthData.System.ProductPath = zimbraPath
+						}
+						healthData.System.LastChecked = time.Now().Format("2006-01-02 15:04:05")
 					}
-					healthData.System.LastChecked = time.Now().Format("2006-01-02 15:04:05")
 				}
 			}
 		}
@@ -1286,6 +1294,11 @@ func ExecZimbraCommand(command string, fullPath bool, runAsRoot bool) (string, e
 
 	var out bytes.Buffer
 	var stderr bytes.Buffer
+	// ponytail: Setpgid puts su + all its children (ProvUtil JVMs, etc.)
+	// in a new process group so we can kill the entire tree on timeout.
+	// Without this, context cancellation kills only the su process and
+	// child JVMs survive as orphans, pinning CPU at 100% forever.
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
 	cmd.Stdout = &out
 	cmd.Stderr = &stderr
 	err := cmd.Run()
@@ -1293,6 +1306,11 @@ func ExecZimbraCommand(command string, fullPath bool, runAsRoot bool) (string, e
 	log.Debug().Str("command", command).Str("output", out.String()).Str("stderr", stderr.String()).Msg("Command executed")
 
 	if ctx.Err() == context.DeadlineExceeded {
+		// Kill the entire process group to reap orphaned child processes
+		// (e.g. ProvUtil JVMs spawned by zmcontrol status).
+		if cmd.Process != nil {
+			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		}
 		return out.String(), fmt.Errorf("command timed out after 60s: " + command)
 	}
 
@@ -2380,6 +2398,39 @@ func checkEmailExists(info *EmailSendTestInfo, attempt int) bool {
 		Uint32("total_messages", mbox.Messages).
 		Msg("No matching emails found")
 	return false
+}
+
+// shouldRunLiveServiceCheck determines if a live service check should be
+// performed during a cached run. This throttles zmcontrol status calls
+// (which spawn ProvUtil JVMs) to once every service_check_interval minutes
+// instead of every minute, preventing CPU exhaustion when Zimbra services
+// are in a degraded state.
+func shouldRunLiveServiceCheck() bool {
+	interval := MailHealthConfig.Zimbra.Service_check_interval
+	if interval <= 0 {
+		interval = 5 // default: 5 minutes
+	}
+
+	_, lastAt, _, found, err := healthdb.GetJSON("zimbraHealth", "last_live_service_check")
+	if err != nil || !found {
+		return true
+	}
+	if lastAt.IsZero() {
+		return true
+	}
+	return time.Since(lastAt) >= time.Duration(interval)*time.Minute
+}
+
+// recordLiveServiceCheck writes the current timestamp to healthdb so the
+// next shouldRunLiveServiceCheck call can enforce the interval.
+func recordLiveServiceCheck() {
+	now := time.Now()
+	interval := MailHealthConfig.Zimbra.Service_check_interval
+	if interval <= 0 {
+		interval = 5
+	}
+	next := now.Add(time.Duration(interval) * time.Minute)
+	_ = healthdb.PutJSON("zimbraHealth", "last_live_service_check", "", &next, now)
 }
 
 // shouldRunFullCheck determines if a full health check should be performed
