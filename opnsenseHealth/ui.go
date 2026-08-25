@@ -33,6 +33,9 @@ func RenderOpnsenseHealthCLI(data *OpnsenseHealthData) string {
 	if data.DNS != nil {
 		renderDNSSection(&b, data.DNS)
 	}
+	if data.Carp != nil {
+		renderCarpSection(&b, data.Carp)
+	}
 
 	return b.String()
 }
@@ -81,7 +84,11 @@ func renderWireGuardSection(b *strings.Builder, wg *WireGuardStatus) {
 			state = fmt.Sprintf("UP, %d peer(s) OK", iface.PeerCount)
 		}
 
-		b.WriteString(fmt.Sprintf("  %s %s\n", textStyle.Render(iface.Name+":"), style.Render(state)))
+		label := iface.Name
+		if iface.Description != "" {
+			label = fmt.Sprintf("%s (%s)", iface.Name, iface.Description)
+		}
+		b.WriteString(fmt.Sprintf("  %s %s\n", textStyle.Render(label+":"), style.Render(state)))
 
 		for _, p := range iface.ProblemPeers {
 			name := p.Name
@@ -177,6 +184,40 @@ func renderDNSSection(b *strings.Builder, dns *DNSStatus) {
 	b.WriteString(fmt.Sprintf("  %s %s\n",
 		textStyle.Render(dns.Server+":"),
 		errorStyle.Render(fmt.Sprintf("could not resolve %s (%s)", dns.Query, dns.Error))))
+}
+
+func renderCarpSection(b *strings.Builder, carp *CarpStatus) {
+	section(b, "CARP HA")
+
+	if !carp.Configured {
+		b.WriteString("  " + textStyle.Render("No CARP VIP configured") + "\n")
+		return
+	}
+	if carp.Error != "" {
+		b.WriteString(fmt.Sprintf("  %s %s\n", textStyle.Render("Error:"), errorStyle.Render(carp.Error)))
+		return
+	}
+	if len(carp.Vips) == 0 {
+		b.WriteString("  " + textStyle.Render("CARP configured but no VIPs found in ifconfig") + "\n")
+		return
+	}
+
+	for _, vip := range carp.Vips {
+		style := errorStyle
+		switch vip.State {
+		case CarpMaster:
+			style = successStyle
+		case CarpBackup:
+			style = warningStyle
+		}
+		b.WriteString(fmt.Sprintf("  %s %s\n",
+			textStyle.Render(vip.Interface+" (vhid "+vip.Vhid+"):"),
+			style.Render(string(vip.State))))
+	}
+
+	if carp.IsBackupForTunnels {
+		b.WriteString(fmt.Sprintf("  %s\n", warningStyle.Render("BACKUP for tunnel VIPs — WireGuard/IPSec alarms suppressed")))
+	}
 }
 
 func section(b *strings.Builder, title string) {

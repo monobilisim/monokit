@@ -22,7 +22,7 @@ const (
 // One alarm is raised per interface, covering both the link state and its
 // peers, so a downed interface does not also fan out an alarm for every peer
 // that went stale with it.
-func collectWireGuardHealth(names *opnsenseNames) *WireGuardStatus {
+func collectWireGuardHealth(names *opnsenseNames, carp *CarpStatus) *WireGuardStatus {
 	wgBin := resolveBinary("wg", "/usr/local/bin/wg")
 	if wgBin == "" {
 		log.Debug().Msg("wg binary not found, skipping WireGuard check")
@@ -49,8 +49,26 @@ func collectWireGuardHealth(names *opnsenseNames) *WireGuardStatus {
 	status.Interfaces = parseWgDump(out, names)
 	status.Interfaces = appendMissingWgInterfaces(status.Interfaces, names)
 
+	deviceToCarpDep := make(map[string]string)
+	for _, s := range names.WGServers {
+		if s.CarpDependOn != "" {
+			deviceToCarpDep[s.Device] = s.CarpDependOn
+		}
+	}
+
+	carpBackupForTunnels := carp != nil && carp.IsBackupForTunnels
 	for i := range status.Interfaces {
-		evaluateWgInterface(&status.Interfaces[i])
+		iface := &status.Interfaces[i]
+		// Suppression is per interface: an interface bound via carp_depend_on
+		// to a BACKUP VIP is intentionally down even when the node is MASTER
+		// for other VIP groups.
+		suppressed := carpBackupForTunnels
+		if !suppressed && carp != nil {
+			if uuid, ok := deviceToCarpDep[iface.Name]; ok {
+				suppressed = carp.isVIPBackup(uuid, names.VIPVhidMap)
+			}
+		}
+		evaluateWgInterface(iface, suppressed)
 	}
 
 	return status
@@ -65,12 +83,19 @@ func parseWgDump(out []byte, names *opnsenseNames) []WireGuardInterface {
 	staleAfter := int64(OpnsenseHealthConfig.Wireguard.HandshakeTimeout)
 	now := time.Now().Unix()
 
+	deviceToDesc := make(map[string]string)
+	for _, s := range names.WGServers {
+		if s.Name != "" {
+			deviceToDesc[s.Device] = s.Name
+		}
+	}
+
 	ensure := func(name string) *WireGuardInterface {
 		if iface, ok := index[name]; ok {
 			return iface
 		}
 		up, flags := interfaceFlags(name)
-		iface := &WireGuardInterface{Name: name, Up: up, Flags: flags}
+		iface := &WireGuardInterface{Name: name, Description: deviceToDesc[name], Up: up, Flags: flags}
 		index[name] = iface
 		ordered = append(ordered, iface)
 		return iface
@@ -163,39 +188,49 @@ func appendMissingWgInterfaces(ifaces []WireGuardInterface, names *opnsenseNames
 			continue
 		}
 		ifaces = append(ifaces, WireGuardInterface{
-			Name:    server.Device,
-			Missing: true,
+			Name:        server.Device,
+			Description: server.Name,
+			Missing:     true,
 		})
 	}
 	return ifaces
 }
 
-func evaluateWgInterface(iface *WireGuardInterface) {
+func evaluateWgInterface(iface *WireGuardInterface, carpSuppressed bool) {
 	alarmName := "opnsense_wireguard_" + alarmSuffix(iface.Name)
 
+	var downMsg string
 	switch {
 	case iface.Missing:
-		iface.Healthy = false
-		common.AlarmCheckDown(alarmName,
-			fmt.Sprintf("WireGuard interface %s is enabled in OPNsense but the device does not exist.", iface.Name),
-			false, "", "")
-
+		downMsg = fmt.Sprintf("WireGuard interface %s is enabled in OPNsense but the device does not exist.", iface.Name)
 	case !iface.Up:
-		iface.Healthy = false
-		common.AlarmCheckDown(alarmName,
-			fmt.Sprintf("WireGuard interface %s is DOWN (flags: %s).", iface.Name, iface.Flags),
-			false, "", "")
-
+		downMsg = fmt.Sprintf("WireGuard interface %s is DOWN (flags: %s).", iface.Name, iface.Flags)
 	case len(iface.ProblemPeers) > 0:
-		iface.Healthy = false
-		common.AlarmCheckDown(alarmName, wgPeerAlarmMessage(iface), false, "", "")
-
-	default:
-		iface.Healthy = true
-		common.AlarmCheckUp(alarmName,
-			fmt.Sprintf("WireGuard interface %s is UP and all %d peer(s) have a live tunnel.", iface.Name, iface.PeerCount),
-			false)
+		downMsg = wgPeerAlarmMessage(iface)
 	}
+
+	if downMsg != "" {
+		iface.Healthy = false
+
+		// When the CARP VIP this interface is bound to is BACKUP, being down
+		// is the correct state — the tunnel lives on the MASTER node. The
+		// alarm is released rather than left alone so a box dropping to BACKUP
+		// clears faults it raised while it was MASTER.
+		if carpSuppressed {
+			common.AlarmCheckUp(alarmName,
+				fmt.Sprintf("WireGuard interface %s is not healthy, but its CARP VIP is BACKUP — the tunnel is active on the MASTER node.", iface.Name),
+				false)
+			return
+		}
+
+		common.AlarmCheckDown(alarmName, downMsg, false, "", "")
+		return
+	}
+
+	iface.Healthy = true
+	common.AlarmCheckUp(alarmName,
+		fmt.Sprintf("WireGuard interface %s is UP and all %d peer(s) have a live tunnel.", iface.Name, iface.PeerCount),
+		false)
 }
 
 func wgPeerAlarmMessage(iface *WireGuardInterface) string {

@@ -108,7 +108,7 @@ type ipsecRawConn struct {
 //
 // Only Phase 1 is checked: a connection whose IKE SA is established is
 // considered up, because alarming on individual child SAs is far too noisy.
-func collectIPSecHealth(names *opnsenseNames) *IPSecStatus {
+func collectIPSecHealth(names *opnsenseNames, carpBackup bool) *IPSecStatus {
 	if _, err := os.Stat(ipsecStatusScript); err != nil {
 		log.Debug().Msg(ipsecStatusScript + " not found, skipping IPSec check")
 		return nil
@@ -182,7 +182,7 @@ func collectIPSecHealth(names *opnsenseNames) *IPSecStatus {
 		conn.Excluded = isExcludedIPSecConn(conn)
 
 		status.Connections = append(status.Connections, conn)
-		evaluateIPSecConnection(conn)
+		evaluateIPSecConnection(conn, carpBackup)
 	}
 
 	if len(undecodable) > 0 {
@@ -219,7 +219,7 @@ func phase1State(sas []ipsecRawSA) (string, int64) {
 	return fallback, 0
 }
 
-func evaluateIPSecConnection(conn IPSecConnection) {
+func evaluateIPSecConnection(conn IPSecConnection, carpBackup bool) {
 	// Key on the stable connection ID; descriptions change in the GUI.
 	alarmName := "opnsense_ipsec_" + alarmSuffix(conn.ID)
 
@@ -239,6 +239,17 @@ func evaluateIPSecConnection(conn IPSecConnection) {
 	if conn.Healthy {
 		common.AlarmCheckUp(alarmName,
 			fmt.Sprintf("IPSec tunnel '%s' (%s) Phase 1 is ESTABLISHED.", conn.Name, peer),
+			false)
+		return
+	}
+
+	// On a CARP BACKUP node, having no Phase 1 SA is the correct state — the
+	// peer talks to the MASTER's VIP. The alarm is released rather than left
+	// alone so that a box dropping to BACKUP clears faults it raised while it
+	// was MASTER.
+	if carpBackup {
+		common.AlarmCheckUp(alarmName,
+			fmt.Sprintf("IPSec tunnel '%s' Phase 1 is not established, but this node is CARP BACKUP — the peer talks to the MASTER's VIP.", conn.Name),
 			false)
 		return
 	}

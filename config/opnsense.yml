@@ -64,3 +64,10 @@ dns:
   enabled: true
   # server: 127.0.0.1:53
   query: opnsense.org
+
+# CARP: detects HA role from config.xml and ifconfig. When this box is BACKUP,
+# WireGuard and IPSec alarms are suppressed — the BACKUP node legitimately has
+# no tunnels because the peer talks to the MASTER's VIP. Skipped when no CARP
+# VIP is configured.
+carp:
+  enabled: true

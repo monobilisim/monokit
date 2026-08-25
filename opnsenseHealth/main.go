@@ -43,11 +43,22 @@ func collectOpnsenseHealthData() *OpnsenseHealthData {
 
 	collectSSLHealth(data, names.Domain)
 
+	// Collect CARP once: WG and IPSec both need to know whether this box is
+	// BACKUP for the VIPs their tunnels depend on.
+	var carp *CarpStatus
+	if enabled(OpnsenseHealthConfig.Carp.Enabled) {
+		carp = collectCarpHealth(names)
+		data.Carp = carp
+	}
+	// IPSec connections have no carp_depend_on of their own, so they share
+	// the tunnel-wide verdict.
+	carpBackupForTunnels := carp != nil && carp.IsBackupForTunnels
+
 	if enabled(OpnsenseHealthConfig.Wireguard.Enabled) {
-		data.WireGuard = collectWireGuardHealth(names)
+		data.WireGuard = collectWireGuardHealth(names, carp)
 	}
 	if enabled(OpnsenseHealthConfig.Ipsec.Enabled) {
-		data.IPSec = collectIPSecHealth(names)
+		data.IPSec = collectIPSecHealth(names, carpBackupForTunnels)
 	}
 	if enabled(OpnsenseHealthConfig.Gateway.Enabled) {
 		data.Gateways = collectGatewayHealth()
