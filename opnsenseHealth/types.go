@@ -44,6 +44,10 @@ type Config struct {
 		// Query is the name to resolve.
 		Query string `mapstructure:"query"`
 	} `mapstructure:"dns"`
+
+	Carp struct {
+		Enabled *bool `mapstructure:"enabled"`
+	} `mapstructure:"carp"`
 }
 
 var OpnsenseHealthConfig Config
@@ -74,6 +78,7 @@ type WireGuardPeer struct {
 // WireGuardInterface is one wg device and the health of its peers.
 type WireGuardInterface struct {
 	Name          string          `json:"name"`
+	Description   string          `json:"description,omitempty"`
 	Up            bool            `json:"up"`
 	Flags         string          `json:"flags,omitempty"`
 	Missing       bool            `json:"missing,omitempty"` // configured in OPNsense but no device
@@ -155,6 +160,7 @@ type OpnsenseHealthData struct {
 	IPSec     *IPSecStatus     `json:"ipsec,omitempty"`
 	Gateways  *GatewayStatus   `json:"gateways,omitempty"`
 	DNS       *DNSStatus       `json:"dns,omitempty"`
+	Carp      *CarpStatus      `json:"carp,omitempty"`
 }
 
 type OpnsenseHealthProvider struct{}

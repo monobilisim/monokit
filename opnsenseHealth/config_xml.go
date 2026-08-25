@@ -76,6 +76,9 @@ type wgServerConfig struct {
 	Device   string
 	Enabled  bool
 	Instance string
+	// CarpDependOn is the UUID of the CARP VIP this instance is bound to. When
+	// that VIP is BACKUP, the interface is intentionally down.
+	CarpDependOn string
 }
 
 // opnsenseNames holds everything read out of /conf/config.xml.
@@ -95,6 +98,14 @@ type opnsenseNames struct {
 	// distinguishes "not in use" from "broken" if the status script fails.
 	IPSecConfigured bool
 
+	// CarpConfigured is true when a CARP virtual IP is defined, meaning this
+	// box may be part of an HA pair and its WireGuard/IPSec state has to be
+	// read in the light of its CARP role.
+	CarpConfigured bool
+	// VIPVhidMap maps a CARP VIP's config UUID to its vhid, which is what
+	// ifconfig reports. WireGuard carp_depend_on holds the UUID.
+	VIPVhidMap map[string]string
+
 	UnboundDisabled bool   // only set when config says so explicitly
 	UnboundPort     string // custom listen port, empty for the default
 }
@@ -104,6 +115,7 @@ func newOpnsenseNames() *opnsenseNames {
 		WGPeerNames:       make(map[string]string),
 		WGPersistentPeers: make(map[string]bool),
 		IPSecNames:        make(map[string]string),
+		VIPVhidMap:        make(map[string]string),
 	}
 }
 
@@ -127,6 +139,7 @@ func loadOpnsenseConfig() *opnsenseNames {
 	names.Domain = parseDomain(&root)
 	parseWireGuardConfig(&root, names)
 	parseIPSecNames(&root, names)
+	parseCarpConfig(&root, names)
 	names.UnboundDisabled = unboundExplicitlyDisabled(&root)
 	names.UnboundPort = unboundPort(&root)
 
@@ -137,6 +150,8 @@ func loadOpnsenseConfig() *opnsenseNames {
 		Bool("wgDisabled", names.WGDisabled).
 		Int("ipsecConns", len(names.IPSecNames)).
 		Bool("ipsecConfigured", names.IPSecConfigured).
+		Bool("carpConfigured", names.CarpConfigured).
+		Int("carpVips", len(names.VIPVhidMap)).
 		Bool("unboundDisabled", names.UnboundDisabled).
 		Str("unboundPort", names.UnboundPort).
 		Msg("Parsed OPNsense config.xml")
@@ -200,10 +215,11 @@ func parseWireGuardConfig(root *xmlNode, names *opnsenseNames) {
 				name = "wg" + instance
 			}
 			names.WGServers = append(names.WGServers, wgServerConfig{
-				Name:     name,
-				Device:   "wg" + instance,
-				Enabled:  isTruthy(s.childText("enabled")),
-				Instance: instance,
+				Name:         name,
+				Device:       "wg" + instance,
+				Enabled:      isTruthy(s.childText("enabled")),
+				Instance:     instance,
+				CarpDependOn: s.childText("carp_depend_on"),
 			})
 		}
 	}
@@ -236,6 +252,25 @@ func parseIPSecNames(root *xmlNode, names *opnsenseNames) {
 				names.IPSecNames["con"+ikeid] = descr
 				names.IPSecNames[ikeid] = descr
 			}
+		}
+	}
+}
+
+// parseCarpConfig records whether any CARP virtual IP is defined and maps each
+// CARP VIP's UUID to its vhid. The mapping is what lets wireguard.go resolve a
+// server's <carp_depend_on> UUID to the vhid ifconfig reports: when that VIP
+// is BACKUP, the interface being down is the correct state, so alarming on it
+// would be a false positive.
+func parseCarpConfig(root *xmlNode, names *opnsenseNames) {
+	for _, vip := range root.findAll("vip") {
+		if !strings.EqualFold(vip.childText("mode"), "carp") {
+			continue
+		}
+		names.CarpConfigured = true
+		uuid := vip.attr("uuid")
+		vhid := vip.childText("vhid")
+		if uuid != "" && vhid != "" {
+			names.VIPVhidMap[uuid] = vhid
 		}
 	}
 }
