@@ -12,7 +12,8 @@ type Zimbra struct {
 	Queue_Limit      int    `mapstructure:"queue_limit" yaml:"queue_limit"`
 	Restart_Limit    int    `mapstructure:"restart_limit" yaml:"restart_limit"`
 	Restart_Interval int    `mapstructure:"restart_interval" yaml:"restart_interval"`
-	Cache_interval   int    `mapstructure:"cache_interval" yaml:"cache_interval"`
+	Cache_interval        int    `mapstructure:"cache_interval" yaml:"cache_interval"`
+	Service_check_interval int   `mapstructure:"service_check_interval" yaml:"service_check_interval"`
 	Webhook_tail     struct {
 		Logfile     string `mapstructure:"logfile" yaml:"logfile"`
 		Quota_limit int    `mapstructure:"quota_limit" yaml:"quota_limit"`
