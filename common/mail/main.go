@@ -4,6 +4,12 @@ type Postal struct {
 	Message_Threshold int
 	Held_Threshold    int
 	Check_Message     bool
+	Ssl               struct {
+		Enabled               bool   `mapstructure:"enabled" yaml:"enabled"`
+		Host                  string `mapstructure:"host" yaml:"host"`
+		Port                  int    `mapstructure:"port" yaml:"port"`
+		Expiry_Threshold_Days int    `mapstructure:"expiry_threshold_days" yaml:"expiry_threshold_days"`
+	} `mapstructure:"ssl" yaml:"ssl"`
 }
 
 type Zimbra struct {

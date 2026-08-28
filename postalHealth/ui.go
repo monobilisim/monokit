@@ -117,6 +117,19 @@ func (data *PostalHealthData) RenderCompact() string {
 		}
 	}
 
+	// SSL Certificate status
+	if data.SSLCert.CheckStatus {
+		sb.WriteString("\n")
+		sb.WriteString(common.SectionTitle("SSL Certificate"))
+		sb.WriteString("\n")
+		sslStatusText := fmt.Sprintf("%s:%d - %d day(s) left", data.SSLCert.Host, data.SSLCert.Port, data.SSLCert.DaysUntilExpiry)
+		sb.WriteString(common.SimpleStatusListItem(
+			"SMTP SSL Cert",
+			sslStatusText,
+			!data.SSLCert.ExpiringSoon))
+		sb.WriteString("\n")
+	}
+
 	return sb.String()
 }
 

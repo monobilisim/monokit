@@ -11,6 +11,11 @@ postal:
   message_threshold: 100
   held_treshold: 100
   check_message: true
+  ssl:
+    enabled: true
+    host: localhost
+    port: 25
+    expiry_threshold_days: 10
 
 zimbra:
   z_url: example.com

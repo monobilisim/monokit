@@ -10,6 +10,17 @@ type PostalHealthData struct {
 	MessageQueue  QueueStatus
 	HeldMessages  map[string]ServerHeldMessages
 	ServiceStatus map[string]bool
+	SSLCert       SSLCertInfo
+}
+
+// SSLCertInfo holds information about the Postal SMTP SSL certificate expiration.
+type SSLCertInfo struct {
+	Host            string
+	Port            int
+	DaysUntilExpiry int
+	ExpiringSoon    bool
+	CheckStatus     bool // true if the check itself could be performed successfully
+	Message         string
 }
 
 // ContainerStatus holds information about a Docker container

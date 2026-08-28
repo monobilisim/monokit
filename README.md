@@ -130,6 +130,7 @@ These core tools will be available in every monokit installation.
 
 - postalHealth
     - Check Postal health, including service status, containers, and queued messages.
+    - Checks SMTP SSL certificate expiry (port 25, STARTTLS) and opens a Redmine issue when nearing expiration.
     - Sends alarm notifications to a Slack webhook.
     - Opens an issue in Redmine if the database is down.
     - Config: `/etc/mono/mail.yaml`

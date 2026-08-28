@@ -141,6 +141,11 @@ func CheckPostalHealth(skipOutput bool) *PostalHealthData {
 		data.HeldMessages = GetHeldMessages(skipOutput)
 	}
 
+	// Check SSL certificate expiry (port 25 STARTTLS)
+	if MailHealthConfig.Postal.Ssl.Enabled {
+		data.SSLCert = CheckSSL(skipOutput)
+	}
+
 	// Determine overall health
 	for _, serviceStatus := range data.Services {
 		if !serviceStatus {
@@ -182,6 +187,10 @@ func CheckPostalHealth(skipOutput bool) *PostalHealthData {
 		}
 	}
 
+	if data.SSLCert.CheckStatus && data.SSLCert.ExpiringSoon {
+		data.IsHealthy = false
+	}
+
 	// Set overall status
 	if data.IsHealthy {
 		data.Status = "Healthy"
@@ -198,6 +207,10 @@ func Main(cmd *cobra.Command, args []string) {
 	common.TmpDir = common.TmpDir + "postalHealth"
 	common.Init()
 	viper.SetDefault("postal.check_message", true)
+	viper.SetDefault("postal.ssl.enabled", true)
+	viper.SetDefault("postal.ssl.host", "localhost")
+	viper.SetDefault("postal.ssl.port", 25)
+	viper.SetDefault("postal.ssl.expiry_threshold_days", 10)
 	common.ConfInit("mail", &MailHealthConfig)
 
 	apiclient.WrapperGetServiceStatus("postalHealth")
