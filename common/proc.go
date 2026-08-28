@@ -60,6 +60,22 @@ func ConnsByProc(prefix string) uint32 {
 	return 0000
 }
 
+// ProcRunning reports whether any running process's name starts with prefix.
+// ponytail: process-name discovery, not a systemd unit list - covers
+// non-systemd deployments and custom/cluster unit names (e.g. multiple
+// redis-server instances on non-default ports with no matching unit).
+func ProcRunning(prefix string) bool {
+	procs, _ := process.Processes()
+
+	for _, proc := range procs {
+		procName, _ := proc.Name()
+		if strings.HasPrefix(procName, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
 func ConnsByProcMulti(prefix string) []uint32 {
 
 	var ports []uint32

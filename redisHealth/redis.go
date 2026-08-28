@@ -51,8 +51,16 @@ func DetectRedis() bool {
 
 // InitRedis initializes the Redis connection and sets up context
 func InitRedis() {
+	// Prefer the explicitly configured port. Process-connection sniffing
+	// (below) is only a fallback for when the config doesn't point at the
+	// right instance, since ConnsByProc can pick the wrong port if there is
+	// more than one redis-server/valkey-server process on the host.
 	rdb = redis.NewClient(&redis.Options{
-		Addr:       "localhost:" + fmt.Sprint(common.ConnsByProc("redis-server")),
+		// ponytail: use 127.0.0.1 not "localhost" - "localhost" can resolve to
+		// ::1 first, and a server bound only to the IPv4 wildcard (0.0.0.0)
+		// then refuses the connection, wrongly triggering the ConnsByProc
+		// fallback below even though the configured port is actually fine.
+		Addr:       "127.0.0.1:" + RedisHealthConfig.Port,
 		Password:   RedisHealthConfig.Password,
 		DB:         0,
 		MaxRetries: 5,
@@ -64,7 +72,7 @@ func InitRedis() {
 
 	if pingerr != nil {
 		rdb = redis.NewClient(&redis.Options{
-			Addr:       "localhost:" + RedisHealthConfig.Port,
+			Addr:       "127.0.0.1:" + fmt.Sprint(common.ConnsByProc("redis-server")),
 			Password:   RedisHealthConfig.Password,
 			DB:         0,
 			MaxRetries: 5,
@@ -221,24 +229,13 @@ func TestRedisReadWrite(healthData *RedisHealthData, isSentinel bool) {
 	}
 
 	if err != nil {
-		if isSentinel {
-			// Check if its master
-			if redisMaster {
-				log.Error().Err(err).Str("component", "redisHealth").Str("operation", "TestRedisReadWrite").Str("action", "write_failed").Msg("Can't Write to Redis (sentinel)")
-				common.AlarmCheckDown("redis_write", "Trying to write a string to Redis failed", false, "", "")
-				healthData.Connection.Writeable = false
-				return
-			} else {
-				// It is a worker node, so we can't write to it
-				healthData.Connection.Writeable = false
-				return
-			}
-		} else {
+		healthData.Connection.Writeable = false
+		if redisMaster {
+			// A master (with or without sentinel) is expected to be writeable - this is a real fault.
 			log.Error().Err(err).Str("component", "redisHealth").Str("operation", "TestRedisReadWrite").Str("action", "write_failed").Msg("Can't Write to Redis")
 			common.AlarmCheckDown("redis_write", "Trying to write a string to Redis failed", false, "", "")
-			healthData.Connection.Writeable = false
-			return
 		}
+		// else: replica/worker node - rejecting writes is expected behavior, not a fault, so no alarm.
 	} else {
 		common.AlarmCheckUp("redis_write", "Redis is writeable again", false)
 		healthData.Connection.Writeable = true
@@ -246,14 +243,22 @@ func TestRedisReadWrite(healthData *RedisHealthData, isSentinel bool) {
 
 	val, err := rdb.Get(ctx, "redisHealth_foo").Result()
 
-	if err != nil {
+	// redis.Nil just means the key doesn't exist yet - expected on a replica
+	// (its own write above is rejected) until replication delivers a value
+	// written by a master elsewhere. That's not a read fault.
+	if err != nil && err != redis.Nil {
 		log.Error().Err(err).Str("component", "redisHealth").Str("operation", "TestRedisReadWrite").Str("action", "read_failed").Msg("Can't Read what is written to Redis")
 		common.AlarmCheckDown("redis_read", "Trying to read string from Redis failed", false, "", "")
 		healthData.Connection.Readable = false
 		return
-	} else {
-		common.AlarmCheckUp("redis_read", "Successfully read string from Redis", false)
-		healthData.Connection.Readable = true
+	}
+
+	common.AlarmCheckUp("redis_read", "Successfully read string from Redis", false)
+	healthData.Connection.Readable = true
+
+	if err == redis.Nil {
+		// No value to compare yet - not a failure, just nothing replicated/written so far.
+		return
 	}
 
 	if val != "bar" {
@@ -261,7 +266,6 @@ func TestRedisReadWrite(healthData *RedisHealthData, isSentinel bool) {
 		healthData.Connection.Readable = false
 	} else {
 		common.AlarmCheckUp("redis_read_value", "The Redis value now matches with the expected value", false)
-		healthData.Connection.Readable = true
 	}
 }
 
