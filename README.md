@@ -156,8 +156,10 @@ These core tools will be available in every monokit installation.
 - mysqlHealth
   - Checks MySQL health, including read and write operations.
   - Supports Galera Cluster monitoring (Receive Queue and Flow Control).
+  - Verifies scheduled events (event_scheduler) are consistent: on a Galera cluster, ENABLED on exactly one node and SLAVESIDE_DISABLED on the rest (by connecting to peer nodes discovered via `wsrep_incoming_addresses`); on a standalone node, all events are ENABLED.
+  - Events can be excluded from this check with the `mysql.disabled_events` config list (bare event names or `schema.event_name`).
   - Sends alarm notifications to a Slack webhook.
-  - Opens Redmine issues for Galera Flow Control issues.
+  - Opens Redmine issues for Galera Flow Control issues and for event_scheduler inconsistencies.
   - Config: `/etc/mono/db.yaml`
 
 - mongodbHealth

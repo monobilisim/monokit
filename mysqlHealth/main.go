@@ -158,6 +158,10 @@ func Main(cmd *cobra.Command, args []string) {
 		CheckFlowControl()
 	}
 
+	// Check event scheduler consistency (ENABLE/SLAVESIDE_DISABLED across cluster
+	// nodes, or all-ENABLED on a standalone node)
+	CheckEventScheduler()
+
 	// check if time matches to configured time
 	if time.Now().Weekday().String() == DbHealthConfig.Mysql.Cluster.Check_table_day && time.Now().Format("15:04") == DbHealthConfig.Mysql.Cluster.Check_table_hour {
 		CheckDB()

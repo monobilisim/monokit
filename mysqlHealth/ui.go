@@ -47,6 +47,16 @@ type ReceiveQueueInfo struct {
 	Exceeded bool
 }
 
+// EventSchedulerInfo contains information about cross-node event_scheduler consistency
+type EventSchedulerInfo struct {
+	Checked            bool
+	NodesChecked       int
+	TotalEvents        int
+	NoneEnabledEvents  []string
+	MultiEnabledEvents []string
+	OK                 bool
+}
+
 // ClusterInfo contains information about MySQL cluster status
 type ClusterInfo struct {
 	Enabled           bool
@@ -58,6 +68,7 @@ type ClusterInfo struct {
 	ReceiveQueue      ReceiveQueueInfo
 	FlowControlPaused float64
 	FlowControlLimit  float64
+	EventScheduler    EventSchedulerInfo
 }
 
 // NodeInfo represents a MySQL cluster node
@@ -225,6 +236,39 @@ func (m *MySQLHealthData) RenderCompact() string {
 		line := fmt.Sprintf("•  %-20s is %s", "Cluster Size", statusStyle.Render(sizeStatus))
 		sb.WriteString(contentStyle.Render(itemStyle.Render(line)))
 
+	}
+
+	// Event Scheduler consistency status (only rendered if actually checked,
+	// i.e. event_scheduler=ON locally). Runs on cluster and standalone nodes.
+	if m.ClusterInfo.EventScheduler.Checked {
+		sb.WriteString("\n\n")
+		sb.WriteString(common.SectionTitle("Event Scheduler"))
+		sb.WriteString("\n")
+		eventSchedStatus := "Consistent"
+		if !m.ClusterInfo.EventScheduler.OK {
+			inconsistentCount := len(m.ClusterInfo.EventScheduler.NoneEnabledEvents) + len(m.ClusterInfo.EventScheduler.MultiEnabledEvents)
+			eventSchedStatus = fmt.Sprintf("%d inconsistent", inconsistentCount)
+		}
+		sb.WriteString(common.SimpleStatusListItem(
+			"Event Scheduler",
+			eventSchedStatus,
+			m.ClusterInfo.EventScheduler.OK))
+
+		if !m.ClusterInfo.EventScheduler.OK {
+			detailStyle := lipgloss.NewStyle().
+				Align(lipgloss.Left).
+				PaddingLeft(11).
+				Foreground(common.ErrorColor)
+
+			for _, ev := range m.ClusterInfo.EventScheduler.NoneEnabledEvents {
+				sb.WriteString("\n")
+				sb.WriteString(detailStyle.Render(fmt.Sprintf("- %s: no node ENABLED", ev)))
+			}
+			for _, ev := range m.ClusterInfo.EventScheduler.MultiEnabledEvents {
+				sb.WriteString("\n")
+				sb.WriteString(detailStyle.Render(fmt.Sprintf("- %s", ev)))
+			}
+		}
 	}
 
 	// PMM Status section (if enabled)

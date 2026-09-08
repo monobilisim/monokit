@@ -22,6 +22,11 @@ import (
 
 var Connection *sql.DB
 
+// connConfig stores the go-sql-driver config used for the last successful
+// ParseMyCnfAndConnect call, so peer Galera node connections can reuse the
+// same credentials with only the Addr swapped.
+var connConfig *_mysql.Config
+
 func mariadbOrMysql() string {
 	_, err := exec.LookPath("/usr/bin/mysql")
 	if err != nil {
@@ -199,6 +204,7 @@ func ParseMyCnfAndConnect(profile string) (string, error) {
 						Connection.Close()
 					}
 					Connection = tempDb // Assign the successful connection
+					connConfig = config.Clone()
 					finalConn = currentConnStr
 					found = true
 					if os.Getenv("MONOKIT_DEBUG") == "1" || os.Getenv("MONOKIT_DEBUG") == "true" {
@@ -674,5 +680,321 @@ func checkPMM() {
 		common.AlarmCheckDown("pmm", "PMM client is not active", false, "", "")
 	} else {
 		common.AlarmCheckUp("pmm", "PMM client is active", false)
+	}
+}
+
+// discoverPeerAddresses returns Galera peer node addresses (host:port) to
+// connect to for cross-node checks, derived from wsrep_incoming_addresses.
+// Excludes the local node's own address when it can be matched exactly.
+// ponytail: self-filtering is a best-effort string match against connConfig.Addr;
+// if the local connection uses a unix socket the local node won't be filtered
+// and may be queried twice, which is harmless (same result as the local query).
+func discoverPeerAddresses() []string {
+	rows, err := Connection.Query("SHOW GLOBAL STATUS WHERE Variable_name = 'wsrep_incoming_addresses'")
+	if err != nil {
+		log.Debug().Err(err).Msg("discoverPeerAddresses: wsrep_incoming_addresses query failed")
+		return nil
+	}
+	defer rows.Close()
+
+	var variableName, value string
+	if rows.Next() {
+		if err := rows.Scan(&variableName, &value); err != nil {
+			log.Debug().Err(err).Msg("discoverPeerAddresses: error scanning wsrep_incoming_addresses")
+			return nil
+		}
+	}
+
+	// ponytail: some Galera builds have a known bug (MDEV-28868, fixed in
+	// 10.4.27/10.5.18/10.6.11+) where wsrep_incoming_addresses reports the
+	// port as 0 for every node. Rather than discard those entries (which
+	// would silently disable all peer discovery), fall back to the local
+	// connection's own port, since Galera cluster members conventionally
+	// all listen on the same client port.
+	fallbackPort := ""
+	if connConfig != nil {
+		if idx := strings.LastIndex(connConfig.Addr, ":"); idx != -1 {
+			if p := connConfig.Addr[idx+1:]; p != "" && p != "0" {
+				fallbackPort = p
+			}
+		}
+	}
+
+	var addrs []string
+	for _, part := range strings.Split(value, ",") {
+		addr := strings.TrimSpace(part)
+		if addr == "" || addr == "AUTO" {
+			continue
+		}
+		host, port := addr, ""
+		if idx := strings.LastIndex(addr, ":"); idx != -1 {
+			host, port = addr[:idx], addr[idx+1:]
+		}
+		if host == "" {
+			continue
+		}
+		if (port == "" || port == "0") && fallbackPort != "" {
+			port = fallbackPort
+		}
+		if port == "" || port == "0" {
+			continue // no usable port to connect on
+		}
+		addr = host + ":" + port
+		if connConfig != nil && addr == connConfig.Addr {
+			continue // self
+		}
+		addrs = append(addrs, addr)
+	}
+	return addrs
+}
+
+// connectToPeer opens a short-lived connection to a Galera peer node,
+// reusing the same credentials (user/password/db) as the local connection.
+func connectToPeer(addr string) (*sql.DB, error) {
+	if connConfig == nil {
+		return nil, fmt.Errorf("no base connection config available to connect to peer %s", addr)
+	}
+	peerConfig := connConfig.Clone()
+	peerConfig.Net = "tcp"
+	peerConfig.Addr = addr
+
+	db, err := sql.Open("mysql", peerConfig.FormatDSN())
+	if err != nil {
+		return nil, fmt.Errorf("opening connection to peer %s: %w", addr, err)
+	}
+	db.SetConnMaxLifetime(time.Minute * 3)
+	db.SetMaxOpenConns(2)
+	db.SetMaxIdleConns(1)
+
+	if err := db.Ping(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("pinging peer %s: %w", addr, err)
+	}
+	return db, nil
+}
+
+// queryEventStatuses returns a map of "schema.event_name" -> STATUS
+// ("ENABLED"/"SLAVESIDE_DISABLED"/"DISABLED") from information_schema.events
+// on the given connection.
+func queryEventStatuses(db *sql.DB) (map[string]string, error) {
+	rows, err := db.Query("SELECT EVENT_SCHEMA, EVENT_NAME, STATUS FROM information_schema.events")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	result := make(map[string]string)
+	for rows.Next() {
+		var schema, name, status string
+		if err := rows.Scan(&schema, &name, &status); err != nil {
+			return nil, err
+		}
+		result[schema+"."+name] = status
+	}
+	return result, rows.Err()
+}
+
+// getWsrepNodeName returns the wsrep_node_name status variable on the given
+// connection. Unlike a connection's address (which depends on how the caller
+// reached the node and my.cnf conventions like an absent "host="), this is a
+// stable per-node Galera identifier, safe to use for self-detection when
+// probing discovered peer addresses that may loop back to the local node.
+func getWsrepNodeName(db *sql.DB) (string, error) {
+	rows, err := db.Query("SHOW GLOBAL VARIABLES WHERE Variable_name = 'wsrep_node_name'")
+	if err != nil {
+		return "", err
+	}
+	defer rows.Close()
+
+	var variableName, nodeName string
+	if rows.Next() {
+		if err := rows.Scan(&variableName, &nodeName); err != nil {
+			return "", err
+		}
+	}
+	return nodeName, rows.Err()
+}
+
+// isEventExcluded reports whether the event key ("schema.event_name") is in
+// the user-configured Disabled_events allowlist. Config entries may be a bare
+// event name (matched against the part after the last "." in key, case-insensitive)
+// or a fully-qualified "schema.event_name" (exact match, case-insensitive).
+func isEventExcluded(key string) bool {
+	for _, d := range DbHealthConfig.Mysql.Disabled_events {
+		if strings.EqualFold(d, key) {
+			return true
+		}
+		if !strings.Contains(d, ".") {
+			if idx := strings.LastIndex(key, "."); idx != -1 && strings.EqualFold(d, key[idx+1:]) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// CheckEventScheduler verifies that each scheduled event's ENABLE state is
+// consistent with the node's role. On a Galera cluster, each event should be
+// ENABLED on exactly one node and SLAVESIDE_DISABLED on the rest (Galera
+// replicates event DDL but not event_scheduler runtime state, so this
+// invariant can silently drift after a failover/restart). On a standalone
+// node, every event should simply be ENABLED. Events listed in
+// Mysql.Disabled_events are excluded from either check. Alarms and opens a
+// Redmine issue on any violation.
+func CheckEventScheduler() {
+	rows, err := Connection.Query("SELECT @@global.event_scheduler")
+	if err != nil {
+		log.Debug().Err(err).Msg("CheckEventScheduler: event_scheduler query failed")
+		return
+	}
+	var schedulerStatus string
+	if rows.Next() {
+		if err := rows.Scan(&schedulerStatus); err != nil {
+			rows.Close()
+			log.Debug().Err(err).Msg("CheckEventScheduler: error scanning event_scheduler")
+			return
+		}
+	}
+	rows.Close()
+
+	if !strings.EqualFold(schedulerStatus, "ON") {
+		// event_scheduler is off on this node; nothing to check.
+		healthData.ClusterInfo.EventScheduler.Checked = false
+		return
+	}
+
+	localEvents, err := queryEventStatuses(Connection)
+	if err != nil {
+		log.Error().Err(err).Msg("CheckEventScheduler: failed to query local information_schema.events")
+		return
+	}
+
+	if !DbHealthConfig.Mysql.Cluster.Enabled {
+		var notEnabled []string
+		for key, status := range localEvents {
+			if isEventExcluded(key) {
+				continue
+			}
+			if status != "ENABLED" {
+				notEnabled = append(notEnabled, fmt.Sprintf("%s (%s)", key, status))
+			}
+		}
+
+		healthData.ClusterInfo.EventScheduler.Checked = true
+		healthData.ClusterInfo.EventScheduler.NodesChecked = 1
+		healthData.ClusterInfo.EventScheduler.TotalEvents = len(localEvents)
+		healthData.ClusterInfo.EventScheduler.NoneEnabledEvents = notEnabled
+		healthData.ClusterInfo.EventScheduler.MultiEnabledEvents = nil
+		healthData.ClusterInfo.EventScheduler.OK = len(notEnabled) == 0
+
+		if len(notEnabled) > 0 {
+			msg := "MySQL event scheduler inconsistency detected: events not ENABLED: " + strings.Join(notEnabled, ", ")
+			msgTr := "MySQL event scheduler tutarsızlığı tespit edildi: ENABLED olmayan event'ler: " + strings.Join(notEnabled, ", ")
+			subject := fmt.Sprintf("%s için Event Scheduler Tutarsızlığı", common.Config.Identifier)
+
+			common.AlarmCheckDown("event scheduler", msg, false, "", "")
+			issues.CheckDown("event-scheduler", subject, msgTr, false, 0)
+		} else {
+			common.AlarmCheckUp("event scheduler", "All scheduled events are ENABLED", false)
+			issues.CheckUp("event-scheduler", "Tüm scheduled event'ler ENABLED durumda")
+		}
+		return
+	}
+
+	localAddr := "local"
+	if connConfig != nil && connConfig.Addr != "" {
+		localAddr = connConfig.Addr
+	}
+
+	// ponytail: wsrep_incoming_addresses may report an address that never
+	// matches our own connConfig.Addr (e.g. my.cnf has no explicit host=, so
+	// the local connection defaults to loopback while peers are discovered
+	// via a real interface IP). Address-string self-exclusion alone can
+	// therefore fail and cause us to connect to ourselves as a "peer",
+	// double-counting the local node as ENABLED on both entries. Use the
+	// stable wsrep_node_name identifier as the authoritative self-check.
+	localNodeName, err := getWsrepNodeName(Connection)
+	if err != nil {
+		log.Debug().Err(err).Msg("CheckEventScheduler: could not query local wsrep_node_name")
+	}
+
+	nodeEvents := map[string]map[string]string{localAddr: localEvents}
+
+	for _, addr := range discoverPeerAddresses() {
+		peerDb, err := connectToPeer(addr)
+		if err != nil {
+			log.Debug().Err(err).Str("peer", addr).Msg("CheckEventScheduler: could not connect to Galera peer")
+			continue
+		}
+		if localNodeName != "" {
+			if peerNodeName, err := getWsrepNodeName(peerDb); err == nil && peerNodeName == localNodeName {
+				peerDb.Close()
+				continue // this "peer" is actually us, reached via a different address
+			}
+		}
+		events, err := queryEventStatuses(peerDb)
+		peerDb.Close()
+		if err != nil {
+			log.Debug().Err(err).Str("peer", addr).Msg("CheckEventScheduler: could not query events on Galera peer")
+			continue
+		}
+		nodeEvents[addr] = events
+	}
+
+	// Union of all event keys seen across nodes.
+	allKeys := make(map[string]bool)
+	for _, em := range nodeEvents {
+		for k := range em {
+			allKeys[k] = true
+		}
+	}
+
+	var noneEnabled []string
+	var multiEnabled []string
+	for key := range allKeys {
+		if isEventExcluded(key) {
+			continue
+		}
+		var enabledNodes []string
+		for addr, em := range nodeEvents {
+			if em[key] == "ENABLED" {
+				enabledNodes = append(enabledNodes, addr)
+			}
+		}
+		switch len(enabledNodes) {
+		case 0:
+			noneEnabled = append(noneEnabled, key)
+		case 1:
+			// OK
+		default:
+			multiEnabled = append(multiEnabled, fmt.Sprintf("%s (enabled on: %s)", key, strings.Join(enabledNodes, ", ")))
+		}
+	}
+
+	// Update health data
+	healthData.ClusterInfo.EventScheduler.Checked = true
+	healthData.ClusterInfo.EventScheduler.NodesChecked = len(nodeEvents)
+	healthData.ClusterInfo.EventScheduler.TotalEvents = len(allKeys)
+	healthData.ClusterInfo.EventScheduler.NoneEnabledEvents = noneEnabled
+	healthData.ClusterInfo.EventScheduler.MultiEnabledEvents = multiEnabled
+	healthData.ClusterInfo.EventScheduler.OK = len(noneEnabled) == 0 && len(multiEnabled) == 0
+
+	if len(noneEnabled) > 0 || len(multiEnabled) > 0 {
+		var details []string
+		if len(noneEnabled) > 0 {
+			details = append(details, fmt.Sprintf("no node has ENABLED for: %s", strings.Join(noneEnabled, ", ")))
+		}
+		if len(multiEnabled) > 0 {
+			details = append(details, fmt.Sprintf("multiple nodes have ENABLED for: %s", strings.Join(multiEnabled, "; ")))
+		}
+		msg := "Galera event scheduler inconsistency detected: " + strings.Join(details, " | ")
+		msgTr := "Galera event scheduler tutarsızlığı tespit edildi: " + strings.Join(details, " | ")
+		subject := fmt.Sprintf("%s için Galera Event Scheduler Tutarsızlığı", common.Config.Identifier)
+
+		common.AlarmCheckDown("event scheduler", msg, false, "", "")
+		issues.CheckDown("event-scheduler", subject, msgTr, false, 0)
+	} else {
+		common.AlarmCheckUp("event scheduler", "Event scheduler ENABLE/SLAVESIDE_DISABLED consistent across cluster", false)
+		issues.CheckUp("event-scheduler", "Event scheduler durumu küme genelinde tutarlı")
 	}
 }

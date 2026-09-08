@@ -3,7 +3,11 @@ package common
 type Mysql struct {
 	Process_limit int
 	Pmm_enabled   *bool `json:"pmm_enabled,omitempty"`
-	Cluster       struct {
+	// Disabled_events lists events (bare "event_name" or schema-qualified
+	// "schema.event_name") that are intentionally left non-ENABLED and should
+	// be excluded from the event_scheduler consistency check.
+	Disabled_events []string
+	Cluster         struct {
 		Enabled             bool
 		Size                int
 		Check_table_day     string
