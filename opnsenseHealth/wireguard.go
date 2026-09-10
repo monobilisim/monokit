@@ -202,9 +202,9 @@ func evaluateWgInterface(iface *WireGuardInterface, carpSuppressed bool) {
 	var downMsg string
 	switch {
 	case iface.Missing:
-		downMsg = fmt.Sprintf("WireGuard interface %s is enabled in OPNsense but the device does not exist.", iface.Name)
+		downMsg = fmt.Sprintf("WireGuard interface %s is enabled in OPNsense but the device does not exist.", wgIfaceLabel(iface))
 	case !iface.Up:
-		downMsg = fmt.Sprintf("WireGuard interface %s is DOWN (flags: %s).", iface.Name, iface.Flags)
+		downMsg = fmt.Sprintf("WireGuard interface %s is DOWN (flags: %s).", wgIfaceLabel(iface), iface.Flags)
 	case len(iface.ProblemPeers) > 0:
 		downMsg = wgPeerAlarmMessage(iface)
 	}
@@ -218,7 +218,7 @@ func evaluateWgInterface(iface *WireGuardInterface, carpSuppressed bool) {
 		// clears faults it raised while it was MASTER.
 		if carpSuppressed {
 			common.AlarmCheckUp(alarmName,
-				fmt.Sprintf("WireGuard interface %s is not healthy, but its CARP VIP is BACKUP — the tunnel is active on the MASTER node.", iface.Name),
+				fmt.Sprintf("WireGuard interface %s is not healthy, but its CARP VIP is BACKUP — the tunnel is active on the MASTER node.", wgIfaceLabel(iface)),
 				false)
 			return
 		}
@@ -229,8 +229,17 @@ func evaluateWgInterface(iface *WireGuardInterface, carpSuppressed bool) {
 
 	iface.Healthy = true
 	common.AlarmCheckUp(alarmName,
-		fmt.Sprintf("WireGuard interface %s is UP and all %d peer(s) have a live tunnel.", iface.Name, iface.PeerCount),
+		fmt.Sprintf("WireGuard interface %s is UP and all %d peer(s) have a live tunnel.", wgIfaceLabel(iface), iface.PeerCount),
 		false)
+}
+
+// wgIfaceLabel identifies an interface in alarm messages with its OPNsense
+// instance name when the config carries one that differs from the device name.
+func wgIfaceLabel(iface *WireGuardInterface) string {
+	if iface.Description != "" && iface.Description != iface.Name {
+		return fmt.Sprintf("%s (%s)", iface.Name, iface.Description)
+	}
+	return iface.Name
 }
 
 func wgPeerAlarmMessage(iface *WireGuardInterface) string {
@@ -249,7 +258,7 @@ func wgPeerAlarmMessage(iface *WireGuardInterface) string {
 
 	table := renderTable([]string{"Peer", "Endpoint", "Allowed IPs", "Last Handshake", "Problem"}, rows)
 	return fmt.Sprintf("WireGuard interface %s has %d of %d peer(s) without a live tunnel;\n\n%s",
-		iface.Name, len(iface.ProblemPeers), iface.PeerCount, table)
+		wgIfaceLabel(iface), len(iface.ProblemPeers), iface.PeerCount, table)
 }
 
 func isExcludedPeer(peer WireGuardPeer) bool {
