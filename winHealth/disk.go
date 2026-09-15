@@ -22,6 +22,51 @@ import (
 	"github.com/shirou/gopsutil/v4/disk"
 )
 
+// volumeKind classifies a volume by the kind of device backing it, so that
+// disk usage checks can be limited to storage the host actually owns.
+type volumeKind int
+
+const (
+	// volumeUnknown is used when the drive type cannot be determined; such
+	// volumes are monitored, so an unexpected value never silences a check.
+	volumeUnknown volumeKind = iota
+	volumeFixed
+	volumeRemovable
+	volumeCdrom
+	volumeNetwork
+	volumeRamdisk
+)
+
+// skipVolume reports whether a volume must be left out of the disk usage
+// checks entirely - both the reported table and the alarms - along with the
+// reason, for logging. Keeping the two in sync is deliberate: a volume shown
+// as full but never alarmed on is worse than one that is not shown at all.
+func skipVolume(kind volumeKind, opts []string, config WinHealth) (bool, string) {
+	switch kind {
+	case volumeCdrom:
+		if !config.Disk.Monitor_Cdrom {
+			return true, "CD-ROM or mounted disk image"
+		}
+	case volumeRemovable:
+		if !config.Disk.Monitor_Removable {
+			return true, "removable drive"
+		}
+	case volumeNetwork:
+		if config.Disk.Monitor_Network != nil && !*config.Disk.Monitor_Network {
+			return true, "network drive"
+		}
+	}
+
+	// A read-only volume reports 100% usage whatever it holds, and nothing
+	// can be freed on it. This also covers install images mounted as a
+	// read-only NTFS/ReFS virtual disk rather than as a CD-ROM drive.
+	if !config.Disk.Monitor_Readonly && slices.Contains(opts, "ro") {
+		return true, "read-only volume"
+	}
+
+	return false, ""
+}
+
 // analyzeDiskPartitions analyzes the disk partitions and returns DiskInfo for exceeded and all parts.
 // It now returns []DiskInfo for better data structure.
 func analyzeDiskPartitions(diskPartitions []disk.PartitionStat) ([]DiskInfo, []DiskInfo) {
@@ -44,6 +89,20 @@ func analyzeDiskPartitions(diskPartitions []disk.PartitionStat) ([]DiskInfo, []D
 		// Skip ZFS partitions as they are handled separately by dataset checks
 		if partition.Fstype == "zfs" {
 			log.Debug().Msg("Skipping ZFS partition (handled by dataset checks): " + partition.Mountpoint)
+			continue
+		}
+
+		// Skip volumes that are not real storage of this host, such as the
+		// CD-ROM drive an installer mounts its downloaded image on. They sit
+		// at 100% usage by definition, so listing them is misleading and no
+		// alarm raised for them could ever be resolved.
+		if skip, reason := skipVolume(getVolumeKind(partition.Mountpoint), partition.Opts, WinHealthConfig); skip {
+			log.Debug().
+				Str("mountpoint", partition.Mountpoint).
+				Str("fstype", partition.Fstype).
+				Strs("opts", partition.Opts).
+				Str("reason", reason).
+				Msg("Skipping volume that is not monitored for disk usage")
 			continue
 		}
 

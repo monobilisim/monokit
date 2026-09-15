@@ -128,7 +128,7 @@ func (h *HealthData) RenderCompact() string {
 
 		// Disk usage details
 		for _, disk := range h.Disk {
-			isSuccess := disk.UsedPct <= WinHealthConfig.Part_use_limit
+			isSuccess := disk.UsedPct < WinHealthConfig.Part_use_limit
 
 			limits := fmt.Sprintf("%.0f%%", WinHealthConfig.Part_use_limit)
 			current := fmt.Sprintf("%.0f%%", disk.UsedPct)

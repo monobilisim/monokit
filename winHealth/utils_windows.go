@@ -4,6 +4,7 @@ package winHealth
 
 import (
 	"fmt"
+	"strings"
 
 	"golang.org/x/sys/windows"
 	"golang.org/x/sys/windows/svc/mgr"
@@ -76,4 +77,35 @@ func GetWindowsServices() ([]WindowsServiceInfo, error) {
 	}
 
 	return serviceInfos, nil
+}
+
+// getVolumeKind resolves the drive type of a mountpoint such as "E:" through
+// the Windows API. gopsutil reports every drive letter it can read, including
+// CD-ROM, removable and network drives, and its PartitionStat carries no
+// drive type, so the lookup is repeated here.
+func getVolumeKind(mountpoint string) volumeKind {
+	root := mountpoint
+	if !strings.HasSuffix(root, "\\") && !strings.HasSuffix(root, "/") {
+		root += "\\" // GetDriveType expects a root directory, e.g. "E:\"
+	}
+
+	rootPtr, err := windows.UTF16PtrFromString(root)
+	if err != nil {
+		return volumeUnknown
+	}
+
+	switch windows.GetDriveType(rootPtr) {
+	case windows.DRIVE_FIXED:
+		return volumeFixed
+	case windows.DRIVE_REMOVABLE:
+		return volumeRemovable
+	case windows.DRIVE_CDROM:
+		return volumeCdrom
+	case windows.DRIVE_REMOTE:
+		return volumeNetwork
+	case windows.DRIVE_RAMDISK:
+		return volumeRamdisk
+	default:
+		return volumeUnknown
+	}
 }

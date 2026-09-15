@@ -6,6 +6,17 @@ filesystems:
 
 excluded_mountpoints: []
 
+# Which kinds of volumes take part in the disk usage checks.
+# Install media (a downloaded image an installer mounts as a drive), removable
+# drives and read-only volumes are skipped by default: they report 100% usage
+# by their nature, so reporting them is misleading and their alarms could never
+# be closed. Mapped network drives are monitored unless monitor_network: false.
+disk:
+  monitor_cdrom: false
+  monitor_removable: false
+  monitor_readonly: false
+  monitor_network: true
+
 system_load_and_ram: true
 
 part_use_limit: 90
