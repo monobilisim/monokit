@@ -4,13 +4,17 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
@@ -23,6 +27,17 @@ type PluginInfo struct {
 	Path        string
 	IsInstalled bool
 	URL         string
+}
+
+// exeName returns the file name a binary is released and installed under on
+// the running platform. Release archives are built by goreleaser, which
+// appends .exe to Windows builds, so both the archive entry and the file on
+// disk carry the suffix there.
+func exeName(name string) string {
+	if runtime.GOOS == "windows" {
+		return name + ".exe"
+	}
+	return name
 }
 
 var UpdateCmd = &cobra.Command{
@@ -79,12 +94,21 @@ func DetectInstalledPlugins(dir string) ([]PluginInfo, error) {
 			continue
 		}
 
-		if info.Mode()&0111 == 0 {
+		if runtime.GOOS == "windows" {
+			// Windows carries no executable bit, so os.Stat reports plain
+			// files as non-executable and every plugin would be skipped.
+			// Plugins ship as .exe there instead.
+			if !strings.HasSuffix(name, ".exe") {
+				continue
+			}
+		} else if info.Mode()&0111 == 0 {
 			continue // Not executable
 		}
 
 		plugin := PluginInfo{
-			Name:        name,
+			// Name is the plugin name as the release names it, without the
+			// platform's executable suffix, so it compares against KnownPlugins.
+			Name:        strings.TrimSuffix(name, ".exe"),
 			Path:        pluginPath,
 			IsInstalled: true,
 		}
@@ -183,6 +207,8 @@ func DownloadAndExtractPlugin(plugin PluginInfo, pluginDir string) error {
 	}
 	defer gzr.Close()
 
+	binaryName := exeName(plugin.Name)
+
 	tr := tar.NewReader(gzr)
 	for {
 		hdr, err := tr.Next()
@@ -190,11 +216,11 @@ func DownloadAndExtractPlugin(plugin PluginInfo, pluginDir string) error {
 			break
 		}
 
-		if hdr.Name == plugin.Name {
+		if hdr.Name == binaryName {
 			// Stage in the same directory as the destination so os.Rename
 			// is an atomic same-filesystem move and never crosses device boundaries.
-			tempPath := filepath.Join(pluginDir, plugin.Name+".tmp")
-			finalPath := filepath.Join(pluginDir, plugin.Name)
+			tempPath := filepath.Join(pluginDir, binaryName+".tmp")
+			finalPath := filepath.Join(pluginDir, binaryName)
 			backupPath := finalPath + ".bak"
 
 			// Create temporary file
@@ -247,7 +273,7 @@ func DownloadAndExtractPlugin(plugin PluginInfo, pluginDir string) error {
 		}
 	}
 
-	return fmt.Errorf("plugin binary %s not found in archive", plugin.Name)
+	return fmt.Errorf("plugin binary %s not found in archive", binaryName)
 }
 
 // UpdatePlugins updates all or specific plugins
@@ -359,59 +385,132 @@ func UpdatePlugins(version string, specificPlugins []string, pluginDir string, f
 	return nil
 }
 
-func DownloadAndExtract(url string) {
-	MonokitPath, err := os.Executable()
-
+// DownloadAndExtract replaces the running monokit binary with the one in the
+// release archive at url. The current binary is only moved aside once the new
+// one is staged on disk, so a release that does not carry a binary for this
+// platform leaves the installation untouched.
+func DownloadAndExtract(url string) error {
+	monokitPath, err := os.Executable()
 	if err != nil {
-		log.Error().Err(err).Msg("Couldn't get executable path")
+		return fmt.Errorf("couldn't get executable path: %w", err)
 	}
 
+	return downloadAndExtractTo(url, monokitPath)
+}
+
+// downloadAndExtractTo carries out the update against an explicit destination
+// path, so the install logic can be exercised without targeting the binary
+// that is actually running.
+func downloadAndExtractTo(url, monokitPath string) error {
 	// Download the release
 	resp, err := http.Get(url)
 	if err != nil {
-		log.Error().Err(err).Msg("Couldn't download the release")
+		return fmt.Errorf("couldn't download the release: %w", err)
 	}
 	defer resp.Body.Close()
 
-	// Extract the release
-	gzr, err := gzip.NewReader(resp.Body)
-
-	if err != nil {
-		log.Error().Err(err).Msg("Couldn't extract the release")
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("couldn't download the release: HTTP %d", resp.StatusCode)
 	}
 
+	// Extract the release
+	gzr, err := gzip.NewReader(resp.Body)
+	if err != nil {
+		return fmt.Errorf("couldn't extract the release: %w", err)
+	}
 	defer gzr.Close()
+
+	binaryName := exeName("monokit")
+	stagedPath := filepath.Join(TmpDir, binaryName)
+	staged := false
 
 	tr := tar.NewReader(gzr)
 	for {
 		hdr, err := tr.Next()
-		if err != nil {
+		if errors.Is(err, io.EOF) {
 			break
 		}
+		if err != nil {
+			return fmt.Errorf("couldn't read the release archive: %w", err)
+		}
 
-		if hdr.Name == "monokit" {
-			f, err := os.Create(TmpDir + "monokit")
-			if err != nil {
-				log.Error().Err(err).Msg("Couldn't create monokit binary")
-			}
-			defer f.Close()
+		if filepath.Base(hdr.Name) != binaryName {
+			continue
+		}
 
-			_, err = f.ReadFrom(tr)
-			if err != nil {
-				log.Error().Err(err).Msg("Couldn't write monokit binary")
-			}
+		f, err := os.Create(stagedPath)
+		if err != nil {
+			return fmt.Errorf("couldn't create monokit binary: %w", err)
+		}
+
+		_, err = f.ReadFrom(tr)
+		f.Close()
+		if err != nil {
+			os.Remove(stagedPath)
+			return fmt.Errorf("couldn't write monokit binary: %w", err)
+		}
+
+		staged = true
+		break
+	}
+
+	if !staged {
+		return fmt.Errorf("no %s binary found in the release archive", binaryName)
+	}
+
+	if err := os.Chmod(stagedPath, 0755); err != nil {
+		os.Remove(stagedPath)
+		return fmt.Errorf("couldn't set permissions on the new monokit binary: %w", err)
+	}
+
+	// Windows refuses to overwrite a running executable but does allow
+	// renaming it, so the live binary is moved aside instead of replaced.
+	backupPath, err := backupCurrentBinary(monokitPath)
+	if err != nil {
+		os.Remove(stagedPath)
+		return err
+	}
+
+	if err := MoveFile(stagedPath, monokitPath); err != nil {
+		if restoreErr := MoveFile(backupPath, monokitPath); restoreErr != nil {
+			return fmt.Errorf("couldn't install the new monokit binary (%w) and couldn't restore %s from %s: %w", err, monokitPath, backupPath, restoreErr)
+		}
+		os.Remove(stagedPath)
+		return fmt.Errorf("couldn't install the new monokit binary, kept the current one: %w", err)
+	}
+
+	if err := os.Chmod(monokitPath, 0755); err != nil {
+		log.Warn().Err(err).Str("path", monokitPath).Msg("Couldn't set permissions on the installed monokit binary")
+	}
+
+	// On Windows the backup is the image of this very process and stays
+	// locked until it exits, so a leftover is expected rather than an error.
+	if err := os.Remove(backupPath); err != nil && !os.IsNotExist(err) {
+		log.Debug().Err(err).Str("path", backupPath).Msg("Couldn't remove the backup of the previous monokit binary")
+	}
+
+	return nil
+}
+
+// backupCurrentBinary moves the running binary out of the way and returns the
+// path it was moved to. A backup left behind by an earlier update is reused
+// when it can be removed; when it cannot - on Windows it is the image of a
+// still-running process - a unique name is used so the update can proceed.
+func backupCurrentBinary(monokitPath string) (string, error) {
+	backupPath := monokitPath + ".bak"
+
+	if FileExists(backupPath) {
+		if err := os.Remove(backupPath); err != nil {
+			backupPath = monokitPath + ".bak." + strconv.FormatInt(time.Now().Unix(), 10)
+			log.Debug().Err(err).Str("path", backupPath).Msg("Previous backup is still in use, backing up under a unique name")
 		}
 	}
 
-	MoveFile(MonokitPath, MonokitPath+".bak")
-
-	// Move monokit binary to the correct path
-	err = MoveFile(TmpDir+"monokit", MonokitPath)
-	if err != nil {
-		log.Error().Err(err).Msg("Couldn't move monokit binary, using backup instead")
-		MoveFile(MonokitPath+".bak", MonokitPath)
+	if err := MoveFile(monokitPath, backupPath); err != nil {
+		return "", fmt.Errorf("couldn't move the current monokit binary aside: %w", err)
 	}
-	os.Chmod(MonokitPath, 0755)
+
+	return backupPath, nil
 }
 
 func Update(specificVersion string, force bool, updatePlugins bool, specificPlugins []string, pluginDir string) {
@@ -495,9 +594,17 @@ func Update(specificVersion string, force bool, updatePlugins bool, specificPlug
 	}
 
 	fmt.Println("Downloading Monokit version", version)
-	DownloadAndExtract(url)
+	if err := DownloadAndExtract(url); err != nil {
+		log.Error().Err(err).Str("version", version).Msg("Monokit update failed")
+		fmt.Println("Monokit update failed:", err)
+		return
+	}
 
 	fmt.Println("Monokit updated to version", version)
+
+	// Replacing the binary does not affect an already running process, so a
+	// daemon that is up keeps serving the old version until it is restarted.
+	fmt.Println("Restart the monokit daemon for version " + version + " to take effect there")
 
 	// Update plugins if requested
 	if updatePlugins {

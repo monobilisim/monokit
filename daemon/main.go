@@ -5,6 +5,8 @@ import (
 	"io/ioutil"
 	"os"
 	"os/exec" // Added for running commands
+	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -17,7 +19,18 @@ import (
 	"github.com/spf13/cobra"
 )
 
-const lastUpdateCheckFile = "/tmp/monokit_last_update_check" // User requested /tmp
+// lastUpdateCheckFile records when the daily update check last ran. Windows
+// has no /tmp - a rooted path resolves to C:\tmp, which usually does not
+// exist - so the timestamp could be neither written nor read there and the
+// check ran on every tick instead of once a day.
+var lastUpdateCheckFile = defaultLastUpdateCheckFile()
+
+func defaultLastUpdateCheckFile() string {
+	if runtime.GOOS == "windows" {
+		return filepath.Join(os.TempDir(), "monokit_last_update_check")
+	}
+	return "/tmp/monokit_last_update_check" // User requested /tmp
+}
 
 type Daemon struct {
 	Frequency int  // Frequency to run health checks
@@ -134,7 +147,7 @@ func RunAll() {
 	if DaemonConfig.MonokitUpgrade {
 		if shouldRunDailyUpdate(lastUpdateCheckFile) {
 			fmt.Println("Running daily monokit update check...")
-			common.Update("", false, true, []string{}, "/var/lib/monokit/plugins") // Check for monokit updates
+			common.Update("", false, true, []string{}, common.DefaultPluginDir) // Check for monokit updates
 			recordUpdateCheck(lastUpdateCheckFile)
 		}
 	} else {
