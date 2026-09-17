@@ -104,7 +104,7 @@ func checkQueues() {
 	stoppedCount := 0
 	noConsumerCount := 0
 	highMessageCount := 0
-	unsyncedCount := 0
+	collector := &queueProblemCollector{}
 
 	for _, q := range queues {
 		if isIgnored(q.Name) {
@@ -127,14 +127,9 @@ func checkQueues() {
 			stoppedCount++
 			item.Stopped = true
 			alarmKey := "rabbitmq_queue_stopped_" + sanitizeAlarmKey(q.Name)
-			msg := fmt.Sprintf("Queue `%s` is in state: **%s** (node: %s)", q.Name, q.State, q.Node)
-			redmineMsg := raiseRedmineIssue(alarmKey, q.Name,
-				common.Config.Identifier+" için `"+q.Name+"` kuyruğu çalışmıyor",
-				fmt.Sprintf("Kuyruk: %s\nDurum: %s\nNode: %s", q.Name, q.State, q.Node))
-			if redmineMsg != "" {
-				msg = msg + "\n\n" + redmineMsg
-			}
-			common.AlarmCheckDown(alarmKey, msg, false, "", "")
+			collector.addAlarm(alarmKey, fmt.Sprintf("Queue `%s` is in state: **%s** (node: %s)", q.Name, q.State, q.Node))
+			collector.addProblem(problemStopped, q.Name,
+				fmt.Sprintf("durum: %s, node: %s", q.State, q.Node))
 		} else {
 			item.Stopped = false
 			alarmKey := "rabbitmq_queue_stopped_" + sanitizeAlarmKey(q.Name)
@@ -172,7 +167,7 @@ func checkQueues() {
 
 		// --- 4. Mirror/Sync kontrolü ---
 		if Config.Queues.MirrorSyncCheck && expectedMirrors > 0 {
-			item.SyncStatus = checkQueueMirrorSync(q, expectedMirrors, &unsyncedCount)
+			item.SyncStatus = checkQueueMirrorSync(q, expectedMirrors, collector)
 		}
 
 		healthData.Queues.Items = append(healthData.Queues.Items, item)
@@ -182,10 +177,21 @@ func checkQueues() {
 	healthData.Queues.StoppedCount = stoppedCount
 	healthData.Queues.NoConsumerCount = noConsumerCount
 	healthData.Queues.HighMessageCount = highMessageCount
-	healthData.Queues.UnsyncedCount = unsyncedCount
+	healthData.Queues.UnsyncedCount = collector.unsynced
 
-	if stoppedCount > 0 || unsyncedCount > 0 {
+	if stoppedCount > 0 || collector.unsynced > 0 {
 		healthData.IsHealthy = false
+	}
+
+	// All failing queues share one Redmine issue; the alarms are sent afterwards
+	// so each one can point at it.
+	issueLink := syncQueueRedmineIssue(collector.problems)
+	for _, a := range collector.alarms {
+		msg := a.msg
+		if issueLink != "" {
+			msg = msg + "\n\n" + issueLink
+		}
+		common.AlarmCheckDown(a.key, msg, false, "", "")
 	}
 
 	log.Debug().
@@ -193,7 +199,7 @@ func checkQueues() {
 		Int("stopped", stoppedCount).
 		Int("no_consumer", noConsumerCount).
 		Int("high_messages", highMessageCount).
-		Int("unsynced", unsyncedCount).
+		Int("unsynced", collector.unsynced).
 		Msg("Queue health check completed")
 }
 
@@ -201,7 +207,7 @@ func checkQueues() {
 // Uses different fields depending on queue type:
 //   - classic: slave_nodes / synchronised_slave_nodes
 //   - quorum:  members / online
-func checkQueueMirrorSync(q queueAPIResponse, expectedMirrors int, unsyncedCount *int) QueueSyncStatus {
+func checkQueueMirrorSync(q queueAPIResponse, expectedMirrors int, collector *queueProblemCollector) QueueSyncStatus {
 	status := QueueSyncStatus{}
 
 	switch q.Type {
@@ -214,18 +220,13 @@ func checkQueueMirrorSync(q queueAPIResponse, expectedMirrors int, unsyncedCount
 
 		alarmKey := "rabbitmq_queue_sync_" + sanitizeAlarmKey(q.Name)
 		if !status.IsFullySynced {
-			*unsyncedCount++
+			collector.unsynced++
 			missingNodes := findMissingNodes(q.Members, q.Online)
-			msg := fmt.Sprintf("Quorum queue `%s` has insufficient online members (%d/%d); missing: %s",
-				q.Name, onlineMembers, totalMembers, strings.Join(missingNodes, ", "))
-			redmineMsg := raiseRedmineIssue(alarmKey, q.Name,
-				common.Config.Identifier+" için `"+q.Name+"` kuyruğu senkronize değil",
-				fmt.Sprintf("Kuyruk: %s\nTip: quorum\nOnline: %d/%d\nEksik: %s",
-					q.Name, onlineMembers, totalMembers, strings.Join(missingNodes, ", ")))
-			if redmineMsg != "" {
-				msg = msg + "\n\n" + redmineMsg
-			}
-			common.AlarmCheckDown(alarmKey, msg, false, "", "")
+			collector.addAlarm(alarmKey, fmt.Sprintf("Quorum queue `%s` has insufficient online members (%d/%d); missing: %s",
+				q.Name, onlineMembers, totalMembers, strings.Join(missingNodes, ", ")))
+			collector.addProblem(problemUnsynced, q.Name,
+				fmt.Sprintf("tip: quorum, online: %d/%d, eksik: %s",
+					onlineMembers, totalMembers, strings.Join(missingNodes, ", ")))
 		} else {
 			common.AlarmCheckUp(alarmKey, fmt.Sprintf("Quorum queue `%s` is online on all members (%d/%d)",
 				q.Name, onlineMembers, totalMembers), false)
@@ -242,18 +243,13 @@ func checkQueueMirrorSync(q queueAPIResponse, expectedMirrors int, unsyncedCount
 
 		alarmKey := "rabbitmq_queue_sync_" + sanitizeAlarmKey(q.Name)
 		if !status.IsFullySynced {
-			*unsyncedCount++
+			collector.unsynced++
 			unsyncedSlaves := findMissingNodes(q.SlaveNodes, q.SynchronisedSlaveNodes)
-			msg := fmt.Sprintf("Classic queue `%s` has insufficient synchronised mirrors (%d/%d, expected %d); not synced: %s",
-				q.Name, syncedCount, slaveCount, expectedMirrors, strings.Join(unsyncedSlaves, ", "))
-			redmineMsg := raiseRedmineIssue(alarmKey, q.Name,
-				common.Config.Identifier+" için `"+q.Name+"` kuyruğu senkronize değil",
-				fmt.Sprintf("Kuyruk: %s\nTip: classic\nSync: %d/%d (beklenen: %d)\nSync olmayan: %s",
-					q.Name, syncedCount, slaveCount, expectedMirrors, strings.Join(unsyncedSlaves, ", ")))
-			if redmineMsg != "" {
-				msg = msg + "\n\n" + redmineMsg
-			}
-			common.AlarmCheckDown(alarmKey, msg, false, "", "")
+			collector.addAlarm(alarmKey, fmt.Sprintf("Classic queue `%s` has insufficient synchronised mirrors (%d/%d, expected %d); not synced: %s",
+				q.Name, syncedCount, slaveCount, expectedMirrors, strings.Join(unsyncedSlaves, ", ")))
+			collector.addProblem(problemUnsynced, q.Name,
+				fmt.Sprintf("tip: classic, sync: %d/%d (beklenen: %d), sync olmayan: %s",
+					syncedCount, slaveCount, expectedMirrors, strings.Join(unsyncedSlaves, ", ")))
 		} else {
 			common.AlarmCheckUp(alarmKey, fmt.Sprintf("Classic queue `%s` is fully synchronised across all mirrors (%d/%d)",
 				q.Name, syncedCount, expectedMirrors), false)
@@ -293,18 +289,10 @@ func isRedmineExcluded(name string) bool {
 	return slices.Contains(Config.Queues.Redmine.ExcludeQueues, name)
 }
 
-func raiseRedmineIssue(alarmKey, queueName, subject, description string) string {
-	if !Config.Queues.Redmine.Enabled || isRedmineExcluded(queueName) {
-		return ""
-	}
-	issues.CheckDown(alarmKey, subject, description, false, 0)
-	id := issues.Show(alarmKey)
-	if id == "" {
-		return ""
-	}
-	return "Redmine Issue: " + common.GetRedmineDisplayUrl() + "/issues/" + id
-}
-
+// resolveRedmineIssue closes the per-queue issue an older monokit version may
+// have opened for this queue. Failing queues now share one issue (see
+// syncQueueRedmineIssue), but issues opened before the upgrade still have to be
+// closed when their queue recovers; for every other queue this is a no-op.
 func resolveRedmineIssue(alarmKey, queueName, message string) {
 	if !Config.Queues.Redmine.Enabled || isRedmineExcluded(queueName) {
 		return
