@@ -37,6 +37,8 @@ var eolProductMap = map[string]string{
 	"Garage":                "garage",
 	"Consul":                "consul",
 	"Grafana":               "grafana",
+	"OpenSearch":            "opensearch",
+	"PHP":                   "php",
 }
 
 type EOLCycle struct {

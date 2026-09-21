@@ -137,11 +137,17 @@ func VersionCheck(cmd *cobra.Command, args []string) {
 	// MySQL/MariaDB
 	MySQLCheck()
 
+	// ProxySQL
+	ProxySQLCheck()
+
 	// MongoDB
 	MongoDBCheck()
 
 	// Redis
 	RedisCheck()
+
+	// OpenSearch
+	OpenSearchCheck()
 
 	// Postal
 	PostalCheck()
@@ -151,6 +157,9 @@ func VersionCheck(cmd *cobra.Command, args []string) {
 
 	// JumpServer
 	JumpServerCheck()
+
+	// Wazuh
+	WazuhCheck()
 
 	// RKE2 Kubernetes - Replaced with plugin call
 	handleRKE2VersionCheckViaPlugin()
@@ -164,6 +173,9 @@ func VersionCheck(cmd *cobra.Command, args []string) {
 	// FrankenPHP
 	FrankenPHPCheck()
 
+	// PHP
+	PHPCheck()
+
 	// Caddy
 	CaddyCheck()
 
@@ -172,6 +184,9 @@ func VersionCheck(cmd *cobra.Command, args []string) {
 
 	// HAProxy
 	HAProxyCheck()
+
+	// Gobetween
+	GobetweenCheck()
 
 	// Docker
 	DockerCheck()
