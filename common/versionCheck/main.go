@@ -206,6 +206,9 @@ func VersionCheck(cmd *cobra.Command, args []string) {
 	// MinIO
 	MinIOCheck()
 
+	// Helm releases (opt-in, cluster-wide)
+	HelmCheck()
+
 	allApps := append([]AppVersion{}, notUpdated...)
 	allApps = append(allApps, updated...)
 	CheckLatestVersions(allApps)

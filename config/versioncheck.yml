@@ -1,0 +1,19 @@
+# Optional configuration for the versionCheck component.
+# Every check in versionCheck works without this file; it only gates the
+# cluster-wide Helm check below.
+
+helm:
+  # Track the chart version of every deployed Helm release.
+  #
+  # Helm releases belong to the cluster, but versionCheck runs on every node.
+  # Enable this on exactly ONE node per cluster — if every control-plane node
+  # has it on, each one files its own Redmine news item for the same chart
+  # upgrade.
+  enabled: false
+
+  # Kubeconfig to use for `helm list`. Leave empty to let helm use its own
+  # defaults (KUBECONFIG, then ~/.kube/config). Set this when monokit runs from
+  # cron or a systemd unit, where the invoking user usually has no ~/.kube/config:
+  #   RKE2: /etc/rancher/rke2/rke2.yaml
+  #   k3s:  /etc/rancher/k3s/k3s.yaml
+  kubeconfig: ""
