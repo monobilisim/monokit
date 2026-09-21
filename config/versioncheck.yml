@@ -11,6 +11,16 @@ helm:
   # upgrade.
   enabled: false
 
+  # Limit the check to these namespaces. Leave empty (the default) to check
+  # every namespace in the cluster.
+  #
+  # Each listed namespace is queried on its own, so this also works when the
+  # kubeconfig below is only permitted to read those namespaces — checking the
+  # whole cluster needs cluster-wide permission to list secrets.
+  namespaces: []
+  #  - monitoring
+  #  - ingress-nginx
+
   # Kubeconfig to use for `helm list`. Leave empty to let helm use its own
   # defaults (KUBECONFIG, then ~/.kube/config). Set this when monokit runs from
   # cron or a systemd unit, where the invoking user usually has no ~/.kube/config:

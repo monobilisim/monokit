@@ -149,6 +149,9 @@ func VersionCheck(cmd *cobra.Command, args []string) {
 	// Zulip
 	ZulipCheck()
 
+	// JumpServer
+	JumpServerCheck()
+
 	// RKE2 Kubernetes - Replaced with plugin call
 	handleRKE2VersionCheckViaPlugin()
 
@@ -196,6 +199,9 @@ func VersionCheck(cmd *cobra.Command, args []string) {
 
 	// Mimir
 	MimirCheck()
+
+	// Alloy
+	AlloyCheck()
 
 	// VersityGW
 	VersityGWCheck()

@@ -2,6 +2,7 @@ package common
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -34,9 +35,44 @@ var helmChartRegex = regexp.MustCompile(`^(.*)-(v?\d+\.\d+\.\d+.*)$`)
 // VersionCheckConfig holds the optional /etc/mono/versioncheck.yml settings.
 var VersionCheckConfig struct {
 	Helm struct {
-		Enabled    bool   `yaml:"enabled"`
-		Kubeconfig string `yaml:"kubeconfig"`
+		Enabled    bool     `yaml:"enabled"`
+		Kubeconfig string   `yaml:"kubeconfig"`
+		Namespaces []string `yaml:"namespaces"`
 	} `yaml:"helm"`
+}
+
+// helmList runs `helm list` over the given scope (either --all-namespaces or a
+// --namespace flag) and decodes the result.
+func helmList(scope ...string) ([]helmRelease, error) {
+	args := append([]string{"list"}, scope...)
+	args = append(args, "--output", "json")
+
+	cmd := exec.Command("helm", args...)
+
+	// Under cron the invoking user usually has no ~/.kube/config, so the
+	// kubeconfig that the cluster actually uses has to be pointed at explicitly
+	// (e.g. /etc/rancher/rke2/rke2.yaml on RKE2, /etc/rancher/k3s/k3s.yaml on k3s).
+	if kubeconfig := VersionCheckConfig.Helm.Kubeconfig; kubeconfig != "" {
+		cmd.Env = append(os.Environ(), "KUBECONFIG="+kubeconfig)
+	}
+
+	out, err := cmd.Output()
+	if err != nil {
+		// helm explains RBAC and connection failures on stderr; without it the
+		// recorded error is just "exit status 1".
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) && len(exitErr.Stderr) > 0 {
+			return nil, fmt.Errorf("%w: %s", err, strings.TrimSpace(string(exitErr.Stderr)))
+		}
+		return nil, err
+	}
+
+	var releases []helmRelease
+	if err := json.Unmarshal(out, &releases); err != nil {
+		return nil, fmt.Errorf("could not parse helm list output: %w", err)
+	}
+
+	return releases, nil
 }
 
 // HelmCheck records the chart version of every deployed Helm release.
@@ -64,29 +100,31 @@ func HelmCheck() {
 		return
 	}
 
-	cmd := exec.Command("helm", "list", "--all-namespaces", "--output", "json")
-
-	// Under cron the invoking user usually has no ~/.kube/config, so the
-	// kubeconfig that the cluster actually uses has to be pointed at explicitly
-	// (e.g. /etc/rancher/rke2/rke2.yaml on RKE2, /etc/rancher/k3s/k3s.yaml on k3s).
-	if kubeconfig := VersionCheckConfig.Helm.Kubeconfig; kubeconfig != "" {
-		cmd.Env = append(os.Environ(), "KUBECONFIG="+kubeconfig)
-	}
-
-	out, err := cmd.Output()
-	if err != nil {
-		errMsg := "Error listing Helm releases: " + err.Error()
-		log.Error().Err(err).Msg("Error listing Helm releases")
-		addToVersionErrors(fmt.Errorf("%s", errMsg))
-		return
-	}
-
 	var releases []helmRelease
-	if err := json.Unmarshal(out, &releases); err != nil {
-		errMsg := "Could not parse helm list output: " + err.Error()
-		log.Error().Err(err).Msg("Could not parse helm list output")
-		addToVersionErrors(fmt.Errorf("%s", errMsg))
-		return
+
+	if namespaces := helmNamespaces(); len(namespaces) > 0 {
+		// Listing each namespace separately rather than filtering the
+		// cluster-wide output keeps the check working where monokit's
+		// kubeconfig may only read those namespaces: --all-namespaces needs
+		// cluster-wide permission to list secrets and would fail outright.
+		for _, namespace := range namespaces {
+			found, err := helmList("--namespace", namespace)
+			if err != nil {
+				// One unreadable namespace should not hide the others.
+				log.Error().Err(err).Str("namespace", namespace).Msg("Error listing Helm releases")
+				addToVersionErrors(fmt.Errorf("Error listing Helm releases in namespace %s: %s", namespace, err.Error()))
+				continue
+			}
+			releases = append(releases, found...)
+		}
+	} else {
+		found, err := helmList("--all-namespaces")
+		if err != nil {
+			log.Error().Err(err).Msg("Error listing Helm releases")
+			addToVersionErrors(fmt.Errorf("Error listing Helm releases: %s", err.Error()))
+			return
+		}
+		releases = found
 	}
 
 	if len(releases) == 0 {
@@ -116,4 +154,19 @@ func HelmCheck() {
 
 		recordVersion(name, key, chartVersion)
 	}
+}
+
+// helmNamespaces returns the configured namespace filter, dropping blank entries
+// so a half-filled YAML list does not turn into a `--namespace ""` lookup. An
+// empty result means "every namespace".
+func helmNamespaces() []string {
+	var namespaces []string
+
+	for _, namespace := range VersionCheckConfig.Helm.Namespaces {
+		if namespace = strings.TrimSpace(namespace); namespace != "" {
+			namespaces = append(namespaces, namespace)
+		}
+	}
+
+	return namespaces
 }
