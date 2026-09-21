@@ -35,6 +35,8 @@ var eolProductMap = map[string]string{
 	"Vault":                 "hashicorp-vault",
 	"OPNsense":              "opnsense",
 	"Garage":                "garage",
+	"Consul":                "consul",
+	"Grafana":               "grafana",
 }
 
 type EOLCycle struct {

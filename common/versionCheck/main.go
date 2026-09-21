@@ -146,11 +146,17 @@ func VersionCheck(cmd *cobra.Command, args []string) {
 	// Postal
 	PostalCheck()
 
+	// Zulip
+	ZulipCheck()
+
 	// RKE2 Kubernetes - Replaced with plugin call
 	handleRKE2VersionCheckViaPlugin()
 
 	// Vault
 	VaultCheck()
+
+	// Consul
+	ConsulCheck()
 
 	// FrankenPHP
 	FrankenPHPCheck()
@@ -182,11 +188,23 @@ func VersionCheck(cmd *cobra.Command, args []string) {
 	// Prometheus
 	PrometheusCheck()
 
+	// Grafana
+	GrafanaCheck()
+
+	// Tempo
+	TempoCheck()
+
+	// Mimir
+	MimirCheck()
+
 	// VersityGW
 	VersityGWCheck()
 
 	// Garage
 	GarageCheck()
+
+	// MinIO
+	MinIOCheck()
 
 	allApps := append([]AppVersion{}, notUpdated...)
 	allApps = append(allApps, updated...)
