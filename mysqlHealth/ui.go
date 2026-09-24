@@ -50,10 +50,12 @@ type ReceiveQueueInfo struct {
 // EventSchedulerInfo contains information about cross-node event_scheduler consistency
 type EventSchedulerInfo struct {
 	Checked            bool
+	SchedulerStatus    string // local @@global.event_scheduler (ON/OFF/DISABLED)
 	NodesChecked       int
 	TotalEvents        int
 	NoneEnabledEvents  []string
 	MultiEnabledEvents []string
+	EnabledWhileOff    []string // local ENABLED events while event_scheduler is not ON
 	OK                 bool
 }
 
@@ -238,14 +240,17 @@ func (m *MySQLHealthData) RenderCompact() string {
 
 	}
 
-	// Event Scheduler consistency status (only rendered if actually checked,
-	// i.e. event_scheduler=ON locally). Runs on cluster and standalone nodes.
+	// Event Scheduler status (only rendered if actually checked: either
+	// event_scheduler=ON locally, or it is off while ENABLED events exist).
+	// Runs on cluster and standalone nodes.
 	if m.ClusterInfo.EventScheduler.Checked {
 		sb.WriteString("\n\n")
 		sb.WriteString(common.SectionTitle("Event Scheduler"))
 		sb.WriteString("\n")
 		eventSchedStatus := "Consistent"
-		if !m.ClusterInfo.EventScheduler.OK {
+		if len(m.ClusterInfo.EventScheduler.EnabledWhileOff) > 0 {
+			eventSchedStatus = fmt.Sprintf("%s, %d ENABLED event(s) won't run", m.ClusterInfo.EventScheduler.SchedulerStatus, len(m.ClusterInfo.EventScheduler.EnabledWhileOff))
+		} else if !m.ClusterInfo.EventScheduler.OK {
 			inconsistentCount := len(m.ClusterInfo.EventScheduler.NoneEnabledEvents) + len(m.ClusterInfo.EventScheduler.MultiEnabledEvents)
 			eventSchedStatus = fmt.Sprintf("%d inconsistent", inconsistentCount)
 		}
@@ -263,6 +268,10 @@ func (m *MySQLHealthData) RenderCompact() string {
 			for _, ev := range m.ClusterInfo.EventScheduler.NoneEnabledEvents {
 				sb.WriteString("\n")
 				sb.WriteString(detailStyle.Render(fmt.Sprintf("- %s: no node ENABLED", ev)))
+			}
+			for _, ev := range m.ClusterInfo.EventScheduler.EnabledWhileOff {
+				sb.WriteString("\n")
+				sb.WriteString(detailStyle.Render(fmt.Sprintf("- %s: ENABLED but event_scheduler=%s", ev, m.ClusterInfo.EventScheduler.SchedulerStatus)))
 			}
 			for _, ev := range m.ClusterInfo.EventScheduler.MultiEnabledEvents {
 				sb.WriteString("\n")

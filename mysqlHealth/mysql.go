@@ -838,9 +838,11 @@ func isEventExcluded(key string) bool {
 // ENABLED on exactly one node and SLAVESIDE_DISABLED on the rest (Galera
 // replicates event DDL but not event_scheduler runtime state, so this
 // invariant can silently drift after a failover/restart). On a standalone
-// node, every event should simply be ENABLED. Events listed in
-// Mysql.Disabled_events are excluded from either check. Alarms and opens a
-// Redmine issue on any violation.
+// node, every event should simply be ENABLED. Separately, if event_scheduler
+// is not ON on this node but it holds ENABLED events, those events will never
+// run (on Galera the other nodes have them SLAVESIDE_DISABLED), so that is
+// alarmed as its own check. Events listed in Mysql.Disabled_events are
+// excluded from all checks. Alarms and opens a Redmine issue on any violation.
 func CheckEventScheduler() {
 	rows, err := Connection.Query("SELECT @@global.event_scheduler")
 	if err != nil {
@@ -857,17 +859,49 @@ func CheckEventScheduler() {
 	}
 	rows.Close()
 
-	if !strings.EqualFold(schedulerStatus, "ON") {
-		// event_scheduler is off on this node; nothing to check.
-		healthData.ClusterInfo.EventScheduler.Checked = false
-		return
-	}
-
 	localEvents, err := queryEventStatuses(Connection)
 	if err != nil {
 		log.Error().Err(err).Msg("CheckEventScheduler: failed to query local information_schema.events")
 		return
 	}
+
+	if !strings.EqualFold(schedulerStatus, "ON") {
+		var enabledWhileOff []string
+		for key, status := range localEvents {
+			if !isEventExcluded(key) && status == "ENABLED" {
+				enabledWhileOff = append(enabledWhileOff, key)
+			}
+		}
+
+		// Only render the section when there is something to report; an OFF
+		// scheduler with no ENABLED events is a valid configuration.
+		healthData.ClusterInfo.EventScheduler.Checked = len(enabledWhileOff) > 0
+		healthData.ClusterInfo.EventScheduler.SchedulerStatus = schedulerStatus
+		healthData.ClusterInfo.EventScheduler.NodesChecked = 1
+		healthData.ClusterInfo.EventScheduler.TotalEvents = len(localEvents)
+		healthData.ClusterInfo.EventScheduler.EnabledWhileOff = enabledWhileOff
+		healthData.ClusterInfo.EventScheduler.NoneEnabledEvents = nil
+		healthData.ClusterInfo.EventScheduler.MultiEnabledEvents = nil
+		healthData.ClusterInfo.EventScheduler.OK = len(enabledWhileOff) == 0
+
+		if len(enabledWhileOff) > 0 {
+			msg := fmt.Sprintf("event_scheduler is %s but this node has ENABLED events that will not run: %s", schedulerStatus, strings.Join(enabledWhileOff, ", "))
+			msgTr := fmt.Sprintf("event_scheduler %s durumda fakat bu node'da çalışmayacak ENABLED event'ler var: %s", schedulerStatus, strings.Join(enabledWhileOff, ", "))
+			subject := fmt.Sprintf("%s için Event Scheduler Kapalı", common.Config.Identifier)
+
+			common.AlarmCheckDown("event scheduler off", msg, false, "", "")
+			issues.CheckDown("event-scheduler-off", subject, msgTr, false, 0)
+		} else {
+			common.AlarmCheckUp("event scheduler off", "No ENABLED events on a node with event_scheduler "+schedulerStatus, false)
+			issues.CheckUp("event-scheduler-off", "event_scheduler kapalı node'da ENABLED event kalmadı")
+		}
+		return
+	}
+
+	healthData.ClusterInfo.EventScheduler.SchedulerStatus = schedulerStatus
+	healthData.ClusterInfo.EventScheduler.EnabledWhileOff = nil
+	common.AlarmCheckUp("event scheduler off", "event_scheduler is ON", false)
+	issues.CheckUp("event-scheduler-off", "event_scheduler açıldı")
 
 	if !DbHealthConfig.Mysql.Cluster.Enabled {
 		var notEnabled []string
