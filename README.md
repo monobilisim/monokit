@@ -202,6 +202,7 @@ These core tools will be available in every monokit installation.
 - redisHealth
   - Checks Redis health, including read and write operations.
   - Sends alarm notifications to a Slack webhook.
+  - On sentinel masters whose connected slave count differs from `slave_count`, opens a Redmine issue and closes it once the count matches again.
   - Config: `/etc/mono/redis.yml` (optional)
   - Is a plugin, install it with `monokit plugin install redisHealth`.
 
