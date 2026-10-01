@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/monobilisim/monokit/common"
+	issues "github.com/monobilisim/monokit/common/redmine/issues"
 	"github.com/redis/go-redis/v9"
 	"github.com/rs/zerolog/log"
 )
@@ -89,6 +90,28 @@ func InitRedis() {
 	}
 }
 
+// parseConnectedSlaves extracts the connected_slaves value from a Redis INFO
+// Replication response. ok is false when the field is missing, which happens
+// when INFO fails or returns an unexpected shape; callers must not treat that
+// as "0 slaves" (that would wrongly satisfy slave_count: 0 configs).
+func parseConnectedSlaves(info string) (int, bool) {
+	scanner := bufio.NewScanner(strings.NewReader(info))
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "connected_slaves:") {
+			continue
+		}
+		count, err := strconv.Atoi(strings.TrimPrefix(line, "connected_slaves:"))
+		if err != nil {
+			return 0, false
+		}
+		return count, true
+	}
+
+	return 0, false
+}
+
 // CheckSlaveCountChange checks if the Redis slave count matches the expected count
 func CheckSlaveCountChange() {
 	if !redisMaster || !IsRedisSentinel() {
@@ -101,20 +124,25 @@ func CheckSlaveCountChange() {
 		log.Error().Err(err).Str("component", "redisHealth").Str("operation", "CheckSlaveCountChange").Str("action", "info_gather_failed").Msg("Error while trying to gather replication info")
 	}
 
-	// Go over line by line
-	scanner := bufio.NewScanner(strings.NewReader(info))
+	expected := RedisHealthConfig.Slave_count
+	actual, found := parseConnectedSlaves(info)
 
-	for scanner.Scan() {
-		if strings.Contains(scanner.Text(), "connected_slaves:") {
-			break
-		}
-	}
-
-	if scanner.Text() == "connected_slaves:"+strconv.Itoa(RedisHealthConfig.Slave_count) {
+	if found && actual == expected {
 		common.AlarmCheckUp("redis_slave_count", "Slave count is now correct", false)
-	} else {
-		common.AlarmCheckDown("redis_slave_count", "Slave count is incorrect, intended: "+strconv.Itoa(RedisHealthConfig.Slave_count)+", actual: "+strings.Split(scanner.Text(), "connected_slaves:")[1], false, "", "")
+		issues.CheckUp("redis_slave_count", common.Config.Identifier+" için Redis slave sayısı beklendiği gibi: "+strconv.Itoa(expected))
+		return
 	}
+
+	actualStr := "unknown"
+	if found {
+		actualStr = strconv.Itoa(actual)
+	}
+
+	common.AlarmCheckDown("redis_slave_count", "Slave count is incorrect, intended: "+strconv.Itoa(expected)+", actual: "+actualStr, false, "", "")
+	issues.CheckDown("redis_slave_count",
+		common.Config.Identifier+" için Redis slave sayısı beklenenden farklı",
+		"Beklenen slave sayısı: "+strconv.Itoa(expected)+"\nGerçek slave sayısı: "+actualStr,
+		false, 0)
 }
 
 func redisAlarmRoleChange(isMaster bool) {
