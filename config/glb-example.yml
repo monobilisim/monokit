@@ -50,9 +50,15 @@ caddy:
   # Default: true
   dynamic_api_urls: true
 
-  # Sleep for every change in seconds
+  # Sleep after each API URL (LB) batch, in seconds
   # Default: 1
   lb_policy_change_sleep: 1
+
+  # Number of API URLs (LBs) processed concurrently.
+  # Each LB is independent, so the default parallelizes across all of them.
+  # Set to 1 for the old sequential behaviour.
+  # Default: number of api_urls
+  parallel_workers: 0
 
 # Alarm Stream/Topic
 # Custom alarm stream/topic, different from the one listed on global.yaml

@@ -13,6 +13,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/itchyny/gojq"
@@ -20,7 +22,20 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
-var noChangesCounter int
+var (
+	noChangesCounter int64
+
+	// Tek HTTP client: bağlantı havuzu (keep-alive) tüm isteklerde paylaşılır,
+	// böylece her istekte TLS handshake + yeni bağlantı maliyeti ödenmez.
+	sharedHTTPClientOnce sync.Once
+	sharedHTTPClient     *http.Client
+
+	// Aynı çalıştırma içinde her Caddy API URL'i için /config/apps/http/servers
+	// yanıtı yalnızca bir kez çekilir; vhost başına tekrar tekrar indirilmez.
+	// Eşzamanlı API URL worker'ları eriştiği için mutex ile korunur.
+	serversConfigCacheMu sync.RWMutex
+	serversConfigCache   = map[string]map[string]interface{}{}
+)
 
 func newHTTPClient() *http.Client {
 	transport := &http.Transport{
@@ -35,6 +50,47 @@ func newHTTPClient() *http.Client {
 		Timeout:   30 * time.Second,
 		Transport: transport,
 	}
+}
+
+func sharedClient() *http.Client {
+	sharedHTTPClientOnce.Do(func() { sharedHTTPClient = newHTTPClient() })
+	return sharedHTTPClient
+}
+
+func fetchServersConfig(actualUrl string, usernamePassword string) (map[string]interface{}, error) {
+	serversConfigCacheMu.RLock()
+	data, ok := serversConfigCache[actualUrl]
+	serversConfigCacheMu.RUnlock()
+	if ok {
+		return data, nil
+	}
+
+	req, err := http.NewRequest("GET", actualUrl+"/config/apps/http/servers", nil)
+	if err != nil {
+		return nil, err
+	}
+	req.SetBasicAuth(strings.Split(usernamePassword, ":")[0], strings.Split(usernamePassword, ":")[1])
+
+	resp, err := doWithRetry(sharedClient(), req, 5)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("GET %s returned %s; body=%s", actualUrl+"/config/apps/http/servers", resp.Status, string(b))
+	}
+
+	var respBodyJson map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&respBodyJson); err != nil {
+		return nil, err
+	}
+
+	serversConfigCacheMu.Lock()
+	serversConfigCache[actualUrl] = respBodyJson
+	serversConfigCacheMu.Unlock()
+	return respBodyJson, nil
 }
 
 func doWithRetry(client *http.Client, req *http.Request, maxRetries int) (*http.Response, error) {
@@ -116,20 +172,18 @@ func hostnameToURL(hostname string) (string, error) {
 }
 
 func extractHostname(url string) (string, error) {
-	resp, err := http.Get(url)
+	var resp *http.Response
+	var err error
 	maxRetries := 2
+	for i := 0; i <= maxRetries; i++ {
+		resp, err = sharedClient().Get(url)
+		if err == nil {
+			break
+		}
+		fmt.Println("Retrying " + url)
+	}
 	if err != nil {
-		for i := 0; i < maxRetries; i++ {
-			err = nil
-			fmt.Println("Retrying " + url)
-			resp, err = http.Get(url)
-			if err == nil {
-				break
-			}
-		}
-		if err != nil {
-			return "", err
-		}
+		return "", err
 	}
 	defer resp.Body.Close()
 
@@ -181,20 +235,22 @@ func AdjustApiUrls() {
 	var caddyApiUrlsNew []string
 	for _, lbUrl := range Config.Caddy.Lb_Urls {
 		log.Debug().Str("component", "lbPolicy").Str("operation", "AdjustApiUrls").Str("action", "checking_lb_url").Msg("Checking " + lbUrl)
+
+		hostname, err := extractHostname(lbUrl)
+		if err != nil {
+			log.Error().Str("component", "lbPolicy").Str("operation", "AdjustApiUrls").Str("action", "extract_hostname").Msg(err.Error())
+			continue
+		}
+		urlNew, err := hostnameToURL(hostname)
+		if err != nil {
+			log.Error().Str("component", "lbPolicy").Str("operation", "AdjustApiUrls").Str("action", "hostname_to_url").Msg(err.Error())
+			continue
+		}
+
 		for _, server := range Config.Caddy.Api_Urls {
 			log.Debug().Str("component", "lbPolicy").Str("operation", "AdjustApiUrls").Str("action", "checking_server").Msg("Checking " + server + " under " + lbUrl)
 
 			url := strings.Split(server, "@")[1]
-			hostname, err := extractHostname(lbUrl)
-			if err != nil {
-				log.Error().Str("component", "lbPolicy").Str("operation", "AdjustApiUrls").Str("action", "extract_hostname").Msg(err.Error())
-				continue
-			}
-			urlNew, err := hostnameToURL(hostname)
-			if err != nil {
-				log.Error().Str("component", "lbPolicy").Str("operation", "AdjustApiUrls").Str("action", "hostname_to_url").Msg(err.Error())
-				continue
-			}
 			if urlNew == url {
 				fmt.Println(urlNew + " is the same as URL, adding to caddyApiUrlsNew")
 				caddyApiUrlsNew = append(caddyApiUrlsNew, server)
@@ -211,6 +267,10 @@ func AdjustApiUrls() {
 
 func SwitchMain(server string) {
 	var CensoredApiUrls []string
+
+	serversConfigCacheMu.Lock()
+	serversConfigCache = map[string]map[string]interface{}{}
+	serversConfigCacheMu.Unlock()
 
 	if Config.Caddy.Loop_Order == "" {
 		Config.Caddy.Loop_Order = "API_URLS"
@@ -233,22 +293,63 @@ func SwitchMain(server string) {
 		fmt.Println("Caddy API URLs: " + strings.Join(CensoredApiUrls, ", "))
 	}
 
-	if Config.Caddy.Loop_Order == "SERVERS" {
-		log.Debug().Str("component", "lbPolicy").Str("operation", "SwitchMain").Str("action", "loop_order").Msg("Loop order is SERVERS")
-		var badUrls []string
-		for _, urlToFind := range Config.Caddy.Servers {
-			for urlUp := range Config.Caddy.Api_Urls {
-				url := strings.Split(Config.Caddy.Api_Urls[urlUp], "@")[1]
-				usernamePassword := strings.Split(Config.Caddy.Api_Urls[urlUp], "@")[0]
-				fmt.Println("Checking " + urlToFind + " on " + url)
-				err := IdentifyRequest(server, url, usernamePassword, urlToFind)
-				if err != nil {
-					fmt.Println("Failed to switch upstreams for " + url + ": " + err.Error())
-					badUrls = append(badUrls, url)
+	if Config.Caddy.Loop_Order != "SERVERS" && Config.Caddy.Loop_Order != "API_URLS" {
+		log.Error().Str("component", "lbPolicy").Str("operation", "SwitchMain").Str("action", "validation").Msg("Invalid loop order")
+		os.Exit(1)
+	}
+	log.Debug().Str("component", "lbPolicy").Str("operation", "SwitchMain").Str("action", "loop_order").Msg("Loop order is " + Config.Caddy.Loop_Order)
+
+	// Her API URL (LB) bağımsız bir iştir: kendi Caddy'sine yazar, diğerlerini beklemez.
+	// Varsayılan eşzamanlılık = API URL sayısı; `parallel_workers` ile sınırlanabilir.
+	workers := len(Config.Caddy.Api_Urls)
+	if Config.Caddy.Parallel_Workers > 0 && Config.Caddy.Parallel_Workers < workers {
+		workers = Config.Caddy.Parallel_Workers
+	}
+	if workers < 1 {
+		workers = 1
+	}
+
+	var (
+		wg      sync.WaitGroup
+		mu      sync.Mutex
+		badUrls []string
+	)
+
+	tasks := make(chan string)
+	for range workers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for apiUrl := range tasks {
+				url := strings.Split(apiUrl, "@")[1]
+				usernamePassword := strings.Split(apiUrl, "@")[0]
+				idless := strings.Split(url, ";")[0]
+
+				for _, urlToFind := range Config.Caddy.Servers {
+					fmt.Println("Checking " + urlToFind + " on " + idless)
+					if err := IdentifyRequest(server, url, usernamePassword, urlToFind); err != nil {
+						fmt.Println("Failed to switch upstreams for " + idless + ": " + err.Error())
+						mu.Lock()
+						badUrls = append(badUrls, idless)
+						mu.Unlock()
+					}
+				}
+
+				if Config.Caddy.Lb_Policy_Change_Sleep > 0 {
+					time.Sleep(Config.Caddy.Lb_Policy_Change_Sleep * time.Second)
 				}
 			}
-			time.Sleep(Config.Caddy.Lb_Policy_Change_Sleep * time.Second)
-		}
+		}()
+	}
+	for _, apiUrl := range Config.Caddy.Api_Urls {
+		tasks <- apiUrl
+	}
+	close(tasks)
+	wg.Wait()
+
+	badUrls = uniqueSorted(badUrls)
+
+	if Config.Caddy.Loop_Order == "SERVERS" {
 		if len(badUrls) > 0 {
 			badUrlsHumanReadable := strings.Join(badUrls, ", ")
 			fmt.Println("Failed to switch upstreams for the following URLs: " + badUrlsHumanReadable)
@@ -256,32 +357,12 @@ func SwitchMain(server string) {
 		} else {
 			AlarmCustom("green_circle", "The URL(s) "+strings.Join(Config.Caddy.Servers, ", ")+" have been completely switched to "+server)
 		}
-	} else if Config.Caddy.Loop_Order == "API_URLS" {
-		log.Debug().Str("component", "lbPolicy").Str("operation", "SwitchMain").Str("action", "loop_order").Msg("Loop order is API_URLS")
-		var badUrls []string
-		for urlUp := range Config.Caddy.Api_Urls {
-			log.Debug().Str("component", "lbPolicy").Str("operation", "SwitchMain").Str("action", "checking_api_url").Msg("Checking " + Config.Caddy.Api_Urls[urlUp])
-			for _, urlToFind := range Config.Caddy.Servers {
-				log.Debug().Str("component", "lbPolicy").Str("operation", "SwitchMain").Str("action", "checking_server").Msg("Checking " + urlToFind + " on " + Config.Caddy.Api_Urls[urlUp])
-				url := strings.Split(Config.Caddy.Api_Urls[urlUp], "@")[1]
-				usernamePassword := strings.Split(Config.Caddy.Api_Urls[urlUp], "@")[0]
-				fmt.Println("Checking " + urlToFind + " on " + url)
-				err := IdentifyRequest(server, url, usernamePassword, urlToFind)
-				if err != nil {
-					fmt.Println("Failed to switch upstreams for " + url + ": " + err.Error())
-					badUrls = append(badUrls, url)
-				}
-			}
-			time.Sleep(Config.Caddy.Lb_Policy_Change_Sleep * time.Second)
-		}
+	} else {
 		if len(badUrls) > 0 {
 			AlarmCustom("yellow_circle", "Partially failed to switch upstreams to "+server+" for the following API URLs: "+strings.Join(badUrls, ", "))
 		} else {
 			AlarmCustom("green_circle", "The URL(s) "+strings.Join(CensoredApiUrls, ", ")+" have been completely switched to "+server)
 		}
-	} else {
-		log.Error().Str("component", "lbPolicy").Str("operation", "SwitchMain").Str("action", "validation").Msg("Invalid loop order")
-		os.Exit(1)
 	}
 }
 
@@ -455,49 +536,16 @@ func IdentifyRequest(srvArg string, url string, usernamePassword string, urlToFi
 	fmt.Println("Checking " + actualUrl + " for " + identifier)
 	log.Debug().Str("component", "lbPolicy").Str("operation", "IdentifyRequest").Str("action", "get_servers").Msg("GET " + actualUrl + "/config/apps/http/servers")
 
-	req, err := http.NewRequest("GET", actualUrl+"/config/apps/http/servers", nil)
-	if err != nil {
-		log.Debug().Str("component", "lbPolicy").Str("operation", "IdentifyRequest").Str("action", "create_request").Msg("Failed to create request: " + err.Error())
-		return err
-	}
-	req.SetBasicAuth(strings.Split(usernamePassword, ":")[0], strings.Split(usernamePassword, ":")[1])
-
-	client := newHTTPClient()
-	resp, err := doWithRetry(client, req, 5)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		b, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("GET %s returned %s; body=%s", actualUrl+"/config/apps/http/servers", resp.Status, string(b))
-	}
-
-	gojqQuery, err := gojq.Parse("keys[]")
+	respBodyJson, err := fetchServersConfig(actualUrl, usernamePassword)
 	if err != nil {
 		return err
 	}
 
 	var servers []string
-	var respBodyJson map[string]interface{}
-	if err := json.NewDecoder(resp.Body).Decode(&respBodyJson); err != nil {
-		return err
+	for server := range respBodyJson {
+		servers = append(servers, server)
 	}
-
-	gojqQueryIter := gojqQuery.Run(respBodyJson)
-	if gojqQueryIter == nil {
-		return errors.New("gojqQueryIter is nil")
-	}
-	for {
-		result, ok := gojqQueryIter.Next()
-		if !ok {
-			break
-		}
-		if s, ok := result.(string); ok {
-			servers = append(servers, s)
-		}
-	}
+	sort.Strings(servers)
 
 	fmt.Println("Servers: " + strings.Join(servers, ", "))
 
@@ -555,7 +603,7 @@ func SendRequest(jsonPayload map[string]interface{}, url string, usernamePasswor
 		req.SetBasicAuth(credentials[0], credentials[1])
 	}
 
-	client := newHTTPClient()
+	client := sharedClient()
 	resp, err := doWithRetry(client, req, 5)
 	if err != nil {
 		return fmt.Errorf("failed to send HTTP request: %w", err)
@@ -570,8 +618,8 @@ func SendRequest(jsonPayload map[string]interface{}, url string, usernamePasswor
 }
 
 func ChangeUpstreams(urlToFind string, switchTo string, identifier string, url string, actualUrl string, server string, routeId int, req map[string]interface{}, UsernamePassword string) {
-	if noChangesCounter > Config.Caddy.Nochange_Exit_Threshold {
-		fmt.Println("No changes were made for " + strconv.Itoa(noChangesCounter) + " times.")
+	if n := atomic.LoadInt64(&noChangesCounter); n > int64(Config.Caddy.Nochange_Exit_Threshold) {
+		fmt.Println("No changes were made for " + strconv.FormatInt(n, 10) + " times.")
 		os.Exit(0)
 	}
 
@@ -627,13 +675,13 @@ func ChangeUpstreams(urlToFind string, switchTo string, identifier string, url s
 
 		if reqToSend == nil {
 			log.Debug().Str("component", "lbPolicy").Str("operation", "ChangeUpstreams").Str("action", "nil_payload").Msg("jq produced nil request payload")
-			noChangesCounter++
+			atomic.AddInt64(&noChangesCounter, 1)
 			return
 		}
 
 		if reflect.DeepEqual(reqToSend, req) && !Config.Caddy.Override_Config {
 			fmt.Println("No changes were made as the upstreams are already in " + second + " order")
-			noChangesCounter++
+			atomic.AddInt64(&noChangesCounter, 1)
 			return
 		}
 
@@ -681,13 +729,13 @@ func ChangeUpstreams(urlToFind string, switchTo string, identifier string, url s
 
 		if reqToSend == nil {
 			log.Debug().Str("component", "lbPolicy").Str("operation", "ChangeUpstreams").Str("action", "nil_payload").Msg("jq produced nil request payload")
-			noChangesCounter++
+			atomic.AddInt64(&noChangesCounter, 1)
 			return
 		}
 
 		if reflect.DeepEqual(reqToSend, req) && !Config.Caddy.Override_Config {
 			fmt.Println("No changes were made as the upstreams are already in " + switchTo + " order")
-			noChangesCounter++
+			atomic.AddInt64(&noChangesCounter, 1)
 			return
 		}
 

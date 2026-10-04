@@ -23,6 +23,7 @@ type ConfigStruct struct {
 		Dynamic_Api_Urls        bool                    `mapstructure:"dynamic_api_urls" yaml:"dynamic_api_urls"`
 		Loop_Order              string                  `mapstructure:"loop_order" yaml:"loop_order"`
 		Lb_Policy_Change_Sleep  time.Duration           `mapstructure:"lb_policy_change_sleep" yaml:"lb_policy_change_sleep"`
+		Parallel_Workers        int                     `mapstructure:"parallel_workers" yaml:"parallel_workers"`
 		PatroniAutoSwitch       PatroniAutoSwitchConfig `mapstructure:"patroni_auto_switch" yaml:"patroni_auto_switch"`
 	} `mapstructure:"caddy" yaml:"caddy"`
 
