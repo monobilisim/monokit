@@ -54,6 +54,10 @@ caddy:
   # Default: 1
   lb_policy_change_sleep: 1
 
+  # Route changes for a load balancer are collected and applied with a single
+  # config load (POST /load), because every Caddy config change re-provisions all
+  # modules. vhost-by-vhost PATCHes would mean one full reload per vhost.
+
   # Number of API URLs (LBs) processed concurrently.
   # Each LB is independent, so the default parallelizes across all of them.
   # Set to 1 for the old sequential behaviour.

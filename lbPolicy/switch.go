@@ -35,7 +35,185 @@ var (
 	// Eşzamanlı API URL worker'ları eriştiği için mutex ile korunur.
 	serversConfigCacheMu sync.RWMutex
 	serversConfigCache   = map[string]map[string]interface{}{}
+
+	// Her Caddy config değişikliği tüm modülleri yeniden provision eder (ölçüldü:
+	// yavaş bir modülle ~142 sn). vhost başına PATCH atmak N reload demektir;
+	// bu yüzden değişiklikler LB başına toplanır ve tek /load ile uygulanır.
+	pendingMu     sync.Mutex
+	pendingRoutes = map[string][]stagedRouteChange{}
 )
+
+// Bir LB için bekleyen rota değişikliği.
+type stagedRouteChange struct {
+	server string
+	index  int
+	route  map[string]interface{}
+	line   string
+}
+
+// /load tüm config'i yükler ve yavaş olabilir; okuma ve yükleme için ayrı,
+// uzun timeout'lu client kullanılır.
+const loadTimeout = 300 * time.Second
+
+var (
+	loadHTTPClientOnce sync.Once
+	loadHTTPClient     *http.Client
+)
+
+func loadClient() *http.Client {
+	loadHTTPClientOnce.Do(func() {
+		c := newHTTPClient()
+		c.Timeout = loadTimeout
+		loadHTTPClient = c
+	})
+	return loadHTTPClient
+}
+
+func stageRouteChange(actualUrl string, change stagedRouteChange) {
+	pendingMu.Lock()
+	pendingRoutes[actualUrl] = append(pendingRoutes[actualUrl], change)
+	pendingMu.Unlock()
+}
+
+func resetPendingRoutes() {
+	pendingMu.Lock()
+	pendingRoutes = map[string][]stagedRouteChange{}
+	pendingMu.Unlock()
+}
+
+func applyBasicAuth(req *http.Request, usernamePassword string) error {
+	if usernamePassword == "" {
+		return nil
+	}
+	credentials := strings.SplitN(usernamePassword, ":", 2)
+	if len(credentials) != 2 {
+		return fmt.Errorf("invalid usernamePassword format, expected 'username:password'")
+	}
+	req.SetBasicAuth(credentials[0], credentials[1])
+	return nil
+}
+
+func configServers(cfg map[string]interface{}) (map[string]interface{}, error) {
+	apps, ok := cfg["apps"].(map[string]interface{})
+	if !ok {
+		return nil, errors.New("config has no apps object")
+	}
+	httpApp, ok := apps["http"].(map[string]interface{})
+	if !ok {
+		return nil, errors.New("config has no apps.http object")
+	}
+	servers, ok := httpApp["servers"].(map[string]interface{})
+	if !ok {
+		return nil, errors.New("config has no apps.http.servers object")
+	}
+	return servers, nil
+}
+
+func fetchFullConfig(actualUrl string, usernamePassword string) (map[string]interface{}, error) {
+	req, err := http.NewRequest("GET", actualUrl+"/config/", nil)
+	if err != nil {
+		return nil, err
+	}
+	if err := applyBasicAuth(req, usernamePassword); err != nil {
+		return nil, err
+	}
+
+	resp, err := doWithRetry(loadClient(), req, 3)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("GET %s returned %s; body=%s", actualUrl+"/config/", resp.Status, string(b))
+	}
+
+	var cfg map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&cfg); err != nil {
+		return nil, err
+	}
+	return cfg, nil
+}
+
+func loadFullConfig(cfg map[string]interface{}, actualUrl string, usernamePassword string) error {
+	payload, err := json.Marshal(cfg)
+	if err != nil {
+		return fmt.Errorf("failed to marshal config: %w", err)
+	}
+
+	req, err := http.NewRequest(http.MethodPost, actualUrl+"/load", bytes.NewBuffer(payload))
+	if err != nil {
+		return fmt.Errorf("failed to create HTTP request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if err := applyBasicAuth(req, usernamePassword); err != nil {
+		return err
+	}
+
+	// Tek deneme: başarısız bir /load'u tekrarlamak yeni bir reload demektir.
+	resp, err := doWithRetry(loadClient(), req, 1)
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		b, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("POST %s returned %s; body=%s", actualUrl+"/load", resp.Status, string(b))
+	}
+	return nil
+}
+
+// ApplyPendingChanges, bir LB için toplanan rotaları tek bir config
+// yüklemesiyle uygular: tam config çekilir, rotalar yerine konur, /load edilir.
+func ApplyPendingChanges(actualUrl string, usernamePassword string) error {
+	pendingMu.Lock()
+	changes := pendingRoutes[actualUrl]
+	delete(pendingRoutes, actualUrl)
+	pendingMu.Unlock()
+
+	if len(changes) == 0 {
+		return nil
+	}
+
+	cfg, err := fetchFullConfig(actualUrl, usernamePassword)
+	if err != nil {
+		return err
+	}
+
+	servers, err := configServers(cfg)
+	if err != nil {
+		return err
+	}
+
+	applied := make([]stagedRouteChange, 0, len(changes))
+	for _, change := range changes {
+		srv, ok := servers[change.server].(map[string]interface{})
+		if !ok {
+			return fmt.Errorf("server %s is missing in the config of %s", change.server, actualUrl)
+		}
+		routes, ok := srv["routes"].([]interface{})
+		if !ok {
+			return fmt.Errorf("server %s has no routes array in the config of %s", change.server, actualUrl)
+		}
+		if change.index < 0 || change.index >= len(routes) {
+			return fmt.Errorf("route index %d is out of range for server %s in the config of %s", change.index, change.server, actualUrl)
+		}
+		routes[change.index] = change.route
+		applied = append(applied, change)
+	}
+
+	if err := loadFullConfig(cfg, actualUrl, usernamePassword); err != nil {
+		return err
+	}
+
+	for _, change := range applied {
+		fmt.Println(change.line)
+	}
+	fmt.Println("Applied " + strconv.Itoa(len(applied)) + " route change(s) to " + actualUrl + " in one config load")
+	return nil
+}
 
 func newHTTPClient() *http.Client {
 	transport := &http.Transport{
@@ -115,6 +293,12 @@ func doWithRetry(client *http.Client, req *http.Request, maxRetries int) (*http.
 			log.Debug().
 				Str("component", "lbPolicy").Str("operation", "doWithRetry").Str("action", "attempt_error").
 				Int("attempt", attempt+1).Err(err).Msg("request failed")
+
+			// Timeout'ta tekrar denemek, yavaş bir admin API'ye (reload kuyruğuna)
+			// yeni istek eklemekten başka işe yaramaz; istek sunucuda sürüyor olabilir.
+			if os.IsTimeout(err) {
+				return nil, err
+			}
 			if attempt == maxRetries-1 {
 				return nil, err
 			}
@@ -270,6 +454,7 @@ func SwitchMain(server string) {
 
 	serversConfigCacheMu.Lock()
 	serversConfigCache = map[string]map[string]interface{}{}
+	resetPendingRoutes()
 	serversConfigCacheMu.Unlock()
 
 	if Config.Caddy.Loop_Order == "" {
@@ -333,6 +518,16 @@ func SwitchMain(server string) {
 						badUrls = append(badUrls, idless)
 						mu.Unlock()
 					}
+				}
+
+				// Rotalar tek tek PATCH edilmez (her PATCH tam bir config reload'u
+				// demektir); LB başına toplanan değişiklikler tek /load ile uygulanır.
+				if err := ApplyPendingChanges(idless, usernamePassword); err != nil {
+					fmt.Println("Failed to switch upstreams for " + idless + ": " + err.Error())
+					AlarmCustom("red_circle", "Failed to switch upstreams for "+idless+": "+strings.ReplaceAll(err.Error(), "\"", "'"))
+					mu.Lock()
+					badUrls = append(badUrls, idless)
+					mu.Unlock()
 				}
 
 				if Config.Caddy.Lb_Policy_Change_Sleep > 0 {
@@ -572,52 +767,13 @@ func IdentifyRequest(srvArg string, url string, usernamePassword string, urlToFi
 				Msg("Matched route payload before transform")
 		}
 
-		ChangeUpstreams(urlToFind, srvArg, identifier, url, actualUrl, server, routeId, routeObj, usernamePassword)
+		ChangeUpstreams(urlToFind, srvArg, identifier, url, actualUrl, server, routeId, routeObj)
 	}
 
 	return nil
 }
 
-func SendRequest(jsonPayload map[string]interface{}, url string, usernamePassword string) error {
-	payloadBytes, err := json.Marshal(jsonPayload)
-	if err != nil {
-		return fmt.Errorf("failed to marshal JSON payload: %w", err)
-	}
-
-	req, err := http.NewRequest(http.MethodPatch, url, bytes.NewBuffer(payloadBytes))
-	if err != nil {
-		return fmt.Errorf("failed to create HTTP request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	req.GetBody = func() (io.ReadCloser, error) {
-		return io.NopCloser(bytes.NewReader(payloadBytes)), nil
-	}
-	req.ContentLength = int64(len(payloadBytes))
-
-	if usernamePassword != "" {
-		credentials := strings.SplitN(usernamePassword, ":", 2)
-		if len(credentials) != 2 {
-			return fmt.Errorf("invalid usernamePassword format, expected 'username:password'")
-		}
-		req.SetBasicAuth(credentials[0], credentials[1])
-	}
-
-	client := sharedClient()
-	resp, err := doWithRetry(client, req, 5)
-	if err != nil {
-		return fmt.Errorf("failed to send HTTP request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		b, _ := io.ReadAll(resp.Body)
-		return fmt.Errorf("received non-2xx response: %s; body=%s", resp.Status, string(b))
-	}
-	return nil
-}
-
-func ChangeUpstreams(urlToFind string, switchTo string, identifier string, url string, actualUrl string, server string, routeId int, req map[string]interface{}, UsernamePassword string) {
+func ChangeUpstreams(urlToFind string, switchTo string, identifier string, url string, actualUrl string, server string, routeId int, req map[string]interface{}) {
 	if n := atomic.LoadInt64(&noChangesCounter); n > int64(Config.Caddy.Nochange_Exit_Threshold) {
 		fmt.Println("No changes were made for " + strconv.FormatInt(n, 10) + " times.")
 		os.Exit(0)
@@ -685,15 +841,13 @@ func ChangeUpstreams(urlToFind string, switchTo string, identifier string, url s
 			return
 		}
 
-		fmt.Println("Sending request to change lb_policy to " + switchTo)
-		err := SendRequest(reqToSend, reqUrl, UsernamePassword)
-		if err == nil {
-			fmt.Println(url + "'s upstream has been switched to " + switchTo)
-		} else {
-			fmt.Println("Failed to switch " + url + "'s upstream to " + switchTo)
-			log.Debug().Str("component", "lbPolicy").Str("operation", "ChangeUpstreams").Str("action", "send_request_error").Msg(err.Error())
-			AlarmCustom("red_circle", "Failed to switch "+url+"'s upstream to "+switchTo+": "+strings.ReplaceAll(err.Error(), "\"", "'"))
-		}
+		fmt.Println("Staging lb_policy change to " + switchTo + " for " + url)
+		stageRouteChange(actualUrl, stagedRouteChange{
+			server: server,
+			index:  routeId,
+			route:  reqToSend,
+			line:   url + "'s upstream has been switched to " + switchTo,
+		})
 
 	} else if switchTo == "round_robin" || switchTo == "ip_hash" {
 		log.Debug().Str("component", "lbPolicy").Str("operation", "ChangeUpstreams").Str("action", "switching_policy").Msg("Switching to " + switchTo)
@@ -739,15 +893,13 @@ func ChangeUpstreams(urlToFind string, switchTo string, identifier string, url s
 			return
 		}
 
-		fmt.Println("Sending request to change lb_policy to " + switchTo)
-		err := SendRequest(reqToSend, reqUrl, UsernamePassword)
-		if err == nil {
-			fmt.Println(url + "'s upstream has been switched to " + switchTo)
-		} else {
-			fmt.Println("Failed to switch " + url + "'s upstream to " + switchTo)
-			log.Debug().Str("component", "lbPolicy").Str("operation", "ChangeUpstreams").Str("action", "send_request_error").Msg(err.Error())
-			AlarmCustom("red_circle", "Failed to switch "+url+"'s upstream to "+switchTo+": "+strings.ReplaceAll(err.Error(), "\"", "'"))
-		}
+		fmt.Println("Staging lb_policy change to " + switchTo + " for " + url)
+		stageRouteChange(actualUrl, stagedRouteChange{
+			server: server,
+			index:  routeId,
+			route:  reqToSend,
+			line:   url + "'s upstream has been switched to " + switchTo,
+		})
 	} else {
 		log.Error().Str("component", "lbPolicy").Str("operation", "ChangeUpstreams").Str("action", "validation").Msg("Invalid load balancing policy")
 		os.Exit(1)

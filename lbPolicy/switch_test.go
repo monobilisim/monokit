@@ -11,6 +11,7 @@ import (
 )
 
 // End-to-end: gerçek SwitchMain akışı, yerel mock Caddy admin API'si (ağ/prod yok).
+// Değişikliklerin LB başına TEK /load ile uygulandığını doğrular.
 func TestSwitchMainEndToEnd(t *testing.T) {
 	vhosts := []string{
 		"api.optymus.tech", "api-private.optymus.tech", "app.optymus.tech",
@@ -36,23 +37,48 @@ func TestSwitchMainEndToEnd(t *testing.T) {
 			}},
 		})
 	}
-	body, _ := json.Marshal(map[string]interface{}{
-		"srv0": map[string]interface{}{"routes": routes},
-	})
+
+	fullConfig := map[string]interface{}{
+		"admin": map[string]interface{}{"listen": "localhost:2019"},
+		"apps": map[string]interface{}{
+			"http": map[string]interface{}{
+				"servers": map[string]interface{}{
+					"srv0": map[string]interface{}{"listen": []interface{}{":443"}, "routes": routes},
+				},
+			},
+			"tls": map[string]interface{}{},
+		},
+	}
+	serversOnly := fullConfig["apps"].(map[string]interface{})["http"].(map[string]interface{})["servers"]
+	serversBody, _ := json.Marshal(serversOnly)
+	fullBody, _ := json.Marshal(fullConfig)
 
 	var mu sync.Mutex
-	var patches []map[string]interface{}
+	var loads []map[string]interface{}
+	gets := 0
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case r.Method == "GET" && r.URL.Path == "/config/apps/http/servers":
-			w.Header().Set("Content-Type", "application/json")
-			w.Write(body)
-		case r.Method == "PATCH":
-			var m map[string]interface{}
-			_ = json.NewDecoder(r.Body).Decode(&m)
 			mu.Lock()
-			patches = append(patches, m)
+			gets++
+			mu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(serversBody)
+		case r.Method == "GET" && r.URL.Path == "/config/":
+			mu.Lock()
+			gets++
+			mu.Unlock()
+			w.Header().Set("Content-Type", "application/json")
+			w.Write(fullBody)
+		case r.Method == "POST" && r.URL.Path == "/load":
+			var m map[string]interface{}
+			if err := json.NewDecoder(r.Body).Decode(&m); err != nil {
+				w.WriteHeader(400)
+				return
+			}
+			mu.Lock()
+			loads = append(loads, m)
 			mu.Unlock()
 			w.WriteHeader(200)
 		default:
@@ -71,11 +97,16 @@ func TestSwitchMainEndToEnd(t *testing.T) {
 
 	SwitchMain("first_dc1")
 
-	if len(patches) != len(vhosts) {
-		t.Fatalf("expected %d PATCHes, got %d", len(vhosts), len(patches))
+	if len(loads) != 1 {
+		t.Fatalf("expected exactly 1 config load, got %d (gets=%d)", len(loads), gets)
 	}
-	for _, p := range patches {
-		handle := p["handle"].([]interface{})[0].(map[string]interface{})
+
+	loaded := loads[0]["apps"].(map[string]interface{})["http"].(map[string]interface{})["servers"].(map[string]interface{})["srv0"].(map[string]interface{})["routes"].([]interface{})
+	if len(loaded) != len(vhosts) {
+		t.Fatalf("expected %d routes in loaded config, got %d", len(vhosts), len(loaded))
+	}
+	for _, r := range loaded {
+		handle := r.(map[string]interface{})["handle"].([]interface{})[0].(map[string]interface{})
 		pol := handle["load_balancing"].(map[string]interface{})["selection_policy"].(map[string]interface{})["policy"]
 		if pol != "first" {
 			t.Fatalf("policy not set to first: %v", pol)
