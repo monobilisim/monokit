@@ -102,6 +102,75 @@ func createExceededZFSDatasetTable(exceededDatasets []ZFSDatasetInfo) (string, s
 	return fullMsg, tableOnly
 }
 
+// zfsDatasetIssuePrefix prefixes the per-dataset Redmine service keys.
+const zfsDatasetIssuePrefix = "zfsdataset_"
+
+// zfsDatasetIssueService returns the Redmine service key for a dataset, e.g.
+// "zfsdataset_tank-nmr-registry" for tank/nmr-registry. Each dataset has its
+// own issue and lock, so one being closed by hand or recovering doesn't
+// affect the others.
+func zfsDatasetIssueService(name string) string {
+	return zfsDatasetIssuePrefix + strings.ReplaceAll(name, "/", "-")
+}
+
+// checkZFSDatasetUsage raises the alarm and per-dataset Redmine issues for
+// datasets above Part_use_limit, and closes issues for datasets that dropped
+// below it or no longer exist.
+func checkZFSDatasetUsage(datasets []ZFSDatasetInfo) {
+	// Nothing collected (zfs disabled or `zfs list` failed): don't close anything.
+	if len(datasets) == 0 {
+		return
+	}
+	limit := strconv.FormatFloat(OsHealthConfig.Part_use_limit, 'f', 0, 64)
+
+	// Older versions tracked every dataset under a single "zfsdataset" issue;
+	// close it since nothing updates it anymore.
+	issues.CheckUp("zfsdataset", "ZFS dataset doluluk takibi artık her dataset için ayrı iş üzerinden yapılıyor, bu iş kapatılıyor.")
+
+	var exceeded []ZFSDatasetInfo
+	var issueLinks []string
+	current := make(map[string]ZFSDatasetInfo, len(datasets))
+	for _, d := range datasets {
+		service := zfsDatasetIssueService(d.Name)
+		current[service] = d
+		if d.UsedPct <= OsHealthConfig.Part_use_limit {
+			continue
+		}
+		exceeded = append(exceeded, d)
+		_, tableOnly := createExceededZFSDatasetTable([]ZFSDatasetInfo{d})
+		subject := common.Config.Identifier + " için " + d.Name + " ZFS dataset doluluk seviyesi %" + limit + " üstüne çıktı"
+		issues.CheckDown(service, subject, tableOnly, false, 0)
+		if id := issues.Show(service); id != "" {
+			issueLinks = append(issueLinks, "Redmine Issue ("+d.Name+"): "+common.GetRedmineDisplayUrl()+"/issues/"+id)
+		}
+	}
+
+	for _, service := range issues.TrackedServices(zfsDatasetIssuePrefix) {
+		d, ok := current[service]
+		switch {
+		case !ok:
+			name := strings.TrimPrefix(service, zfsDatasetIssuePrefix)
+			issues.CheckUp(service, common.Config.Identifier+" için "+name+" ZFS dataset'i artık mevcut değil, kapatılıyor.")
+		case d.UsedPct <= OsHealthConfig.Part_use_limit:
+			issues.CheckUp(service, common.Config.Identifier+" için "+d.Name+" ZFS dataset doluluk seviyesi %"+limit+" altına indi, kapatılıyor.")
+		}
+	}
+
+	if len(exceeded) > 0 {
+		fullMsg, _ := createExceededZFSDatasetTable(exceeded)
+		if len(issueLinks) > 0 {
+			fullMsg += "\n\n" + strings.Join(issueLinks, "\n")
+			common.AlarmCheckUp("zfsdataset_redmineissue", "Redmine issue exists for ZFS dataset usage", false)
+		} else {
+			log.Debug().Msg("osHealth/zfs.go: no Redmine issue IDs for exceeded ZFS datasets. Proceeding without Redmine link in alarm.")
+		}
+		common.AlarmCheckDown("zfsdataset", fullMsg, false, "", "")
+	} else {
+		common.AlarmCheckUp("zfsdataset", "All ZFS datasets are below "+limit+"% usage.", false)
+		common.AlarmCheckUp("zfsdataset_redmineissue", "ZFS dataset usage normal, clearing any Redmine issue creation failure alarm", false)
+	}
+}
+
 // collectZFSDatasetInfo parses `zfs list -H -p -o name,used,avail` and returns []ZFSDatasetInfo
 func collectZFSDatasetInfo() []ZFSDatasetInfo {
 	if !slices.Contains(OsHealthConfig.Filesystems, "zfs") {

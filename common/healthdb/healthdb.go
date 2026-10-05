@@ -149,6 +149,13 @@ func GetJSON(module, key string) (json string, cachedAt time.Time, nextCheckAt *
 	return entry.V, entry.CachedAt, entry.NextCheckAt, true, nil
 }
 
+// Keys returns all keys stored for a given module.
+func Keys(module string) ([]string, error) {
+	var keys []string
+	err := Get().Model(&KVEntry{}).Where("module = ?", module).Order("k").Pluck("k", &keys).Error
+	return keys, err
+}
+
 // Delete removes a key for a given module.
 func Delete(module, key string) error {
 	db := Get()

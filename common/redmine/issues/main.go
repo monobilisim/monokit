@@ -122,7 +122,43 @@ func redmineWrapper(service string, subject string, message string) {
 		Create(service, subject, message)
 	} else {
 		Update(service, message, true)
+		// Update drops the stored ID when the issue was closed by hand in
+		// Redmine; open it again instead of leaving the service with no issue.
+		if !redmineCheckIssueLog(service) {
+			Create(service, subject, message)
+		}
 	}
+}
+
+// issueStillOpen reports whether service has a stored issue that is not
+// closed in Redmine. When the status can't be determined (network error, 5xx)
+// it assumes the issue is open so the caller leaves state alone.
+func issueStillOpen(service string) bool {
+	id, ok := getIssueID(service)
+	if !ok {
+		return false
+	}
+	closed, known := issueIsClosed(id)
+	return !known || !closed
+}
+
+// TrackedServices returns the services starting with prefix that have
+// CheckDown/CheckUp state, so callers can close issues for entities (e.g. ZFS
+// datasets) that no longer exist. prefix must not contain "/".
+func TrackedServices(prefix string) []string {
+	keys, err := healthdb.Keys("redmine")
+	if err != nil {
+		log.Error().Err(err).Str("component", "redmine").Str("prefix", prefix).Msg("Failed to list redmine state keys")
+		return nil
+	}
+	suffix := redmineStatKey("")
+	var services []string
+	for _, k := range keys {
+		if strings.HasPrefix(k, prefix) && strings.HasSuffix(k, suffix) {
+			services = append(services, strings.TrimSuffix(k, suffix))
+		}
+	}
+	return services
 }
 
 func CheckUp(service string, message string) {
@@ -153,6 +189,15 @@ func CheckDown(service string, subject string, message string, EnableCustomInter
 			return
 		}
 		if j.Locked {
+			// Locked means the issue was already opened and CheckDown stays quiet
+			// until CheckUp. If it was closed by hand in Redmine meanwhile (or
+			// creating it failed), reset the state so the next cycle opens it
+			// again instead of staying locked forever with no open issue.
+			if common.Config.Redmine.Enabled && !issueStillOpen(service) {
+				log.Info().Str("component", "redmine").Str("service", service).Msg("Locked service has no open Redmine issue; resetting state")
+				deleteIssueID(service)
+				_ = healthdb.Delete("redmine", key)
+			}
 			return
 		}
 		oldDateParsed, err := time.Parse("2006-01-02 15:04:05 -0700", j.Date)
