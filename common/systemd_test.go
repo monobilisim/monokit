@@ -2,7 +2,35 @@
 
 package common
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
+
+// TestSystemdUnitExists_SysVInitScript covers packages that ship only a SysV
+// init script (Percona XtraDB Cluster 5.7 provides /etc/init.d/mysql and no
+// unit file): systemctl manages the generated mysql.service, so upCheck must
+// not report the service as MISSING.
+func TestSystemdUnitExists_SysVInitScript(t *testing.T) {
+	const unit = "monokit-sysvtest.service"
+
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "monokit-sysvtest"), []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	old := SysVInitDir
+	SysVInitDir = dir
+	defer func() { SysVInitDir = old }()
+
+	if !SystemdUnitExists(unit) {
+		t.Fatal("expected true when a SysV init script for the unit exists")
+	}
+	if SystemdUnitExists("this-unit-does-not-exist-xyz123.service") {
+		t.Fatal("expected false when neither a unit file nor an init script exists")
+	}
+}
 
 // TestSystemdUnitActive_UnknownUnit is a non-destructive sanity check that
 // the socket-activation fallback added to SystemdUnitActive doesn't produce
