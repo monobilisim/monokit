@@ -57,7 +57,13 @@ func unitActiveState(ctx context.Context, conn *dbus.Conn, unitName string) bool
 	return activeState.(string) == "active"
 }
 
-// SystemdUnitExists checks if a systemd unit file exists in common locations.
+// SysVInitDir holds legacy init scripts that systemd-sysv-generator wraps
+// into ".service" units. A variable so tests can point it at a fixture dir.
+var SysVInitDir = "/etc/init.d"
+
+// SystemdUnitExists checks whether systemctl can manage the unit: it looks for
+// a unit file in the common systemd locations and falls back to a SysV init
+// script of the same name (generated units have no file on disk).
 // The unit name may contain glob wildcards (e.g. "postgresql@*.service").
 func SystemdUnitExists(unit string) bool {
 	// Common paths for systemd unit files
@@ -89,6 +95,21 @@ func SystemdUnitExists(unit string) bool {
 			} else if !os.IsNotExist(err) {
 				log.Error().Str("filePath", filePath).Err(err).Msg("Error checking for systemd unit file")
 			}
+		}
+	}
+
+	// systemd-sysv-generator wraps legacy init scripts into "<name>.service"
+	// units at boot, so a service whose package ships only /etc/init.d/<name>
+	// (e.g. Percona XtraDB Cluster 5.7 ships init.d/mysql, no unit file) has
+	// no unit file on disk while it runs fine under systemctl. Treat the init
+	// script as proof that the unit exists.
+	if base, ok := strings.CutSuffix(unit, ".service"); ok {
+		initPath := filepath.Join(SysVInitDir, base)
+		if _, err := os.Stat(initPath); err == nil {
+			log.Debug().Str("filePath", initPath).Msg("Found SysV init script for systemd unit")
+			return true
+		} else if !os.IsNotExist(err) {
+			log.Error().Str("filePath", initPath).Err(err).Msg("Error checking for SysV init script")
 		}
 	}
 
