@@ -3,6 +3,7 @@ package common
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -161,9 +162,47 @@ func TrackedServices(prefix string) []string {
 	return services
 }
 
+// redmineLockTimeout bounds how long a check waits for another monokit
+// process that is handling the same service's issue.
+const redmineLockTimeout = 30 * time.Second
+
+// lockService serialises the CheckDown/CheckUp state machine for service
+// across processes. Without it, overlapping runs of a check (e.g. cron
+// starting osHealth again while earlier runs are still stuck) all find no
+// stored issue, each create one, and only the last ID is kept to be closed.
+// ok is false when another process kept the lock for the whole timeout; the
+// caller skips this cycle and the next run re-evaluates.
+func lockService(service string) (unlock func(), ok bool) {
+	unlock, err := healthdb.Lock("redmine", service, redmineLockTimeout)
+	if err == nil {
+		return unlock, true
+	}
+	if errors.Is(err, healthdb.ErrLockTimeout) {
+		log.Warn().
+			Str("component", "redmine").
+			Str("service", service).
+			Dur("timeout", redmineLockTimeout).
+			Msg("Another monokit process is still handling this service's Redmine issue; skipping this cycle")
+		return nil, false
+	}
+	// The lock itself is broken (e.g. lock dir not writable). Carry on
+	// unlocked rather than stop reporting altogether.
+	log.Error().Err(err).Str("component", "redmine").Str("service", service).Msg("Failed to take Redmine service lock; continuing without it")
+	return func() {}, true
+}
+
 func CheckUp(service string, message string) {
 	// If we have a stat record, delete it and close the issue
 	key := redmineStatKey(service)
+	if _, _, _, found, _ := healthdb.GetJSON("redmine", key); !found {
+		return
+	}
+	unlock, ok := lockService(service)
+	if !ok {
+		return
+	}
+	defer unlock()
+	// Re-check under the lock: another run may have closed it meanwhile.
 	if _, _, _, found, _ := healthdb.GetJSON("redmine", key); found {
 		_ = healthdb.Delete("redmine", key)
 		Close(service, message)
@@ -171,6 +210,12 @@ func CheckUp(service string, message string) {
 }
 
 func CheckDown(service string, subject string, message string, EnableCustomIntervals bool, CustomInterval float64) {
+	unlock, ok := lockService(service)
+	if !ok {
+		return
+	}
+	defer unlock()
+
 	var interval float64
 	if EnableCustomIntervals {
 		interval = CustomInterval
@@ -1300,6 +1345,12 @@ func CheckDownOnIncrease(service, subject, createMessage, updateMessage, partiti
 	if partition == "" {
 		return
 	}
+	unlock, ok := lockService(service)
+	if !ok {
+		return
+	}
+	defer unlock()
+
 	if !redmineCheckIssueLog(service) {
 		// issue yok → aç, yüzdeyi kaydet
 		Create(service, subject, createMessage)
