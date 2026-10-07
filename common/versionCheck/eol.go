@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strconv"
+	"regexp"
 	"strings"
 	"time"
 
@@ -49,33 +49,84 @@ type EOLCycle struct {
 	LTS               interface{} `json:"lts"`
 }
 
-func compareVersions(v1, v2 string) int {
-	v1 = strings.ReplaceAll(v1, "-", ".")
-	v2 = strings.ReplaceAll(v2, "-", ".")
-	p1 := strings.Split(v1, ".")
-	p2 := strings.Split(v2, ".")
+var versionTokenRegex = regexp.MustCompile(`[0-9]+|[A-Za-z]+`)
 
-	maxLen := len(p1)
-	if len(p2) > maxLen {
-		maxLen = len(p2)
+// compareVersions compares two version strings token by token. Separators
+// (., -, _, +) are interchangeable, so a FreeBSD style package revision such
+// as OPNsense's 26.7.4_1 sorts above the plain 26.7.4 it patches. Alphabetic
+// tokens (rc, beta, ...) mark pre-releases and sort below the release they
+// lead up to.
+func compareVersions(v1, v2 string) int {
+	t1 := versionTokenRegex.FindAllString(v1, -1)
+	t2 := versionTokenRegex.FindAllString(v2, -1)
+
+	maxLen := len(t1)
+	if len(t2) > maxLen {
+		maxLen = len(t2)
 	}
 
 	for i := 0; i < maxLen; i++ {
-		n1, n2 := 0, 0
-		if i < len(p1) {
-			n1, _ = strconv.Atoi(p1[i])
+		var s1, s2 string
+		if i < len(t1) {
+			s1 = t1[i]
 		}
-		if i < len(p2) {
-			n2, _ = strconv.Atoi(p2[i])
+		if i < len(t2) {
+			s2 = t2[i]
 		}
-		if n1 > n2 {
-			return 1
-		}
-		if n1 < n2 {
+
+		r1, r2 := versionTokenRank(s1), versionTokenRank(s2)
+		if r1 != r2 {
+			if r1 > r2 {
+				return 1
+			}
 			return -1
+		}
+
+		var cmp int
+		switch r1 {
+		case versionTokenNumeric:
+			cmp = compareNumericToken(s1, s2)
+		case versionTokenAlpha:
+			cmp = strings.Compare(strings.ToLower(s1), strings.ToLower(s2))
+		}
+		if cmp != 0 {
+			return cmp
 		}
 	}
 	return 0
+}
+
+const (
+	versionTokenAlpha = iota
+	versionTokenAbsent
+	versionTokenNumeric
+)
+
+// versionTokenRank orders the token kinds: a pre-release marker sorts below a
+// missing token, which in turn sorts below an extra numeric token.
+func versionTokenRank(s string) int {
+	switch {
+	case s == "":
+		return versionTokenAbsent
+	case s[0] >= '0' && s[0] <= '9':
+		return versionTokenNumeric
+	default:
+		return versionTokenAlpha
+	}
+}
+
+// compareNumericToken compares two digit-only tokens without the overflow
+// risk of parsing them into ints.
+func compareNumericToken(s1, s2 string) int {
+	s1 = strings.TrimLeft(s1, "0")
+	s2 = strings.TrimLeft(s2, "0")
+	if len(s1) != len(s2) {
+		if len(s1) > len(s2) {
+			return 1
+		}
+		return -1
+	}
+	return strings.Compare(s1, s2)
 }
 
 func CheckLatestVersions(apps []AppVersion) {
@@ -152,7 +203,7 @@ func CheckLatestVersions(apps []AppVersion) {
 
 		var matchedCycle *EOLCycle
 		for i, c := range cycles {
-			if currentVersion == c.Cycle || strings.HasPrefix(currentVersion, c.Cycle+".") || strings.HasPrefix(currentVersion, c.Cycle+"-") {
+			if currentVersion == c.Cycle || strings.HasPrefix(currentVersion, c.Cycle+".") || strings.HasPrefix(currentVersion, c.Cycle+"-") || strings.HasPrefix(currentVersion, c.Cycle+"_") {
 				matchedCycle = &cycles[i]
 				break
 			}
