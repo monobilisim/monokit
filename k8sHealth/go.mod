@@ -12,7 +12,7 @@ require (
 	github.com/prometheus-community/pro-bing v0.4.1
 	github.com/rs/zerolog v1.34.0
 	github.com/spf13/viper v1.20.1
-	google.golang.org/grpc v1.83.1
+	google.golang.org/grpc v1.83.2
 	k8s.io/api v0.33.1
 	k8s.io/apimachinery v0.33.1
 	k8s.io/client-go v0.33.1

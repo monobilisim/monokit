@@ -177,5 +177,5 @@ require (
 // HashiCorp go-plugin, gRPC, and proto deps for plugin support
 require (
 	github.com/hashicorp/go-plugin v1.6.3 // or latest compatible
-	google.golang.org/grpc v1.83.1 // or latest compatible
+	google.golang.org/grpc v1.83.2 // or latest compatible
 )

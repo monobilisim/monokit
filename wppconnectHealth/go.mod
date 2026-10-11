@@ -11,7 +11,7 @@ require (
 	github.com/muesli/termenv v0.16.0
 	github.com/rs/zerolog v1.34.0
 	github.com/spf13/viper v1.20.1
-	google.golang.org/grpc v1.83.1
+	google.golang.org/grpc v1.83.2
 )
 
 replace github.com/monobilisim/monokit => ../
