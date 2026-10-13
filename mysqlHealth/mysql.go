@@ -35,6 +35,10 @@ func mariadbOrMysql() string {
 	return "mysql"
 }
 
+// defaultMyCnfPaths is the MySQL/MariaDB default option file search order on
+// Linux, used when the server binary's --help output can't be read.
+var defaultMyCnfPaths = []string{"/etc/my.cnf", "/etc/mysql/my.cnf", "~/.my.cnf"}
+
 func FindMyCnf() []string {
 	daemonBinary := "/usr/sbin/" + mariadbOrMysql() + "d"
 	// Check if the daemon binary exists before trying to execute it
@@ -45,29 +49,31 @@ func FindMyCnf() []string {
 		return nil // Cannot proceed without the daemon binary
 	}
 
+	// The exit status is not trusted: e.g. MariaDB prints the option file list
+	// and then exits 1 with "Can't initialize timers" when it can't create
+	// threads (RLIMIT_NPROC of the mysql user already exhausted by the running
+	// server). Use the list whenever it was printed.
 	cmd := exec.Command(daemonBinary, "--verbose", "--help")
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		// Log as error here because LookPath succeeded but execution failed
-		log.Error().Msg(fmt.Sprintf("Error running %s command: %v", daemonBinary, err))
-		return nil
-	}
+	output, runErr := cmd.CombinedOutput()
 
 	lines := strings.Split(string(output), "\n")
-	foundDefaultOptions := false
-	for _, line := range lines {
-		if strings.Contains(line, "Default options") {
-			foundDefaultOptions = true
-			continue
-		}
-
-		if foundDefaultOptions {
-
-			return strings.Fields(strings.Replace(line, "~", os.Getenv("HOME"), 1))
+	for i, line := range lines {
+		if strings.Contains(line, "Default options") && i+1 < len(lines) {
+			if paths := strings.Fields(strings.Replace(lines[i+1], "~", os.Getenv("HOME"), 1)); len(paths) > 0 {
+				if runErr != nil {
+					log.Debug().Err(runErr).Str("binary", daemonBinary).Msg("Daemon --help exited with an error but printed the option file list; using it")
+				}
+				return paths
+			}
 		}
 	}
 
-	return nil
+	log.Warn().Err(runErr).Str("binary", daemonBinary).Strs("fallback", defaultMyCnfPaths).Msg("Could not read option file list from daemon --help; using default my.cnf paths")
+	paths := make([]string, len(defaultMyCnfPaths))
+	for i, p := range defaultMyCnfPaths {
+		paths[i] = strings.Replace(p, "~", os.Getenv("HOME"), 1)
+	}
+	return paths
 }
 
 func ParseMyCnfAndConnect(profile string) (string, error) {
