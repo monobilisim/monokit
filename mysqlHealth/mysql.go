@@ -849,6 +849,8 @@ func isEventExcluded(key string) bool {
 // run (on Galera the other nodes have them SLAVESIDE_DISABLED), so that is
 // alarmed as its own check. Events listed in Mysql.Disabled_events are
 // excluded from all checks. Alarms and opens a Redmine issue on any violation.
+// If a Galera peer cannot be reached, only a Zulip alarm naming the
+// unreachable peer(s) is sent and the cross-node verdict is skipped.
 func CheckEventScheduler() {
 	rows, err := Connection.Query("SELECT @@global.event_scheduler")
 	if err != nil {
@@ -959,11 +961,13 @@ func CheckEventScheduler() {
 	}
 
 	nodeEvents := map[string]map[string]string{localAddr: localEvents}
+	var unreachable []string
 
 	for _, addr := range discoverPeerAddresses() {
 		peerDb, err := connectToPeer(addr)
 		if err != nil {
 			log.Debug().Err(err).Str("peer", addr).Msg("CheckEventScheduler: could not connect to Galera peer")
+			unreachable = append(unreachable, fmt.Sprintf("%s (%v)", addr, err))
 			continue
 		}
 		if localNodeName != "" {
@@ -976,10 +980,30 @@ func CheckEventScheduler() {
 		peerDb.Close()
 		if err != nil {
 			log.Debug().Err(err).Str("peer", addr).Msg("CheckEventScheduler: could not query events on Galera peer")
+			unreachable = append(unreachable, fmt.Sprintf("%s (%v)", addr, err))
 			continue
 		}
 		nodeEvents[addr] = events
 	}
+
+	healthData.ClusterInfo.EventScheduler.UnreachablePeers = unreachable
+
+	// Without every peer's event list the cross-node verdict is meaningless
+	// (an event ENABLED only on the missing peer looks "ENABLED nowhere"), so
+	// only notify that this node cannot reach its peers and leave the
+	// consistency alarm/issue untouched until a complete check is possible.
+	if len(unreachable) > 0 {
+		self := common.Config.Identifier
+		if localNodeName != "" {
+			self = fmt.Sprintf("%s (%s)", self, localNodeName)
+		}
+		healthData.ClusterInfo.EventScheduler.Checked = true
+		healthData.ClusterInfo.EventScheduler.NodesChecked = len(nodeEvents)
+		healthData.ClusterInfo.EventScheduler.OK = false
+		common.AlarmCheckDown("event scheduler peer", fmt.Sprintf("%s cannot reach Galera peer(s) for event scheduler check: %s", self, strings.Join(unreachable, "; ")), false, "", "")
+		return
+	}
+	common.AlarmCheckUp("event scheduler peer", "All Galera peers are reachable for event scheduler check", false)
 
 	// Union of all event keys seen across nodes.
 	allKeys := make(map[string]bool)

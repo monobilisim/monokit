@@ -56,6 +56,7 @@ type EventSchedulerInfo struct {
 	NoneEnabledEvents  []string
 	MultiEnabledEvents []string
 	EnabledWhileOff    []string // local ENABLED events while event_scheduler is not ON
+	UnreachablePeers   []string // Galera peers that could not be queried; verdict skipped
 	OK                 bool
 }
 
@@ -248,7 +249,9 @@ func (m *MySQLHealthData) RenderCompact() string {
 		sb.WriteString(common.SectionTitle("Event Scheduler"))
 		sb.WriteString("\n")
 		eventSchedStatus := "Consistent"
-		if len(m.ClusterInfo.EventScheduler.EnabledWhileOff) > 0 {
+		if len(m.ClusterInfo.EventScheduler.UnreachablePeers) > 0 {
+			eventSchedStatus = fmt.Sprintf("%d peer(s) unreachable", len(m.ClusterInfo.EventScheduler.UnreachablePeers))
+		} else if len(m.ClusterInfo.EventScheduler.EnabledWhileOff) > 0 {
 			eventSchedStatus = fmt.Sprintf("%s, %d ENABLED event(s) won't run", m.ClusterInfo.EventScheduler.SchedulerStatus, len(m.ClusterInfo.EventScheduler.EnabledWhileOff))
 		} else if !m.ClusterInfo.EventScheduler.OK {
 			inconsistentCount := len(m.ClusterInfo.EventScheduler.NoneEnabledEvents) + len(m.ClusterInfo.EventScheduler.MultiEnabledEvents)
@@ -276,6 +279,10 @@ func (m *MySQLHealthData) RenderCompact() string {
 			for _, ev := range m.ClusterInfo.EventScheduler.MultiEnabledEvents {
 				sb.WriteString("\n")
 				sb.WriteString(detailStyle.Render(fmt.Sprintf("- %s", ev)))
+			}
+			for _, peer := range m.ClusterInfo.EventScheduler.UnreachablePeers {
+				sb.WriteString("\n")
+				sb.WriteString(detailStyle.Render(fmt.Sprintf("- unreachable: %s", peer)))
 			}
 		}
 	}

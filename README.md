@@ -157,6 +157,7 @@ These core tools will be available in every monokit installation.
   - Checks MySQL health, including read and write operations.
   - Supports Galera Cluster monitoring (Receive Queue and Flow Control).
   - Verifies scheduled events (event_scheduler) are consistent: on a Galera cluster, ENABLED on exactly one node and SLAVESIDE_DISABLED on the rest (by connecting to peer nodes discovered via `wsrep_incoming_addresses`); on a standalone node, all events are ENABLED.
+  - If a Galera peer cannot be reached during this check, only an alarm naming the unreachable peer(s) is sent; no inconsistency verdict or Redmine issue is produced from the incomplete data.
   - Alarms when `event_scheduler` is not ON on a node that still has ENABLED events (they would never run).
   - Events can be excluded from this check with the `mysql.disabled_events` config list (bare event names or `schema.event_name`).
   - Sends alarm notifications to a Slack webhook.
