@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/docker/docker/api/types/container"
-	"github.com/docker/docker/client"
 	_ "github.com/go-sql-driver/mysql"
+	"github.com/moby/moby/api/types/container"
+	"github.com/moby/moby/client"
 	"github.com/monobilisim/monokit/common"
 	apiclient "github.com/monobilisim/monokit/common/api/client"
 	mail "github.com/monobilisim/monokit/common/mail"
@@ -60,21 +60,21 @@ func DetectPostal() bool {
 	defer apiClient.Close()
 	log.Debug().Msg("postalHealth auto-detection: Connected to Docker API.")
 
-	containers, err := apiClient.ContainerList(context.Background(), container.ListOptions{All: true})
+	containers, err := apiClient.ContainerList(context.Background(), client.ContainerListOptions{All: true})
 	if err != nil {
 		log.Debug().Err(err).Msg("postalHealth auto-detection failed: Cannot list Docker containers")
 		return false // Cannot detect if listing fails
 	}
 
 	foundPostalContainer := false
-	for _, container := range containers {
-		for _, name := range container.Names {
+	for _, c := range containers.Items {
+		for _, name := range c.Names {
 			if strings.Contains(name, "postal") {
 				log.Debug().
 					Str("component", "postalHealth").
 					Str("function", "DetectPostal").
 					Str("container_name", name).
-					Str("container_state", container.State).
+					Str("container_state", string(c.State)).
 					Msg("postalHealth auto-detection: Found postal container")
 				foundPostalContainer = true
 				break // Found one, no need to check others for detection purposes
@@ -259,7 +259,7 @@ func CheckContainers(skipOutput bool) map[string]ContainerStatus {
 
 	common.AlarmCheckUp("docker", "Docker API is up", false)
 
-	containerList, err := apiClient.ContainerList(context.Background(), container.ListOptions{All: true})
+	containerList, err := apiClient.ContainerList(context.Background(), client.ContainerListOptions{All: true})
 	if err != nil {
 		if !skipOutput {
 			log.Error().Err(err).Msg("Couldn't list containers")
@@ -268,22 +268,23 @@ func CheckContainers(skipOutput bool) map[string]ContainerStatus {
 		return containers
 	}
 
-	for _, container := range containerList {
-		for _, name := range container.Names {
+	for _, c := range containerList.Items {
+		for _, name := range c.Names {
 			if strings.Contains(name, "postal") {
 				// Remove / from the beginning of the name
 				name = strings.TrimPrefix(name, "/")
-				isRunning := container.State == "running"
+				state := string(c.State)
+				isRunning := c.State == container.StateRunning
 				containers[name] = ContainerStatus{
 					Name:      name,
 					IsRunning: isRunning,
-					State:     container.State,
+					State:     state,
 				}
 
 				if isRunning {
 					common.AlarmCheckUp("docker_"+name, "Postal container "+name+" is running", false)
 				} else {
-					common.AlarmCheckDown("docker_"+name, "Postal container "+name+" is not running, state: "+container.State, false, "", "")
+					common.AlarmCheckDown("docker_"+name, "Postal container "+name+" is not running, state: "+state, false, "", "")
 				}
 			}
 		}
