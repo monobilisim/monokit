@@ -99,6 +99,9 @@ These core tools will be available in every monokit installation.
 - versionCheck
     - Checks the version of various services, including OPNsense, Zimbra and Proxmox.
     - Creates a Redmine news entry if the version has been updated.
+    - Tracks the Z-Push core version from `/opt/z-push/version` and alarms once per
+      release when a newer one is published on GitHub (Z-Hub/Z-Push). The Zimbra
+      backend release is not tracked; only the core.
     - Config: `/etc/mono/global.yaml`
 
 ## Tools
