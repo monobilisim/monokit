@@ -128,6 +128,9 @@ func VersionCheck(cmd *cobra.Command, args []string) {
 	// Zimbra
 	ZimbraCheck()
 
+	// Z-Push (Zimbra ActiveSync)
+	ZPushCheck()
+
 	// OPNsense
 	OPNsenseCheck()
 
