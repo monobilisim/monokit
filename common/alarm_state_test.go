@@ -68,6 +68,7 @@ func setupAlarmTest(t *testing.T, rec *webhookRecorder) {
 	Config.Identifier = "dijitalkurye-prod-vault2"
 	Config.Alarm.Enabled = true
 	Config.Alarm.Interval = 3
+	Config.Alarm.Repeat_hours = 0
 	Config.Alarm.Webhook_urls = []string{srv.URL}
 	Config.Alarm.SMTP.Enabled = false
 	_ = healthdb.Delete("alarm", "vault_sealed")
@@ -138,6 +139,7 @@ func TestAlarmDownRetriesAfterFailedDelivery(t *testing.T) {
 func TestAlarmLockedRepeatsDaily(t *testing.T) {
 	rec := &webhookRecorder{}
 	setupAlarmTest(t, rec)
+	Config.Alarm.Repeat_hours = 24
 
 	AlarmCheckDown("vault_sealed", "Vault is sealed", false, "", "")
 	elapsed(4 * time.Minute)
@@ -154,5 +156,26 @@ func TestAlarmLockedRepeatsDaily(t *testing.T) {
 	AlarmCheckDown("vault_sealed", "Vault is sealed", false, "", "")
 	if got := len(rec.messages()); got != 1 {
 		t.Fatalf("expected one daily reminder after 72h, got %d", got)
+	}
+}
+
+func TestAlarmRepeatHoursZeroStaysSilent(t *testing.T) {
+	rec := &webhookRecorder{}
+	setupAlarmTest(t, rec)
+
+	AlarmCheckDown("vault_sealed", "Vault is sealed", false, "", "")
+	elapsed(4 * time.Minute)
+	AlarmCheckDown("vault_sealed", "Vault is sealed", false, "", "")
+	rec.reset()
+
+	elapsed(30 * 24 * time.Hour)
+	AlarmCheckDown("vault_sealed", "Vault is sealed", false, "", "")
+	if got := len(rec.messages()); got != 0 {
+		t.Fatalf("locked alarm repeated although repeat_hours is 0: %d", got)
+	}
+
+	AlarmCheckUp("vault_sealed", "Vault is unsealed", false)
+	if got := len(rec.messages()); got != 1 {
+		t.Fatalf("expected the recovery alarm, got %d", got)
 	}
 }

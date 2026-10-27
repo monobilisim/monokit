@@ -3,6 +3,7 @@ identifier: test
 alarm:
   enabled: true
   interval: 3
+  repeat_hours: 0   # hours before a locked down alarm repeats; 0 keeps it silent until recovery
   webhook_urls:
     - example.com
     - example2.com

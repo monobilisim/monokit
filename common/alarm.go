@@ -189,8 +189,9 @@ func AlarmCheckDownWithInterval(service string, message string, noInterval bool,
 			return
 		}
 
-		if j.Locked && elapsed.Hours() <= 24 {
-			log.Debug().Str("component", "alarm").Str("action", "check_down").Str("service", service).Bool("is_locked", j.Locked).Str("lock_date", j.Date).Msg("Service already locked, skipping alarm")
+		repeatHours := Config.Alarm.Repeat_hours
+		if j.Locked && (repeatHours <= 0 || elapsed.Hours() <= repeatHours) {
+			log.Debug().Str("component", "alarm").Str("action", "check_down").Str("service", service).Bool("is_locked", j.Locked).Str("lock_date", j.Date).Float64("repeat_hours", repeatHours).Msg("Locked alarm not due for a repeat, skipping alarm")
 			return
 		}
 
@@ -200,7 +201,7 @@ func AlarmCheckDownWithInterval(service string, message string, noInterval bool,
 		}
 
 		if j.Locked {
-			log.Debug().Str("component", "alarm").Str("action", "24h_alarm").Str("service", service).Float64("hours_since", elapsed.Hours()).Msg("Sending 24-hour reminder alarm for service down")
+			log.Debug().Str("component", "alarm").Str("action", "repeat_alarm").Str("service", service).Float64("hours_since", elapsed.Hours()).Float64("repeat_hours", repeatHours).Msg("Sending repeat alarm for service still down")
 		} else {
 			log.Debug().Str("component", "alarm").Str("action", "interval_alarm").Str("service", service).Float64("minutes_since", elapsed.Minutes()).Float64("interval_minutes", interval).Msg("Sending interval-based alarm for service down")
 		}

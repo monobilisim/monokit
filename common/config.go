@@ -21,13 +21,14 @@ type Common struct {
 	Alarm struct {
 		Enabled      bool
 		Interval     float64
+		Repeat_hours float64
 		Webhook_urls []string
 		SMTP         struct {
 			Enabled    bool
 			Host       string
 			Port       int
-			StartTLS   bool   `mapstructure:"starttls"`
-			SkipVerify bool   `mapstructure:"skip_verify"`
+			StartTLS   bool `mapstructure:"starttls"`
+			SkipVerify bool `mapstructure:"skip_verify"`
 			Username   string
 			Password   string
 			From       string
@@ -95,6 +96,8 @@ func ConfInit(configName string, config interface{}) interface{} {
 	viper.SetConfigType("yaml")
 
 	viper.SetDefault("alarm.interval", 3)
+	// 0 (default) keeps a locked alarm silent until recovery; a positive value repeats it after that many hours.
+	viper.SetDefault("alarm.repeat_hours", 0)
 	viper.SetDefault("alarm.smtp.port", 25)
 	viper.SetDefault("alarm.smtp.starttls", true)
 	viper.SetDefault("alarm.smtp.skip_verify", false)

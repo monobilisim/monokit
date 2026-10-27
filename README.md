@@ -82,7 +82,7 @@ These core tools will be available in every monokit installation.
 
 - alarm
   - Sends alarm notifications to a Slack webhook.
-  - A down alarm is locked only after a webhook or SMTP channel accepts it; a locked alarm repeats every 24 hours.
+  - A down alarm is locked only after a webhook or SMTP channel accepts it; a locked alarm repeats after `alarm.repeat_hours` hours, which defaults to `0` (silent until recovery).
   - Config: `/etc/mono/global.yaml`
 
 - daemon
