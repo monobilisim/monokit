@@ -21,7 +21,7 @@ func PrometheusCheck() (string, error) {
 	if err != nil {
 		errMsg := "Error getting Prometheus version: " + err.Error()
 		log.Error().Msg(errMsg)
-		addToVersionErrors(fmt.Errorf(errMsg))
+		addToVersionErrors(fmt.Errorf("%s", errMsg))
 		return "", fmt.Errorf("%s", errMsg)
 	}
 
@@ -30,16 +30,16 @@ func PrometheusCheck() (string, error) {
 	if outputStr == "" {
 		errMsg := "`prometheus --version` returns empty"
 		log.Error().Str("output", outputStr).Msg(errMsg)
-		addToVersionErrors(fmt.Errorf(errMsg))
-		return "", fmt.Errorf(errMsg)
+		addToVersionErrors(fmt.Errorf("%s", errMsg))
+		return "", fmt.Errorf("%s", errMsg)
 	}
 
 	matches := prometheusVersionRegex.FindStringSubmatch(outputStr)
 	if len(matches) < 2 {
 		errMsg := "Could not parse Prometheus version from output"
 		log.Error().Str("output", outputStr).Msg(errMsg)
-		addToVersionErrors(fmt.Errorf(errMsg))
-		return "", fmt.Errorf(errMsg)
+		addToVersionErrors(fmt.Errorf("%s", errMsg))
+		return "", fmt.Errorf("%s", errMsg)
 	}
 	version := matches[1]
 

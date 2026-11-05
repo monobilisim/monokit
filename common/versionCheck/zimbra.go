@@ -35,8 +35,8 @@ func ZimbraCheck() (string, error) {
 		errMsgLog := "Error getting Zimbra version"
 		errMsg := errMsgLog + ": " + err.Error()
 		log.Error().Err(err).Msg(errMsgLog)
-		addToVersionErrors(fmt.Errorf(errMsg))
-		return "", fmt.Errorf(errMsg)
+		addToVersionErrors(fmt.Errorf("%s", errMsg))
+		return "", fmt.Errorf("%s", errMsg)
 	}
 
 	// Parse the version
@@ -49,8 +49,8 @@ func ZimbraCheck() (string, error) {
 		errMsgLog := "Unexpected output format from zmcontrol -v"
 		errMsg := errMsgLog + ": " + string(out)
 		log.Error().Msg(errMsgLog)
-		addToVersionErrors(fmt.Errorf(errMsg))
-		return "", fmt.Errorf(errMsg)
+		addToVersionErrors(fmt.Errorf("%s", errMsg))
+		return "", fmt.Errorf("%s", errMsg)
 	}
 	version := strings.Split(versionParts[1], "_GA_")[0] // Extract version like "8.8.15" or "10.0.7"
 

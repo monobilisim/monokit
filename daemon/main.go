@@ -48,8 +48,8 @@ func Main(cmd *cobra.Command, args []string) {
 	listComponents, _ := cmd.Flags().GetBool("list-components")
 
 	// --- Single-instance check ---
-	if common.ProcGrep("monokit daemon", true) {
-		fmt.Println("Monokit daemon is already running, exiting...")
+	onlyDaemon, hung := isOnlyDaemon()
+	if !onlyDaemon {
 		os.Exit(1)
 	}
 	// --- Set common flag BEFORE Init ---
@@ -57,6 +57,8 @@ func Main(cmd *cobra.Command, args []string) {
 
 	// --- Init common (handles lockfile based on common.IgnoreLockfile) ---
 	common.Init()
+
+	alarmHungRuns(hung)
 
 	if common.ConfExists("daemon") {
 		common.ConfInit("daemon", &DaemonConfig)

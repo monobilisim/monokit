@@ -18,7 +18,7 @@ func JenkinsCheck() (string, error) {
 	if err != nil {
 		errMsg := "Error getting Jenkins version: " + err.Error()
 		log.Error().Msg(errMsg)
-		addToVersionErrors(fmt.Errorf(errMsg))
+		addToVersionErrors(fmt.Errorf("%s", errMsg))
 		return "", fmt.Errorf("%s", errMsg)
 	}
 
@@ -27,8 +27,8 @@ func JenkinsCheck() (string, error) {
 	if version == "" {
 		errMsg := "`jenkins --version` returns empty"
 		log.Error().Str("output", version).Msg(errMsg)
-		addToVersionErrors(fmt.Errorf(errMsg))
-		return "", fmt.Errorf(errMsg)
+		addToVersionErrors(fmt.Errorf("%s", errMsg))
+		return "", fmt.Errorf("%s", errMsg)
 	}
 
 	log.Debug().Str("version", version).Msg("Detected Jenkins version")

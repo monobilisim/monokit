@@ -24,7 +24,7 @@ func MongoDBCheck() (string, error) {
 	if err != nil {
 		errMsg := "Error getting mongod version: " + err.Error()
 		log.Error().Msg(errMsg)
-		addToVersionErrors(fmt.Errorf(errMsg))
+		addToVersionErrors(fmt.Errorf("%s", errMsg))
 		return "", fmt.Errorf("%s", errMsg)
 	}
 
@@ -71,8 +71,8 @@ func MongoDBCheck() (string, error) {
 	if version == "" {
 		errMsg := "Unable to parse MongoDB version from mongod -version output"
 		log.Error().Str("output", versionOutput).Msg(errMsg)
-		addToVersionErrors(fmt.Errorf(errMsg))
-		return "", fmt.Errorf(errMsg)
+		addToVersionErrors(fmt.Errorf("%s", errMsg))
+		return "", fmt.Errorf("%s", errMsg)
 	}
 
 	log.Debug().Str("version", version).Msg("Detected MongoDB version")
