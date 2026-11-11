@@ -12,6 +12,8 @@ type PostalHealthData struct {
 	StaleLocks    StaleLockStatus
 	ServiceStatus map[string]bool
 	SSLCert       SSLCertInfo
+	// DBChecksNode is the node running the shared DB checks when this node skipped them.
+	DBChecksNode string
 }
 
 // SSLCertInfo holds information about the Postal SMTP SSL certificate expiration.
@@ -29,13 +31,17 @@ type ContainerStatus struct {
 	Name      string
 	IsRunning bool
 	State     string
+	// NetworkMode is the container's Docker network mode ("host" when it shares the node's hostname).
+	NetworkMode string
 }
 
 // QueueStatus holds information about message queues
 type QueueStatus struct {
-	Count     int
-	Limit     int
-	IsHealthy bool
+	Count          int // all queued messages, including ones waiting for a soft-fail retry
+	Backlog        int // unlocked messages ready for BacklogMinutes+ without being picked up
+	BacklogMinutes int
+	Limit          int
+	IsHealthy      bool
 }
 
 // StaleLockStatus holds the number of queued messages whose worker lock is older than the threshold.
@@ -51,6 +57,7 @@ type StaleLockStatus struct {
 type ServerHeldMessages struct {
 	ServerName string
 	ServerID   int
-	Count      int
+	Count      int // held messages excluding suppression-list holds
+	Suppressed int // held because the recipient is on the suppression list (not alarmed)
 	IsHealthy  bool
 }

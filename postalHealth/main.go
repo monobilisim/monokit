@@ -7,6 +7,7 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -107,6 +108,10 @@ var MailHealthConfig mail.MailHealth
 var MainDB *sql.DB
 var MessageDB *sql.DB
 
+// queueBacklogMinutes is how long a ready, unlocked queued message may wait before it counts as backlog.
+// Postal workers poll every 5 seconds, so a message waiting minutes means workers are not picking up work.
+const queueBacklogMinutes = 5
+
 // CheckPostalHealth performs all Postal health checks and returns a data structure with the results
 func CheckPostalHealth(skipOutput bool) *PostalHealthData {
 	data := &PostalHealthData{
@@ -137,9 +142,17 @@ func CheckPostalHealth(skipOutput bool) *PostalHealthData {
 
 	// Check message queues if enabled
 	if MailHealthConfig.Postal.Check_Message {
-		data.MessageQueue = GetMessageQueue()
-		data.HeldMessages = GetHeldMessages()
-		data.StaleLocks = GetStaleLocks()
+		// queued_messages, servers and per-server message DBs are shared by every Postal node, so only
+		// the node holding Postal's "tasks" worker role alarms on them; otherwise each node alarms once.
+		runDBChecks, holder := shouldRunDBChecks(data.Containers)
+		if runDBChecks {
+			data.MessageQueue = GetMessageQueue()
+			data.HeldMessages = GetHeldMessages()
+			data.StaleLocks = GetStaleLocks()
+		} else {
+			data.DBChecksNode = holder
+			releaseDBAlarms(holder)
+		}
 	}
 
 	// Check SSL certificate expiry (port 25 STARTTLS)
@@ -282,9 +295,10 @@ func CheckContainers(skipOutput bool) map[string]ContainerStatus {
 				state := string(c.State)
 				isRunning := c.State == container.StateRunning
 				containers[name] = ContainerStatus{
-					Name:      name,
-					IsRunning: isRunning,
-					State:     state,
+					Name:        name,
+					IsRunning:   isRunning,
+					State:       state,
+					NetworkMode: c.HostConfig.NetworkMode,
 				}
 
 				if isRunning {
@@ -363,38 +377,39 @@ func MySQLDisconnect(db *sql.DB) {
 	}
 }
 
-// GetMessageQueue checks the message queue status and alarms when it reaches message_threshold.
-// A threshold <= 0 means unconfigured: the count is collected but no alarm is raised.
+// GetMessageQueue checks the queue backlog and alarms when it reaches message_threshold.
+// Backlog = unlocked messages whose (retry) time passed more than queueBacklogMinutes ago without a worker
+// picking them up. The total count is informational: it also contains messages waiting for a soft-fail retry,
+// which may legitimately stay queued for days. A threshold <= 0 means unconfigured: no alarm is raised.
 func GetMessageQueue() QueueStatus {
 	status := QueueStatus{
-		Limit: MailHealthConfig.Postal.Message_Threshold,
+		Limit:          MailHealthConfig.Postal.Message_Threshold,
+		BacklogMinutes: queueBacklogMinutes,
+		IsHealthy:      true,
 	}
 
-	if MessageDB == nil {
+	if MainDB == nil {
 		return status
 	}
 
-	rows, err := MessageDB.Query("SELECT COUNT(*) FROM postal.queued_messages")
+	err := MainDB.QueryRow(
+		"SELECT COUNT(*), COALESCE(SUM(locked_by IS NULL AND COALESCE(retry_after, created_at) < UTC_TIMESTAMP() - INTERVAL ? MINUTE), 0) FROM queued_messages",
+		queueBacklogMinutes,
+	).Scan(&status.Count, &status.Backlog)
 	if err != nil {
 		log.Error().Err(err).Msg("Couldn't get message queue count")
-		common.AlarmCheckDown("mysql_queue", "Couldn't get message queue count from database message_db: "+err.Error(), false, "", "")
+		common.AlarmCheckDown("mysql_queue", "Couldn't get message queue count from main_db: "+err.Error(), false, "", "")
 		return status
 	}
-	defer rows.Close()
-
-	var count int
-	for rows.Next() {
-		rows.Scan(&count)
-	}
-
-	status.Count = count
-	status.IsHealthy = count < status.Limit
+	common.AlarmCheckUp("mysql_queue", "Can get message queue count again", false)
 
 	if status.Limit > 0 {
-		if count >= status.Limit {
-			common.AlarmCheckDown("mysql_queue_limit", "Message queue at or above limit: "+strconv.Itoa(count)+"/"+strconv.Itoa(status.Limit), false, "", "")
+		status.IsHealthy = status.Backlog < status.Limit
+		msg := fmt.Sprintf("Queue backlog (not picked up for %d+ minutes): %d/%d, total queued: %d", queueBacklogMinutes, status.Backlog, status.Limit, status.Count)
+		if status.IsHealthy {
+			common.AlarmCheckUp("mysql_queue_limit", msg, false)
 		} else {
-			common.AlarmCheckUp("mysql_queue_limit", "Message queue below limit: "+strconv.Itoa(count)+"/"+strconv.Itoa(status.Limit), false)
+			common.AlarmCheckDown("mysql_queue_limit", msg, false, "", "")
 		}
 	}
 
@@ -431,83 +446,158 @@ func GetStaleLocks() StaleLockStatus {
 	if status.IsHealthy {
 		common.AlarmCheckUp("postal_stale_lock", fmt.Sprintf("No queued messages locked longer than %d minutes", status.ThresholdMinutes), false)
 	} else {
-		common.AlarmCheckDown("postal_stale_lock", fmt.Sprintf("%d queued messages locked longer than %d minutes (never retried by Postal; removed by TidyQueuedMessagesTask after queued_message_lock_stale_days)", status.Count, status.ThresholdMinutes), false, "", "")
+		common.AlarmCheckDown("postal_stale_lock", fmt.Sprintf("%d queued messages locked longer than %d minutes; Postal will not retry them", status.Count, status.ThresholdMinutes), false, "", "")
 	}
 
 	return status
 }
 
-// GetHeldMessages checks the held messages status for each server and alarms when a server reaches held_threshold.
+// GetHeldMessages counts held messages per server and alarms when a server reaches held_threshold.
+// Messages held because the recipient is on the suppression list are reported separately and not alarmed:
+// they are the expected result of an application sending to bounced addresses, not a delivery problem.
 // A threshold <= 0 means unconfigured: counts are collected but no alarm is raised.
 func GetHeldMessages() map[string]ServerHeldMessages {
 	servers := make(map[string]ServerHeldMessages)
 
-	if MessageDB == nil {
+	if MainDB == nil || MessageDB == nil {
 		return servers
 	}
 
-	// Get all servers
-	rows, err := MessageDB.Query("SELECT id, permalink FROM postal.servers")
+	serverList, err := listServers()
 	if err != nil {
 		log.Error().Err(err).Msg("Couldn't get held messages")
-		common.AlarmCheckDown("mysql_held", "Couldn't get held messages from database message_db: "+err.Error(), false, "", "")
+		common.AlarmCheckDown("mysql_held", "Couldn't list Postal servers from main_db: "+err.Error(), false, "", "")
 		return servers
 	}
-	defer rows.Close()
 
-	common.AlarmCheckUp("mysql_held", "Can get Held messages count again", false)
-
-	for rows.Next() {
-		var id int
-		var name string
-
-		err := rows.Scan(&id, &name)
+	threshold := MailHealthConfig.Postal.Held_Threshold
+	queryFailed := false
+	for _, srv := range serverList {
+		variable := heldDBName(srv.ID)
+		var total, suppressed int
+		err := MessageDB.QueryRow(
+			"SELECT COUNT(*), COALESCE(SUM(EXISTS(SELECT 1 FROM `"+variable+"`.deliveries d WHERE d.message_id = m.id AND d.status = 'Held' AND d.details LIKE 'Recipient % is on the suppression list%')), 0) FROM `"+variable+"`.messages m WHERE m.status = 'Held'",
+		).Scan(&total, &suppressed)
 		if err != nil {
-			log.Error().Err(err).Msg("Error scanning server row")
+			log.Error().Err(err).Str("database", variable).Msg("Couldn't get held messages")
+			queryFailed = true
 			continue
 		}
 
-		variable := "postal-server-" + strconv.Itoa(id)
-		dbTemp := MySQLConnect("message_db", variable, false)
-		if dbTemp == nil {
-			continue
-		}
-
-		dbMessageHeld, err := dbTemp.Query("SELECT COUNT(id) FROM messages WHERE status = 'Held'")
-		if err != nil {
-			log.Error().Err(err).Msg("Couldn't get held messages")
-			common.AlarmCheckDown("mysql_held", "Couldn't get held messages from database message_db: "+err.Error(), false, "", "")
-			MySQLDisconnect(dbTemp)
-			continue
-		}
-		common.AlarmCheckUp("mysql_held", "Can get Held messages count again", false)
-
-		var count int
-		if dbMessageHeld.Next() {
-			err := dbMessageHeld.Scan(&count)
-			if err != nil {
-				log.Error().Err(err).Msg("Error scanning held messages count")
-			}
-		}
-		dbMessageHeld.Close()
-
+		count := total - suppressed
+		healthy := threshold <= 0 || count < threshold
 		servers[variable] = ServerHeldMessages{
-			ServerName: name,
-			ServerID:   id,
+			ServerName: srv.Name,
+			ServerID:   srv.ID,
 			Count:      count,
-			IsHealthy:  count < MailHealthConfig.Postal.Held_Threshold,
+			Suppressed: suppressed,
+			IsHealthy:  healthy,
 		}
 
-		if MailHealthConfig.Postal.Held_Threshold > 0 {
-			if count < MailHealthConfig.Postal.Held_Threshold {
-				common.AlarmCheckUp("mysql_held_"+variable, "Held messages for "+name+" is below threshold", false)
+		if threshold > 0 {
+			msg := fmt.Sprintf("Held messages for %s (excluding suppression list): %d/%d", srv.Name, count, threshold)
+			if healthy {
+				common.AlarmCheckUp("mysql_held_"+variable, msg, false)
 			} else {
-				common.AlarmCheckDown("mysql_held_"+variable, "Held messages for "+name+" is above threshold", false, "", "")
+				common.AlarmCheckDown("mysql_held_"+variable, msg, false, "", "")
 			}
 		}
+	}
 
-		MySQLDisconnect(dbTemp)
+	if queryFailed {
+		common.AlarmCheckDown("mysql_held", "Couldn't get held messages for some servers from message_db, see monokit log", false, "", "")
+	} else {
+		common.AlarmCheckUp("mysql_held", "Can get Held messages count again", false)
 	}
 
 	return servers
+}
+
+type postalServer struct {
+	ID   int
+	Name string
+}
+
+func listServers() ([]postalServer, error) {
+	rows, err := MainDB.Query("SELECT id, permalink FROM servers")
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var list []postalServer
+	for rows.Next() {
+		var s postalServer
+		if err := rows.Scan(&s.ID, &s.Name); err != nil {
+			return nil, err
+		}
+		list = append(list, s)
+	}
+	return list, rows.Err()
+}
+
+func heldDBName(serverID int) string {
+	return "postal-server-" + strconv.Itoa(serverID)
+}
+
+// shouldRunDBChecks reports whether this node runs the shared DB checks, and the "tasks" role holder host when not.
+// Postal workers name the role holder "host:<hostname> pid:.. thread:..". That hostname equals this node's hostname
+// only when worker containers use host networking; otherwise the role holder can't be mapped to a node and every
+// node keeps running the checks. A missing or stale (>5 min, Postal's takeover time) role also keeps them running.
+func shouldRunDBChecks(containers map[string]ContainerStatus) (bool, string) {
+	if MainDB == nil {
+		return true, ""
+	}
+
+	hostNetwork := false
+	for _, c := range containers {
+		if strings.Contains(c.Name, "worker") && c.NetworkMode == "host" {
+			hostNetwork = true
+			break
+		}
+	}
+	if !hostNetwork {
+		return true, ""
+	}
+
+	hostname, err := os.Hostname()
+	if err != nil {
+		return true, ""
+	}
+
+	var worker string
+	var stale sql.NullBool
+	err = MainDB.QueryRow(
+		"SELECT worker, acquired_at < UTC_TIMESTAMP() - INTERVAL 5 MINUTE FROM worker_roles WHERE role = 'tasks'",
+	).Scan(&worker, &stale)
+	if err != nil || !stale.Valid || stale.Bool {
+		return true, ""
+	}
+
+	fields := strings.Fields(worker)
+	if len(fields) == 0 || !strings.HasPrefix(fields[0], "host:") {
+		return true, ""
+	}
+	holder := strings.TrimPrefix(fields[0], "host:")
+	if strings.EqualFold(holder, hostname) {
+		return true, ""
+	}
+	return false, holder
+}
+
+// releaseDBAlarms recovers this node's shared DB alarms after the checks moved to another node, so alarms raised
+// while this node held the role don't stay open forever. AlarmCheckUp only sends a recovery for alarms that were
+// actually delivered and silently drops pending ones; it is a no-op for keys without alarm state.
+func releaseDBAlarms(holder string) {
+	msg := "Postal DB checks moved to " + holder
+	for _, key := range []string{"mysql_queue", "mysql_queue_limit", "mysql_stale_lock_query", "postal_stale_lock", "mysql_held"} {
+		common.AlarmCheckUp(key, msg, false)
+	}
+	serverList, err := listServers()
+	if err != nil {
+		return
+	}
+	for _, srv := range serverList {
+		common.AlarmCheckUp("mysql_held_"+heldDBName(srv.ID), msg, false)
+	}
 }

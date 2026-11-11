@@ -73,19 +73,29 @@ func (data *PostalHealthData) RenderCompact() string {
 		sb.WriteString("\n")
 	}
 
+	// Shared DB checks run on the node holding Postal's tasks role
+	if data.DBChecksNode != "" {
+		sb.WriteString("\n")
+		sb.WriteString(common.SectionTitle("Postal DB Checks"))
+		sb.WriteString("\n")
+		sb.WriteString(common.SimpleStatusListItem("Queue / Held / Locks", "running on "+data.DBChecksNode, true))
+		sb.WriteString("\n")
+	}
+
 	// Message queue status
 	if data.MessageQueue.Limit > 0 {
 		sb.WriteString("\n")
 		sb.WriteString(common.SectionTitle("Message Queue"))
 		sb.WriteString("\n")
 
-		queueStatusText := fmt.Sprintf("%d/%d messages", data.MessageQueue.Count, data.MessageQueue.Limit)
 		sb.WriteString(common.StatusListItem(
-			"Queued Messages",
-			queueStatusText,
+			fmt.Sprintf("Backlog > %d min", data.MessageQueue.BacklogMinutes),
+			fmt.Sprintf("%d/%d messages", data.MessageQueue.Backlog, data.MessageQueue.Limit),
 			strconv.Itoa(data.MessageQueue.Limit),
-			strconv.Itoa(data.MessageQueue.Count),
+			strconv.Itoa(data.MessageQueue.Backlog),
 			data.MessageQueue.IsHealthy))
+		sb.WriteString("\n")
+		sb.WriteString(common.SimpleStatusListItem("Total Queued", strconv.Itoa(data.MessageQueue.Count), true))
 		sb.WriteString("\n")
 	}
 
@@ -101,28 +111,34 @@ func (data *PostalHealthData) RenderCompact() string {
 		sb.WriteString("\n")
 	}
 
-	// Held Messages
-	if len(data.HeldMessages) > 0 {
+	// Held Messages (servers with any held message only)
+	var heldServers []ServerHeldMessages
+	for _, server := range data.HeldMessages {
+		if server.Count > 0 || server.Suppressed > 0 {
+			heldServers = append(heldServers, server)
+		}
+	}
+	if len(heldServers) > 0 {
 		sb.WriteString("\n")
 		sb.WriteString(common.SectionTitle("Held Messages"))
 		sb.WriteString("\n")
 
 		// Find the longest server name for alignment
 		maxNameLength := 0
-		for _, server := range data.HeldMessages {
+		for _, server := range heldServers {
 			nameLength := len(fmt.Sprintf("%s (postal-server-%d)", server.ServerName, server.ServerID))
 			if nameLength > maxNameLength {
 				maxNameLength = nameLength
 			}
 		}
 
-		for _, server := range data.HeldMessages {
+		for _, server := range heldServers {
 			serverName := fmt.Sprintf("%s (postal-server-%d)", server.ServerName, server.ServerID)
 			// Pad the server name to align with the longest name
 			paddedName := fmt.Sprintf("%-*s", maxNameLength, serverName)
 			sb.WriteString(common.SimpleStatusListItem(
 				paddedName,
-				fmt.Sprintf("%d", server.Count),
+				fmt.Sprintf("%d (suppression list: %d)", server.Count, server.Suppressed),
 				server.IsHealthy,
 			))
 			sb.WriteString("\n")
