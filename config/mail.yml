@@ -9,7 +9,7 @@ pmg:
 
 postal:
   message_threshold: 100
-  held_treshold: 100
+  held_threshold: 100
   check_message: true
   stale_lock_minutes: 15  # alarm if any queued message stays locked longer than this (default: 15)
   ssl:

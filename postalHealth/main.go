@@ -137,8 +137,8 @@ func CheckPostalHealth(skipOutput bool) *PostalHealthData {
 
 	// Check message queues if enabled
 	if MailHealthConfig.Postal.Check_Message {
-		data.MessageQueue = GetMessageQueue(skipOutput)
-		data.HeldMessages = GetHeldMessages(skipOutput)
+		data.MessageQueue = GetMessageQueue()
+		data.HeldMessages = GetHeldMessages()
 		data.StaleLocks = GetStaleLocks()
 	}
 
@@ -363,8 +363,9 @@ func MySQLDisconnect(db *sql.DB) {
 	}
 }
 
-// GetMessageQueue checks the message queue status
-func GetMessageQueue(skipOutput bool) QueueStatus {
+// GetMessageQueue checks the message queue status and alarms when it reaches message_threshold.
+// A threshold <= 0 means unconfigured: the count is collected but no alarm is raised.
+func GetMessageQueue() QueueStatus {
 	status := QueueStatus{
 		Limit: MailHealthConfig.Postal.Message_Threshold,
 	}
@@ -389,11 +390,11 @@ func GetMessageQueue(skipOutput bool) QueueStatus {
 	status.Count = count
 	status.IsHealthy = count < status.Limit
 
-	if !skipOutput {
-		if count >= MailHealthConfig.Postal.Message_Threshold {
-			common.AlarmCheckDown("mysql_queue_limit", "Message queue at or above limit: "+strconv.Itoa(count)+"/"+strconv.Itoa(MailHealthConfig.Postal.Message_Threshold), false, "", "")
+	if status.Limit > 0 {
+		if count >= status.Limit {
+			common.AlarmCheckDown("mysql_queue_limit", "Message queue at or above limit: "+strconv.Itoa(count)+"/"+strconv.Itoa(status.Limit), false, "", "")
 		} else {
-			common.AlarmCheckUp("mysql_queue_limit", "Message queue below limit: "+strconv.Itoa(count)+"/"+strconv.Itoa(MailHealthConfig.Postal.Message_Threshold), false)
+			common.AlarmCheckUp("mysql_queue_limit", "Message queue below limit: "+strconv.Itoa(count)+"/"+strconv.Itoa(status.Limit), false)
 		}
 	}
 
@@ -436,8 +437,9 @@ func GetStaleLocks() StaleLockStatus {
 	return status
 }
 
-// GetHeldMessages checks the held messages status for each server
-func GetHeldMessages(skipOutput bool) map[string]ServerHeldMessages {
+// GetHeldMessages checks the held messages status for each server and alarms when a server reaches held_threshold.
+// A threshold <= 0 means unconfigured: counts are collected but no alarm is raised.
+func GetHeldMessages() map[string]ServerHeldMessages {
 	servers := make(map[string]ServerHeldMessages)
 
 	if MessageDB == nil {
@@ -496,7 +498,7 @@ func GetHeldMessages(skipOutput bool) map[string]ServerHeldMessages {
 			IsHealthy:  count < MailHealthConfig.Postal.Held_Threshold,
 		}
 
-		if !skipOutput {
+		if MailHealthConfig.Postal.Held_Threshold > 0 {
 			if count < MailHealthConfig.Postal.Held_Threshold {
 				common.AlarmCheckUp("mysql_held_"+variable, "Held messages for "+name+" is below threshold", false)
 			} else {
