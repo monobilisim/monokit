@@ -9,7 +9,7 @@ pmg:
 
 postal:
   message_threshold: 100  # alarm when this many queued messages wait 5+ min without a worker picking them up
-  held_threshold: 100     # per server; suppression-list holds are shown but not counted
+  held_threshold: 100     # per server, for credential/development/unknown holds; send limit and suspension alarm at 1; suppression/quarantine/route hold never alarm
   check_message: true
   stale_lock_minutes: 15  # alarm if any queued message stays locked longer than this (default: 15)
   ssl:

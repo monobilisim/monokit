@@ -452,10 +452,56 @@ func GetStaleLocks() StaleLockStatus {
 	return status
 }
 
-// GetHeldMessages counts held messages per server and alarms when a server reaches held_threshold.
-// Messages held because the recipient is on the suppression list are reported separately and not alarmed:
-// they are the expected result of an application sending to bounced addresses, not a delivery problem.
-// A threshold <= 0 means unconfigured: counts are collected but no alarm is raised.
+// Held reason categories, derived from the details Postal writes on the message's latest Held delivery.
+const (
+	heldSuppression = "suppression"
+	heldSendLimit   = "send_limit"
+	heldSuspended   = "suspended"
+	heldCredential  = "credential"
+	heldDevelopment = "development"
+	heldQuarantine  = "quarantine"
+	heldRouteHold   = "route_hold"
+	heldOther       = "other"
+)
+
+// heldReasonOrder is the display order of held reason categories.
+var heldReasonOrder = []string{heldSendLimit, heldSuspended, heldCredential, heldDevelopment, heldOther, heldSuppression, heldQuarantine, heldRouteHold}
+
+// heldReasonSQL maps a Held delivery's details to a category (see the held* constants).
+const heldReasonSQL = `CASE
+	WHEN details LIKE 'Recipient % is on the suppression list%' THEN 'suppression'
+	WHEN details LIKE 'Message held because send limit%' THEN 'send_limit'
+	WHEN details LIKE 'Mail server has been suspended%' THEN 'suspended'
+	WHEN details LIKE 'Credential is configured to hold%' THEN 'credential'
+	WHEN details LIKE 'Server is in development mode%' THEN 'development'
+	WHEN details LIKE 'Message placed into quarantine%' THEN 'quarantine'
+	WHEN details LIKE 'Message has been accepted but not sent%' THEN 'route_hold'
+	ELSE 'other' END`
+
+// evaluateHeld decides whether a server's held messages need an alarm and returns the alarmed count.
+// send_limit and suspended mean outgoing mail has stopped, so any of them alarms. credential, development and
+// unknown reasons alarm from held_threshold on (threshold <= 0 disables only this part). suppression, quarantine
+// and route_hold are expected behaviour and never alarm.
+func evaluateHeld(reasons map[string]int, threshold int) (healthy bool, alarmed int) {
+	immediate := reasons[heldSendLimit] + reasons[heldSuspended]
+	thresholded := reasons[heldCredential] + reasons[heldDevelopment] + reasons[heldOther]
+	alarmed = immediate + thresholded
+	healthy = immediate == 0 && (threshold <= 0 || thresholded < threshold)
+	return healthy, alarmed
+}
+
+// formatHeldReasons renders non-zero categories as "send_limit 3, suppression 120".
+func formatHeldReasons(reasons map[string]int) string {
+	var parts []string
+	for _, r := range heldReasonOrder {
+		if reasons[r] > 0 {
+			parts = append(parts, fmt.Sprintf("%s %d", r, reasons[r]))
+		}
+	}
+	return strings.Join(parts, ", ")
+}
+
+// GetHeldMessages counts held messages per server by reason and alarms per evaluateHeld.
 func GetHeldMessages() map[string]ServerHeldMessages {
 	servers := make(map[string]ServerHeldMessages)
 
@@ -474,33 +520,27 @@ func GetHeldMessages() map[string]ServerHeldMessages {
 	queryFailed := false
 	for _, srv := range serverList {
 		variable := heldDBName(srv.ID)
-		var total, suppressed int
-		err := MessageDB.QueryRow(
-			"SELECT COUNT(*), COALESCE(SUM(EXISTS(SELECT 1 FROM `"+variable+"`.deliveries d WHERE d.message_id = m.id AND d.status = 'Held' AND d.details LIKE 'Recipient % is on the suppression list%')), 0) FROM `"+variable+"`.messages m WHERE m.status = 'Held'",
-		).Scan(&total, &suppressed)
+		reasons, err := heldReasons(variable)
 		if err != nil {
 			log.Error().Err(err).Str("database", variable).Msg("Couldn't get held messages")
 			queryFailed = true
 			continue
 		}
 
-		count := total - suppressed
-		healthy := threshold <= 0 || count < threshold
+		healthy, alarmed := evaluateHeld(reasons, threshold)
 		servers[variable] = ServerHeldMessages{
 			ServerName: srv.Name,
 			ServerID:   srv.ID,
-			Count:      count,
-			Suppressed: suppressed,
+			Count:      alarmed,
+			Reasons:    reasons,
 			IsHealthy:  healthy,
 		}
 
-		if threshold > 0 {
-			msg := fmt.Sprintf("Held messages for %s (excluding suppression list): %d/%d", srv.Name, count, threshold)
-			if healthy {
-				common.AlarmCheckUp("mysql_held_"+variable, msg, false)
-			} else {
-				common.AlarmCheckDown("mysql_held_"+variable, msg, false, "", "")
-			}
+		msg := fmt.Sprintf("Held messages for %s: %s", srv.Name, formatHeldReasons(reasons))
+		if healthy {
+			common.AlarmCheckUp("mysql_held_"+variable, msg, false)
+		} else {
+			common.AlarmCheckDown("mysql_held_"+variable, msg, false, "", "")
 		}
 	}
 
@@ -511,6 +551,30 @@ func GetHeldMessages() map[string]ServerHeldMessages {
 	}
 
 	return servers
+}
+
+// heldReasons counts a server's held messages by the category of their latest Held delivery.
+func heldReasons(database string) (map[string]int, error) {
+	rows, err := MessageDB.Query(
+		"SELECT " + heldReasonSQL + " AS reason, COUNT(*) FROM (" +
+			"SELECT (SELECT d.details FROM `" + database + "`.deliveries d WHERE d.message_id = m.id AND d.status = 'Held' ORDER BY d.id DESC LIMIT 1) AS details " +
+			"FROM `" + database + "`.messages m WHERE m.status = 'Held') t GROUP BY reason",
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	reasons := make(map[string]int)
+	for rows.Next() {
+		var reason string
+		var count int
+		if err := rows.Scan(&reason, &count); err != nil {
+			return nil, err
+		}
+		reasons[reason] = count
+	}
+	return reasons, rows.Err()
 }
 
 type postalServer struct {

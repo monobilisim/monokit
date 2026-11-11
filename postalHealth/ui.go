@@ -114,7 +114,7 @@ func (data *PostalHealthData) RenderCompact() string {
 	// Held Messages (servers with any held message only)
 	var heldServers []ServerHeldMessages
 	for _, server := range data.HeldMessages {
-		if server.Count > 0 || server.Suppressed > 0 {
+		if len(server.Reasons) > 0 {
 			heldServers = append(heldServers, server)
 		}
 	}
@@ -138,7 +138,7 @@ func (data *PostalHealthData) RenderCompact() string {
 			paddedName := fmt.Sprintf("%-*s", maxNameLength, serverName)
 			sb.WriteString(common.SimpleStatusListItem(
 				paddedName,
-				fmt.Sprintf("%d (suppression list: %d)", server.Count, server.Suppressed),
+				formatHeldReasons(server.Reasons),
 				server.IsHealthy,
 			))
 			sb.WriteString("\n")

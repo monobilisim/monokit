@@ -57,7 +57,7 @@ type StaleLockStatus struct {
 type ServerHeldMessages struct {
 	ServerName string
 	ServerID   int
-	Count      int // held messages excluding suppression-list holds
-	Suppressed int // held because the recipient is on the suppression list (not alarmed)
+	Count      int            // held messages in alarmed categories (see evaluateHeld)
+	Reasons    map[string]int // held messages by reason category, including non-alarmed ones
 	IsHealthy  bool
 }
