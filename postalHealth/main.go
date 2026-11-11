@@ -189,7 +189,7 @@ func CheckPostalHealth(skipOutput bool) *PostalHealthData {
 		}
 	}
 
-	if data.MessageQueue.Limit > 0 && !data.MessageQueue.IsHealthy {
+	if !data.MessageQueue.IsHealthy {
 		data.IsHealthy = false
 	}
 
@@ -230,6 +230,7 @@ func Main(cmd *cobra.Command, args []string) {
 	viper.SetDefault("postal.ssl.port", 25)
 	viper.SetDefault("postal.ssl.expiry_threshold_days", 10)
 	viper.SetDefault("postal.stale_lock_minutes", 15)
+	viper.SetDefault("postal.backlog_threshold", 10)
 	common.ConfInit("mail", &MailHealthConfig)
 
 	apiclient.WrapperGetServiceStatus("postalHealth")
@@ -377,13 +378,16 @@ func MySQLDisconnect(db *sql.DB) {
 	}
 }
 
-// GetMessageQueue checks the queue backlog and alarms when it reaches message_threshold.
-// Backlog = unlocked messages whose (retry) time passed more than queueBacklogMinutes ago without a worker
-// picking them up. The total count is informational: it also contains messages waiting for a soft-fail retry,
-// which may legitimately stay queued for days. A threshold <= 0 means unconfigured: no alarm is raised.
+// GetMessageQueue checks the queue and alarms on two thresholds:
+//   - message_threshold: total queued messages, including ones waiting for a soft-fail retry (alarm key mysql_queue_limit)
+//   - backlog_threshold: unlocked messages whose (retry) time passed more than queueBacklogMinutes ago without a
+//     worker picking them up, i.e. workers are not keeping up (alarm key mysql_queue_backlog)
+//
+// A threshold <= 0 means unconfigured: that alarm is not raised.
 func GetMessageQueue() QueueStatus {
 	status := QueueStatus{
 		Limit:          MailHealthConfig.Postal.Message_Threshold,
+		BacklogLimit:   MailHealthConfig.Postal.Backlog_Threshold,
 		BacklogMinutes: queueBacklogMinutes,
 		IsHealthy:      true,
 	}
@@ -404,12 +408,24 @@ func GetMessageQueue() QueueStatus {
 	common.AlarmCheckUp("mysql_queue", "Can get message queue count again", false)
 
 	if status.Limit > 0 {
-		status.IsHealthy = status.Backlog < status.Limit
-		msg := fmt.Sprintf("Queue backlog (not picked up for %d+ minutes): %d/%d, total queued: %d", queueBacklogMinutes, status.Backlog, status.Limit, status.Count)
-		if status.IsHealthy {
+		healthy := status.Count < status.Limit
+		status.IsHealthy = status.IsHealthy && healthy
+		msg := fmt.Sprintf("Total queued messages: %d/%d", status.Count, status.Limit)
+		if healthy {
 			common.AlarmCheckUp("mysql_queue_limit", msg, false)
 		} else {
 			common.AlarmCheckDown("mysql_queue_limit", msg, false, "", "")
+		}
+	}
+
+	if status.BacklogLimit > 0 {
+		healthy := status.Backlog < status.BacklogLimit
+		status.IsHealthy = status.IsHealthy && healthy
+		msg := fmt.Sprintf("Queued messages not picked up by a worker for %d+ minutes: %d/%d", queueBacklogMinutes, status.Backlog, status.BacklogLimit)
+		if healthy {
+			common.AlarmCheckUp("mysql_queue_backlog", msg, false)
+		} else {
+			common.AlarmCheckDown("mysql_queue_backlog", msg, false, "", "")
 		}
 	}
 

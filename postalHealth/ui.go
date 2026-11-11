@@ -83,19 +83,20 @@ func (data *PostalHealthData) RenderCompact() string {
 	}
 
 	// Message queue status
-	if data.MessageQueue.Limit > 0 {
+	if data.MessageQueue.Limit > 0 || data.MessageQueue.BacklogLimit > 0 {
 		sb.WriteString("\n")
 		sb.WriteString(common.SectionTitle("Message Queue"))
 		sb.WriteString("\n")
 
-		sb.WriteString(common.StatusListItem(
-			fmt.Sprintf("Backlog > %d min", data.MessageQueue.BacklogMinutes),
-			fmt.Sprintf("%d/%d messages", data.MessageQueue.Backlog, data.MessageQueue.Limit),
-			strconv.Itoa(data.MessageQueue.Limit),
-			strconv.Itoa(data.MessageQueue.Backlog),
-			data.MessageQueue.IsHealthy))
+		sb.WriteString(common.SimpleStatusListItem(
+			"Total Queued",
+			fmt.Sprintf("%d/%d", data.MessageQueue.Count, data.MessageQueue.Limit),
+			data.MessageQueue.Limit <= 0 || data.MessageQueue.Count < data.MessageQueue.Limit))
 		sb.WriteString("\n")
-		sb.WriteString(common.SimpleStatusListItem("Total Queued", strconv.Itoa(data.MessageQueue.Count), true))
+		sb.WriteString(common.SimpleStatusListItem(
+			fmt.Sprintf("Backlog > %d min", data.MessageQueue.BacklogMinutes),
+			fmt.Sprintf("%d/%d", data.MessageQueue.Backlog, data.MessageQueue.BacklogLimit),
+			data.MessageQueue.BacklogLimit <= 0 || data.MessageQueue.Backlog < data.MessageQueue.BacklogLimit))
 		sb.WriteString("\n")
 	}
 

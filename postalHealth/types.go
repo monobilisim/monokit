@@ -40,7 +40,8 @@ type QueueStatus struct {
 	Count          int // all queued messages, including ones waiting for a soft-fail retry
 	Backlog        int // unlocked messages ready for BacklogMinutes+ without being picked up
 	BacklogMinutes int
-	Limit          int
+	Limit          int // message_threshold, alarm on Count
+	BacklogLimit   int // backlog_threshold, alarm on Backlog
 	IsHealthy      bool
 }
 
