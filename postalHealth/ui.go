@@ -89,6 +89,18 @@ func (data *PostalHealthData) RenderCompact() string {
 		sb.WriteString("\n")
 	}
 
+	// Stale queued message locks
+	if data.StaleLocks.CheckStatus {
+		sb.WriteString("\n")
+		sb.WriteString(common.SectionTitle("Stale Queue Locks"))
+		sb.WriteString("\n")
+		sb.WriteString(common.SimpleStatusListItem(
+			fmt.Sprintf("Locked > %d min", data.StaleLocks.ThresholdMinutes),
+			strconv.Itoa(data.StaleLocks.Count),
+			data.StaleLocks.IsHealthy))
+		sb.WriteString("\n")
+	}
+
 	// Held Messages
 	if len(data.HeldMessages) > 0 {
 		sb.WriteString("\n")

@@ -9,6 +9,7 @@ type PostalHealthData struct {
 	MySQLStatus   map[string]bool
 	MessageQueue  QueueStatus
 	HeldMessages  map[string]ServerHeldMessages
+	StaleLocks    StaleLockStatus
 	ServiceStatus map[string]bool
 	SSLCert       SSLCertInfo
 }
@@ -35,6 +36,15 @@ type QueueStatus struct {
 	Count     int
 	Limit     int
 	IsHealthy bool
+}
+
+// StaleLockStatus holds the number of queued messages whose worker lock is older than the threshold.
+// Postal never retries such messages; TidyQueuedMessagesTask deletes them after queued_message_lock_stale_days.
+type StaleLockStatus struct {
+	Count            int
+	ThresholdMinutes int
+	CheckStatus      bool // true if the query ran successfully
+	IsHealthy        bool
 }
 
 // ServerHeldMessages holds information about held messages for a specific server

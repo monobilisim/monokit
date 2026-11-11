@@ -139,6 +139,7 @@ func CheckPostalHealth(skipOutput bool) *PostalHealthData {
 	if MailHealthConfig.Postal.Check_Message {
 		data.MessageQueue = GetMessageQueue(skipOutput)
 		data.HeldMessages = GetHeldMessages(skipOutput)
+		data.StaleLocks = GetStaleLocks()
 	}
 
 	// Check SSL certificate expiry (port 25 STARTTLS)
@@ -187,6 +188,10 @@ func CheckPostalHealth(skipOutput bool) *PostalHealthData {
 		}
 	}
 
+	if data.StaleLocks.CheckStatus && !data.StaleLocks.IsHealthy {
+		data.IsHealthy = false
+	}
+
 	if data.SSLCert.CheckStatus && data.SSLCert.ExpiringSoon {
 		data.IsHealthy = false
 	}
@@ -211,6 +216,7 @@ func Main(cmd *cobra.Command, args []string) {
 	viper.SetDefault("postal.ssl.host", "localhost")
 	viper.SetDefault("postal.ssl.port", 25)
 	viper.SetDefault("postal.ssl.expiry_threshold_days", 10)
+	viper.SetDefault("postal.stale_lock_minutes", 15)
 	common.ConfInit("mail", &MailHealthConfig)
 
 	apiclient.WrapperGetServiceStatus("postalHealth")
@@ -389,6 +395,42 @@ func GetMessageQueue(skipOutput bool) QueueStatus {
 		} else {
 			common.AlarmCheckUp("mysql_queue_limit", "Message queue below limit: "+strconv.Itoa(count)+"/"+strconv.Itoa(MailHealthConfig.Postal.Message_Threshold), false)
 		}
+	}
+
+	return status
+}
+
+// GetStaleLocks counts queued messages whose worker lock is older than stale_lock_minutes.
+// Postal does not retry such messages and TidyQueuedMessagesTask later deletes them, leaving the
+// message Pending forever, so any non-zero count is alarmed. Postal stores timestamps in UTC.
+func GetStaleLocks() StaleLockStatus {
+	status := StaleLockStatus{ThresholdMinutes: MailHealthConfig.Postal.Stale_Lock_Minutes}
+	if status.ThresholdMinutes <= 0 {
+		status.ThresholdMinutes = 15
+	}
+
+	if MainDB == nil {
+		return status
+	}
+
+	err := MainDB.QueryRow(
+		"SELECT COUNT(*) FROM queued_messages WHERE locked_by IS NOT NULL AND locked_at < UTC_TIMESTAMP() - INTERVAL ? MINUTE",
+		status.ThresholdMinutes,
+	).Scan(&status.Count)
+	if err != nil {
+		log.Error().Err(err).Msg("Couldn't get stale queued message lock count")
+		common.AlarmCheckDown("mysql_stale_lock_query", "Couldn't get stale queued message lock count from main_db: "+err.Error(), false, "", "")
+		return status
+	}
+	common.AlarmCheckUp("mysql_stale_lock_query", "Can get stale queued message lock count again", false)
+
+	status.CheckStatus = true
+	status.IsHealthy = status.Count == 0
+
+	if status.IsHealthy {
+		common.AlarmCheckUp("postal_stale_lock", fmt.Sprintf("No queued messages locked longer than %d minutes", status.ThresholdMinutes), false)
+	} else {
+		common.AlarmCheckDown("postal_stale_lock", fmt.Sprintf("%d queued messages locked longer than %d minutes (never retried by Postal; removed by TidyQueuedMessagesTask after queued_message_lock_stale_days)", status.Count, status.ThresholdMinutes), false, "", "")
 	}
 
 	return status

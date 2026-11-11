@@ -4,6 +4,8 @@ type Postal struct {
 	Message_Threshold int
 	Held_Threshold    int
 	Check_Message     bool
+	// Stale_Lock_Minutes: queued_messages rows locked longer than this are reported as stuck.
+	Stale_Lock_Minutes int `mapstructure:"stale_lock_minutes" yaml:"stale_lock_minutes"`
 	Ssl               struct {
 		Enabled               bool   `mapstructure:"enabled" yaml:"enabled"`
 		Host                  string `mapstructure:"host" yaml:"host"`
