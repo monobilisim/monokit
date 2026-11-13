@@ -153,6 +153,8 @@ These core tools will be available in every monokit installation.
 - k8sHealth
     - Checks Kubernetes health, including node status and certificate expiration.
     - Tracks the running Kubernetes server version against [endoflife.date](https://endoflife.date/api/kubernetes.json) and alarms when the cycle is near or past End-of-Life (configurable `eol.warn_days`, default 180).
+    - Failed pods that belong to a controller (e.g. pods evicted for DiskPressure) are alarmed once per workload, not per pod name: the alarm names the Deployment/StatefulSet/Job, the eviction message from `kubectl describe pod`, and the affected nodes with their pressure conditions. It recovers once the failed pods are deleted.
+    - Cluster-wide alarms (nodes, pods, workloads, cert-manager, compliance, EOL) are sent by a single master elected through the `kube-system/monokit-k8shealth-reporter` Lease, labelled with the cluster name (identifier minus its last `-` segment, or `k8s.cluster_name`) instead of once per master. Host-local checks (certificate files, etcd, floating IPs, RKE2 config) still alarm per host. If the Lease can't be used, the host sends the alarms itself rather than dropping them.
     - Sends alarm notifications to a Slack webhook.
     - Config: `/etc/mono/k8s.yaml`
     - Is a plugin, install it with `monokit plugin install k8sHealth`.

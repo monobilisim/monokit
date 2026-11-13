@@ -240,6 +240,10 @@ func CollectK8sHealthData() *K8sHealthData {
 	}
 	alarmCheckUp("kubernetes_client_init", "Kubernetes clientset initialized successfully.", false)
 
+	// Decide whether this host sends the cluster-wide alarms for this run.
+	reporter := electClusterAlarmReporter(Clientset, GetKubeconfigPath("") == "")
+	healthData.ClusterAlarms = &reporter
+
 	var err error // Declare error variable to reuse
 
 	// Collect Node Health
@@ -255,7 +259,7 @@ func CollectK8sHealthData() *K8sHealthData {
 	}
 
 	// Collect Pod Health
-	healthData.Pods, err = CollectPodHealth() // This CollectPodHealth is from k8s.go
+	healthData.Pods, healthData.FailedWorkloads, err = CollectPodHealth(healthData.Nodes)
 	if err != nil {
 		errMsg := fmt.Sprintf("Error collecting pod health: %v", err)
 		healthData.AddError(errMsg)
@@ -469,18 +473,19 @@ func CollectNodeHealth() ([]NodeHealthInfo, error) {
 		}
 
 		nodeHealthInfos = append(nodeHealthInfos, NodeHealthInfo{
-			Name:    node.Name,
-			Role:    role,
-			Status:  status,
-			Reason:  reason,
-			IsReady: isReady,
+			Name:       node.Name,
+			Role:       role,
+			Status:     status,
+			Reason:     reason,
+			IsReady:    isReady,
+			Conditions: nodeProblemConditions(&node),
 		})
 
 		alarmKey := "node_ready_" + node.Name
 		if isReady {
-			alarmCheckUp(alarmKey, fmt.Sprintf("Node '%s' (%s) is Ready.", node.Name, role), false)
+			clusterAlarmCheckUp(alarmKey, fmt.Sprintf("Node '%s' (%s) is Ready.", node.Name, role))
 		} else {
-			alarmCheckDown(alarmKey, fmt.Sprintf("Node '%s' (%s) is NOT Ready. Status: %s, Reason: %s", node.Name, role, status, reason), false, "", "")
+			clusterAlarmCheckDown(alarmKey, fmt.Sprintf("Node '%s' (%s) is NOT Ready. Status: %s, Reason: %s", node.Name, role, status, reason))
 		}
 	}
 	return nodeHealthInfos, nil
@@ -618,7 +623,10 @@ func CollectRke2IngressNginxHealth() (*Rke2IngressNginxHealth, error) {
 }
 
 // CollectPodHealth gathers health information for all pods in all namespaces.
-func CollectPodHealth() ([]PodHealthInfo, error) {
+// Failed pods that belong to a controller get no per-pod alarms; they are returned
+// summarized per workload (with the conditions of the given nodes) and alarmed once
+// per workload instead.
+func CollectPodHealth(nodes []NodeHealthInfo) ([]PodHealthInfo, []FailedWorkloadInfo, error) {
 	log.Debug().
 		Str("component", "k8sHealth").
 		Str("operation", "collect_pod_health").
@@ -626,7 +634,7 @@ func CollectPodHealth() ([]PodHealthInfo, error) {
 	var podInfos []PodHealthInfo
 
 	if Clientset == nil {
-		return nil, fmt.Errorf("kubernetes clientset is not initialized")
+		return nil, nil, fmt.Errorf("kubernetes clientset is not initialized")
 	}
 
 	pods, err := Clientset.CoreV1().Pods("").List(context.TODO(), metav1.ListOptions{})
@@ -636,7 +644,7 @@ func CollectPodHealth() ([]PodHealthInfo, error) {
 			Str("operation", "collect_pod_health").
 			Err(err).
 			Msg("Error listing pods")
-		return nil, fmt.Errorf("error listing pods: %w", err)
+		return nil, nil, fmt.Errorf("error listing pods: %w", err)
 	}
 
 	for _, pod := range pods.Items {
@@ -645,6 +653,12 @@ func CollectPodHealth() ([]PodHealthInfo, error) {
 			Name:            pod.Name,
 			Phase:           string(pod.Status.Phase),
 			ContainerStates: make([]ContainerHealthInfo, 0),
+		}
+		// Failed pods of a controller are alarmed once per workload below.
+		grouped := isGroupedFailedPod(&pod)
+		if grouped {
+			kind, name, _ := failedPodWorkload(&pod)
+			podInfo.Workload = kind + "/" + name
 		}
 
 		isPodProblemByPhase := false
@@ -706,14 +720,16 @@ func CollectPodHealth() ([]PodHealthInfo, error) {
 
 			// Container-level alarms
 			containerAlarmKey := fmt.Sprintf("%s-%s-%s_container_status", pod.Namespace, pod.Name, cs.Name)
-			if !containerInfo.IsReady && containerInfo.State != "Terminated" && containerInfo.Reason != "Completed" { // Avoid alarming for completed containers
+			if grouped {
+				// Summarized per workload.
+			} else if !containerInfo.IsReady && containerInfo.State != "Terminated" && containerInfo.Reason != "Completed" { // Avoid alarming for completed containers
 				alarmMsg := fmt.Sprintf("Container '%s' in pod '%s/%s' is in state %s (Reason: %s, Message: %s)",
 					cs.Name, pod.Namespace, pod.Name, containerInfo.State, containerInfo.Reason, containerInfo.Message)
-				alarmCheckDown(containerAlarmKey, alarmMsg, false, "", "")
+				clusterAlarmCheckDown(containerAlarmKey, alarmMsg)
 			} else {
 				alarmMsg := fmt.Sprintf("Container '%s' in pod '%s/%s' is healthy (State: %s).",
 					cs.Name, pod.Namespace, pod.Name, containerInfo.State)
-				alarmCheckUp(containerAlarmKey, alarmMsg, false)
+				clusterAlarmCheckUp(containerAlarmKey, alarmMsg)
 			}
 		}
 
@@ -751,14 +767,16 @@ func CollectPodHealth() ([]PodHealthInfo, error) {
 
 			// Init Container-level alarms
 			initContainerAlarmKey := fmt.Sprintf("%s-%s-%s_init_container_status", pod.Namespace, pod.Name, ics.Name)
-			if !initContainerInfo.IsReady && initContainerInfo.State != "Terminated" && initContainerInfo.Reason != "Completed" {
+			if grouped {
+				// Summarized per workload.
+			} else if !initContainerInfo.IsReady && initContainerInfo.State != "Terminated" && initContainerInfo.Reason != "Completed" {
 				alarmMsg := fmt.Sprintf("Init container '%s' in pod '%s/%s' is in state %s (Reason: %s, Message: %s)",
 					ics.Name, pod.Namespace, pod.Name, initContainerInfo.State, initContainerInfo.Reason, initContainerInfo.Message)
-				alarmCheckDown(initContainerAlarmKey, alarmMsg, false, "", "")
+				clusterAlarmCheckDown(initContainerAlarmKey, alarmMsg)
 			} else {
 				alarmMsg := fmt.Sprintf("Init container '%s' in pod '%s/%s' is healthy or completed (State: %s).",
 					ics.Name, pod.Namespace, pod.Name, initContainerInfo.State)
-				alarmCheckUp(initContainerAlarmKey, alarmMsg, false)
+				clusterAlarmCheckUp(initContainerAlarmKey, alarmMsg)
 			}
 		}
 
@@ -788,7 +806,9 @@ func CollectPodHealth() ([]PodHealthInfo, error) {
 
 		// Pod-level alarms
 		podAlarmKey := fmt.Sprintf("%s-%s_pod_status", pod.Namespace, pod.Name)
-		if podInfo.IsProblem {
+		if grouped {
+			// Summarized per workload.
+		} else if podInfo.IsProblem {
 			// More detailed message for problematic pods
 			var problemDetails []string
 			if pod.Status.Phase != v1.PodRunning && pod.Status.Phase != v1.PodSucceeded {
@@ -801,14 +821,22 @@ func CollectPodHealth() ([]PodHealthInfo, error) {
 			}
 			alarmMsg := fmt.Sprintf("Pod '%s/%s' is problematic: %s.",
 				pod.Namespace, pod.Name, strings.Join(problemDetails, "; "))
-			alarmCheckDown(podAlarmKey, alarmMsg, false, "", "")
+			clusterAlarmCheckDown(podAlarmKey, alarmMsg)
 		} else {
 			alarmMsg := fmt.Sprintf("Pod '%s/%s' is healthy (Phase: %s).", pod.Namespace, pod.Name, pod.Status.Phase)
-			alarmCheckUp(podAlarmKey, alarmMsg, false)
+			clusterAlarmCheckUp(podAlarmKey, alarmMsg)
 		}
 		podInfos = append(podInfos, podInfo)
 	}
-	return podInfos, nil
+
+	nodeConditions := make(map[string][]string, len(nodes))
+	for _, n := range nodes {
+		nodeConditions[n.Name] = n.Conditions
+	}
+	failedWorkloads := groupFailedPods(pods.Items, nodeConditions)
+	alarmFailedWorkloads(failedWorkloads)
+
+	return podInfos, failedWorkloads, nil
 }
 
 // CollectCertManagerHealth checks the status of cert-manager and its certificates.
@@ -835,7 +863,7 @@ func CollectCertManagerHealth() (*CertManagerHealth, error) {
 			//common.LogWarn(health.Error)
 			// This is not necessarily a critical error for the whole k8s check,
 			// but cert-manager specific checks cannot proceed.
-			alarmCheckDown("cert_manager_namespace", health.Error, false, "", "")
+			clusterAlarmCheckDown("cert_manager_namespace", health.Error)
 			return health, nil // Return current health, not a fatal error for the collector.
 		}
 		errMsg := fmt.Sprintf("Error getting cert-manager namespace: %v", err)
@@ -845,11 +873,11 @@ func CollectCertManagerHealth() (*CertManagerHealth, error) {
 			Err(err).
 			Msg("Error getting cert-manager namespace")
 		health.Error = errMsg
-		alarmCheckDown("cert_manager_namespace", errMsg, false, "", "")
+		clusterAlarmCheckDown("cert_manager_namespace", errMsg)
 		return health, fmt.Errorf("%s", errMsg) // This is a more significant k8s API error.
 	}
 	health.NamespaceAvailable = true
-	alarmCheckUp("cert_manager_namespace", "cert-manager namespace exists.", false)
+	clusterAlarmCheckUp("cert_manager_namespace", "cert-manager namespace exists.")
 
 	// Get a list of cert-manager.io/Certificate resources
 	rawCertData, err := Clientset.RESTClient().Get().AbsPath("/apis/cert-manager.io/v1/certificates").DoRaw(context.Background())
@@ -867,9 +895,9 @@ func CollectCertManagerHealth() (*CertManagerHealth, error) {
 				Str("component", "k8sHealth").
 				Str("operation", "collect_cert_manager_health").
 				Msg("Cert-manager CRDs for Certificates might not be installed")
-			alarmCheckDown("cert_manager_crd_certificates", "Cert-manager Certificate CRD not found.", false, "", "")
+			clusterAlarmCheckDown("cert_manager_crd_certificates", "Cert-manager Certificate CRD not found.")
 		} else {
-			alarmCheckDown("cert_manager_api_certificates", errMsg, false, "", "")
+			clusterAlarmCheckDown("cert_manager_api_certificates", errMsg)
 		}
 		return health, nil // Not a fatal error for the collector if CRDs are missing.
 	}
@@ -883,7 +911,7 @@ func CollectCertManagerHealth() (*CertManagerHealth, error) {
 			Err(err).
 			Msg("Error parsing cert-manager Certificate JSON")
 		health.Error = errMsg
-		alarmCheckDown("cert_manager_json_parse", errMsg, false, "", "")
+		clusterAlarmCheckDown("cert_manager_json_parse", errMsg)
 		return health, fmt.Errorf("%s", errMsg) // Parsing error is more critical
 	}
 
@@ -915,10 +943,10 @@ func CollectCertManagerHealth() (*CertManagerHealth, error) {
 		alarmKey := fmt.Sprintf("cert_manager_cert_%s_ready", item.Metadata.Name)
 		if !isReady {
 			alarmMsg := fmt.Sprintf("Certificate '%s' is not Ready. Message: %s", item.Metadata.Name, readyConditionMessage)
-			alarmCheckDown(alarmKey, alarmMsg, false, "", "")
+			clusterAlarmCheckDown(alarmKey, alarmMsg)
 		} else {
 			alarmMsg := fmt.Sprintf("Certificate '%s' is Ready.", item.Metadata.Name)
-			alarmCheckUp(alarmKey, alarmMsg, false)
+			clusterAlarmCheckUp(alarmKey, alarmMsg)
 		}
 		health.Certificates = append(health.Certificates, certInfo)
 	}
@@ -1195,7 +1223,7 @@ func CollectKubeVipHealth() (*KubeVipHealth, error) {
 	floatingIPs = uniqueStrings(floatingIPs)
 
 	if health.PodsAvailable {
-		alarmCheckUp("kube_vip_pods", "Kube-VIP pods detected in kube-system.", false)
+		clusterAlarmCheckUp("kube_vip_pods", "Kube-VIP pods detected in kube-system.")
 		if len(floatingIPs) > 0 {
 			for _, floatingIp := range floatingIPs {
 				check := FloatingIPCheck{IP: floatingIp, TestType: "kube-vip"}
@@ -1219,7 +1247,7 @@ func CollectKubeVipHealth() (*KubeVipHealth, error) {
 			Str("component", "k8sHealth").
 			Str("operation", "collect_kube_vip_health").
 			Msg("Kube-VIP pods not detected in kube-system")
-		alarmCheckDown("kube_vip_pods", "Kube-VIP pods not detected in kube-system. This might be normal if Kube-VIP is not used.", false, "", "")
+		clusterAlarmCheckDown("kube_vip_pods", "Kube-VIP pods not detected in kube-system. This might be normal if Kube-VIP is not used.")
 	}
 
 	// Validate RKE2 config.yaml server endpoint when multi-master with kube-vip + floating IP
@@ -1874,10 +1902,21 @@ func isK8sAlarmEnabled() bool {
 	return common.Config.Alarm.Enabled
 }
 
+// alarmCheckUp sends a recovery alarm labelled with this host's identifier.
 func alarmCheckUp(service, message string, noInterval bool) {
+	alarmCheckUpAs(common.Config.Identifier, service, message, noInterval)
+}
+
+// alarmCheckDown sends a down alarm labelled with this host's identifier.
+func alarmCheckDown(service, message string, noInterval bool, customStream, customTopic string) {
+	alarmCheckDownAs(common.Config.Identifier, service, message, noInterval, customStream, customTopic)
+}
+
+func alarmCheckUpAs(identifier, service, message string, noInterval bool) {
 	log.Debug().
 		Str("component", "k8sHealth").
 		Str("operation", "alarm_check_up").
+		Str("identifier", identifier).
 		Str("service", service).
 		Str("message", message).
 		Bool("no_interval", noInterval).
@@ -1886,17 +1925,21 @@ func alarmCheckUp(service, message string, noInterval bool) {
 	if !isK8sAlarmEnabled() {
 		return
 	}
-	if K8sHealthConfig.Alarm.UpInterval != nil {
-		common.AlarmCheckUpWithInterval(service, message, noInterval, *K8sHealthConfig.Alarm.UpInterval)
-		return
+	if identifier == "" {
+		identifier = common.Config.Identifier
 	}
-	common.AlarmCheckUp(service, message, noInterval)
+	upInterval := 0.0
+	if K8sHealthConfig.Alarm.UpInterval != nil {
+		upInterval = *K8sHealthConfig.Alarm.UpInterval
+	}
+	common.AlarmCheckUpAsWithInterval(identifier, service, message, noInterval, upInterval)
 }
 
-func alarmCheckDown(service, message string, noInterval bool, customStream, customTopic string) {
+func alarmCheckDownAs(identifier, service, message string, noInterval bool, customStream, customTopic string) {
 	log.Debug().
 		Str("component", "k8sHealth").
 		Str("operation", "alarm_check_down").
+		Str("identifier", identifier).
 		Str("service", service).
 		Str("message", message).
 		Bool("no_interval", noInterval).
@@ -1907,11 +1950,14 @@ func alarmCheckDown(service, message string, noInterval bool, customStream, cust
 	if !isK8sAlarmEnabled() {
 		return
 	}
-	if K8sHealthConfig.Alarm.Interval != nil {
-		common.AlarmCheckDownWithInterval(service, message, noInterval, customStream, customTopic, *K8sHealthConfig.Alarm.Interval)
-		return
+	if identifier == "" {
+		identifier = common.Config.Identifier
 	}
-	common.AlarmCheckDown(service, message, noInterval, customStream, customTopic)
+	interval := common.Config.Alarm.Interval
+	if K8sHealthConfig.Alarm.Interval != nil {
+		interval = *K8sHealthConfig.Alarm.Interval
+	}
+	common.AlarmCheckDownAsWithInterval(identifier, service, message, noInterval, customStream, customTopic, interval)
 }
 
 // CollectNamespaceCompliance checks for compliance rules in configured namespaces.
@@ -1967,7 +2013,7 @@ func CollectNamespaceCompliance(clientset kubernetes.Interface, namespaces []str
 				Str("namespace", ns).
 				Err(err).
 				Msg("Error listing deployments")
-			alarmCheckDown("k8s_compliance_list_deployments_"+ns, fmt.Sprintf("Error listing deployments in namespace %s: %v", ns, err), false, "", "")
+			clusterAlarmCheckDown("k8s_compliance_list_deployments_"+ns, fmt.Sprintf("Error listing deployments in namespace %s: %v", ns, err))
 			continue
 		}
 
@@ -2039,14 +2085,14 @@ func checkTopologySpreadConstraints(deploy *appsv1.Deployment) *ComplianceItem {
 	}
 
 	if !hasHostnameConstraint {
-		alarmCheckDown(alarmKey, fmt.Sprintf("Deployment '%s' in namespace '%s' missing topologySpreadConstraints for kubernetes.io/hostname.", deploy.Name, deploy.Namespace), false, "", "")
+		clusterAlarmCheckDown(alarmKey, fmt.Sprintf("Deployment '%s' in namespace '%s' missing topologySpreadConstraints for kubernetes.io/hostname.", deploy.Name, deploy.Namespace))
 		return &ComplianceItem{Resource: resourceName, Status: false, Message: "Missing topologySpreadConstraints for kubernetes.io/hostname"}
 	} else if !isCorrect {
 		msg := fmt.Sprintf("Deployment '%s' in namespace '%s' has invalid topologySpreadConstraints: %s", deploy.Name, deploy.Namespace, strings.Join(paramErrors, ", "))
-		alarmCheckDown(alarmKey, msg, false, "", "")
+		clusterAlarmCheckDown(alarmKey, msg)
 		return &ComplianceItem{Resource: resourceName, Status: false, Message: fmt.Sprintf("Invalid topologySpreadConstraints: %s", strings.Join(paramErrors, ", "))}
 	} else {
-		alarmCheckUp(alarmKey, fmt.Sprintf("Deployment '%s' in namespace '%s' has correct topologySpreadConstraints.", deploy.Name, deploy.Namespace), false)
+		clusterAlarmCheckUp(alarmKey, fmt.Sprintf("Deployment '%s' in namespace '%s' has correct topologySpreadConstraints.", deploy.Name, deploy.Namespace))
 		return &ComplianceItem{Resource: resourceName, Status: true, Message: "Correct topologySpreadConstraints"}
 	}
 }
@@ -2069,10 +2115,10 @@ func checkReplicaCount(deploy *appsv1.Deployment, workerCount int) *ComplianceIt
 	// Policy Check: Spec Replicas must equal Total Worker Count
 	if specReplicas != workerCount {
 		msg := fmt.Sprintf("Deployment '%s' in namespace '%s' replica mismatch: spec=%d, expected=%d (Total Workers)", deploy.Name, deploy.Namespace, specReplicas, workerCount)
-		alarmCheckDown(alarmKey, msg, false, "", "")
+		clusterAlarmCheckDown(alarmKey, msg)
 		return &ComplianceItem{Resource: resourceName, Status: false, Message: fmt.Sprintf("Mismatch: spec=%d, expected=%d", specReplicas, workerCount)}
 	} else {
-		alarmCheckUp(alarmKey, fmt.Sprintf("Deployment '%s' in namespace '%s' replica count matches worker count (%d).", deploy.Name, deploy.Namespace, workerCount), false)
+		clusterAlarmCheckUp(alarmKey, fmt.Sprintf("Deployment '%s' in namespace '%s' replica count matches worker count (%d).", deploy.Name, deploy.Namespace, workerCount))
 		return &ComplianceItem{Resource: resourceName, Status: true, Message: fmt.Sprintf("Match: %d", workerCount)}
 	}
 }
@@ -2089,14 +2135,14 @@ func checkImagePullPolicy(podSpec *v1.PodSpec, kind, namespace, name string) []C
 
 		if container.ImagePullPolicy != v1.PullIfNotPresent {
 			msg := fmt.Sprintf("%s '%s' container '%s' ImagePullPolicy is '%s' (expected IfNotPresent).", strings.Title(kind), name, containerName, container.ImagePullPolicy)
-			alarmCheckDown(alarmKey, msg, false, "", "")
+			clusterAlarmCheckDown(alarmKey, msg)
 			items = append(items, ComplianceItem{
 				Resource: fmt.Sprintf("%s [%s]", resourceName, containerName),
 				Status:   false,
 				Message:  fmt.Sprintf("Policy is %s (expected IfNotPresent)", container.ImagePullPolicy),
 			})
 		} else {
-			alarmCheckUp(alarmKey, fmt.Sprintf("%s '%s' container '%s' has correct ImagePullPolicy.", strings.Title(kind), name, containerName), false)
+			clusterAlarmCheckUp(alarmKey, fmt.Sprintf("%s '%s' container '%s' has correct ImagePullPolicy.", strings.Title(kind), name, containerName))
 			items = append(items, ComplianceItem{
 				Resource: fmt.Sprintf("%s [%s]", resourceName, containerName),
 				Status:   true,
@@ -2157,14 +2203,14 @@ func CollectMasterTaintCompliance(client kubernetes.Interface) []ComplianceItem 
 		}
 
 		if hasTaint {
-			alarmCheckUp(alarmKey, fmt.Sprintf("Master node '%s' has correct NoSchedule taint.", node.Name), false)
+			clusterAlarmCheckUp(alarmKey, fmt.Sprintf("Master node '%s' has correct NoSchedule taint.", node.Name))
 			results = append(results, ComplianceItem{
 				Resource: node.Name,
 				Status:   true,
 				Message:  "Correct NoSchedule taint found",
 			})
 		} else {
-			alarmCheckDown(alarmKey, fmt.Sprintf("Master node '%s' missing NoSchedule taint (node-role.kubernetes.io/master:NoSchedule).", node.Name), false, "", "")
+			clusterAlarmCheckDown(alarmKey, fmt.Sprintf("Master node '%s' missing NoSchedule taint (node-role.kubernetes.io/master:NoSchedule).", node.Name))
 			results = append(results, ComplianceItem{
 				Resource: node.Name,
 				Status:   false,
@@ -2213,14 +2259,14 @@ func CollectLegacyMasterTaintCompliance(client kubernetes.Interface) []Complianc
 		}
 
 		if hasLegacyTaint {
-			alarmCheckDown(alarmKey, fmt.Sprintf("Node '%s' still has the deprecated NoSchedule taint (node-role.kubernetes.io/master:NoSchedule).", node.Name), false, "", "")
+			clusterAlarmCheckDown(alarmKey, fmt.Sprintf("Node '%s' still has the deprecated NoSchedule taint (node-role.kubernetes.io/master:NoSchedule).", node.Name))
 			results = append(results, ComplianceItem{
 				Resource: node.Name,
 				Status:   false,
 				Message:  "Deprecated master taint present",
 			})
 		} else {
-			alarmCheckUp(alarmKey, fmt.Sprintf("Node '%s' does not have the deprecated master taint.", node.Name), false)
+			clusterAlarmCheckUp(alarmKey, fmt.Sprintf("Node '%s' does not have the deprecated master taint.", node.Name))
 			results = append(results, ComplianceItem{
 				Resource: node.Name,
 				Status:   true,

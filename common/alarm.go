@@ -83,11 +83,19 @@ func AlarmCheckUp(service string, message string, noInterval bool) {
 }
 
 func AlarmCheckUpWithInterval(service string, message string, noInterval bool, upInterval float64) {
+	AlarmCheckUpAsWithInterval(Config.Identifier, service, message, noInterval, upInterval)
+}
+
+// AlarmCheckUpAsWithInterval is AlarmCheckUpWithInterval with the message labelled
+// "[ScriptName - identifier]" instead of this host's Config.Identifier. Use it for
+// alarms about a shared resource (e.g. a whole Kubernetes cluster) so the label names
+// the resource rather than whichever host happened to report it.
+func AlarmCheckUpAsWithInterval(identifier string, service string, message string, noInterval bool, upInterval float64) {
 	startTime := time.Now()
 	log.Debug().Str("component", "alarm").Str("action", "check_up").Str("service", service).Str("message", message).Bool("noInterval", noInterval).Float64("upInterval", upInterval).Msg("Starting alarm check up process")
 
 	key := alarmKey(service)
-	messageFinal := "[" + ScriptName + " - " + Config.Identifier + "] [:check:] " + message
+	messageFinal := "[" + ScriptName + " - " + identifier + "] [:check:] " + message
 
 	// Load state from SQLite
 	jsonStr, _, _, found, err := healthdb.GetJSON("alarm", key)
@@ -149,12 +157,19 @@ func AlarmCheckDown(service string, message string, noInterval bool, customStrea
 }
 
 func AlarmCheckDownWithInterval(service string, message string, noInterval bool, customStream string, customTopic string, interval float64) {
+	AlarmCheckDownAsWithInterval(Config.Identifier, service, message, noInterval, customStream, customTopic, interval)
+}
+
+// AlarmCheckDownAsWithInterval is AlarmCheckDownWithInterval with the message labelled
+// "[ScriptName - identifier]" instead of this host's Config.Identifier. See
+// AlarmCheckUpAsWithInterval.
+func AlarmCheckDownAsWithInterval(identifier string, service string, message string, noInterval bool, customStream string, customTopic string, interval float64) {
 	startTime := time.Now()
 	log.Debug().Str("component", "alarm").Str("action", "check_down").Str("service", service).Str("message", message).Bool("noInterval", noInterval).Str("customStream", customStream).Str("customTopic", customTopic).Float64("interval", interval).Msg("Starting alarm check down process")
 
 	key := alarmKey(service)
 	currentDate := time.Now().Format("2006-01-02 15:04:05 -0700")
-	messageFinal := "[" + ScriptName + " - " + Config.Identifier + "] [:red_circle:] " + message
+	messageFinal := "[" + ScriptName + " - " + identifier + "] [:red_circle:] " + message
 
 	// Try to load existing state from SQLite
 	jsonStr, _, _, found, _ := healthdb.GetJSON("alarm", key)
@@ -217,6 +232,17 @@ func AlarmCheckDownWithInterval(service string, message string, noInterval bool,
 		saveAlarmState(key, currentDate, AlarmWithResult(messageFinal, customStream, customTopic, false))
 	} else {
 		log.Debug().Str("component", "alarm").Str("action", "defer_alarm").Str("service", service).Float64("interval_minutes", interval).Msg("Service down alarm deferred due to interval setting")
+	}
+}
+
+// ClearAlarmState forgets any down/recovery state kept for service without sending
+// anything. It is for hosts that are no longer responsible for an alarm another host
+// now reports, so their stale state cannot fire a spurious recovery later. It only
+// writes when state exists, so calling it on every run is cheap.
+func ClearAlarmState(service string) {
+	key := alarmKey(service)
+	if _, _, _, found, err := healthdb.GetJSON("alarm", key); err == nil && found {
+		_ = healthdb.Delete("alarm", key)
 	}
 }
 

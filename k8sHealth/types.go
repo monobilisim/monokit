@@ -73,6 +73,17 @@ type Config struct {
 		Enable_kube_vip      *bool    // nil = auto-detect, true/false = force
 		Taint                *bool    // nil = true (default), false = skip check
 		Check_namespaces     []string `mapstructure:"namespaces"`
+
+		// Cluster_name labels cluster-wide alarms. Empty = derived from the
+		// identifier by dropping its last "-" segment (mono-ist2-rke2-m1 ->
+		// mono-ist2-rke2), or the identifier itself when running in-cluster.
+		Cluster_name string
+		// Single_reporter elects one host through a Lease to send cluster-wide
+		// alarms, instead of every master sending the same one. nil = true.
+		Single_reporter *bool
+		// Reporter_lease_seconds is how long the elected reporter keeps the role
+		// without renewing it. Must be well above the daemon frequency. nil = 300.
+		Reporter_lease_seconds *int
 	}
 
 	Alarm struct {
@@ -230,8 +241,10 @@ type EtcdBackupHealth struct {
 
 // K8sHealthData holds all collected Kubernetes health information for UI rendering
 type K8sHealthData struct {
+	ClusterAlarms    *ClusterAlarmInfo
 	Nodes            []NodeHealthInfo
 	Pods             []PodHealthInfo
+	FailedWorkloads  []FailedWorkloadInfo
 	Rke2IngressNginx *Rke2IngressNginxHealth
 	CertManager      *CertManagerHealth
 	KubeVip          *KubeVipHealth
@@ -248,11 +261,50 @@ type K8sHealthData struct {
 
 // NodeHealthInfo holds information about a Kubernetes node
 type NodeHealthInfo struct {
-	Name    string
-	Role    string // "master" or "worker"
-	Status  string // e.g., "Ready", "NotReady"
-	Reason  string // e.g., "KubeletReady", "MemoryPressure"
-	IsReady bool
+	Name       string
+	Role       string // "master" or "worker"
+	Status     string // e.g., "Ready", "NotReady"
+	Reason     string // e.g., "KubeletReady", "MemoryPressure"
+	IsReady    bool
+	Conditions []string // problem conditions, e.g. "DiskPressure (kubelet has disk pressure)"
+}
+
+// ClusterAlarmInfo records who sends this cluster's cluster-wide alarms.
+type ClusterAlarmInfo struct {
+	ClusterName string `json:"clusterName"`
+	Identity    string `json:"identity"`         // this host's identity in the reporter lease
+	IsReporter  bool   `json:"isReporter"`       // whether this host sends cluster-wide alarms
+	Holder      string `json:"holder,omitempty"` // current reporter when it is another host
+	Mode        string `json:"mode"`             // "lease", "single" (election off / in-cluster) or "fallback" (lease error)
+	Error       string `json:"error,omitempty"`
+}
+
+// FailedWorkloadInfo groups the terminal (Failed) pods of one controller, so an
+// eviction or crash loop that keeps creating new pods is reported once per workload
+// instead of once per pod name.
+type FailedWorkloadInfo struct {
+	Namespace  string               `json:"namespace"`
+	Kind       string               `json:"kind"` // Deployment, StatefulSet, DaemonSet, Job, ReplicaSet, ...
+	Name       string               `json:"name"`
+	FailedPods int                  `json:"failedPods"`
+	Causes     []FailureCause       `json:"causes"` // most common first
+	Nodes      []FailedWorkloadNode `json:"nodes"`  // most affected first
+}
+
+// FailureCause is a distinct pod status reason and message (as shown by
+// kubectl describe pod) and how many of the workload's pods reported it.
+type FailureCause struct {
+	Reason  string `json:"reason"`  // e.g. Evicted
+	Message string `json:"message"` // e.g. The node had condition: [DiskPressure]
+	Pods    int    `json:"pods"`
+}
+
+// FailedWorkloadNode is a node a workload's pods failed on, with the node's
+// current problem conditions (the usual root cause of evictions).
+type FailedWorkloadNode struct {
+	Name       string   `json:"name"`
+	Pods       int      `json:"pods"`
+	Conditions []string `json:"conditions,omitempty"`
 }
 
 // PodHealthInfo holds information about a Kubernetes pod
@@ -262,7 +314,8 @@ type PodHealthInfo struct {
 	Phase             string // e.g., "Running", "Pending", "Failed", "Succeeded"
 	IsProblem         bool   // True if phase is not Running or Succeeded (and not Pending for too long)
 	ContainerStates   []ContainerHealthInfo
-	DeletionCandidate bool // True if log file exists but pod doesn't (from CheckPodRunningLogs)
+	DeletionCandidate bool   // True if log file exists but pod doesn't (from CheckPodRunningLogs)
+	Workload          string // "Kind/name" when the pod is a Failed pod summarized in FailedWorkloads
 }
 
 // ContainerHealthInfo holds information about a container within a pod

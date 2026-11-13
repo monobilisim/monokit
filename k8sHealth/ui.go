@@ -48,6 +48,29 @@ func (khd *K8sHealthData) RenderCompact() string {
 		sb.WriteString("\n") // Add a separator
 	}
 
+	// --- Cluster-wide alarm reporter ---
+	if ca := khd.ClusterAlarms; ca != nil {
+		sb.WriteString(common.SectionTitle("Cluster Alarms"))
+		sb.WriteString("\n")
+		reporter := "this host"
+		switch {
+		case !ca.IsReporter && ca.Holder != "":
+			reporter = ca.Holder
+		case !ca.IsReporter:
+			reporter = "another host"
+		case ca.Mode == "fallback":
+			reporter = "this host (lease unavailable)"
+		}
+		sb.WriteString(common.SimpleStatusListItem("Sent As", ca.ClusterName, ca.ClusterName != ""))
+		sb.WriteString("\n")
+		sb.WriteString(common.SimpleStatusListItem("Sent By", reporter, ca.Mode != "fallback"))
+		sb.WriteString("\n")
+		if ca.Error != "" {
+			sb.WriteString(fmt.Sprintf("    └─ %s\n", ca.Error))
+		}
+		sb.WriteString("\n")
+	}
+
 	// --- Nodes Section ---
 	sb.WriteString(common.SectionTitle("Kubernetes Node Status"))
 	sb.WriteString("\n")
@@ -100,6 +123,20 @@ func (khd *K8sHealthData) RenderCompact() string {
 				sb.WriteString(fmt.Sprintf("    └─ %s (%s): Status %s, Reason: %s\n", node.Name, node.Role, node.Status, node.Reason))
 			}
 		}
+
+		// Ready nodes can still be under pressure (and evicting pods).
+		var pressuredNodes []NodeHealthInfo
+		for _, node := range khd.Nodes {
+			if node.IsReady && len(node.Conditions) > 0 {
+				pressuredNodes = append(pressuredNodes, node)
+			}
+		}
+		if len(pressuredNodes) > 0 {
+			sb.WriteString("  Node Conditions:\n")
+			for _, node := range pressuredNodes {
+				sb.WriteString(fmt.Sprintf("    └─ %s (%s): %s\n", node.Name, node.Role, strings.Join(node.Conditions, ", ")))
+			}
+		}
 	}
 
 	// --- Pods Section ---
@@ -125,9 +162,38 @@ func (khd *K8sHealthData) RenderCompact() string {
 		))
 		sb.WriteString("\n")
 
-		if len(problematicPods) > 0 {
+		// Failed pods of a controller are shown once per workload below.
+		individualPods := make([]PodHealthInfo, 0, len(problematicPods))
+		for _, pod := range problematicPods {
+			if pod.Workload == "" {
+				individualPods = append(individualPods, pod)
+			}
+		}
+
+		if len(khd.FailedWorkloads) > 0 {
+			sb.WriteString("  Failed Pods by Workload:\n")
+			for _, w := range khd.FailedWorkloads {
+				sb.WriteString(fmt.Sprintf("    └─ %s %s/%s: %d failed pod(s)\n", w.Kind, w.Namespace, w.Name, w.FailedPods))
+				for _, c := range w.Causes {
+					line := fmt.Sprintf("%s (%d)", c.Reason, c.Pods)
+					if c.Message != "" {
+						line += ": " + c.Message
+					}
+					sb.WriteString(fmt.Sprintf("         └─ %s\n", line))
+				}
+				for _, n := range w.Nodes {
+					line := fmt.Sprintf("Node %s (%d)", n.Name, n.Pods)
+					if len(n.Conditions) > 0 {
+						line += ": " + strings.Join(n.Conditions, ", ")
+					}
+					sb.WriteString(fmt.Sprintf("         └─ %s\n", line))
+				}
+			}
+		}
+
+		if len(individualPods) > 0 {
 			sb.WriteString("  Problematic Pod Details:\n")
-			for _, pod := range problematicPods {
+			for _, pod := range individualPods {
 				sb.WriteString(fmt.Sprintf("    └─ %s/%s\n", pod.Namespace, pod.Name)) // Pod name on its own line
 				sb.WriteString(fmt.Sprintf("         └─ Phase: %s\n", pod.Phase))      // Pod phase indented underneath
 				for _, cs := range pod.ContainerStates {

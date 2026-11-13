@@ -222,19 +222,19 @@ func CollectKubernetesEOL() *KubernetesEOLInfo {
 			"Kubernetes %s (cycle %s) is past End-of-Life (%s). Latest in cycle: %s. Upgrade required.",
 			info.CurrentVersion, info.Cycle, info.EOLDate.Format("2006-01-02"), info.LatestInCycle,
 		)
-		alarmCheckDown(eolAlarmService, msg, false, "", "")
+		clusterAlarmCheckDown(eolAlarmService, msg)
 	case info.IsNearEOL:
 		msg := fmt.Sprintf(
 			"Kubernetes %s (cycle %s) reaches End-of-Life in %d days (%s). Latest in cycle: %s. Plan upgrade.",
 			info.CurrentVersion, info.Cycle, info.DaysUntilEOL, info.EOLDate.Format("2006-01-02"), info.LatestInCycle,
 		)
-		alarmCheckDown(eolAlarmService, msg, false, "", "")
+		clusterAlarmCheckDown(eolAlarmService, msg)
 	default:
 		msg := fmt.Sprintf(
 			"Kubernetes %s (cycle %s) supported until %s (%d days).",
 			info.CurrentVersion, info.Cycle, info.EOLDate.Format("2006-01-02"), info.DaysUntilEOL,
 		)
-		alarmCheckUp(eolAlarmService, msg, false)
+		clusterAlarmCheckUp(eolAlarmService, msg)
 	}
 
 	log.Debug().
