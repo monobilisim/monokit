@@ -179,6 +179,8 @@ func processRuleURLs(config *Config, tmpDir string, processedFiles map[string]bo
 		}
 
 		ruleFile := filepath.Base(ruleURL)
+		// Still listed in config, so a failed download must not let cleanupUnusedRules drop its rules.
+		processedFiles[ruleFile] = true
 		// Debug logging for the rule being processed
 		log.Debug().Str("component", "ufwApply").Str("operation", "processRuleURLs").Str("action", "current_rule").Str("rule_file", ruleFile).Str("rule_url", ruleURL).Msg("Processing current rule")
 
@@ -259,7 +261,6 @@ func processRuleURLs(config *Config, tmpDir string, processedFiles map[string]bo
 		}
 
 		processed++
-		processedFiles[ruleFile] = true
 		log.Debug().Str("component", "ufwApply").Str("operation", "processRuleURLs").Str("action", "processed_rule").Str("rule_file", ruleFile).Str("rule_url", ruleURL).Msg("Marked rule file as processed")
 	}
 
