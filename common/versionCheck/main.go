@@ -179,6 +179,9 @@ func VersionCheck(cmd *cobra.Command, args []string) {
 	// PHP
 	PHPCheck()
 
+	// Java
+	JavaCheck()
+
 	// Caddy
 	CaddyCheck()
 

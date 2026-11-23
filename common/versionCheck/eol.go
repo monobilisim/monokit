@@ -40,6 +40,35 @@ var eolProductMap = map[string]string{
 	"Grafana":               "grafana",
 	"OpenSearch":            "opensearch",
 	"PHP":                   "php",
+	"Java":                  "eclipse-temurin",
+}
+
+// eolLookup resolves an AppVersion display name to its endoflife.date product
+// slug and healthdb state key.
+func eolLookup(appName string) (productSlug, stateKey string, ok bool) {
+	if slug, exists := eolProductMap[appName]; exists {
+		return slug, slug + "_eol", true
+	}
+	if strings.HasPrefix(appName, "Java (") && strings.HasSuffix(appName, ")") {
+		p := strings.TrimSuffix(strings.TrimPrefix(appName, "Java ("), ")")
+		return "eclipse-temurin", javaStoreKey(p) + "_eol", true
+	}
+	return "", "", false
+}
+
+// normalizeVersionForEOL normalizes vendor-specific version formatting so
+// cycle matching and comparisons against endoflife.date are accurate.
+func normalizeVersionForEOL(productSlug, version string) string {
+	if productSlug != "eclipse-temurin" {
+		return version
+	}
+	if idx := strings.IndexByte(version, '+'); idx != -1 {
+		version = version[:idx]
+	}
+	if strings.HasPrefix(version, "1.8.0_") {
+		version = "8.0." + strings.TrimPrefix(version, "1.8.0_")
+	}
+	return version
 }
 
 type EOLCycle struct {
@@ -151,7 +180,7 @@ func CheckLatestVersions(apps []AppVersion) {
 // runs piled up behind a stalled host) otherwise all read the same state and
 // all send the alarm.
 func checkLatestVersion(client *http.Client, app AppVersion) {
-	productSlug, ok := eolProductMap[app.Name]
+	productSlug, key, ok := eolLookup(app.Name)
 	if !ok {
 		return
 	}
@@ -164,7 +193,7 @@ func checkLatestVersion(client *http.Client, app AppVersion) {
 		return
 	}
 
-	key := fmt.Sprintf("%s_eol", productSlug)
+	normalizedCurrent := normalizeVersionForEOL(productSlug, currentVersion)
 
 	unlock, err := healthdb.Lock("eol_alarm", key, eolLockTimeout)
 	if err != nil {
@@ -197,7 +226,7 @@ func checkLatestVersion(client *http.Client, app AppVersion) {
 	}
 
 	if state.AppVersion == currentVersion {
-		if state.NotifiedVersion != "" && compareVersions(state.NotifiedVersion, currentVersion) > 0 {
+		if state.NotifiedVersion != "" && compareVersions(normalizeVersionForEOL(productSlug, state.NotifiedVersion), normalizedCurrent) > 0 {
 			return
 		}
 		if time.Since(state.LastCheckTime) < 24*time.Hour {
@@ -241,7 +270,7 @@ func checkLatestVersion(client *http.Client, app AppVersion) {
 
 	var matchedCycle *EOLCycle
 	for i, c := range cycles {
-		if currentVersion == c.Cycle || strings.HasPrefix(currentVersion, c.Cycle+".") || strings.HasPrefix(currentVersion, c.Cycle+"-") || strings.HasPrefix(currentVersion, c.Cycle+"_") {
+		if normalizedCurrent == c.Cycle || strings.HasPrefix(normalizedCurrent, c.Cycle+".") || strings.HasPrefix(normalizedCurrent, c.Cycle+"-") || strings.HasPrefix(normalizedCurrent, c.Cycle+"_") {
 			matchedCycle = &cycles[i]
 			break
 		}
@@ -250,7 +279,8 @@ func checkLatestVersion(client *http.Client, app AppVersion) {
 	if matchedCycle == nil {
 		log.Debug().Str("app", app.Name).Str("version", currentVersion).Msg("Could not find matching cycle on endoflife.date")
 	} else {
-		if compareVersions(matchedCycle.Latest, currentVersion) > 0 {
+		normalizedLatest := normalizeVersionForEOL(productSlug, matchedCycle.Latest)
+		if compareVersions(normalizedLatest, normalizedCurrent) > 0 {
 			latest := matchedCycle.Latest
 
 			if state.NotifiedVersion != latest {
