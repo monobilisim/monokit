@@ -13,6 +13,7 @@ postal:
   held_threshold: 100     # per server, for credential/development/unknown holds; send limit and suspension alarm at 1; suppression/quarantine/route hold never alarm
   check_message: true
   stale_lock_minutes: 15  # alarm if any queued message stays locked longer than this (default: 15)
+  unlock_stale_locks: true # release stale locks of messages never attempted (Pending, no delivery) so Postal sends them once (default: true)
   ssl:
     enabled: true
     host: localhost

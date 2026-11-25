@@ -220,7 +220,7 @@ func CheckPostalHealth(skipOutput bool) *PostalHealthData {
 }
 
 func Main(cmd *cobra.Command, args []string) {
-	version := "3.1.0"
+	version := "3.2.0"
 	common.ScriptName = "postalHealth"
 	common.TmpDir = common.TmpDir + "postalHealth"
 	common.Init()
@@ -230,6 +230,7 @@ func Main(cmd *cobra.Command, args []string) {
 	viper.SetDefault("postal.ssl.port", 25)
 	viper.SetDefault("postal.ssl.expiry_threshold_days", 10)
 	viper.SetDefault("postal.stale_lock_minutes", 15)
+	viper.SetDefault("postal.unlock_stale_locks", true)
 	viper.SetDefault("postal.backlog_threshold", 10)
 	common.ConfInit("mail", &MailHealthConfig)
 
@@ -432,9 +433,11 @@ func GetMessageQueue() QueueStatus {
 	return status
 }
 
-// GetStaleLocks counts queued messages whose worker lock is older than stale_lock_minutes.
+// GetStaleLocks finds queued messages whose worker lock is older than stale_lock_minutes.
 // Postal does not retry such messages and TidyQueuedMessagesTask later deletes them, leaving the
-// message Pending forever, so any non-zero count is alarmed. Postal stores timestamps in UTC.
+// message Pending forever. With unlock_stale_locks, locks of messages that were never attempted
+// (still Pending, no delivery) are released so Postal sends them once; the rest are alarmed.
+// Postal stores timestamps in UTC.
 func GetStaleLocks() StaleLockStatus {
 	status := StaleLockStatus{ThresholdMinutes: MailHealthConfig.Postal.Stale_Lock_Minutes}
 	if status.ThresholdMinutes <= 0 {
@@ -445,18 +448,39 @@ func GetStaleLocks() StaleLockStatus {
 		return status
 	}
 
-	err := MainDB.QueryRow(
-		"SELECT COUNT(*) FROM queued_messages WHERE locked_by IS NOT NULL AND locked_at < UTC_TIMESTAMP() - INTERVAL ? MINUTE",
-		status.ThresholdMinutes,
-	).Scan(&status.Count)
+	locks, err := listStaleLocks(status.ThresholdMinutes)
 	if err != nil {
-		log.Error().Err(err).Msg("Couldn't get stale queued message lock count")
-		common.AlarmCheckDown("mysql_stale_lock_query", "Couldn't get stale queued message lock count from main_db: "+err.Error(), false, "", "")
+		log.Error().Err(err).Msg("Couldn't get stale queued message locks")
+		common.AlarmCheckDown("mysql_stale_lock_query", "Couldn't get stale queued message locks from main_db: "+err.Error(), false, "", "")
 		return status
 	}
-	common.AlarmCheckUp("mysql_stale_lock_query", "Can get stale queued message lock count again", false)
+	common.AlarmCheckUp("mysql_stale_lock_query", "Can get stale queued message locks again", false)
 
 	status.CheckStatus = true
+	status.Count = len(locks)
+
+	if MailHealthConfig.Postal.Unlock_Stale_Locks && MessageDB != nil && len(locks) > 0 {
+		var unlocked []string
+		for _, l := range locks {
+			ok, err := unlockNeverAttempted(l)
+			if err != nil {
+				log.Error().Err(err).Int("queued_message_id", l.ID).Msg("Couldn't release stale queued message lock")
+				continue
+			}
+			if ok {
+				unlocked = append(unlocked, fmt.Sprintf("%d (server %d, message %d)", l.ID, l.ServerID, l.MessageID))
+			}
+		}
+		status.Unlocked = len(unlocked)
+		status.Count -= status.Unlocked
+		if status.Unlocked > 0 {
+			msg := fmt.Sprintf("Released %d queued message locks older than %d minutes with no delivery attempt; Postal will send them: %s",
+				status.Unlocked, status.ThresholdMinutes, strings.Join(unlocked, ", "))
+			log.Info().Int("count", status.Unlocked).Msg(msg)
+			common.Alarm("[postalHealth - "+common.Config.Identifier+"] [:information_source:] "+msg, "", "", false)
+		}
+	}
+
 	status.IsHealthy = status.Count == 0
 
 	if status.IsHealthy {
@@ -466,6 +490,64 @@ func GetStaleLocks() StaleLockStatus {
 	}
 
 	return status
+}
+
+// staleLock is a queued message whose worker lock is older than stale_lock_minutes.
+type staleLock struct {
+	ID        int
+	ServerID  int
+	MessageID int
+	LockedBy  string
+}
+
+func listStaleLocks(minutes int) ([]staleLock, error) {
+	rows, err := MainDB.Query(
+		"SELECT id, server_id, message_id, locked_by FROM queued_messages WHERE locked_by IS NOT NULL AND locked_at < UTC_TIMESTAMP() - INTERVAL ? MINUTE",
+		minutes,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var locks []staleLock
+	for rows.Next() {
+		var l staleLock
+		if err := rows.Scan(&l.ID, &l.ServerID, &l.MessageID, &l.LockedBy); err != nil {
+			return nil, err
+		}
+		locks = append(locks, l)
+	}
+	return locks, rows.Err()
+}
+
+// unlockNeverAttempted releases a stale lock when its message is still Pending without any delivery, i.e. it
+// was never handed to an SMTP server, so sending it now can't duplicate it. The update matches the original
+// locked_by so a lock a worker took meanwhile is left alone.
+func unlockNeverAttempted(l staleLock) (bool, error) {
+	db := heldDBName(l.ServerID)
+	var msgStatus string
+	var deliveries int
+	err := MessageDB.QueryRow(
+		"SELECT m.status, (SELECT COUNT(*) FROM `"+db+"`.deliveries d WHERE d.message_id = m.id) FROM `"+db+"`.messages m WHERE m.id = ?",
+		l.MessageID,
+	).Scan(&msgStatus, &deliveries)
+	if err == sql.ErrNoRows {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	if msgStatus != "Pending" || deliveries > 0 {
+		return false, nil
+	}
+
+	res, err := MainDB.Exec("UPDATE queued_messages SET locked_by = NULL, locked_at = NULL WHERE id = ? AND locked_by = ?", l.ID, l.LockedBy)
+	if err != nil {
+		return false, err
+	}
+	n, err := res.RowsAffected()
+	return n == 1, err
 }
 
 // Held reason categories, derived from the details Postal writes on the message's latest Held delivery.

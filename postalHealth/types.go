@@ -48,7 +48,8 @@ type QueueStatus struct {
 // StaleLockStatus holds the number of queued messages whose worker lock is older than the threshold.
 // Postal never retries such messages; TidyQueuedMessagesTask deletes them after queued_message_lock_stale_days.
 type StaleLockStatus struct {
-	Count            int
+	Count            int // stale locks left after unlocking, alarmed
+	Unlocked         int // stale locks of never-attempted messages released in this run
 	ThresholdMinutes int
 	CheckStatus      bool // true if the query ran successfully
 	IsHealthy        bool

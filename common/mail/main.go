@@ -6,6 +6,8 @@ type Postal struct {
 	Check_Message     bool
 	// Stale_Lock_Minutes: queued_messages rows locked longer than this are reported as stuck.
 	Stale_Lock_Minutes int `mapstructure:"stale_lock_minutes" yaml:"stale_lock_minutes"`
+	// Unlock_Stale_Locks: release stale locks of messages never attempted (Pending, no delivery) so Postal sends them.
+	Unlock_Stale_Locks bool `mapstructure:"unlock_stale_locks" yaml:"unlock_stale_locks"`
 	// Backlog_Threshold: alarm when this many ready queued messages wait 5+ minutes without a worker.
 	Backlog_Threshold int `mapstructure:"backlog_threshold" yaml:"backlog_threshold"`
 	Ssl               struct {

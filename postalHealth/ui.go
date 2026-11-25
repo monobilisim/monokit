@@ -110,6 +110,10 @@ func (data *PostalHealthData) RenderCompact() string {
 			strconv.Itoa(data.StaleLocks.Count),
 			data.StaleLocks.IsHealthy))
 		sb.WriteString("\n")
+		if data.StaleLocks.Unlocked > 0 {
+			sb.WriteString(common.SimpleStatusListItem("Unlocked (never attempted)", strconv.Itoa(data.StaleLocks.Unlocked), true))
+			sb.WriteString("\n")
+		}
 	}
 
 	// Held Messages (servers with any held message only)
