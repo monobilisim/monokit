@@ -55,7 +55,7 @@ func (m *MongoHealthData) RenderCompact() string {
 	b.WriteString("\n")
 	b.WriteString(common.SimpleStatusListItem(
 		"WiredTiger tickets",
-		fmt.Sprintf("read=%d write=%d", m.Standalone.TicketsAvailableRead, m.Standalone.TicketsAvailableWrite),
+		fmt.Sprintf("read=%d write=%d queue read=%d write=%d", m.Standalone.TicketsAvailableRead, m.Standalone.TicketsAvailableWrite, m.Standalone.TicketQueueRead, m.Standalone.TicketQueueWrite),
 		!m.Standalone.TicketsExhausted,
 	))
 

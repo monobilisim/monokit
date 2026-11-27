@@ -37,6 +37,8 @@ type StandaloneInfo struct {
 
 	TicketsAvailableRead  int
 	TicketsAvailableWrite int
+	TicketQueueRead       int64
+	TicketQueueWrite      int64
 	TicketsExhausted      bool
 }
 

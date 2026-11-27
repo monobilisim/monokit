@@ -27,6 +27,8 @@ mongodb:
   limits:
     connections_percent: 80
     cache_percent: 95
+    ticket_queue_length: 50   # MongoDB 7.0+: ticket bekleyen işlem sayısı eşiği
+    ticket_queue_minutes: 5   # eşik bu kadar dakika sürerse alarm
   replicaset:
     enabled: true
     min_secondaries: 1

@@ -15,8 +15,10 @@ import (
     "slices"
     "strconv"
     "strings"
+    "time"
 
     "github.com/monobilisim/monokit/common"
+    "github.com/monobilisim/monokit/common/healthdb"
     // issues "github.com/monobilisim/monokit/common/redmine/issues" // No longer directly used here
     "github.com/rs/zerolog/log"
     "github.com/shirou/gopsutil/v4/disk"
@@ -77,11 +79,49 @@ func analyzeDiskPartitions(diskPartitions []disk.PartitionStat) ([]DiskInfo, []D
 		// Use >= so a partition at exactly the configured limit (e.g. 90.0%)
 		// is treated as "exceeded" instead of silently falling into the
 		// "all partitions below limit, close Redmine issue" branch.
-		if usage.UsedPercent >= OsHealthConfig.Part_use_limit {
+		wasExceeded := diskExceededState(partition.Mountpoint)
+		exceeded := diskExceeded(usage.UsedPercent, OsHealthConfig.Part_use_limit, wasExceeded)
+		if exceeded != wasExceeded {
+			setDiskExceededState(partition.Mountpoint, exceeded)
+		}
+		if exceeded {
 			exceededDIs = append(exceededDIs, currentDiskInfo)
 		}
 	}
 	return exceededDIs, allDIs
+}
+
+// diskHysteresisPct is how far below Part_use_limit an exceeded partition must
+// drop before it counts as normal again. Without it a partition hovering at
+// the limit (92.96% vs 93%) closes and reopens the alarm and Redmine issue
+// every few minutes.
+const diskHysteresisPct = 1.0
+
+// diskExceeded reports whether a partition is over the limit. A partition that
+// was already over the limit stays so until it drops diskHysteresisPct below it.
+func diskExceeded(usedPct, limit float64, wasExceeded bool) bool {
+	if usedPct >= limit {
+		return true
+	}
+	return wasExceeded && usedPct >= limit-diskHysteresisPct
+}
+
+func diskExceededKey(mountpoint string) string {
+	return "disk-exceeded:" + mountpoint
+}
+
+// diskExceededState reports whether the previous run counted mountpoint as exceeded.
+func diskExceededState(mountpoint string) bool {
+	_, _, _, found, err := healthdb.GetJSON("osHealth", diskExceededKey(mountpoint))
+	return err == nil && found
+}
+
+func setDiskExceededState(mountpoint string, exceeded bool) {
+	if exceeded {
+		_ = healthdb.PutJSON("osHealth", diskExceededKey(mountpoint), "true", nil, time.Now())
+	} else {
+		_ = healthdb.Delete("osHealth", diskExceededKey(mountpoint))
+	}
 }
 
 // createExceededTable creates a table for partitions that exceeded the limit

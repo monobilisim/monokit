@@ -246,6 +246,21 @@ func ClearAlarmState(service string) {
 	}
 }
 
+// AlarmLocked reports whether a down alarm for service has been delivered and
+// not yet recovered. Callers use it to keep one alarm of a multi-level check
+// (e.g. warn/critical) active instead of announcing every level change.
+func AlarmLocked(service string) bool {
+	raw, _, _, found, err := healthdb.GetJSON("alarm", alarmKey(service))
+	if err != nil || !found {
+		return false
+	}
+	var j ServiceFile
+	if err := json.Unmarshal([]byte(raw), &j); err != nil {
+		return false
+	}
+	return j.Locked
+}
+
 // saveAlarmState locks the alarm only when a channel actually accepted the message,
 // so an undelivered alarm is retried on the next run instead of being lost.
 func saveAlarmState(key string, date string, delivered bool) {

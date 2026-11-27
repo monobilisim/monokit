@@ -59,11 +59,65 @@ func CheckReplicaSet(ctx context.Context, client *mongo.Client) {
 
 	primary, members := buildMembers(status.Members)
 	healthData.ReplicaSet.Members = members
+	report := isClusterReporter(status.Members)
 
 	checkPrimary(primary)
-	checkSecondaryQuorum(members)
-	checkReplicationLag(members)
-	checkOplogWindow(ctx, client)
+	checkSecondaryQuorum(members, report)
+	checkReplicationLag(members, report)
+	checkOplogWindow(ctx, client, report)
+}
+
+// recoveryMinutes is how long a lag/oplog/ticket condition must stay OK
+// before the recovery message is sent. A relapse inside the window cancels
+// it, so a value hovering around a threshold produces one alarm, not a
+// down/up pair every few minutes.
+const recoveryMinutes = 15
+
+// handoverNote closes Redmine issues a node opened while it was primary.
+const handoverNote = "Bu node artık primary değil; kontrol primary node üzerinden yapılıyor."
+
+// isClusterReporter reports whether this node raises the cluster-wide alarms
+// (secondary quorum, replication lag, oplog window). Every member sees the
+// same replica set state, so only the primary reports; otherwise one event
+// is posted once per member and opens a Redmine issue per member. If no
+// member is marked as self, report anyway rather than lose the alarms.
+func isClusterReporter(raw []replSetMember) bool {
+	for _, m := range raw {
+		if m.Self {
+			return m.StateStr == "PRIMARY"
+		}
+	}
+	return true
+}
+
+// reportLevel drives a warn/critical alarm pair so each real level change
+// posts at most one message:
+//   - entering critical drops warn state silently (critical covers it);
+//   - falling back to warn after critical was announced keeps the critical
+//     alarm instead of posting "below critical" plus a new warn alarm;
+//   - recovery is announced only after it holds for recoveryMinutes.
+func reportLevel(level, warnService, critService, warnMsg, critMsg, okMsg string) {
+	switch level {
+	case "critical":
+		common.AlarmCheckDown(critService, critMsg, false, "", "")
+		if common.AlarmLocked(critService) {
+			common.ClearAlarmState(warnService)
+		}
+	case "warn":
+		if common.AlarmLocked(critService) {
+			// Critical stays the active alarm: this cancels a pending
+			// recovery and, if repeat_hours is due, repeats it with the
+			// current (warn) value instead of announcing a new level.
+			common.AlarmCheckDown(critService, warnMsg, false, "", "")
+			return
+		}
+		// Drop a critical record that was never delivered so it cannot fire later.
+		common.ClearAlarmState(critService)
+		common.AlarmCheckDown(warnService, warnMsg, false, "", "")
+	default:
+		common.AlarmCheckUpWithInterval(warnService, okMsg, false, recoveryMinutes)
+		common.AlarmCheckUpWithInterval(critService, okMsg, false, recoveryMinutes)
+	}
 }
 
 // buildMembers converts raw replSetMember entries into MemberInfo, and
@@ -141,7 +195,7 @@ func checkPrimary(primary string) {
 }
 
 // checkSecondaryQuorum evaluates whether enough healthy secondaries remain.
-func checkSecondaryQuorum(members []MemberInfo) {
+func checkSecondaryQuorum(members []MemberInfo, report bool) {
 	healthy := 0
 	for _, m := range members {
 		if !m.IsPrimary && m.Healthy {
@@ -153,6 +207,17 @@ func checkSecondaryQuorum(members []MemberInfo) {
 	healthData.ReplicaSet.HealthySecondaries = healthy
 	healthData.ReplicaSet.MinSecondaries = minSecondaries
 	healthData.ReplicaSet.SecondaryQuorumOk = healthy >= minSecondaries
+
+	if !report {
+		common.ClearAlarmState("mongodb-secondary-quorum")
+		issues.CheckUp("mongodb-secondary-quorum", handoverNote)
+		for _, m := range members {
+			if !m.IsPrimary {
+				common.ClearAlarmState("mongodb-secondary-unhealthy-" + m.Name)
+			}
+		}
+		return
+	}
 
 	if healthy < minSecondaries {
 		msg := fmt.Sprintf("MongoDB healthy secondaries %d < required %d", healthy, minSecondaries)
@@ -181,7 +246,7 @@ func checkSecondaryQuorum(members []MemberInfo) {
 
 // checkReplicationLag evaluates the maximum secondary lag against warn/critical
 // thresholds.
-func checkReplicationLag(members []MemberInfo) {
+func checkReplicationLag(members []MemberInfo, report bool) {
 	var maxLag float64
 	for _, m := range members {
 		if !m.IsPrimary && m.LagSeconds > maxLag {
@@ -196,33 +261,40 @@ func checkReplicationLag(members []MemberInfo) {
 	healthData.ReplicaSet.LagWarnSeconds = warn
 	healthData.ReplicaSet.LagCriticalSeconds = critical
 
+	level := "ok"
 	switch {
 	case maxLag > critical:
-		healthData.ReplicaSet.LagState = "critical"
-		msg := fmt.Sprintf("MongoDB replication lag %.2fs > critical %.2fs", maxLag, critical)
+		level = "critical"
+	case maxLag > warn:
+		level = "warn"
+	}
+	healthData.ReplicaSet.LagState = level
+
+	if !report {
+		common.ClearAlarmState("mongodb-lag-warn")
+		common.ClearAlarmState("mongodb-lag-critical")
+		issues.CheckUp("mongodb-lag-critical", handoverNote)
+		return
+	}
+
+	// warn is Zulip-only: within the warn band, not yet app-impacting.
+	reportLevel(level, "mongodb-lag-warn", "mongodb-lag-critical",
+		fmt.Sprintf("MongoDB replication lag %.2fs > warn %.2fs", maxLag, warn),
+		fmt.Sprintf("MongoDB replication lag %.2fs > critical %.2fs", maxLag, critical),
+		fmt.Sprintf("Lag OK: %.2fs", maxLag))
+
+	if level == "critical" {
 		msgTr := fmt.Sprintf("MongoDB replikasyon gecikmesi %.2fs > kritik %.2fs", maxLag, critical)
 		subject := fmt.Sprintf("%s için MongoDB replikasyon gecikmesi kritik seviyede", common.Config.Identifier)
-		common.AlarmCheckDown("mongodb-lag-critical", msg, false, "", "")
 		issues.CheckDown("mongodb-lag-critical", subject, msgTr, false, 0)
-		common.AlarmCheckUp("mongodb-lag-warn", "Lag above critical, warn cleared", false)
-	case maxLag > warn:
-		healthData.ReplicaSet.LagState = "warn"
-		msg := fmt.Sprintf("MongoDB replication lag %.2fs > warn %.2fs", maxLag, warn)
-		// Zulip-only: within warn band, not yet app-impacting.
-		common.AlarmCheckDown("mongodb-lag-warn", msg, false, "", "")
-		common.AlarmCheckUp("mongodb-lag-critical", "Lag below critical", false)
-		issues.CheckUp("mongodb-lag-critical", "MongoDB replikasyon gecikmesi kritik seviyenin altına döndü")
-	default:
-		healthData.ReplicaSet.LagState = "ok"
-		common.AlarmCheckUp("mongodb-lag-warn", fmt.Sprintf("Lag OK: %.2fs", maxLag), false)
-		common.AlarmCheckUp("mongodb-lag-critical", fmt.Sprintf("Lag OK: %.2fs", maxLag), false)
+	} else {
 		issues.CheckUp("mongodb-lag-critical", "MongoDB replikasyon gecikmesi kritik seviyenin altına döndü")
 	}
 }
 
 // checkOplogWindow computes the oplog time window (last - first entry) in
 // hours and evaluates it against warn/critical thresholds.
-func checkOplogWindow(ctx context.Context, client *mongo.Client) {
+func checkOplogWindow(ctx context.Context, client *mongo.Client, report bool) {
 	window, err := oplogWindowHours(ctx, client)
 	if err != nil {
 		// Can't determine the window; skip without alarming (not all
@@ -237,26 +309,33 @@ func checkOplogWindow(ctx context.Context, client *mongo.Client) {
 	healthData.ReplicaSet.OplogWarnHours = warn
 	healthData.ReplicaSet.OplogCriticalHours = critical
 
+	level := "ok"
 	switch {
 	case window < critical:
-		healthData.ReplicaSet.OplogState = "critical"
-		msg := fmt.Sprintf("MongoDB oplog window %.2fh < critical %.2fh", window, critical)
+		level = "critical"
+	case window < warn:
+		level = "warn"
+	}
+	healthData.ReplicaSet.OplogState = level
+
+	if !report {
+		common.ClearAlarmState("mongodb-oplog-warn")
+		common.ClearAlarmState("mongodb-oplog-critical")
+		issues.CheckUp("mongodb-oplog-critical", handoverNote)
+		return
+	}
+
+	// warn is Zulip-only: within the warn band, not yet app-impacting.
+	reportLevel(level, "mongodb-oplog-warn", "mongodb-oplog-critical",
+		fmt.Sprintf("MongoDB oplog window %.2fh < warn %.2fh", window, warn),
+		fmt.Sprintf("MongoDB oplog window %.2fh < critical %.2fh", window, critical),
+		fmt.Sprintf("Oplog window OK: %.2fh", window))
+
+	if level == "critical" {
 		msgTr := fmt.Sprintf("MongoDB oplog penceresi %.2fs < kritik %.2fs", window, critical)
 		subject := fmt.Sprintf("%s için MongoDB oplog penceresi kritik seviyede", common.Config.Identifier)
-		common.AlarmCheckDown("mongodb-oplog-critical", msg, false, "", "")
 		issues.CheckDown("mongodb-oplog-critical", subject, msgTr, false, 0)
-		common.AlarmCheckUp("mongodb-oplog-warn", "Oplog window below critical, warn cleared", false)
-	case window < warn:
-		healthData.ReplicaSet.OplogState = "warn"
-		msg := fmt.Sprintf("MongoDB oplog window %.2fh < warn %.2fh", window, warn)
-		// Zulip-only: within warn band, not yet app-impacting.
-		common.AlarmCheckDown("mongodb-oplog-warn", msg, false, "", "")
-		common.AlarmCheckUp("mongodb-oplog-critical", "Oplog window above critical", false)
-		issues.CheckUp("mongodb-oplog-critical", "MongoDB oplog penceresi kritik seviyenin üstüne döndü")
-	default:
-		healthData.ReplicaSet.OplogState = "ok"
-		common.AlarmCheckUp("mongodb-oplog-warn", fmt.Sprintf("Oplog window OK: %.2fh", window), false)
-		common.AlarmCheckUp("mongodb-oplog-critical", fmt.Sprintf("Oplog window OK: %.2fh", window), false)
+	} else {
 		issues.CheckUp("mongodb-oplog-critical", "MongoDB oplog penceresi kritik seviyenin üstüne döndü")
 	}
 }

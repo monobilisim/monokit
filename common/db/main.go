@@ -55,6 +55,13 @@ type Mongodb struct {
 	Limits struct {
 		Connections_percent int
 		Cache_percent       int
+		// Ticket_queue_length is the WiredTiger execution queue length
+		// (read or write, normal priority) treated as ticket saturation on
+		// MongoDB 7.0+. Default 50.
+		Ticket_queue_length int
+		// Ticket_queue_minutes is how long the queue must stay at or above
+		// Ticket_queue_length before alarming. Default 5.
+		Ticket_queue_minutes float64
 	}
 	Replicaset struct {
 		// Enabled indicates this node is expected to be part of a replica

@@ -175,6 +175,7 @@ These core tools will be available in every monokit installation.
   - Monitors connections/cache/WiredTiger ticket usage, primary election, secondary quorum, replication lag and oplog window.
   - Sends alarm notifications to a Slack webhook.
   - Opens Redmine issues for connection loss, primary absence, secondary quorum loss, critical replication lag and critical oplog window.
+  - Secondary quorum, replication lag and oplog window are cluster-wide, so only the primary raises them. WiredTiger ticket pressure is Zulip-only; on MongoDB 7.0+ it uses the execution queue length (`limits.ticket_queue_length`, `limits.ticket_queue_minutes`).
   - Config: `/etc/mono/db.yaml`
   - By default connects to `mongodb://127.0.0.1:27017/admin` with no credentials, which works out of the box on MongoDB instances without auth enabled.
   - If the target MongoDB has auth enabled, `serverStatus`/`replSetGetStatus` require a real user - mongodbHealth detects this and raises a `mongodb-metrics-permission` / `mongodb-replicaset-mismatch` alarm instead of silently misreporting. To fix, create a minimal-privilege monitoring user and put its credentials in the `uri`:
@@ -203,7 +204,7 @@ These core tools will be available in every monokit installation.
   - Checks MongoDB health, standalone and replica set.
   - Monitors connections/cache/WiredTiger ticket usage, primary election, secondary quorum, replication lag and oplog window.
   - Sends alarm notifications to a Slack webhook.
-  - Opens Redmine issues for connection loss, ticket exhaustion, primary absence, secondary quorum loss, critical replication lag and critical oplog window.
+  - Opens Redmine issues for connection loss, primary absence, secondary quorum loss, critical replication lag and critical oplog window.
   - Config: `/etc/mono/db.yaml`
 
 - redisHealth

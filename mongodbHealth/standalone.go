@@ -44,16 +44,19 @@ type serverStatusResult struct {
 	// wiredTiger.concurrentTransactions.
 	Queues struct {
 		Execution struct {
-			Write struct {
-				Available    int32 `bson:"available"`
-				TotalTickets int32 `bson:"totalTickets"`
-			} `bson:"write"`
-			Read struct {
-				Available    int32 `bson:"available"`
-				TotalTickets int32 `bson:"totalTickets"`
-			} `bson:"read"`
+			Write executionQueue `bson:"write"`
+			Read  executionQueue `bson:"read"`
 		} `bson:"execution"`
 	} `bson:"queues"`
+}
+
+// executionQueue is one direction (read/write) of queues.execution.
+type executionQueue struct {
+	Available      int32 `bson:"available"`
+	TotalTickets   int32 `bson:"totalTickets"`
+	NormalPriority struct {
+		QueueLength int64 `bson:"queueLength"`
+	} `bson:"normalPriority"`
 }
 
 // CheckStandalone runs serverStatus and evaluates connection usage, WiredTiger
@@ -141,10 +144,39 @@ func checkCacheUsage(status serverStatusResult) {
 	}
 }
 
+// ticketPressure decides whether WiredTiger tickets are saturated.
+//
+// Before MongoDB 7.0 the ticket pool is fixed (128), so no available ticket
+// means operations are blocked. From 7.0 on, throughputProbing resizes the
+// pool on its own (seen between 5 and 128), so available=0 is routine and
+// says nothing about blocking. There the operations waiting for a ticket
+// (normalPriority.queueLength) are used instead.
+func ticketPressure(status serverStatusResult, queueLimit int64) (saturated bool, msg string) {
+	legacy := status.WiredTiger.ConcurrentTransactions
+	if legacy.Read.TotalTickets > 0 || legacy.Write.TotalTickets > 0 {
+		if legacy.Read.Available <= 0 || legacy.Write.Available <= 0 {
+			return true, fmt.Sprintf("MongoDB WiredTiger tickets exhausted: read available=%d write available=%d", legacy.Read.Available, legacy.Write.Available)
+		}
+		return false, fmt.Sprintf("Tickets OK: read=%d write=%d", legacy.Read.Available, legacy.Write.Available)
+	}
+	readQ := status.Queues.Execution.Read.NormalPriority.QueueLength
+	writeQ := status.Queues.Execution.Write.NormalPriority.QueueLength
+	if readQ >= queueLimit || writeQ >= queueLimit {
+		return true, fmt.Sprintf("MongoDB WiredTiger ticket queue >= %d: read queue=%d write queue=%d", queueLimit, readQ, writeQ)
+	}
+	return false, fmt.Sprintf("Ticket queue OK: read=%d write=%d", readQ, writeQ)
+}
+
 func checkTicketExhaustion(status serverStatusResult) {
-	// MongoDB 7.0+/8.0 replaced wiredTiger.concurrentTransactions with
-	// queues.execution. Prefer the legacy path only if it actually reports
-	// tickets (totalTickets > 0); otherwise fall back to the new location.
+	queueLimit := int64(DbHealthConfig.Mongodb.Limits.Ticket_queue_length)
+	if queueLimit <= 0 {
+		queueLimit = 50
+	}
+	minutes := DbHealthConfig.Mongodb.Limits.Ticket_queue_minutes
+	if minutes <= 0 {
+		minutes = 5
+	}
+
 	readAvail := int(status.WiredTiger.ConcurrentTransactions.Read.Available)
 	writeAvail := int(status.WiredTiger.ConcurrentTransactions.Write.Available)
 	if status.WiredTiger.ConcurrentTransactions.Read.TotalTickets == 0 &&
@@ -152,29 +184,21 @@ func checkTicketExhaustion(status serverStatusResult) {
 		readAvail = int(status.Queues.Execution.Read.Available)
 		writeAvail = int(status.Queues.Execution.Write.Available)
 	}
-
 	healthData.Standalone.TicketsAvailableRead = readAvail
 	healthData.Standalone.TicketsAvailableWrite = writeAvail
+	healthData.Standalone.TicketQueueRead = status.Queues.Execution.Read.NormalPriority.QueueLength
+	healthData.Standalone.TicketQueueWrite = status.Queues.Execution.Write.NormalPriority.QueueLength
 
-	exhausted := readAvail <= 0 || writeAvail <= 0
-	healthData.Standalone.TicketsExhausted = exhausted
+	saturated, msg := ticketPressure(status, queueLimit)
+	healthData.Standalone.TicketsExhausted = saturated
 
-	if exhausted {
-		msg := fmt.Sprintf("MongoDB WiredTiger tickets exhausted: read available=%d write available=%d", readAvail, writeAvail)
-		msgTr := fmt.Sprintf(
-			"MongoDB WiredTiger eşzamanlı işlem (ticket) limiti aşıldı.\n\n"+
-				"| Parametre                  | Değer |\n"+
-				"| -------------------------- | ----- |\n"+
-				"| Okuma için müsait ticket   | %d |\n"+
-				"| Yazma için müsait ticket   | %d |",
-			readAvail, writeAvail,
-		)
-		subject := fmt.Sprintf("%s için MongoDB WiredTiger eşzamanlı işlem limiti aşıldı", common.Config.Identifier)
-		// Zulip+Redmine: ticket exhaustion blocks reads/writes -> app-impacting.
-		common.AlarmCheckDown("mongodb-ticket-exhaustion", msg, false, "", "")
-		issues.CheckDown("mongodb-ticket-exhaustion", subject, msgTr, false, 0)
+	// Zulip-only, and only once the pressure lasts `minutes`: short queue
+	// spikes during batch jobs resolve on their own.
+	if saturated {
+		common.AlarmCheckDownWithInterval("mongodb-ticket-exhaustion", msg, false, "", "", minutes)
 	} else {
-		common.AlarmCheckUp("mongodb-ticket-exhaustion", fmt.Sprintf("Tickets OK: read=%d write=%d", readAvail, writeAvail), false)
+		common.AlarmCheckUpWithInterval("mongodb-ticket-exhaustion", msg, false, recoveryMinutes)
+		// Closes issues opened by earlier versions, which raised one per event.
 		issues.CheckUp("mongodb-ticket-exhaustion", "MongoDB WiredTiger biletleri normale döndü")
 	}
 }
